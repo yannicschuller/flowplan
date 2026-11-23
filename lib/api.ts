@@ -354,19 +354,30 @@ export async function publicRows(pid: string): Promise<Row[]> {
 }
 // `agent`: the request's user agent – the mobile apps get no sponsor link
 // (lib/about.ts).
-// "Deine Grenzen" (Settings → Account): what applies, where it comes from
-// (the names of the person's own groups only) and the instance's link for more.
-async function myLimits(userId: string) {
-  const { values, sources } = await userLimitDetails(userId);
+// Settings → Speicher & KI (and its tile): what applies, where it comes from
+// (the names of the person's own groups only), the instance's link for more
+// and the person's storage per workspace they belong to. Administrators are
+// not limited (lib/user-limits.ts): 0 = unlimited, the instance's largest
+// upload, no sources.
+async function myLimits(user: Identity, memberOf: { id: string; name: string }[]) {
+  const settings = await instanceSettings();
+  const usage = { moreUrl: settings.moreLimitsUrl || null, usedBytes: await userBytes(user.id), ownedWorkspaces: await ownedWorkspaces(user.id), byWorkspace: await bytesPerWorkspace(user.id, memberOf) };
+  if (user.isAdmin) return { storageMb: 0, workspaces: 0, uploadMb: settings.maxUploadMb, admin: true, groupNames: {}, ...usage };
+  const { values, sources } = await userLimitDetails(user.id);
   const groups = Object.values(sources).flatMap((s) => [...(s.group ? [s.group] : []), ...(s.addons || []).map((a) => a.group)]);
-  return {
-    ...values,
-    sources,
-    groupNames: groups.length ? await limitGroupNames(groups) : {},
-    moreUrl: (await instanceSettings()).moreLimitsUrl || null,
-    usedBytes: await userBytes(userId),
-    ownedWorkspaces: await ownedWorkspaces(userId),
-  };
+  return { ...values, sources, groupNames: groups.length ? await limitGroupNames(groups) : {}, ...usage };
+}
+// The person's files per workspace they are a member of (names they see
+// anyway); everything else – other workspaces, stickers, fonts – is not
+// listed. Only when files lie in more than one workspace.
+async function bytesPerWorkspace(userId: string, memberOf: { id: string; name: string }[]) {
+  const rows = await all<{ workspace_id: string | null; n: number | null }>(
+    "SELECT p.workspace_id, SUM(f.size) n FROM files f JOIN pages p ON p.id=f.page_id WHERE f.created_by=? GROUP BY p.workspace_id",
+    userId,
+  );
+  const names = new Map(memberOf.map((w) => [w.id, w.name]));
+  const list = rows.filter((r) => r.workspace_id && names.has(r.workspace_id) && Number(r.n) > 0).map((r) => ({ id: r.workspace_id!, name: names.get(r.workspace_id!)!, bytes: Number(r.n) }));
+  return list.length > 1 ? list.sort((a, b) => b.bytes - a.bytes) : [];
 }
 export async function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   if (!user.demo && !user.apiScope) await acceptPendingInvites(user.id);
@@ -514,7 +525,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       about: { ...aboutInfo(agent), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
     },
     // What applies to me: limits with my usage, and my fixed language.
-    myLimits: user.isAdmin ? null : await myLimits(user.id),
+    myLimits: await myLimits(user, workspaces),
     language: await fixedLanguage(user.id),
     // Marked for deletion because the address is unconfirmed (#436): the
     // notice after signing in, with the day.

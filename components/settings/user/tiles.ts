@@ -4,11 +4,24 @@ import { LANGUAGES } from "@/lib/i18n";
 import { kindsFor, notificationDefaults } from "@/lib/notification-kinds";
 import type { Bootstrap } from "@/lib/types";
 import type { ThemeChoice } from "@/lib/theme";
-import type { TileSummary } from "../shell";
+import type { QuotaStatus } from "@/lib/ai/quota-shared";
+import { aiSummary, storageSummary } from "@/lib/limits-summary";
+import type { TileBar, TileSummary } from "../shell";
 
 type T = (de: string, en: string) => string;
 
-export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T): Record<string, TileSummary> {
+// Speicher & KI: storage and the AI quota as bars, where the storage comes
+// from as the line. No AI on the instance: no AI bar.
+export function usageTile(boot: Bootstrap, quota: QuotaStatus | null, t: T, tag: string): TileSummary {
+  const bars: TileBar[] = [];
+  const storage = boot.myLimits ? storageSummary(boot.myLimits, t, tag) : null;
+  if (storage) bars.push({ label: t("Speicher", "Storage"), text: storage.text, share: storage.share });
+  const ai = boot.user.demo ? null : aiSummary(boot.ai, quota, t, tag);
+  if (ai && ai.state !== "none") bars.push({ label: t("KI", "AI"), text: ai.text, share: ai.share });
+  return { line: storage?.source, bars };
+}
+
+export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T, quota: QuotaStatus | null = null, tag = "de-DE"): Record<string, TileSummary> {
   const managed = boot.managedSpaces?.length ?? 0;
   const members = boot.members.length;
   const guests = boot.members.filter((m) => m.guest).length;
@@ -20,6 +33,7 @@ export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T): Record<str
   const custom = prefs ? kindsFor(!!boot.user.isAdmin).filter((k) => prefs[k] && (["inbox", "push", "email", "messenger"] as const).some((c) => prefs[k][c] !== notificationDefaults[k][c])).length : 0;
   const webhookOwner = owner && !boot.user.demo;
   return {
+    usage: usageTile(boot, quota, t, tag),
     account: {
       line: boot.user.email,
       badge: boot.localAccount ? t("E-Mail-Konto", "E-mail account") : boot.ldapAccount ? "LDAP" : "SSO",

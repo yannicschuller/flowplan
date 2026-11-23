@@ -67,14 +67,43 @@ export const SETTINGS_GROUPS: GroupMeta[] = [
 export const SETTINGS_SECTIONS: SectionMeta[] = [
   // ---------------------------------------------------------------- personal
   {
+    // Storage and AI in one place (components/settings/user/usage.tsx):
+    // what applies, where it comes from, and the instance's link for more.
+    // "Deine Grenzen" (Konto & Sicherheit) and "KI-Kontingent" (KI) lived
+    // elsewhere before 0.11.3: LEGACY_ANCHORS leads their addresses here.
+    id: "usage",
+    area: "settings",
+    level: "beginner",
+    group: "personal",
+    icon: "Gauge",
+    title: { de: "Speicher & KI", en: "Storage & AI" },
+    description: { de: "Wie viel Speicher und KI du hast, was davon belegt ist und woher es kommt.", en: "How much storage and AI you have, how much is used and where it comes from." },
+    keywords: {
+      de: "speicher speicherplatz kontingent ki-kontingent ki limit limits grenze grenzen deine grenzen upload hochladen dateigröße tarif plan abo mehr speicher arbeitsbereiche tokens modell voll belegt",
+      en: "storage space quota ai quota ai limit limits your limits upload file size plan tariff subscription more storage workspaces tokens model full used",
+    },
+    entries: [
+      { title: { de: "Speicher", en: "Storage" }, keywords: { de: "speicherplatz belegt voll dateien bilder", en: "space used full files images" }, anchor: "storage" },
+      { title: { de: "Größte Datei beim Hochladen", en: "Largest upload" }, keywords: { de: "upload hochladen dateigröße", en: "upload file size" }, anchor: "upload" },
+      { title: { de: "Eigene Arbeitsbereiche", en: "Own workspaces" }, keywords: { de: "anzahl grenze", en: "number limit" }, anchor: "workspaces" },
+      {
+        title: { de: "KI-Kontingent", en: "AI quota" },
+        keywords: { de: "kontingent limit grenze tokens kosten übrig verbraucht zurückgesetzt", en: "quota limit tokens cost left used remaining reset" },
+        anchor: "ai",
+      },
+      { title: { de: "Deine KI-Modelle", en: "Your AI models" }, keywords: { de: "modell modelle anbieter", en: "model models provider" }, anchor: "models" },
+      { title: { de: "Mehr Speicher oder KI?", en: "More storage or AI?" }, keywords: { de: "tarif plan abo upgrade erweitern", en: "plan tariff subscription upgrade extend" }, anchor: "more" },
+    ],
+  },
+  {
     id: "account",
     area: "settings",
     level: "beginner",
     group: "personal",
     icon: "UserCircle",
     title: { de: "Konto & Sicherheit", en: "Account & security" },
-    description: { de: "Profil, Anmeldung, angemeldete Geräte, Verschlüsselung und deine Grenzen.", en: "Profile, sign-in, signed-in devices, encryption and your limits." },
-    keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
+    description: { de: "Profil, Anmeldung, angemeldete Geräte und Verschlüsselung.", en: "Profile, sign-in, signed-in devices and encryption." },
+    keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee delete account" },
     entries: [
       { title: { de: "Anzeigename", en: "Display name" }, keywords: { de: "profil name", en: "profile name" }, anchor: "profile" },
       { title: { de: "E-Mail-Adresse ändern", en: "Change e-mail address" }, keywords: { de: "email mail adresse ändern", en: "email mail address change" }, anchor: "email" },
@@ -99,7 +128,6 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         anchor: "deadman",
         level: "normal",
       },
-      { title: { de: "Deine Grenzen", en: "Your limits" }, keywords: { de: "speicher kontingent", en: "storage quota" }, anchor: "limits", level: "normal" },
       { title: { de: "Konto löschen", en: "Delete account" }, anchor: "delete-account" },
     ],
   },
@@ -277,13 +305,6 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "KI", en: "AI" },
     description: { de: "Deine KI-Funktionen, ein eigener Anbieter und worauf die KI zugreifen darf.", en: "Your AI features, an own provider and what the AI may access." },
     keywords: { de: "ki künstliche intelligenz anbieter ollama openai schlüssel zugriff", en: "ai artificial intelligence provider ollama openai key access" },
-    entries: [
-      {
-        title: { de: "KI-Kontingent", en: "AI quota" },
-        keywords: { de: "kontingent limit grenze tokens kosten übrig verbraucht", en: "quota limit tokens cost left used remaining" },
-        anchor: "quota",
-      },
-    ],
   },
   {
     id: "devices",
@@ -892,6 +913,17 @@ export const LEGACY_SECTIONS: Record<SettingsArea, Record<string, string>> = {
   },
 };
 
+// Places that moved to another section ("<section>/<anchor>" → the new
+// address), for links in old e-mails, bookmarks and other apps.
+export const LEGACY_ANCHORS: Record<SettingsArea, Record<string, { section: string; anchor: string | null }>> = {
+  settings: {
+    // "Deine Grenzen" and "KI-Kontingent" before 0.11.3.
+    "account/limits": { section: "usage", anchor: "storage" },
+    "ai/quota": { section: "usage", anchor: "ai" },
+  },
+  admin: {},
+};
+
 export type SettingsRoute = { area: SettingsArea; section: string | null; anchor: string | null };
 
 export const findSection = (area: SettingsArea, id: string | null | undefined) =>
@@ -907,6 +939,8 @@ export function parseSettingsHash(hash: string): (SettingsRoute & { redirected: 
   const raw = decodeURIComponent(parts[1] || "");
   const anchor = parts[2] ? decodeURIComponent(parts[2]) : null;
   if (!raw) return { area, section: null, anchor: null, redirected: false };
+  const moved = anchor ? LEGACY_ANCHORS[area][`${raw}/${anchor}`] : undefined;
+  if (moved && findSection(area, moved.section)) return { area, section: moved.section, anchor: moved.anchor, redirected: true };
   if (findSection(area, raw)) return { area, section: raw, anchor, redirected: false };
   const legacy = LEGACY_SECTIONS[area][raw];
   if (legacy && findSection(area, legacy)) return { area, section: legacy, anchor, redirected: true };

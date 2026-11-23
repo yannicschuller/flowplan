@@ -9,6 +9,7 @@ import { Gauge } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { quotaAmount } from "@/lib/limits-summary";
 import { tightest, type QuotaPeriod, type QuotaPeriodState, type QuotaStatus } from "@/lib/ai/quota-shared";
 
 export type T = (de: string, en: string) => string;
@@ -26,9 +27,11 @@ export function refreshAiQuota() {
   cached = null;
   for (const l of listeners) l();
 }
-export function useAiQuota(): QuotaStatus | null {
+// enabled = false: nothing is asked (no AI through the instance).
+export function useAiQuota(enabled = true): QuotaStatus | null {
   const [status, setStatus] = useState<QuotaStatus | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     const read = () => void load().then((s) => alive && setStatus(s));
     read();
@@ -37,14 +40,11 @@ export function useAiQuota(): QuotaStatus | null {
       alive = false;
       listeners.delete(read);
     };
-  }, []);
-  return status;
+  }, [enabled]);
+  return enabled ? status : null;
 }
 
-export function formatQuotaAmount(n: number, s: Pick<QuotaStatus, "unit" | "currency">) {
-  if (s.unit === "cost") return n.toLocaleString(LOCALE_TAG, { style: "currency", currency: s.currency || "EUR", maximumFractionDigits: 2 });
-  return new Intl.NumberFormat(LOCALE_TAG, { notation: n >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(n);
-}
+export const formatQuotaAmount = (n: number, s: Pick<QuotaStatus, "unit" | "currency">) => quotaAmount(n, s, LOCALE_TAG);
 export const resetText = (p: QuotaPeriodState, zone: string) => {
   try {
     return new Intl.DateTimeFormat(LOCALE_TAG, { dateStyle: "medium", timeStyle: "short", timeZone: zone }).format(p.resetAt);
