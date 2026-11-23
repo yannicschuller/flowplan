@@ -38,6 +38,13 @@
 // the person, but not limited by their limits; the instance ceiling still
 // applies (and refuses as usual). Among several groups and roles the most
 // capable such model wins (the highest price, as for the model rules).
+// The continuation may have a limit of its own per period (after_limits,
+// in the quota's unit): what was sent with the model after the quota is
+// counted in ai_quota_after_usage, and once that limit is used up, AI is
+// off until a period resets ("KI aus bis …"). Precedence as for the
+// limits: the person's own rule, else the most generous of their groups
+// and roles that go on (a period one of them leaves open is open), else
+// the default.
 import { z } from "zod";
 import { all, one, run } from "../db";
 import { HttpError } from "../auth";
@@ -51,6 +58,7 @@ import { instanceAiSettings, type AiPrice } from "./settings";
 import { allGroupKeys, groupChoices, personGroupKeys, validGroupKey } from "../person-groups";
 import {
   QUOTA_PERIODS,
+  type QuotaAfterStatus,
   QUOTA_ROLES,
   QUOTA_SCOPES,
   type QuotaLimits,
@@ -61,6 +69,7 @@ import {
   type QuotaSettings,
   type QuotaStatus,
   type QuotaUnit,
+  tightest,
 } from "./quota-shared";
 
 const DAY = 86_400_000;
@@ -142,13 +151,18 @@ export function cleanLimits(raw: unknown, unit: QuotaUnit): QuotaLimits {
 export async function quotaRules(unit?: QuotaUnit): Promise<QuotaRule[]> {
   const u = unit ?? (await quotaSettings()).unit;
   try {
-    return (await all<{ scope: string; target: string; exempt: number; limits: string; after_model: string | null; after_kind: string | null }>("SELECT scope,target,exempt,limits,after_model,after_kind FROM ai_quota_rules ORDER BY scope,target")).flatMap((r) => {
+    return (await all<{ scope: string; target: string; exempt: number; limits: string; after_model: string | null; after_kind: string | null; after_limits: string | null }>("SELECT scope,target,exempt,limits,after_model,after_kind,after_limits FROM ai_quota_rules ORDER BY scope,target")).flatMap((r) => {
       if (!(QUOTA_SCOPES as readonly string[]).includes(r.scope)) return [];
       let limits: unknown = {};
+      let afterLimits: unknown = {};
       try {
         limits = JSON.parse(r.limits);
       } catch {}
-      const after = r.after_model && !r.exempt && r.scope !== "instance" ? { after: r.after_model, afterKind: r.after_kind || "" } : {};
+      try {
+        afterLimits = r.after_limits ? JSON.parse(r.after_limits) : {};
+      } catch {}
+      const kept = cleanLimits(afterLimits, u);
+      const after = r.after_model && !r.exempt && r.scope !== "instance" ? { after: r.after_model, afterKind: r.after_kind || "", ...(hasLimit(kept) ? { afterLimits: kept } : {}) } : {};
       return [{ scope: r.scope as QuotaRule["scope"], target: r.target, exempt: !!r.exempt, limits: cleanLimits(limits, u), ...after }];
     });
   } catch {
@@ -163,7 +177,8 @@ export type QuotaPerson = { userId: string; roles: QuotaRole[]; groups: string[]
 // after: the model to go on with once the limits are used up, and the
 // provider kind it was chosen for (null: AI stops).
 export type QuotaAfter = { model: string; kind: string };
-export type PersonalLimits = { limits: QuotaLimits | null; exempt: boolean; source: "user" | "group" | "default" | "none"; after: QuotaAfter | null };
+// afterLimits: the continuation's own limits (null: unlimited).
+export type PersonalLimits = { limits: QuotaLimits | null; exempt: boolean; source: "user" | "group" | "default" | "none"; after: QuotaAfter | null; afterLimits?: QuotaLimits | null };
 
 const afterOf = (r: QuotaRule): QuotaAfter | null => (r.after ? { model: r.after, kind: r.afterKind || "" } : null);
 // The most capable of several models: the highest price for a million
@@ -178,7 +193,7 @@ function mostCapableAfter(list: QuotaAfter[], prices: AiPrice[]) {
 // per period (a period one of them leaves open is open), else the default.
 export function personalLimits(rules: QuotaRule[], who: QuotaPerson, prices: AiPrice[] = []): PersonalLimits {
   const own = rules.find((r) => r.scope === "user" && r.target === who.userId);
-  if (own) return own.exempt ? { limits: null, exempt: true, source: "user", after: null } : { limits: own.limits, exempt: false, source: "user", after: afterOf(own) };
+  if (own) return own.exempt ? { limits: null, exempt: true, source: "user", after: null } : { limits: own.limits, exempt: false, source: "user", after: afterOf(own), ...(own.after && own.afterLimits ? { afterLimits: own.afterLimits } : {}) };
   const groups = rules.filter((r) => (r.scope === "group" && who.groups.includes(r.target)) || (r.scope === "role" && who.roles.includes(r.target as QuotaRole)));
   if (groups.length) {
     if (groups.some((r) => r.exempt)) return { limits: null, exempt: true, source: "group", after: null };
@@ -187,10 +202,17 @@ export function personalLimits(rules: QuotaRule[], who: QuotaPerson, prices: AiP
       const values = groups.map((r) => r.limits[p]);
       if (values.every((v): v is number => typeof v === "number")) limits[p] = Math.max(...values);
     }
-    return { limits, exempt: false, source: "group", after: mostCapableAfter(groups.flatMap((r) => afterOf(r) ?? []), prices) };
+    // The continuation's limit: the most generous of those that go on.
+    const going = groups.filter((r) => r.after);
+    let afterLimits: QuotaLimits | null = null;
+    for (const p of QUOTA_PERIODS) {
+      const values = going.map((r) => r.afterLimits?.[p]);
+      if (going.length && values.every((v): v is number => typeof v === "number")) (afterLimits ??= {})[p] = Math.max(...values);
+    }
+    return { limits, exempt: false, source: "group", after: mostCapableAfter(groups.flatMap((r) => afterOf(r) ?? []), prices), ...(afterLimits ? { afterLimits } : {}) };
   }
   const fallback = rules.find((r) => r.scope === "default");
-  return fallback ? { limits: fallback.limits, exempt: false, source: "default", after: afterOf(fallback) } : { limits: null, exempt: false, source: "none", after: null };
+  return fallback ? { limits: fallback.limits, exempt: false, source: "default", after: afterOf(fallback), ...(fallback.after && fallback.afterLimits ? { afterLimits: fallback.afterLimits } : {}) } : { limits: null, exempt: false, source: "none", after: null };
 }
 // The model after the quota for the instance's provider now (null: none,
 // or chosen for another provider kind).
@@ -223,7 +245,8 @@ export function amountOf(rows: Pick<UsageRow, "model" | "tokens_in" | "tokens_ou
 const swept = globalThis as unknown as { flowplanQuotaSwept?: number };
 // One answered request with the instance's provider (lib/ai/run.ts,
 // lib/ai/providers.ts). Never throws: counting must not break an answer.
-export async function recordQuotaUsage(input: { userId?: string | null; kind: UsageKind; model: string; tokensIn: number; tokensOut: number }, now = Date.now()) {
+// `after`: sent with the model after the quota – counted for its limit too.
+export async function recordQuotaUsage(input: { userId?: string | null; kind: UsageKind; model: string; tokensIn: number; tokensOut: number; after?: boolean }, now = Date.now()) {
   const tokensIn = Math.max(0, Math.round(input.tokensIn) || 0),
     tokensOut = Math.max(0, Math.round(input.tokensOut) || 0);
   if (!tokensIn && !tokensOut) return;
@@ -238,9 +261,19 @@ export async function recordQuotaUsage(input: { userId?: string | null; kind: Us
       tokensIn,
       tokensOut,
     );
+    if (input.after && input.userId && input.kind === "person")
+      await run(
+        "INSERT INTO ai_quota_after_usage(day,user_id,model,requests,tokens_in,tokens_out) VALUES(?,?,?,1,?,?) ON CONFLICT(day,user_id,model) DO UPDATE SET requests=ai_quota_after_usage.requests+1,tokens_in=ai_quota_after_usage.tokens_in+excluded.tokens_in,tokens_out=ai_quota_after_usage.tokens_out+excluded.tokens_out",
+        quotaDay(now, settings.timeZone),
+        input.userId,
+        String(input.model || "").slice(0, 200),
+        tokensIn,
+        tokensOut,
+      );
     if (now - (swept.flowplanQuotaSwept ?? 0) > DAY) {
       swept.flowplanQuotaSwept = now;
       await run("DELETE FROM ai_quota_usage WHERE day<?", quotaDay(now - QUOTA_KEEP_DAYS * DAY, settings.timeZone));
+      await run("DELETE FROM ai_quota_after_usage WHERE day<?", quotaDay(now - QUOTA_KEEP_DAYS * DAY, settings.timeZone));
     }
     await alertInstance(settings, now);
   } catch (error) {
@@ -250,7 +283,13 @@ export async function recordQuotaUsage(input: { userId?: string | null; kind: Us
 
 // What a person (kind 'person') or the instance (all counted kinds) used
 // since a day, by period start.
-async function usageSince(since: string, scope: { userId: string } | { instance: true; workflows: boolean }) {
+async function usageSince(since: string, scope: { userId: string } | { instance: true; workflows: boolean } | { afterOf: string }) {
+  if ("afterOf" in scope)
+    return await all<UsageRow>(
+      "SELECT day,model,'person' kind,user_id,SUM(tokens_in) tokens_in,SUM(tokens_out) tokens_out FROM ai_quota_after_usage WHERE day>=? AND user_id=? GROUP BY day,model,user_id",
+      since,
+      scope.afterOf,
+    );
   if ("userId" in scope)
     return await all<UsageRow>(
       "SELECT day,model,kind,user_id,SUM(tokens_in) tokens_in,SUM(tokens_out) tokens_out FROM ai_quota_usage WHERE day>=? AND user_id=? AND kind='person' GROUP BY day,model,kind,user_id",
@@ -339,11 +378,30 @@ export function quotaMessage(state: Pick<QuotaPeriodState, "level" | "period" | 
   return [ct(de, en), ct(`Es gilt wieder ab ${when}.`, `It is available again from ${when}.`), alt ? ct(alt[0], alt[1]) : ""].filter(Boolean).join(" ");
 }
 
+// The continuation's limit is used up too: AI is off until `resetAt`.
+export function afterQuotaMessage(period: QuotaPeriod, model: string, resetAt: number, settings: Pick<QuotaSettings, "timeZone">, alternatives: { own: boolean; device: boolean }) {
+  let when = new Date(resetAt).toISOString();
+  try {
+    when = new Intl.DateTimeFormat(localeTag(contentLocale()), { dateStyle: "medium", timeStyle: "short", timeZone: settings.timeZone }).format(resetAt);
+  } catch {}
+  const head =
+    period === "day"
+      ? ct(`Dein KI-Kontingent und die Fortsetzung mit ${model} sind für heute aufgebraucht.`, `Your AI quota and the continuation with ${model} are used up for today.`)
+      : period === "week"
+        ? ct(`Dein KI-Kontingent und die Fortsetzung mit ${model} sind für diese Woche aufgebraucht.`, `Your AI quota and the continuation with ${model} are used up for this week.`)
+        : period === "year"
+          ? ct(`Dein KI-Kontingent und die Fortsetzung mit ${model} sind für dieses Jahr aufgebraucht.`, `Your AI quota and the continuation with ${model} are used up for this year.`)
+          : ct(`Dein KI-Kontingent und die Fortsetzung mit ${model} sind für diesen Monat aufgebraucht.`, `Your AI quota and the continuation with ${model} are used up for this month.`);
+  const alt = alternatives.own && alternatives.device ? ALTERNATIVES.both : alternatives.own ? ALTERNATIVES.own : alternatives.device ? ALTERNATIVES.device : null;
+  return [head, ct(`KI ist aus bis ${when}.`, `AI is off until ${when}.`), alt ? ct(alt[0], alt[1]) : ""].filter(Boolean).join(" ");
+}
+
 /* ---------- Checking before a request ---------- */
 
 // What a request may do: `release` frees its reservation (call it once the
 // usage is recorded); `model`, when set, is the model to send it with
-// instead – the person's limit is used up and a rule says to go on with it.
+// instead – the person's limit is used up and a rule says to go on with it
+// (its usage is recorded with `after: true`).
 export type QuotaGrant = { release: () => void; model: string | null };
 const free: QuotaGrant = { release: () => {}, model: null };
 // Refuses the request when it would cross a limit; else reserves its
@@ -383,8 +441,23 @@ export async function requireQuota(
   const after = refused?.level === "person" ? activeAfter(personal, ai.provider ? { kind: ai.provider.kind, model: ai.provider.model } : null) : null;
   if (after) {
     const afterEstimate = cost(after);
+    const personRefusal = refused!;
     refused = states.find((s) => s.level === "instance" && (s.used >= s.limit || s.used + afterEstimate > s.limit));
-    if (!refused) return { release: reserve(checkInstance ? ["instance"] : [], afterEstimate), model: after };
+    // The continuation's own limit (after the instance: that one says when
+    // AI works again for everyone).
+    const afterKey = `after:${user.id}`;
+    const limited = !refused && hasLimit(personal!.afterLimits);
+    if (limited) {
+      const spent = (await periodStates("person", personal!.afterLimits!, settings, ai.prices, { afterOf: user.id }, now))
+        .map((s) => ({ ...s, used: s.used + (reserved.get(afterKey) || 0) }))
+        .find((s) => s.used >= s.limit || s.used + afterEstimate > s.limit);
+      if (spent) {
+        // AI is back when either the quota or the continuation resets.
+        const resetAt = Math.min(spent.resetAt, personRefusal.resetAt);
+        throw new AiQuotaError(afterQuotaMessage(spent.period, after, resetAt, settings, { own: ai.userProviders, device: ai.device }), { level: "person", period: spent.period, resetAt });
+      }
+    }
+    if (!refused) return { release: reserve([...(checkInstance ? ["instance"] : []), ...(limited ? [afterKey] : [])], afterEstimate), model: after };
   }
   if (refused) {
     const own = ai.userProviders;
@@ -421,14 +494,27 @@ export async function quotaStatus(user: Pick<Identity, "id" | "isAdmin">, source
     ...(hasLimit(personal.limits) ? await periodStates("person", personal.limits!, settings, ai.prices, { userId: user.id }, now) : []),
     ...(hasLimit(instanceLimits(rules)) ? await periodStates("instance", instanceLimits(rules)!, settings, ai.prices, { instance: true, workflows: settings.workflowsCountInstance }, now) : []),
   ];
+  // The continuation and its own limit.
+  let afterStatus: QuotaAfterStatus | null = null;
+  if (after) {
+    const states = hasLimit(personal.afterLimits) ? await periodStates("person", personal.afterLimits!, settings, ai.prices, { afterOf: user.id }, now) : [];
+    const tight = tightest(states);
+    const used = tight ? tight.used : amountOf(await usageSince(periodBounds("month", now, settings.timeZone, settings.weekStart).start, { afterOf: user.id }), settings.unit, ai.prices);
+    afterStatus = { model: after, limit: tight?.limit ?? null, used, left: tight?.left ?? null, period: tight?.period ?? null, resetAt: tight?.resetAt ?? null, periods: states };
+  }
+  // A personal period that is used up only stops AI when there is no
+  // continuation, or when the continuation's limit is used up as well.
+  const personSpent = periods.some((p) => p.level === "person" && p.used >= p.limit);
+  const afterSpent = !!afterStatus?.periods.some((p) => p.used >= p.limit);
+  const afterLow = !!afterStatus?.periods.some((p) => p.limit <= 0 || p.used / p.limit >= settings.warnAt / 100);
   return {
     ...base,
     applies: periods.length > 0,
     exempt: personal.exempt,
     periods,
-    low: periods.some((p) => (p.level === "instance" || !after) && (p.limit <= 0 || p.used / p.limit >= settings.warnAt / 100)),
-    blocked: periods.some((p) => (p.level === "instance" || !after) && p.used >= p.limit),
-    after,
+    low: periods.some((p) => (p.level === "instance" || !after) && (p.limit <= 0 || p.used / p.limit >= settings.warnAt / 100)) || (personSpent && afterLow),
+    blocked: periods.some((p) => (p.level === "instance" || !after) && p.used >= p.limit) || (personSpent && afterSpent),
+    after: afterStatus,
   };
 }
 
@@ -480,6 +566,7 @@ export async function forgetQuotaPerson(userId: string) {
     userId,
   );
   await run("DELETE FROM ai_quota_usage WHERE user_id=?", userId);
+  await run("DELETE FROM ai_quota_after_usage WHERE user_id=?", userId);
   await run("DELETE FROM ai_quota_rules WHERE scope='user' AND target=?", userId);
   await run("DELETE FROM ai_model_rules WHERE scope='user' AND target=?", userId);
 }
@@ -507,7 +594,7 @@ export async function checkedAfter(model: string | null | undefined): Promise<Qu
 const saveInput = z.object({
   settings: settingsSchema.partial().optional(),
   rules: z
-    .array(z.object({ scope: z.enum(QUOTA_SCOPES), target: z.string().trim().max(210).default(""), exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema }))
+    .array(z.object({ scope: z.enum(QUOTA_SCOPES), target: z.string().trim().max(210).default(""), exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema, afterLimits: limitsSchema.nullable().optional() }))
     .max(5000)
     .optional(),
 });
@@ -548,14 +635,18 @@ export async function saveQuotaConfig(user: Identity, raw: unknown) {
       // Nothing to say: no row (instance and default without numbers).
       if (!r.exempt && !hasLimit(limits) && (r.scope === "instance" || r.scope === "default")) continue;
       const after = afters.get(`${r.scope}|${r.target}`) ?? null;
+      // Only with a model to go on with; after a unit change it starts
+      // empty (unless the rules came along in the new unit).
+      const afterLimits = after && (next.unit === current.unit || b.rules) ? cleanLimits(r.afterLimits ?? {}, next.unit) : {};
       await run(
-        "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,updated_at) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,after_limits,updated_at) VALUES(?,?,?,?,?,?,?,?)",
         r.scope,
         r.target,
         r.exempt ? 1 : 0,
         JSON.stringify(limits),
         after?.model ?? null,
         after?.kind ?? null,
+        hasLimit(afterLimits) ? JSON.stringify(afterLimits) : null,
         Date.now(),
       );
     }

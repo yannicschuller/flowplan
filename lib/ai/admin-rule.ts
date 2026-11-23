@@ -151,7 +151,8 @@ const saveInput = scopeInput.extend({
   model: z.string().trim().max(200).regex(MODEL_NAME, "Ungültiger Modellname.").or(z.literal("")).nullable().optional(),
   // Absent: unchanged; null: no own limits (inherited); else the rule of
   // the quota table for this target.
-  quota: z.object({ exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema }).nullable().optional(),
+  // afterLimits: the continuation's limit (absent: kept as it is).
+  quota: z.object({ exempt: z.boolean().default(false), limits: limitsSchema.default({}), after: afterSchema, afterLimits: limitsSchema.nullable().optional() }).nullable().optional(),
 });
 
 // admin.aiRule: the model and/or the limits of one person, group or role.
@@ -183,14 +184,18 @@ export async function saveAiRule(user: Identity, raw: unknown) {
       const { unit } = await quotaSettings();
       const limits = cleanLimits(b.quota.exempt ? {} : b.quota.limits, unit);
       const after = b.quota.exempt ? null : await checkedAfter(b.quota.after);
+      // The continuation's limit: given, or kept – gone without a model.
+      const given = b.quota.afterLimits === undefined ? undefined : cleanLimits(b.quota.afterLimits ?? {}, unit);
+      const afterLimits = after ? (given === undefined ? undefined : Object.keys(given).length ? JSON.stringify(given) : null) : null;
       await run(
-        "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,after_model=excluded.after_model,after_kind=excluded.after_kind,updated_at=excluded.updated_at",
+        `INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,after_limits,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,after_model=excluded.after_model,after_kind=excluded.after_kind,${afterLimits === undefined ? "" : "after_limits=excluded.after_limits,"}updated_at=excluded.updated_at`,
         b.scope,
         b.target,
         b.quota.exempt ? 1 : 0,
         JSON.stringify(limits),
         after?.model ?? null,
         after?.kind ?? null,
+        afterLimits ?? null,
         Date.now(),
       );
       if (after) detail.after = after.model;

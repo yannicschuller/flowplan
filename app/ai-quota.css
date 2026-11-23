@@ -324,3 +324,23 @@
   color: var(--secondary);
   font-size: 12px;
 }
+/* "Danach": the model and the continuation's own limit (AfterLimitField). */
+.ai-quota-after-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-quota-after-limit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.ai-quota-after-limit .ai-quota-limit {
+  max-width: 120px;
+}
+.ai-quota-after-period {
+  min-width: 90px;
+  max-width: 130px;
+}

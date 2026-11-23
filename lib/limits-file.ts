@@ -14,10 +14,12 @@
 //     "plans": [{ "group": "Flowplan Plus", "kind": "plan"|"team"|"addon",
 //                 "storageMb": 25600, "uploadMb": 1024, "workspaces"?: 5,
 //                 "aiTokens": 5000000 | "aiActions": 1000, "aiModels": "haiku"|"sonnet"|"all",
-//                 "aiAfter"?: "haiku"|"<model id>"|"off", "aiModel"?: "<model id>" }],
+//                 "aiAfter"?: "haiku"|"<model id>"|"off", "aiAfterTokens"?: 20000000,
+//                 "aiModel"?: "<model id>" }],
 //     "flowplan": { "defaults": { "storageMb", "uploadMb", "workspaces"? },
 //                   "aiQuota": { "period"?, "unit"?, "tokensPerAction"?, "costPerAction"?,
-//                                "defaultTokens"? | "defaultActions"?, "defaultAfter"?, "instanceCapUsd"? | "instanceCap"? | "instanceCapTokens"? },
+//                                "defaultTokens"? | "defaultActions"?, "defaultAfter"?, "defaultAfterTokens"?,
+//                                "instanceCapUsd"? | "instanceCap"? | "instanceCapTokens"? },
 //                   "moreLimitsUrl"?, "removeMissing"?: false,
 //                   "groups"?: [ same fields as a plan, for groups that are not plans;
 //                                "workspaceGroup": { "workspace", "group" } for a workspace group ] } }
@@ -37,7 +39,10 @@
 //   tokens per period directly, without a conversion – only with the unit
 //   "tokens" (with the unit "cost" and no aiActions it is an error); given
 //   with aiActions, aiTokens wins (a note in the check). flowplan-billing's
-//   catalogue writes aiTokens; aiActions stays for older files. Add-ons get
+//   catalogue writes aiTokens; aiActions stays for older files.
+//   aiAfterTokens (defaultAfterTokens): how many tokens per period may be
+//   used with the model of aiAfter once the limit is used up (the rule's
+//   after_limits; null: unlimited) – the unit "tokens" only. Add-ons get
 //   no AI rule (and no model rule) unless aiActions or aiTokens > 0;
 // - the model rule of the group (ai_model_rules, lib/ai/model-policy.ts):
 //   aiModels "haiku"/"sonnet" → the instance's model of that family, "all"
@@ -95,12 +100,12 @@ export type FileIssue = { path: string; code: string; allowed?: string[]; max?: 
 
 // Paddle's keys of a plan (flowplan-billing) and the top level: ignored here.
 const BILLING_PLAN_KEYS = ["status", "paddle", "prices", "name_de", "name_en", "description_de", "description_en", "prioritySupport", "order", "highlight", "studentDiscount", "minSeats", "taxCategory"];
-const PLAN_KEYS = new Set(["group", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiModel", ...BILLING_PLAN_KEYS]);
-const GROUP_KEYS = new Set(["group", "workspaceGroup", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiModel"]);
+const PLAN_KEYS = new Set(["group", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel", ...BILLING_PLAN_KEYS]);
+const GROUP_KEYS = new Set(["group", "workspaceGroup", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel"]);
 const TOP_KEYS = new Set(["version", "plans", "flowplan", "archiveMissing"]);
 const FLOWPLAN_KEYS = new Set(["defaults", "aiQuota", "moreLimitsUrl", "groups", "removeMissing"]);
 const DEFAULTS_KEYS = new Set(["storageMb", "uploadMb", "workspaces"]);
-const AI_KEYS = new Set(["period", "unit", "tokensPerAction", "costPerAction", "defaultActions", "defaultTokens", "defaultAfter", "instanceCapUsd", "instanceCap", "instanceCapTokens"]);
+const AI_KEYS = new Set(["period", "unit", "tokensPerAction", "costPerAction", "defaultActions", "defaultTokens", "defaultAfter", "defaultAfterTokens", "instanceCapUsd", "instanceCap", "instanceCapTokens"]);
 const KINDS = ["plan", "team", "addon"] as const;
 type Kind = (typeof KINDS)[number];
 
@@ -119,6 +124,8 @@ type DesiredGroup = {
   // Tokens per period, without a conversion (unit "tokens" only).
   aiTokens?: number | null;
   aiAfter?: ModelChoice;
+  // Tokens per period for the model after the quota (null: unlimited).
+  aiAfterTokens?: number | null;
   aiModels?: "haiku" | "sonnet" | "all";
   aiModel?: string | null;
 };
@@ -130,6 +137,7 @@ type DesiredAi = {
   defaultActions?: number | null;
   defaultTokens?: number | null;
   defaultAfter?: ModelChoice;
+  defaultAfterTokens?: number | null;
   instanceCap?: { value: number | null; path: string; key: "instanceCapUsd" | "instanceCap" | "instanceCapTokens" };
 };
 type Desired = {
@@ -240,6 +248,8 @@ async function parseGroup(raw: unknown, path: string, plan: boolean, errors: Fil
     if (tokens !== undefined) out.aiTokens = tokens;
     const after = modelChoice(raw.aiAfter, `${path}.aiAfter`, errors);
     if (after) out.aiAfter = after;
+    const afterTokens = count(raw, "aiAfterTokens", `${path}.aiAfterTokens`, errors, MAX_AI_TOKENS);
+    if (afterTokens !== undefined) out.aiAfterTokens = afterTokens;
     if (has(raw, "aiModels")) {
       if (raw.aiModels === "haiku" || raw.aiModels === "sonnet" || raw.aiModels === "all") out.aiModels = raw.aiModels;
       else errors.push({ path: `${path}.aiModels`, code: "invalid", allowed: ["haiku", "sonnet", "all"] });
@@ -353,6 +363,8 @@ async function parseFile(file: unknown, errors: FileIssue[], notes: FileIssue[])
   if (defaultTokens !== undefined) desired.ai.defaultTokens = defaultTokens;
   const defaultAfter = modelChoice(a.defaultAfter, "flowplan.aiQuota.defaultAfter", errors);
   if (defaultAfter) desired.ai.defaultAfter = defaultAfter;
+  const defaultAfterTokens = count(a, "defaultAfterTokens", "flowplan.aiQuota.defaultAfterTokens", errors, MAX_AI_TOKENS);
+  if (defaultAfterTokens !== undefined) desired.ai.defaultAfterTokens = defaultAfterTokens;
   const caps = (["instanceCapUsd", "instanceCap", "instanceCapTokens"] as const).filter((k) => has(a, k));
   if (caps.length > 1) for (const k of caps.slice(1)) errors.push({ path: `flowplan.aiQuota.${k}`, code: "duplicate" });
   if (caps.length) {
@@ -368,7 +380,7 @@ async function parseFile(file: unknown, errors: FileIssue[], notes: FileIssue[])
 
 // ---- The current state ----
 
-type QuotaState = { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null };
+type QuotaState = { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null; afterLimits?: QuotaLimits | null };
 type State = {
   settings: { defaultUserStorageMb: number | null; maxUploadMb: number; defaultUserWorkspaces: number | null; moreLimitsUrl: string };
   limits: Map<string, GroupLimits>;
@@ -399,7 +411,7 @@ async function currentState(): Promise<State> {
   const ai = await instanceAiSettings();
   const provider = ai.provider?.model.trim() ? { kind: ai.provider.kind, model: ai.provider.model.trim() } : null;
   const quota = new Map<string, QuotaState>();
-  for (const r of await quotaRules(q.unit)) quota.set(`${r.scope}|${r.target}`, { limits: r.limits, exempt: r.exempt, after: r.after ?? null, afterKind: r.afterKind ?? null });
+  for (const r of await quotaRules(q.unit)) quota.set(`${r.scope}|${r.target}`, { limits: r.limits, exempt: r.exempt, after: r.after ?? null, afterKind: r.afterKind ?? null, afterLimits: r.afterLimits ?? null });
   const models = new Map<string, { model: string; kind: string }>();
   for (const r of await modelRules()) if (r.scope === "group") models.set(r.target, { model: r.model, kind: r.kind });
   const names = new Map<string, string>();
@@ -441,7 +453,8 @@ export function allModel(options: string[], prices: AiPrice[]) {
 
 // One change in plain data; the administration words it (components/
 // settings/admin/limits-file.tsx). before/after null: not there.
-export type QuotaSide = { actions: number | null; limit: number | null; period: QuotaPeriod; exempt: boolean; after: string | null; otherPeriods: boolean };
+// afterLimit: the continuation's limit in the period (null: unlimited).
+export type QuotaSide = { actions: number | null; limit: number | null; period: QuotaPeriod; exempt: boolean; after: string | null; afterLimit?: number | null; otherPeriods: boolean };
 export type LimitsChange =
   | { area: "setting"; field: "defaultUserStorageMb" | "maxUploadMb" | "defaultUserWorkspaces" | "moreLimitsUrl" | "unit"; before: number | string | null; after: number | string | null }
   | { area: "limits"; target: string; name: string; field: "storageMb" | "uploadMb" | "workspaces" | "storageMode"; before: number | string | null; after: number | string | null }
@@ -455,7 +468,7 @@ type Plan = {
     settings: Record<string, unknown>;
     unit: QuotaUnit | null;
     limits: { target: string; limits: GroupLimits | null }[];
-    quota: { scope: string; target: string; rule: { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null } | null }[];
+    quota: { scope: string; target: string; rule: { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null; afterLimits?: QuotaLimits | null } | null }[];
     models: { target: string; model: string | null; kind: string }[];
     conversion: { period: QuotaPeriod; tokensPerAction: number; costPerAction: number };
   };
@@ -467,7 +480,8 @@ function side(rule: QuotaState | null, period: QuotaPeriod, factor: number, unit
   if (!rule) return null;
   const limit = typeof rule.limits[period] === "number" ? (rule.limits[period] as number) : null;
   const actions = limit === null || (direct && unit === "tokens") ? null : unit === "tokens" ? Math.round(limit / factor) : Math.round((limit / factor) * 100) / 100;
-  return { actions, limit, period, exempt: rule.exempt, after: rule.after, otherPeriods: QUOTA_PERIODS.some((p) => p !== period && typeof rule.limits[p] === "number") };
+  const afterLimit = rule.after && typeof rule.afterLimits?.[period] === "number" ? (rule.afterLimits[period] as number) : null;
+  return { actions, limit, period, exempt: rule.exempt, after: rule.after, ...(afterLimit !== null ? { afterLimit } : {}), otherPeriods: QUOTA_PERIODS.some((p) => p !== period && typeof rule.limits[p] === "number") };
 }
 
 async function plan(desired: Desired, state: State, errors: FileIssue[], notes: FileIssue[] = []): Promise<Plan> {
@@ -535,14 +549,21 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
   setting("moreLimitsUrl", desired.moreLimitsUrl);
 
   // A quota rule as it should be; undefined: leave it.
-  const quotaRule = (scope: "group" | "default" | "instance", target: string, name: string, actionsOrLimit: number | null | undefined, after: ModelChoice | undefined, afterPath: string, isLimit = false, direct = false) => {
+  const sameAfterLimits = (a: QuotaLimits | null | undefined, b: QuotaLimits | null | undefined) => sameLimits(a ?? {}, b ?? {});
+  const quotaRule = (scope: "group" | "default" | "instance", target: string, name: string, actionsOrLimit: number | null | undefined, after: ModelChoice | undefined, afterPath: string, isLimit = false, direct = false, afterTokens?: { value: number | null | undefined; path: string }) => {
     const key = `${scope}|${target}`;
     const current = state.quota.get(key) ?? null;
     // After a unit change, the stored numbers mean nothing.
     const now = current && unit !== state.unit ? { ...current, limits: {} } : current;
     let afterModel: string | null | undefined = undefined;
     if (after && scope !== "instance") afterModel = resolve(after, afterPath);
-    if (actionsOrLimit === undefined && afterModel === undefined) return;
+    // The continuation's limit: tokens only.
+    let afterLimitValue = afterTokens?.value;
+    if (afterLimitValue !== undefined && afterLimitValue !== null && unit !== "tokens") {
+      errors.push({ path: afterTokens!.path, code: "tokens_need_unit", value: unit, allowed: ["tokens"] });
+      afterLimitValue = undefined;
+    }
+    if (actionsOrLimit === undefined && afterModel === undefined && afterLimitValue === undefined) return;
     // "Danach" alone does not create a rule: a rule without limits would
     // mean no limit for the group.
     if (actionsOrLimit === undefined && !current) return;
@@ -556,8 +577,10 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     const limits: QuotaLimits = actionsOrLimit === undefined ? (now?.limits ?? {}) : cleanLimits({ [conversion.period]: isLimit ? actionsOrLimit : toLimit(actionsOrLimit) }, unit);
     const nextAfter = afterModel !== undefined ? afterModel : (now?.after ?? null);
     const nextKind = afterModel !== undefined ? (afterModel ? state.provider!.kind : null) : (now?.afterKind ?? null);
-    const next = { limits, exempt: actionsOrLimit === undefined ? !!now?.exempt : false, after: nextAfter, afterKind: nextKind };
-    if (now && current && sameLimits(now.limits, next.limits) && now.exempt === next.exempt && now.after === next.after && (now.after === null || now.afterKind === next.afterKind) && unit === state.unit) return;
+    // Kept unless the file says; gone without a model to go on with.
+    const nextAfterLimits = !nextAfter ? null : afterLimitValue !== undefined ? (afterLimitValue === null ? null : { [conversion.period]: afterLimitValue }) : unit === state.unit ? (now?.afterLimits ?? null) : null;
+    const next = { limits, exempt: actionsOrLimit === undefined ? !!now?.exempt : false, after: nextAfter, afterKind: nextKind, afterLimits: nextAfterLimits };
+    if (now && current && sameLimits(now.limits, next.limits) && now.exempt === next.exempt && now.after === next.after && (now.after === null || now.afterKind === next.afterKind) && (now.after === null || sameAfterLimits(now.afterLimits, next.afterLimits)) && unit === state.unit) return;
     changes.push({
       area: "quota",
       scope,
@@ -589,7 +612,7 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     return { value: actions, isLimit: false, direct: false };
   };
   const defaults = amount(desired.ai.defaultActions, desired.ai.defaultTokens, "flowplan.aiQuota", "defaultActions", "defaultTokens");
-  quotaRule("default", "", "", defaults.value, desired.ai.defaultAfter, "flowplan.aiQuota.defaultAfter", defaults.isLimit, defaults.direct);
+  quotaRule("default", "", "", defaults.value, desired.ai.defaultAfter, "flowplan.aiQuota.defaultAfter", defaults.isLimit, defaults.direct, { value: desired.ai.defaultAfterTokens, path: "flowplan.aiQuota.defaultAfterTokens" });
   if (cap) quotaRule("instance", "", "", cap.value, undefined, cap.path, true);
 
   // The groups.
@@ -620,7 +643,7 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
       }
     }
     const ai = amount(g.aiActions, g.aiTokens, g.path, "aiActions", "aiTokens");
-    quotaRule("group", g.target, g.name, ai.value, g.aiAfter, `${g.path}.aiAfter`, ai.isLimit, ai.direct);
+    quotaRule("group", g.target, g.name, ai.value, g.aiAfter, `${g.path}.aiAfter`, ai.isLimit, ai.direct, { value: g.aiAfterTokens, path: `${g.path}.aiAfterTokens` });
     // The model rule.
     let model: string | null | undefined = undefined;
     if (g.aiModel !== undefined) {
@@ -667,9 +690,9 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
   if (unit !== state.unit) {
     const written = new Set(writes.quota.map((w) => `${w.scope}|${w.target}`));
     for (const [key, rule] of state.quota) {
-      if (written.has(key) || !QUOTA_PERIODS.some((p) => typeof rule.limits[p] === "number")) continue;
+      if (written.has(key) || !QUOTA_PERIODS.some((p) => typeof rule.limits[p] === "number" || typeof rule.afterLimits?.[p] === "number")) continue;
       const [scope, target] = [key.slice(0, key.indexOf("|")), key.slice(key.indexOf("|") + 1)];
-      const next = { ...rule, limits: {} };
+      const next = { ...rule, limits: {}, afterLimits: null };
       changes.push({ area: "quota", scope: scope as "group", target, name: scope === "group" ? nameOf(state, target) : scope === "user" ? ((await one<{ name: string }>("SELECT name FROM users WHERE id=?", target))?.name ?? target) : target, before: side(rule, conversion.period, stateFactor, state.unit), after: side(next, conversion.period, factor, unit), unit, currency: state.currency });
       writes.quota.push({ scope, target, rule: next });
     }
@@ -729,13 +752,14 @@ export async function importLimitsFile(user: Identity, input: { file?: unknown; 
       if (q.rule === null) await run("DELETE FROM ai_quota_rules WHERE scope=? AND target=?", q.scope, q.target);
       else
         await run(
-          "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,after_model=excluded.after_model,after_kind=excluded.after_kind,updated_at=excluded.updated_at",
+          "INSERT INTO ai_quota_rules(scope,target,exempt,limits,after_model,after_kind,after_limits,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET exempt=excluded.exempt,limits=excluded.limits,after_model=excluded.after_model,after_kind=excluded.after_kind,after_limits=excluded.after_limits,updated_at=excluded.updated_at",
           q.scope,
           q.target,
           q.rule.exempt ? 1 : 0,
           JSON.stringify(q.rule.limits),
           q.rule.after,
           q.rule.after ? q.rule.afterKind : null,
+          q.rule.after && q.rule.afterLimits && Object.keys(q.rule.afterLimits).length ? JSON.stringify(q.rule.afterLimits) : null,
           now,
         );
     }
@@ -777,6 +801,16 @@ export async function exportLimitsFile(user: Identity) {
     if (Math.abs(exact - n) > 1e-6) skipped.push(`${what}: ${limit} ${state.unit === "tokens" ? "tokens" : state.currency} → ${n} actions (rounded)`);
     return n;
   };
+  // The continuation's limit as aiAfterTokens (tokens, the export's period).
+  const afterLimitOf = (q: QuotaState, what: string, set: (v: number) => void) => {
+    if (!q.after || !q.afterLimits) return;
+    const others = QUOTA_PERIODS.filter((p) => p !== period && typeof q.afterLimits![p] === "number");
+    if (others.length) skipped.push(`${what}: limits after the quota per ${others.join(", ")} (only "${period}" is exported)`);
+    const v = q.afterLimits[period];
+    if (typeof v !== "number") return;
+    if (state.unit === "tokens") set(v);
+    else skipped.push(`${what}: limit after the quota in ${state.currency} (only tokens are exported)`);
+  };
   const modelName = (m: string) => {
     for (const f of MODEL_FAMILIES) if (familyModel(f, state.options, state.prices) === m) return f;
     return m;
@@ -799,6 +833,7 @@ export async function exportLimitsFile(user: Identity) {
           else entry.aiActions = toActions(q.limits[period] as number, what);
         }
         if (typeof q.limits[period] === "number" || q.after) entry.aiAfter = q.after && state.provider && q.afterKind === state.provider.kind ? modelName(q.after) : "off";
+        afterLimitOf(q, what, (v) => (entry.aiAfterTokens = v));
       }
     }
     const m = state.models.get(target);
@@ -852,6 +887,7 @@ export async function exportLimitsFile(user: Identity) {
       else aiQuota.defaultActions = toActions(def.limits[period] as number, "default");
     }
     aiQuota.defaultAfter = def.after && state.provider && def.afterKind === state.provider.kind ? modelName(def.after) : "off";
+    afterLimitOf(def, "default", (v) => (aiQuota.defaultAfterTokens = v));
   }
   if (inst && typeof inst.limits[period] === "number") {
     const v = inst.limits[period] as number;

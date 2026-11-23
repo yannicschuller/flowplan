@@ -22,7 +22,8 @@ function quotaText(t: T, s: QuotaSide | null, unit: "tokens" | "cost", currency:
   if (s.exempt) return t("ausgenommen", "exempt");
   const amount = s.limit === null ? t("ohne Grenze", "no limit") : unit === "tokens" ? t(`${num(s.limit)} Tokens`, `${num(s.limit)} tokens`) : `${s.limit.toLocaleString(LOCALE_TAG, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
   const actions = scope !== "instance" && s.actions !== null ? t(`${num(s.actions)} Aktionen (${amount})`, `${num(s.actions)} actions (${amount})`) : amount;
-  const after = scope === "instance" ? "" : s.after ? t(`, danach ${s.after}`, `, then ${s.after}`) : t(", danach KI aus", ", then AI off");
+  const afterLimit = typeof s.afterLimit === "number" ? (unit === "tokens" ? t(` (höchstens ${num(s.afterLimit)} Tokens)`, ` (at most ${num(s.afterLimit)} tokens)`) : ` (≤ ${s.afterLimit.toLocaleString(LOCALE_TAG, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency})`) : "";
+  const after = scope === "instance" ? "" : s.after ? t(`, danach ${s.after}${afterLimit}`, `, then ${s.after}${afterLimit}`) : t(", danach KI aus", ", then AI off");
   return `${actions} ${periodWord(t, s.period)}${after}`;
 }
 

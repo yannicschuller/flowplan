@@ -77,6 +77,48 @@ export function AfterSelect({ id, value, active, options, label, className = "",
   );
 }
 
+// The continuation's own limit beside "Danach": "höchstens … (leer =
+// unbegrenzt)" in the quota's unit for one period (lib/ai/quota.ts
+// after_limits); once used up, AI is off until the period resets.
+export function AfterLimitField({ value, unit, currency, label, onChange }: { value: QuotaLimits | null | undefined; unit: QuotaUnit; currency: string; label: string; onChange: (limits: QuotaLimits | null) => void }) {
+  const t = useT();
+  const current = QUOTA_PERIODS.find((p) => typeof value?.[p] === "number");
+  const [period, setPeriod] = useState<QuotaPeriod>(current ?? "month");
+  useEffect(() => {
+    if (current) setPeriod(current);
+  }, [current]);
+  const amount = current ? (value![current] as number) : null;
+  return (
+    <span className="ai-quota-after-limit">
+      <span className="muted">{t("höchstens", "at most")}</span>
+      <LimitInput value={amount} unit={unit} placeholder={t("unbegrenzt", "unlimited")} label={t(`${label}: höchstens (leer = unbegrenzt, ${unit === "tokens" ? "Tokens" : currency})`, `${label}: at most (empty = unlimited, ${unit === "tokens" ? "tokens" : currency})`)} onCommit={(v) => onChange(v === null ? null : { [period]: v })} />
+      <Select
+        className="ai-quota-after-period"
+        aria-label={t(`${label}: Zeitraum`, `${label}: period`)}
+        value={period}
+        onChange={(e) => {
+          const next = e.target.value as QuotaPeriod;
+          setPeriod(next);
+          if (amount !== null) onChange({ [next]: amount });
+        }}
+      >
+        {QUOTA_PERIODS.map((p) => (
+          <option key={p} value={p}>
+            {t(AFTER_PERIODS[p][0], AFTER_PERIODS[p][1])}
+          </option>
+        ))}
+      </Select>
+    </span>
+  );
+}
+// i18n-table: 1 – [German, English] pairs
+const AFTER_PERIODS: Record<QuotaPeriod, readonly [string, string]> = {
+  day: ["am Tag", "a day"],
+  week: ["in der Woche", "a week"],
+  month: ["im Monat", "a month"],
+  year: ["im Jahr", "a year"],
+};
+
 // Where a model comes from, in a few words.
 export function modelSource(policy: ModelPolicy | null, t: T, groupNames: Record<string, string> = {}) {
   if (!policy || policy.source === "instance") return t("Standard der Instanz", "Instance default");

@@ -68,6 +68,7 @@ const setQuota = async (rules: QuotaRule[], settings: Record<string, unknown> = 
   await command(admin, { action: "admin.aiQuotas", settings: { timeZone: ZONE, workflowsCountInstance: true, warnAt: 80, ...settings }, rules });
 const clearUsage = async () => {
   await run("DELETE FROM ai_quota_usage");
+  await run("DELETE FROM ai_quota_after_usage");
   await run("DELETE FROM ai_quota_alerts");
 };
 const use = async (who: Identity | null, tokens: number, kind: "person" | "workflow" | "system" = "person", model = "chat") =>
@@ -455,7 +456,8 @@ test("a group goes on with a cheaper model once its quota is used up – counted
     // What she sees: not blocked, the model named.
     const s = await quota.quotaStatus(cleo, "instance");
     assert.equal(s.blocked, false);
-    assert.equal(s.after, "small");
+    assert.equal(s.after?.model, "small");
+    assert.equal(s.after?.limit, null, "no limit of its own: unlimited");
     assert.equal((await quota.quotaStatus(ben, "instance")).blocked, true);
     // The instance ceiling still refuses.
     await use(ben, 10_000);
@@ -475,6 +477,93 @@ test("a group goes on with a cheaper model once its quota is used up – counted
     const panel = await saveAiRule(admin, { scope: "user", target: ben.id, quota: { exempt: false, limits: { month: 5 }, after: "small" } });
     assert.equal(panel.quota.after, "small");
     assert.equal((await quota.quotaRules()).find((r) => r.target === ben.id)?.after, "small");
+  } finally {
+    await run("DELETE FROM scim_groups WHERE id=?", scimGroup);
+    await command(admin, { action: "admin.ai", settings: { prices: [] } });
+    await setQuota([], { unit: "tokens" });
+  }
+});
+
+/* ---------- After the quota: a limit for the continuation ---------- */
+
+test("precedence of the continuation's limit: own rule, else the most generous of the groups that go on, else the default", () => {
+  const rules: QuotaRule[] = [
+    { scope: "default", target: "", exempt: false, limits: { month: 100 }, after: "small", afterKind: "ollama", afterLimits: { month: 1000 } },
+    { scope: "group", target: "dir:Plus", exempt: false, limits: { month: 1000 }, after: "small", afterKind: "ollama", afterLimits: { month: 20_000 } },
+    { scope: "group", target: "dir:Pro", exempt: false, limits: { month: 5000 }, after: "small", afterKind: "ollama", afterLimits: { month: 50_000, day: 5000 } },
+    { scope: "group", target: "dir:Open", exempt: false, limits: { month: 10 }, after: "small", afterKind: "ollama" },
+    { scope: "group", target: "dir:Stop", exempt: false, limits: { month: 10 } },
+    { scope: "user", target: "u-own", exempt: false, limits: { month: 10 }, after: "small", afterKind: "ollama", afterLimits: { week: 7 } },
+  ];
+  const who = (userId: string, groups: string[] = []) => quota.personalLimits(rules, { userId, groups, roles: [] }).afterLimits ?? null;
+  assert.deepEqual(who("u-none"), { month: 1000 }, "the default");
+  assert.deepEqual(who("u-plus", ["dir:Plus"]), { month: 20_000 });
+  // The most generous per period; a period one of them leaves open is open.
+  assert.deepEqual(who("u-both", ["dir:Plus", "dir:Pro"]), { month: 50_000 });
+  assert.equal(who("u-open", ["dir:Plus", "dir:Open"]), null, "a group that goes on without a limit: unlimited");
+  // A group that stops does not count for the continuation's limit.
+  assert.deepEqual(who("u-stop", ["dir:Plus", "dir:Stop"]), { month: 20_000 });
+  assert.deepEqual(who("u-own", ["dir:Pro"]), { week: 7 }, "the own rule wins");
+});
+
+test("the continuation's limit: once used up, AI is off until the period resets; the status shows what is left", async () => {
+  await clearUsage();
+  await command(admin, { action: "admin.ai", settings: { prices: [{ model: "small", input: 0, output: 0 }] } });
+  const scimGroup = id();
+  await run("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)", scimGroup, "Plus", Date.now(), Date.now());
+  await run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", scimGroup, cleo.id);
+  try {
+    await setQuota([
+      { scope: "default", target: "", exempt: false, limits: { month: 60 } },
+      { scope: "group", target: "dir:Plus", exempt: false, limits: { month: 60 }, after: "small", afterLimits: { month: 500 } },
+    ]);
+    assert.deepEqual((await quota.quotaRules()).find((r) => r.target === "dir:Plus")?.afterLimits, { month: 500 });
+    await use(cleo, 100);
+    // Going on with "small": counted for the continuation as well.
+    assert.equal(await ask(cleo), "OK");
+    const after = await one<{ n: number }>("SELECT SUM(tokens_in)+SUM(tokens_out) n FROM ai_quota_after_usage WHERE user_id=? AND model='small'", cleo.id);
+    assert.ok(Number(after?.n) > 0);
+    let s = await quota.quotaStatus(cleo, "instance");
+    assert.equal(s.after?.model, "small");
+    assert.equal(s.after?.limit, 500);
+    assert.equal(s.after?.used, Number(after?.n));
+    assert.equal(s.after?.left, 500 - Number(after?.n));
+    assert.equal(s.after?.period, "month");
+    assert.equal(s.blocked, false);
+    // Used up: refused, with when AI is back.
+    await quota.recordQuotaUsage({ userId: cleo.id, kind: "person", model: "small", tokensIn: 500, tokensOut: 0, after: true });
+    const before = mock.chats.length;
+    const error = await withContentLocale("en", () => ask(cleo)).then(
+      () => null,
+      (e) => e as InstanceType<typeof quota.AiQuotaError>,
+    );
+    assert.ok(error instanceof quota.AiQuotaError);
+    assert.equal(error.status, 429);
+    assert.equal(error.quota.level, "person");
+    assert.equal(error.quota.period, "month");
+    assert.match(error.message, /continuation with small are used up for this month\. AI is off until/);
+    assert.equal(mock.chats.length, before, "no model was called");
+    s = await quota.quotaStatus(cleo, "instance");
+    assert.equal(s.blocked, true);
+    assert.equal(s.after?.left, 0);
+    // The next month: the quota and the continuation start again.
+    const next = quota.periodBounds("month", Date.now(), ZONE).resetAt + 3600_000;
+    const grant = await quota.requireQuota(cleo, { feature: "write", model: "chat", tokensIn: 10, tokensOut: 10 }, next);
+    assert.equal(grant.model, null, "the own quota again, not the continuation");
+    grant.release();
+    // Kept when the person's panel saves without it; gone without a model.
+    const { saveAiRule } = await import("../lib/ai/admin-rule");
+    await saveAiRule(admin, { scope: "group", target: "dir:Plus", quota: { exempt: false, limits: { month: 70 }, after: "small" } });
+    assert.deepEqual((await quota.quotaRules()).find((r) => r.target === "dir:Plus")?.afterLimits, { month: 500 });
+    await saveAiRule(admin, { scope: "group", target: "dir:Plus", quota: { exempt: false, limits: { month: 70 }, after: "small", afterLimits: { month: 900 } } });
+    assert.deepEqual((await quota.quotaRules()).find((r) => r.target === "dir:Plus")?.afterLimits, { month: 900 });
+    await saveAiRule(admin, { scope: "group", target: "dir:Plus", quota: { exempt: false, limits: { month: 70 }, after: null } });
+    const rule = (await quota.quotaRules()).find((r) => r.target === "dir:Plus");
+    assert.equal(rule?.after, undefined);
+    assert.equal(rule?.afterLimits, undefined);
+    // A deleted account's continuation usage goes with it.
+    await forgetAiPerson(cleo.id);
+    assert.equal(await one("SELECT 1 x FROM ai_quota_after_usage WHERE user_id=?", cleo.id), undefined);
   } finally {
     await run("DELETE FROM scim_groups WHERE id=?", scimGroup);
     await command(admin, { action: "admin.ai", settings: { prices: [] } });

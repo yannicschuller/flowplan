@@ -140,7 +140,7 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
       noteAiCall({ feature, tokensIn, tokensOut, answered, failure, ms: Date.now() - started, model: config.model, source: resolved.source, workspaceId, userId: user.id });
     }
     if (answered && resolved.source === "instance")
-      await recordQuotaUsage({ userId: user.id, kind: feature === "workflows" ? "workflow" : "person", model: config.model, tokensIn, tokensOut });
+      await recordQuotaUsage({ userId: user.id, kind: feature === "workflows" ? "workflow" : "person", model: config.model, tokensIn, tokensOut, after: !!quota?.model });
     quota?.release();
     release();
   }

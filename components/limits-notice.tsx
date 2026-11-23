@@ -11,6 +11,7 @@ import type { Bootstrap } from "@/lib/types";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import {
   USAGE_LINK,
+  afterLine,
   aiPeriodKey,
   aiSummary,
   dismissNotice,
@@ -72,8 +73,10 @@ export function LimitsNotice({ boot }: { boot: Bootstrap }) {
         : t(`Dein Speicher ist fast voll (${storage!.text}).`, `Your storage is nearly full (${storage!.text}).`);
     const when = periodPhrase(ai.period!.period, t);
     if (ai.level === 100)
-      return quota?.after
-        ? t(`Dein KI-Kontingent für ${when} ist aufgebraucht – es geht mit ${quota.after} weiter.`, `Your AI quota for ${when} is used up – AI goes on with ${quota.after}.`)
+      return quota?.after && !afterLine(quota, t, LOCALE_TAG)!.spent
+        ? quota.after.limit !== null
+          ? t(`Dein KI-Kontingent für ${when} ist aufgebraucht – ${afterLine(quota, t, LOCALE_TAG)!.text}.`, `Your AI quota for ${when} is used up – ${afterLine(quota, t, LOCALE_TAG)!.text}.`)
+          : t(`Dein KI-Kontingent für ${when} ist aufgebraucht – es geht mit ${quota.after.model} weiter.`, `Your AI quota for ${when} is used up – AI goes on with ${quota.after.model}.`)
         : t(`Dein KI-Kontingent für ${when} ist aufgebraucht – wieder ab ${resetText(ai.period!, quota!.timeZone)}.`, `Your AI quota for ${when} is used up – available again from ${resetText(ai.period!, quota!.timeZone)}.`);
     return t(`Du hast den Großteil deines KI-Kontingents für ${when} verbraucht (${ai.text}).`, `You have used most of your AI quota for ${when} (${ai.text}).`);
   };

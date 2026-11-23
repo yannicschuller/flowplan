@@ -12,7 +12,7 @@ import { api, reportError } from "../../ui";
 import { Select } from "../../select";
 import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
 import { NumberInput } from "./parts";
-import { AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
+import { AfterLimitField, AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
 import { DirectoryGroupInput, GroupOptions, groupLabel } from "./group-picker";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { AdminQuotaView } from "@/lib/ai/quota";
@@ -276,7 +276,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
   const key = (r: Pick<QuotaRule, "scope" | "target">) => `${r.scope}|${r.target}`;
   const hasNumbers = (r: QuotaRule) => QUOTA_PERIODS.some((p) => typeof r.limits[p] === "number");
   const commit = (next: LimitRow[]) =>
-    save({ rules: next.filter((r) => (r.inherit ? r.exempt || hasNumbers(r) : r.exempt || hasNumbers(r) || (r.scope !== "instance" && r.scope !== "default"))).map((r) => ({ scope: r.scope, target: r.target, exempt: r.exempt, limits: r.limits, after: r.after ?? null })) });
+    save({ rules: next.filter((r) => (r.inherit ? r.exempt || hasNumbers(r) : r.exempt || hasNumbers(r) || (r.scope !== "instance" && r.scope !== "default"))).map((r) => ({ scope: r.scope, target: r.target, exempt: r.exempt, limits: r.limits, after: r.after ?? null, afterLimits: r.after ? (r.afterLimits ?? null) : null })) });
   const change = (rule: LimitRow, patch: Partial<QuotaRule>) => commit(rows.map((r) => (key(r) === key(rule) ? { ...r, ...patch, inherit: false } : r)));
   const modelOf = (r: Pick<QuotaRule, "scope" | "target">) => view.model.rules.find((m) => m.scope === r.scope && m.target === r.target);
   const setLimit = (rule: QuotaRule, period: QuotaPeriod, v: number | null) => {
@@ -297,8 +297,8 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
       id="quota-limits"
       title={t("Grenzen", "Limits")}
       description={t(
-        "Leer heißt: keine Grenze für diesen Zeitraum. Für eine Person gilt ihre eigene Grenze, sonst die höchste ihrer Gruppen und Rollen, sonst der Standard; die Grenze der ganzen Instanz gilt immer zusätzlich. „Ausgenommen“ hebt die persönlichen Grenzen auf. „Danach“: ist die Grenze erreicht, ist KI aus – oder es geht mit einem anderen Modell weiter (gezählt, nicht begrenzt; die Grenze der Instanz gilt weiter).",
-        "Empty means: no limit for that period. A person gets their own limit, else the highest of their groups and roles, else the default; the whole instance's ceiling always applies on top. “Exempt” lifts the personal limits. “Afterwards”: once the limit is reached, AI is off – or goes on with another model (counted, not limited; the instance's ceiling still applies).",
+        "Leer heißt: keine Grenze für diesen Zeitraum. Für eine Person gilt ihre eigene Grenze, sonst die höchste ihrer Gruppen und Rollen, sonst der Standard; die Grenze der ganzen Instanz gilt immer zusätzlich. „Ausgenommen“ hebt die persönlichen Grenzen auf. „Danach“: ist die Grenze erreicht, ist KI aus – oder es geht mit einem anderen Modell weiter (gezählt; mit „höchstens“ bis zu einer eigenen Grenze, danach ist KI aus bis zum Neubeginn; die Grenze der Instanz gilt weiter).",
+        "Empty means: no limit for that period. A person gets their own limit, else the highest of their groups and roles, else the default; the whole instance's ceiling always applies on top. “Exempt” lifts the personal limits. “Afterwards”: once the limit is reached, AI is off – or goes on with another model (counted; with “at most” up to a limit of its own, then AI is off until the period resets; the instance's ceiling still applies).",
       )}
       actions={<a href="#admin/limits/limits-file">{t("Export / Import der Tarife", "Export / import of the plans")}</a>}
     >
@@ -331,14 +331,17 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
                 r.scope === "instance" || r.exempt || !view.model.provider ? (
                   <span className="muted">–</span>
                 ) : (
-                  <AfterSelect
-                    className="ai-quota-after"
-                    label={t(`${name(r)}: nach Erreichen des Kontingents`, `${name(r)}: once the quota is reached`)}
-                    value={r.after ?? null}
-                    active={!r.after || r.afterKind === view.model.provider.kind}
-                    options={view.model.options}
-                    onChange={(after) => change(r, { after })}
-                  />
+                  <span className="ai-quota-after-cell">
+                    <AfterSelect
+                      className="ai-quota-after"
+                      label={t(`${name(r)}: nach Erreichen des Kontingents`, `${name(r)}: once the quota is reached`)}
+                      value={r.after ?? null}
+                      active={!r.after || r.afterKind === view.model.provider.kind}
+                      options={view.model.options}
+                      onChange={(after) => change(r, { after, ...(after ? {} : { afterLimits: null }) })}
+                    />
+                    {r.after && <AfterLimitField value={r.afterLimits} unit={unit} currency={view.currency} label={t(`${name(r)}: weiter mit ${r.after}`, `${name(r)}: going on with ${r.after}`)} onChange={(afterLimits) => change(r, { afterLimits })} />}
+                  </span>
                 ),
             },
             {
