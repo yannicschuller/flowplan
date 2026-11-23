@@ -93,8 +93,8 @@ export default function LimitsSection() {
           field="moreLimitsUrl"
           label={t("Link für mehr Speicher oder KI", "Link for more storage or AI")}
           description={t(
-            "Optional: eine Adresse, die Personen unter „Deine Grenzen“ sehen – etwa eine Seite, auf der sie mehr bekommen. Leer = kein Link.",
-            "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.",
+            "Optional: eine Adresse, die Personen unter Einstellungen → „Speicher & KI“ sehen – etwa eine Seite, auf der sie mehr bekommen. Leer = kein Link.",
+            "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.",
           )}
           placeholder="https://"
           maxLength={500}

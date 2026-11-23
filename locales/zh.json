@@ -8607,7 +8607,7 @@
   "Optional, bold before the text.": "可选，文字前加粗。",
   "optional, e.g. Tasks": "可选，例如：任务",
   "Optional, in your time zone. Empty = right away.": "可选，使用你的时区。为空 = 立即。",
-  "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.": "可选：用户在“您的限制”下看到的地址——例如可获取更多额度的页面。留空 = 无链接。",
+  "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.": "可选：用户在“设置 → 存储与 AI”下看到的地址——例如可获取更多额度的页面。留空 = 无链接。",
   "Optional: https://… or a page of this instance (#… or /…).": "可选：https://… 或此实例的一页 (#… 或 /…)",
   "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.": "可选：在 iPhone、iPad 和 Mac 的 Flowplan 应用中，Apple 智能可以在设备上运行写作助手和打开页面的摘要——文本不会离开设备，也包括在加密空间中。请求工作区、数据库中的 AI 和 AI 操作继续在服务器上运行。",
   "Optional: Matrix client API with an access token": "可选：使用访问令牌的 Matrix 客户端 API",

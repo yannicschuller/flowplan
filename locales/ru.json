@@ -8607,7 +8607,7 @@
   "Optional, bold before the text.": "Необязательно, жирным шрифтом перед текстом.",
   "optional, e.g. Tasks": "необязательно, например «Задачи»",
   "Optional, in your time zone. Empty = right away.": "Необязательно, в вашем часовом поясе. Пусто = сразу.",
-  "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.": "Необязательно: адрес, который люди видят в разделе «Ваши ограничения» – например, страница, где можно получить больше. Пусто = без ссылки.",
+  "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.": "Необязательно: адрес, который люди видят в разделе «Настройки → Хранилище и ИИ» – например, страница, где можно получить больше. Пусто = без ссылки.",
   "Optional: https://… or a page of this instance (#… or /…).": "Необязательно: https://… или страница этого экземпляра (#… или /…).",
   "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.": "Необязательно: в приложениях Flowplan для iPhone, iPad и Mac Apple Intelligence может выполнять помощника по написанию и сводки открытых страниц прямо на устройстве – текст не покидает устройство, в том числе в зашифрованных разделах. Вопросы к рабочему пространству, ИИ в базах данных и действия ИИ по-прежнему выполняются на сервере.",
   "Optional: Matrix client API with an access token": "Необязательно: клиентский API Matrix с токеном доступа",

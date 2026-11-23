@@ -8607,7 +8607,7 @@
   "Optional, bold before the text.": "Optional, bold before the text.",
   "optional, e.g. Tasks": "optional, e.g. Tasks",
   "Optional, in your time zone. Empty = right away.": "Optional, in your time zone. Empty = right away.",
-  "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.": "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.",
+  "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.": "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.",
   "Optional: https://… or a page of this instance (#… or /…).": "Optional: https://… or a page of this instance (#… or /…).",
   "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.": "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.",
   "Optional: Matrix client API with an access token": "Optional: Matrix client API with an access token",

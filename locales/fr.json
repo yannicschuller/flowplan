@@ -8607,7 +8607,7 @@
   "Optional, bold before the text.": "Facultatif, en gras avant le texte.",
   "optional, e.g. Tasks": "facultatif, par ex. Tâches",
   "Optional, in your time zone. Empty = right away.": "Facultatif, dans votre fuseau horaire. Vide = tout de suite.",
-  "Optional: an address people see under “Your limits” – for example a page where they get more. Empty = no link.": "Facultatif : une adresse que les personnes voient sous « Vos limites » – par exemple une page où elles peuvent en obtenir davantage. Vide = aucun lien.",
+  "Optional: an address people see under Settings → “Storage & AI” – for example a page where they get more. Empty = no link.": "Facultatif : une adresse que les personnes voient sous Paramètres → « Stockage et IA » – par exemple une page où elles peuvent en obtenir davantage. Vide = aucun lien.",
   "Optional: https://… or a page of this instance (#… or /…).": "Facultatif : https://… ou une page de cette instance (#… ou /…).",
   "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.": "Facultatif : dans les apps Flowplan pour iPhone, iPad et Mac, Apple Intelligence peut exécuter l’assistant d’écriture et les résumés des pages ouvertes directement sur l’appareil – le texte ne quitte pas l’appareil, même dans les espaces chiffrés. Les questions à l’espace de travail, l’IA dans les bases de données et les actions IA continuent de s’exécuter sur le serveur.",
   "Optional: Matrix client API with an access token": "Facultatif : API client Matrix avec un jeton d’accès",
