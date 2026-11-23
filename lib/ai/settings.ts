@@ -30,13 +30,13 @@ import { AI_DEFAULTS, AI_FEATURE_IDS, AI_PROVIDER_KINDS, DEVICE_AI_MODES, type A
 import { keyHint, openSecret, sealSecret, secretsKeySource } from "./secrets";
 import { checkAiUrl } from "./transport";
 
-const providerSchema = z.object({
+export const aiProviderSchema = z.object({
   kind: z.enum(AI_PROVIDER_KINDS),
   baseUrl: z.string().trim().max(500),
   model: z.string().trim().max(200),
   embeddingModel: z.string().trim().max(200).default(""),
 });
-export type AiProviderSettings = z.infer<typeof providerSchema>;
+export type AiProviderSettings = z.infer<typeof aiProviderSchema>;
 export const AI_CURRENCIES = ["EUR", "USD", "CHF", "GBP"] as const;
 export const aiPriceSchema = z.object({
   model: z.string().trim().min(1).max(120),
@@ -44,14 +44,15 @@ export const aiPriceSchema = z.object({
   output: z.number().min(0).max(100_000),
 });
 export type AiPrice = z.infer<typeof aiPriceSchema>;
-const featureFlags = z.object(Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, z.boolean().optional()])) as Record<AiFeature, z.ZodOptional<z.ZodBoolean>>);
-const instanceSchema = z.object({
+export const aiFeatureFlags = z.object(Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, z.boolean().optional()])) as Record<AiFeature, z.ZodOptional<z.ZodBoolean>>);
+// Also the shape of the instance settings file's "ai" section (lib/settings-file.ts).
+export const aiInstanceSchema = z.object({
   enabled: z.boolean(),
-  provider: providerSchema.nullable(),
+  provider: aiProviderSchema.nullable(),
   access: z.enum(["everyone", "selected"]),
   guests: z.boolean(),
   userProviders: z.boolean(),
-  features: featureFlags,
+  features: aiFeatureFlags,
   // Semantic search for "ask": embeddings of the workspace content with the
   // instance's embedding model (lib/ai/semantic.ts). Off unless switched on.
   semanticSearch: z.boolean().default(false),
@@ -69,13 +70,13 @@ const instanceSchema = z.object({
   prices: z.array(aiPriceSchema).max(50).default([]),
   currency: z.enum(AI_CURRENCIES).default("EUR"),
 });
-export type AiInstanceSettings = z.infer<typeof instanceSchema>;
+export type AiInstanceSettings = z.infer<typeof aiInstanceSchema>;
 const userSchema = z.object({
   enabled: z.boolean(),
-  features: featureFlags,
+  features: aiFeatureFlags,
   source: z.enum(["instance", "user"]),
   scope: z.enum(["all", "selected"]),
-  provider: providerSchema.nullable(),
+  provider: aiProviderSchema.nullable(),
   // The on-device model (features.ts DEVICE_AI_MODES).
   device: z.enum(DEVICE_AI_MODES).default("prefer"),
 });
@@ -141,7 +142,7 @@ export async function instanceAiSettings(): Promise<AiInstanceSettings> {
   try {
     stored = JSON.parse((await instanceRow())?.config || "{}");
   } catch {}
-  const parsed = instanceSchema.safeParse({ ...defaults, ...stored, features: { ...defaults.features, ...((stored.features as object) || {}) } });
+  const parsed = aiInstanceSchema.safeParse({ ...defaults, ...stored, features: { ...defaults.features, ...((stored.features as object) || {}) } });
   return parsed.success ? parsed.data : defaults;
 }
 export const featureAllowed = (settings: AiInstanceSettings, feature: AiFeature) => settings.features[feature] !== false;
@@ -185,7 +186,7 @@ export async function saveInstanceAi(user: Identity, raw: unknown) {
   const b = adminInput.parse(raw);
   const current = await instanceAiSettings();
   const incoming = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Record<string, unknown>;
-  const next = instanceSchema.parse({
+  const next = aiInstanceSchema.parse({
     ...current,
     ...incoming,
     features: { ...current.features, ...((incoming.features as object) || {}) },
@@ -296,7 +297,7 @@ export function assertSettingsCaller(user: Identity) {
 
 const prefsInput = z.object({
   enabled: z.boolean().optional(),
-  features: featureFlags.optional(),
+  features: aiFeatureFlags.optional(),
   source: z.enum(["instance", "user"]).optional(),
   scope: z.enum(["all", "selected"]).optional(),
   device: z.enum(DEVICE_AI_MODES).optional(),
@@ -316,7 +317,7 @@ export async function saveUserAiPrefs(user: Identity, raw: unknown) {
 }
 
 const providerInput = z.object({
-  provider: providerSchema.nullable(),
+  provider: aiProviderSchema.nullable(),
   apiKey: apiKeySchema.nullable().optional(),
 });
 // The person's own provider (only when the administration allows it).

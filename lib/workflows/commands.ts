@@ -7,7 +7,7 @@ import { HttpError } from "../auth";
 import { requireAdmin, requireMember } from "../permissions";
 import type { Identity } from "../types";
 import { catalogJson } from "./catalog";
-import { envLimits, storedWorkflowLimits, workflowLimits, workflowLimitsSchema } from "./limits";
+import { envLimits, saveWorkflowLimits, storedWorkflowLimits, workflowLimits } from "./limits";
 import { workflowMonitoring } from "./monitoring";
 import {
   activateWorkflow,
@@ -96,12 +96,7 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
     case "admin.workflowLimits": {
       // Administration → Limits → Workflows (§12): null follows the environment.
       requireAdmin(user);
-      const next = workflowLimitsSchema.parse(b.limits ?? {});
-      const merged = { ...(await storedWorkflowLimits()), ...next };
-      await run("INSERT INTO instance_settings(key,value) VALUES('workflowLimits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(merged));
-      await audit(user.id, "admin.workflowLimits", "", JSON.stringify(next).slice(0, 500));
-      // Decided by an administrator: the update's notice has done its job.
-      if ("externalMailDynamic" in next) await run("DELETE FROM instance_settings WHERE key='workflowMailMigration'");
+      await saveWorkflowLimits(user.id, b.limits ?? {});
       return await adminWorkflows(user);
     }
   }

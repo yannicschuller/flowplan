@@ -491,7 +491,7 @@ export async function sendTestAlert(actorId: string) {
 
 export type MaintenanceNotice = { message: string; start: number; end: number };
 const MAINTENANCE_KEY = "maintenance";
-const maintenanceSchema = z
+export const maintenanceSchema = z
   .object({
     message: z.string().trim().min(1).max(300),
     start: z.number().int().positive(),
