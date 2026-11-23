@@ -62,16 +62,19 @@ function AdminShell() {
       status={<LiveStrip problems={listed("error")} notices={listed("warn")} version={summary?.general.version} uptimeSeconds={summary?.general.uptimeSeconds} loaded={!!summary} />}
       detailActions={
         ownRefresh ? undefined : (
+          // A compact icon button in the page's header (design review): on
+          // phones it stood alone, large, above the content.
           <button
             type="button"
-            className="button compact"
+            className="button compact settings-refresh"
+            aria-label={t("Aktualisieren", "Refresh")}
+            title={t("Aktualisieren", "Refresh")}
             onClick={() => {
               if (data) void load();
               void loadSummary();
             }}
           >
-            <ArrowCounterClockwise size={15} aria-hidden="true" />
-            {t("Aktualisieren", "Refresh")}
+            <ArrowCounterClockwise size={16} aria-hidden="true" />
           </button>
         )
       }

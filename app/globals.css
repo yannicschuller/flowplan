@@ -15459,6 +15459,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   display: flex;
   gap: 8px;
 }
+/* Administration's "Aktualisieren": an icon button in the header. */
+.settings-refresh {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
 .settings-rail {
   position: sticky;
   top: 16px;
@@ -15747,6 +15753,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   .settings-detail-actions {
     flex-basis: 100%;
     margin-left: 0;
+  }
+  /* Only the refresh button: it stays in the title's row, at its end. */
+  .settings-detail-actions:has(> .settings-refresh:only-child) {
+    flex-basis: auto;
+    margin-left: auto;
+    align-self: flex-start;
   }
   .control-sm,
   .control-md,
@@ -17149,6 +17161,9 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   .settings-detail-actions .button,
   .mon-check {
     min-height: 44px;
+  }
+  .settings-detail-actions .settings-refresh {
+    width: 44px;
   }
   .mon-storage {
     grid-template-columns: minmax(0, 1fr);
