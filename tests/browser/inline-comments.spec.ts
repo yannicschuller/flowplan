@@ -682,7 +682,20 @@ test("document thread links switch workspaces and enforce current permissions wi
       .run(f.uid, f.boot.workspace.id);
     await f.other.goto(`${origin}/${target}`);
     await expect(f.other.locator(".inline-comment-message")).toHaveCount(0);
-    await expect(f.other.locator(".toast")).toBeVisible();
+    // The page area says the page is not there or not shared (PageMissing)
+    // – and still does after the next refresh, which answers with another
+    // workspace now, instead of moving to its start page. A change in the
+    // workspace left behind makes the tab refresh (its live signal, or the
+    // timed refresh once that stream is closed).
+    const missing = f.other.locator(".page-missing");
+    await expect(missing).toBeVisible();
+    const refreshedAway = f.other.waitForResponse((response) => response.url().includes("/api/bootstrap?"), { timeout: 15000 });
+    await f.command({ action: "page.create", workspaceId: f.boot.workspace.id, spaceId: f.area.id, title: "Refresh again" });
+    await refreshedAway;
+    await expect(f.other.locator(".workspace-switch")).toContainText("Different initial workspace");
+    await expect(f.other).toHaveURL(`${origin}/${target}`);
+    await expect(missing).toBeVisible();
+    await expect(f.other.locator(".inline-comment-message")).toHaveCount(0);
     expect(
       (
         await f.other.request.get(

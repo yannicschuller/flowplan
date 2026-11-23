@@ -1280,6 +1280,14 @@ export default function WorkspaceApp({
     if (count < bootShown.current) return;
     bootShown.current = count;
     setBoot(result);
+    // A page link that led nowhere (404/403) keeps its empty state
+    // (PageMissing): the refresh does not trade it for the start page – also
+    // when the workspace it pointed into is no longer this person's and the
+    // bootstrap answered with another one.
+    if (screenRef.current === "page" && currentId.current && missingRef.current?.id === currentId.current) {
+      currentWorkspace.current = result.workspace.id;
+      return;
+    }
     if (
       result.workspace.id !== currentWorkspace.current ||
       (screenRef.current === "page" &&
@@ -1345,6 +1353,8 @@ export default function WorkspaceApp({
   }, [boot.user.id]);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const missingRef = useRef(missingPage);
+  missingRef.current = missingPage;
   const bootRef = useRef(boot);
   bootRef.current = boot;
   const busyRef = useRef(busy);
