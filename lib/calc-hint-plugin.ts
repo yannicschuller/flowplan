@@ -8,7 +8,14 @@ import type { Locale } from "./i18n";
 
 // `latex`: the result as a formula, when the calculation used formulas.
 type Hint = { pos: number; text: string; latex?: string } | null;
-const key = new PluginKey<Hint>("calcHint");
+// A hint dismissed with Escape stays away for that "=": `pos` is the cursor
+// there, `line` the text before it. Changes that leave both as they were –
+// a block id given a moment later (lib/block-ids-plugin.ts), someone
+// editing another paragraph – do not bring it back.
+type Dismissed = { pos: number; line: string } | null;
+type CalcState = { hint: Hint; dismissed: Dismissed };
+type Meta = { hint: Hint } | { dismiss: Dismissed };
+const key = new PluginKey<CalcState>("calcHint");
 type Solver = typeof import("./math-solve");
 let solver: Promise<Solver> | null = null;
 // A failed load (offline, new deployment) is tried again at the next "=".
@@ -20,14 +27,14 @@ const loadSolver = () =>
 
 // Whether a hint is shown right now (other key handlers let it go first).
 export function calcHintShown(state: EditorState) {
-  const hint = key.getState(state);
+  const hint = key.getState(state)?.hint;
   return !!hint && hint.pos === state.selection.from;
 }
-// The line up to the cursor, if it ends with "=".
-function lineBeforeCursor(state: EditorState) {
+// The line up to the cursor (or `at`), if it ends with "=".
+function lineBeforeCursor(state: EditorState, at?: number) {
   const { selection } = state;
-  if (!selection.empty) return null;
-  const $pos = selection.$from;
+  if (at === undefined && !selection.empty) return null;
+  const $pos = at === undefined ? selection.$from : state.doc.resolve(at);
   if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) return null;
   const text = $pos.parent.textBetween(0, $pos.parentOffset, undefined, "￼");
   // Something already stands after the cursor (e.g. a result written
@@ -74,25 +81,33 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
     const locale = this.options.locale;
     let request = 0;
     return [
-      new Plugin<Hint>({
+      new Plugin<CalcState>({
         key,
         state: {
-          init: () => null,
-          apply(tr, hint, _old, state) {
-            const meta = tr.getMeta(key) as Hint | undefined;
-            if (meta !== undefined) return meta;
-            if (!hint) return null;
+          init: () => ({ hint: null, dismissed: null }),
+          apply(tr, value, _old, state) {
+            const meta = tr.getMeta(key) as Meta | undefined;
+            // Where it was dismissed, while the line there stays the same.
+            let dismissed = value.dismissed;
+            if (dismissed && tr.docChanged) {
+              const pos = tr.mapping.map(dismissed.pos);
+              dismissed = lineBeforeCursor(state, pos) === dismissed.line ? { ...dismissed, pos } : null;
+            }
+            if (meta && "dismiss" in meta) return { hint: null, dismissed: meta.dismiss };
+            if (meta) return { hint: meta.hint, dismissed };
+            const hint = value.hint;
+            if (!hint) return value.dismissed === dismissed ? value : { hint: null, dismissed };
             // Other transactions (sync, cursors) keep it while the cursor
             // still stands right after the "=".
             const pos = tr.mapping.map(hint.pos);
             return pos === state.selection.from && lineBeforeCursor(state)
-              ? { ...hint, pos }
-              : null;
+              ? { hint: { ...hint, pos }, dismissed }
+              : { hint: null, dismissed };
           },
         },
         props: {
           decorations(state) {
-            const hint = key.getState(state);
+            const hint = key.getState(state)?.hint;
             if (!hint || hint.pos !== state.selection.from) return null;
             return DecorationSet.create(state.doc, [
               Decoration.widget(
@@ -112,7 +127,7 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
             ]);
           },
           handleKeyDown(view, event) {
-            const hint = key.getState(view.state);
+            const hint = key.getState(view.state)?.hint;
             if (!hint || hint.pos !== view.state.selection.from) return false;
             if (event.key === "Tab" && !event.shiftKey) {
               // At the cursor, so the cursor moves behind the result; with
@@ -123,11 +138,14 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
                 if (hint.text.startsWith(" ")) tr = tr.insertText(" ");
                 tr = tr.replaceSelectionWith(math.create({ expression: hint.latex }), false);
               } else tr = tr.insertText(hint.text);
-              view.dispatch(tr.setMeta(key, null));
+              view.dispatch(tr.setMeta(key, { hint: null } satisfies Meta));
               return true;
             }
             if (event.key === "Escape") {
-              view.dispatch(view.state.tr.setMeta(key, null));
+              // A result still being worked out for it does not show either.
+              request++;
+              const line = lineBeforeCursor(view.state);
+              view.dispatch(view.state.tr.setMeta(key, { dismiss: line ? { pos: hint.pos, line } : null } satisfies Meta));
               return true;
             }
             return false;
@@ -143,6 +161,8 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
               )
                 return;
               const line = lineBeforeCursor(view.state);
+              const dismissed = key.getState(view.state)?.dismissed;
+              if (line && dismissed && dismissed.pos === view.state.selection.from && dismissed.line === line) return;
               // mathjs (180 KB) loads once a calculation is being written – a
               // number and an operator before the cursor – not with every
               // document, so the hint at the "=" is still quick.
@@ -178,10 +198,12 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
                 const formula = usedFormula && action.kind !== "decimal" ? action.latex.replace(/^(=|\\approx)\s*/, "") : undefined;
                 view.dispatch(
                   view.state.tr.setMeta(key, {
-                    pos,
-                    text: (line.endsWith(" ") ? "" : " ") + value,
-                    latex: formula,
-                  }),
+                    hint: {
+                      pos,
+                      text: (line.endsWith(" ") ? "" : " ") + value,
+                      latex: formula,
+                    },
+                  } satisfies Meta),
                 );
               }, () => {});
             },

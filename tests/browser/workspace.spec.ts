@@ -500,7 +500,7 @@ test("content archives download and restore through settings with files intact",
   expect(restored.pages).toBe(2);
   expect(restored.files).toBe(1);
   await expect(
-    page.getByText("2 Seiten und 1 Datei importiert.", { exact: true }),
+    page.getByText("Importiert – Seiten: 2, Dateien: 1.", { exact: true }),
   ).toBeVisible();
   const newPage = restored.pageIds[document.id],
     copied = await (await page.request.get("/api/pages/" + newPage)).json();

@@ -267,6 +267,7 @@ import { authorColor } from "@/lib/authorship";
 import { BibliographyView, CitationView } from "./citation-views";
 import { CitationDialog } from "./citation-dialog";
 import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
+import { beginUndoStep } from "@/lib/node-target";
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { BlockColorAttribute } from "@/lib/block-colors";
 import { blockForInsert, blockRange, emptyBlockNear } from "@/lib/document-blocks";
@@ -2686,6 +2687,10 @@ export default function DocumentEditor({
   function saveFootnote(remove = false) {
     if (!editor || !footnote) return;
     const note = footnoteText(footnote.note);
+    // A step of its own in the undo history (lib/node-target.ts): saved
+    // less than half a second after typing or another change, Yjs merged it
+    // with that – ⌘Z after removing a note took the whole text back.
+    beginUndoStep(editor.state);
     if (footnote.pos === null) {
       if (note && !remove)
         editor

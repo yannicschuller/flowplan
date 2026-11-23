@@ -39,6 +39,17 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await expect(editor.locator(".calc-hint")).toContainText("11/12");
   await page.keyboard.press("Escape");
   await expect(editor.locator(".calc-hint")).toHaveCount(0);
+  // A change elsewhere does not bring it back – here the first paragraph's
+  // block id, as the editor gives one a moment after typing (and as a
+  // collaborator's edit would arrive).
+  await page.evaluate(() => {
+    const { editor: e } = document.querySelector(".ProseMirror") as HTMLElement & {
+      editor: { state: { tr: { setNodeAttribute: (pos: number, name: string, value: string) => object } }; view: { dispatch: (tr: object) => void } };
+    };
+    e.view.dispatch(e.state.tr.setNodeAttribute(0, "blockId", "calc0001"));
+  });
+  await page.waitForTimeout(400);
+  await expect(editor.locator(".calc-hint")).toHaveCount(0);
 
   // A fraction written as a formula counts too; the result is a formula.
   await page.keyboard.press("Enter");
@@ -59,7 +70,14 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await page.keyboard.press("Enter");
   await page.keyboard.type("x² − 9");
   const term = editor.getByText("x² − 9");
-  const box = (await term.boundingBox())!;
+  // The new line is drawn again once it gets its block id (a moment after
+  // typing, lib/block-ids-plugin.ts): measured once it stands.
+  let box!: { x: number; y: number; width: number; height: number };
+  await expect(async () => {
+    const measured = await term.boundingBox();
+    expect(measured).not.toBeNull();
+    box = measured!;
+  }).toPass();
   await page.mouse.move(box.x + 1, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 6 });
