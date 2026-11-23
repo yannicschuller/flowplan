@@ -2,6 +2,119 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.1 – 2026-11-23
+
+### New
+
+- Administration: create accounts with e-mail and password – the person gets a link to set their password ([#433](https://github.com/yannicschuller/flowplan/issues/433)).
+- Limits per group: storage, own workspaces and upload size per group, also for groups from SCIM, LDAP and SSO; after the AI quota optionally go on with a cheaper model.
+- Mark accounts with an unconfirmed e-mail address for deletion – with a warning e-mail, a reminder and an optional automatic rule ([#436](https://github.com/yannicschuller/flowplan/issues/436)).
+- Flow diagrams (Sankey) as a block and as a database chart type ([#427](https://github.com/yannicschuller/flowplan/issues/427)).
+- Select properties: search, create and remove options by typing ([#423](https://github.com/yannicschuller/flowplan/issues/423), [#426](https://github.com/yannicschuller/flowplan/issues/426)).
+- Writing assistant: change a selection's block type, e.g. turn a list into tasks ([#431](https://github.com/yannicschuller/flowplan/issues/431)).
+- Russian as a full language in the language menu ([#422](https://github.com/yannicschuller/flowplan/issues/422)).
+- Change your own e-mail address ([#405](https://github.com/yannicschuller/flowplan/issues/405)).
+- Default values per database property ([#411](https://github.com/yannicschuller/flowplan/issues/411)).
+- Move a document's tasks into a task database ([#420](https://github.com/yannicschuller/flowplan/issues/420)).
+- Forms: a QR code for the link; forms that need a sign-in go to the sign-in page and come back ([#415](https://github.com/yannicschuller/flowplan/issues/415), [#416](https://github.com/yannicschuller/flowplan/issues/416)).
+- Several server processes behind one port for more load on one machine (setting in the docs) ([#383](https://github.com/yannicschuller/flowplan/issues/383)).
+- Offline copy: storage budget per device, persistent storage, "Keep offline" and storage per space ([#417](https://github.com/yannicschuller/flowplan/issues/417)).
+
+### Improved
+
+- Printing in the iPhone/iPad and Android app goes through the app (app 1.1.3 or later) ([#424](https://github.com/yannicschuller/flowplan/issues/424)).
+- HTML preview: "Always allow for this file" remembers scripts per person ([#425](https://github.com/yannicschuller/flowplan/issues/425)).
+- Library: rename a book or chapter in place on its overview ([#421](https://github.com/yannicschuller/flowplan/issues/421)).
+- Rules: placeholder picker for "Create task" ([#413](https://github.com/yannicschuller/flowplan/issues/413)).
+- Signed-in people get their own 404 page with a way back for unknown pages.
+- Texts with inserted words are now fully translated in every language; language catalogues load on first use (less memory).
+- Leaner live connection: cursors and whiteboard pointers only while someone else is there ([#383](https://github.com/yannicschuller/flowplan/issues/383)).
+
+### Bug fixes
+
+- Records made offline open with an empty, editable document; pages made offline open even while the app copy lags behind ([#370](https://github.com/yannicschuller/flowplan/issues/370)).
+- Document tables: borders on wide tables in Safari/WebKit too ([#419](https://github.com/yannicschuller/flowplan/issues/419)).
+- Forms: long titles wrap on narrow screens ([#412](https://github.com/yannicschuller/flowplan/issues/412)).
+- iPad: the image bar and markup tools take the tap instead of the text menu.
+- The push test tells "relay could not fetch this instance's keys" apart from Apple/Google errors ([#414](https://github.com/yannicschuller/flowplan/issues/414)).
+
+<details>
+<summary>All commits</summary>
+
+- Release notes and help docs: drawing area fixes (#440, #441) ([5c1b404](https://github.com/yannicschuller/flowplan/commit/5c1b4045e2b05da3264cce839443a20b755add1d))
+- Drawing block: reveal a new block, palm rejection while drawing with a pen (#440, #441) ([f12ae7c](https://github.com/yannicschuller/flowplan/commit/f12ae7c3dc00888ea84c22af3ce7a4fa958fa9a3))
+- Release notes for 0.11.1 ([f46ed9e](https://github.com/yannicschuller/flowplan/commit/f46ed9ec07bdd2adfc809698ddad3cd3b932aca3))
+- Test: invites.created_at is a number (account-create under PostgreSQL) ([132cb9f](https://github.com/yannicschuller/flowplan/commit/132cb9f97cd5508b4d7fbb35c6d2872cf4c159f7))
+- Help docs: 0.11.1 pages (new accounts, account limits, #423–#436) ([2920319](https://github.com/yannicschuller/flowplan/commit/292031953aa2b60aefeed98d30b17b9858c9aa8d))
+- Administration: mark accounts with an unconfirmed address for deletion (#436) ([ed00aa6](https://github.com/yannicschuller/flowplan/commit/ed00aa6d8ba9e110dc639adc16875337226f7a30))
+- Comments: "1 post" instead of "1 posts"; translations for the group limits keywords ([69aaa4b](https://github.com/yannicschuller/flowplan/commit/69aaa4b51e4e9fb09e288d648a399bf5b336f794))
+- Record the UI gallery in English only (#438) ([a6df233](https://github.com/yannicschuller/flowplan/commit/a6df2335d8373f47e695e5605476b19756749600))
+- Load the server's language catalogues on first use ([2549423](https://github.com/yannicschuller/flowplan/commit/25494234e9bfdea13263efd0b998341bef11405c))
+- Limits per group, directory groups, and a model after the AI quota ([8ba993c](https://github.com/yannicschuller/flowplan/commit/8ba993c4dea2b79b8c81ddac2b1416d151c870be))
+- Update actions/cache to v6 and actions/download-artifact to v8 ([f88e7ab](https://github.com/yannicschuller/flowplan/commit/f88e7ab9fb88444ba79f627fb0c497c1a3543cbb))
+- Make texts with English words in placeholders fully translatable ([2bc5702](https://github.com/yannicschuller/flowplan/commit/2bc570247c7d39dc628b0a5b86bafb9fda5cd040))
+- Design review: Errors – 404 for signed-in people, empty state for unknown pages ([1816192](https://github.com/yannicschuller/flowplan/commit/18161927865270404080887a3be312c67bf8d0ba))
+- Fill the four missing worker-pool error texts in French and Chinese ([83a66d2](https://github.com/yannicschuller/flowplan/commit/83a66d21a6a9c28ee2b9c8b01c43deb02e3e6564))
+- Writing assistant: change a selection's block type, e.g. a list into tasks (#431) ([59cc96c](https://github.com/yannicschuller/flowplan/commit/59cc96c0f53be84a29b6476125e691ffa078d909))
+- Administration: create accounts with e-mail and password (#433) ([28501a7](https://github.com/yannicschuller/flowplan/commit/28501a7e14de2b093a582cbe242786ed6642bbed))
+- Offline: a record made offline opens with an empty, editable document (#370) ([bbab1d9](https://github.com/yannicschuller/flowplan/commit/bbab1d9d35ebe15f03b9421ad69a3f582bb2e509))
+- Flow diagrams: browser spec, larger labels, no ligatures in the text (#427) ([7ca1e44](https://github.com/yannicschuller/flowplan/commit/7ca1e443a12a9d546fdb7484a6d4fcac14b8a8a0))
+- Add flow diagrams (Sankey) as a block and a database chart kind (#427) ([f207b2b](https://github.com/yannicschuller/flowplan/commit/f207b2bee128dc19d600f906fc328f3ba53d368c))
+- Help docs: docs check for 0.9–0.11 (#430) ([8952de2](https://github.com/yannicschuller/flowplan/commit/8952de2a42614aaed48b4bbdd230bd318d3b40e0))
+- Russian joins the language menu (#422) ([076c068](https://github.com/yannicschuller/flowplan/commit/076c068ba4813ebbc1e47fcba522573ce459c2a3))
+- Find, create and deselect select options by typing (#423, #426) ([c451623](https://github.com/yannicschuller/flowplan/commit/c451623cf8b104dd3230f77243fc8182e14f4f07))
+- Russian catalogue translated; count texts without English plural endings ([f477233](https://github.com/yannicschuller/flowplan/commit/f47723374c37af43cf7b085d51ec44300ce9d867))
+- HTML viewer: "Always allow for this file" remembers scripts per person (#425) ([228f188](https://github.com/yannicschuller/flowplan/commit/228f1883302805aa8dbe9048ec9954473d21d01a))
+- Print in the iPhone/iPad and Android app through the app (#424) ([9d79b1d](https://github.com/yannicschuller/flowplan/commit/9d79b1d159a1332dd4dea46e68536526188dc37c))
+- Help docs: Russian in translation (#422) ([8bc143a](https://github.com/yannicschuller/flowplan/commit/8bc143a9f421de8e4b95c4579d22968620d8d12e))
+- Russian catalogue for translate.flowplan.org, not in the app yet (#422) ([8b4a831](https://github.com/yannicschuller/flowplan/commit/8b4a83193c8e85b49901fe92976207ef12249512))
+- Test workflow queue: judge the longest hold against the whole drain ([aa7ed81](https://github.com/yannicschuller/flowplan/commit/aa7ed815dbb45701bf884a2d89028fc16ce5a3dc))
+- Offline: pages made offline open while the app copy lags; say when the device has no room (#370, #417) ([dcad92a](https://github.com/yannicschuller/flowplan/commit/dcad92af128fd9d624c6eff57654c121afcc3475))
+- Test study: the whole file stays clear of the study day boundary ([91727ea](https://github.com/yannicschuller/flowplan/commit/91727ea6450c050092c8be3198636e192021066b))
+- iPad: image bar and markup tools take the tap, not the text menu ([a35f35c](https://github.com/yannicschuller/flowplan/commit/a35f35c499c4ea956625f2d72bc5c2db5d9b6914))
+- Test: read-rule check ignores digits inside random ids ([c17f095](https://github.com/yannicschuller/flowplan/commit/c17f0951772afb67af1f4d194869acedad6f1e09))
+- Live streams uncompressed; unchanged cursor heartbeats stay home (#383) ([f7840db](https://github.com/yannicschuller/flowplan/commit/f7840db184f892ca6733d2f0d686e92d7b1f66a0))
+- Help docs: move tasks to a database (#420) ([24615ac](https://github.com/yannicschuller/flowplan/commit/24615ac08e879f6d1e3387b8900749918606eab2))
+- Documents: move a document's tasks into a task database (#420) ([cc10efd](https://github.com/yannicschuller/flowplan/commit/cc10efddca5d93f185e5b31141b9c93dac22044b))
+- Help docs: rename books and chapters (#421) ([c13631e](https://github.com/yannicschuller/flowplan/commit/c13631eee5565f1ea7747a551656d341b5473135))
+- Library: rename a book or chapter in place on its overview (#421) ([ceacfcb](https://github.com/yannicschuller/flowplan/commit/ceacfcbbcdbcfcf59173462e166ebad9703de0ec))
+- Document tables: the grid with separate borders, so WebKit paints it on wide tables too (#419) ([87069ab](https://github.com/yannicschuller/flowplan/commit/87069ab15f4225e9e4f74a60b3dd4c1d45ba450a))
+- Help docs: offline storage (#417) ([b4bd0a3](https://github.com/yannicschuller/flowplan/commit/b4bd0a388b411cba7a3958bab09107d09154f096))
+- Offline copy: storage budget per device, persistent storage, "Keep offline" and storage per space (#417) ([955e589](https://github.com/yannicschuller/flowplan/commit/955e5890f00b5c6a819dc3b3153d5868ca4a2848))
+- Test study: count today's cards at a fixed midday, not across the 04:00 study day start ([b08de8f](https://github.com/yannicschuller/flowplan/commit/b08de8fb0834f66008a3f98fb7db66a1de256d24))
+- Help docs: several processes on one host ([78f59df](https://github.com/yannicschuller/flowplan/commit/78f59df47d9162c6484bb1b80d14d7630e0b2c91))
+- Several processes: measurements, the knee and the recommended default (#383) ([7fe010a](https://github.com/yannicschuller/flowplan/commit/7fe010a957920fb24f152d8ffc5472d5af092156))
+- Standalone check: three processes behind the port, a write read by all, SIGTERM ends all (#383) ([6814cb4](https://github.com/yannicschuller/flowplan/commit/6814cb4a250c47af22edd4ab28b4f11767d04fac))
+- Visual baselines from ubuntu-latest ([4d9aac4](https://github.com/yannicschuller/flowplan/commit/4d9aac414b4124ac9de2a986aabf8b7836ae4cc7))
+- Browser specs: e-mail change matches its own alert, form QR reads the downloads ([99d98d3](https://github.com/yannicschuller/flowplan/commit/99d98d3ce0587a662907b6cdc6d173f10ada1f4e))
+- Help docs: e-mail change, default values, rule placeholders, relay keys, form QR code ([1c72140](https://github.com/yannicschuller/flowplan/commit/1c721409a7dc35ba59eecdde166a3f815447493b))
+- Add a QR code for a form's link (#415) ([f58e164](https://github.com/yannicschuller/flowplan/commit/f58e164e76eddca08f445ae541d8dac0d76f9773))
+- Processes: keep the IPC channel referenced; a channel error is not a supervisor crash (#383) ([696c47a](https://github.com/yannicschuller/flowplan/commit/696c47a4019dc61c50a1b3382bcaafc415a3ee84))
+- Forms that ask for a sign-in link to the sign-in page and come back (#416) ([291998a](https://github.com/yannicschuller/flowplan/commit/291998a6747fa1e591213950768879398395f5ad))
+- Load test: serve.mjs --data-from, a seeded data directory copied for each run (#383) ([65bbb5a](https://github.com/yannicschuller/flowplan/commit/65bbb5a87cc51535ff493dfc59f9a02707f1462d))
+- Entrypoint tests: processes.mjs with FLOWPLAN_PROCESSES > 1, on every path (#383) ([ed36b2d](https://github.com/yannicschuller/flowplan/commit/ed36b2d9310c0e854d1741a281599f7cf5b3a8fe))
+- Test journal-completed: days ten years ahead, so entries written now never land on them ([bd82d55](https://github.com/yannicschuller/flowplan/commit/bd82d5568b9276672e302689f72d47182c81f638))
+- Processes: JSDoc types for the supervisor's helpers (#383) ([95bfb36](https://github.com/yannicschuller/flowplan/commit/95bfb3683b7eb0e85ed44712f878c420ca156bbf))
+- Processes in the image, the archives, the specs' servers and the load test (#383) ([6bf9039](https://github.com/yannicschuller/flowplan/commit/6bf90390342bc5fda7c080799bdd7b8736c6a51a))
+- Monitoring with several processes: a row per process, the host counted once (#383) ([4db7679](https://github.com/yannicschuller/flowplan/commit/4db76792a77f6aa60cafd217afecfddbd695e41c))
+- Setup restore with several processes: progress from the restoring process, restart to apply (#383) ([bcc759e](https://github.com/yannicschuller/flowplan/commit/bcc759e5505ebcaa4953dd62efe14c5ca54151ba))
+- Processes: rate limits, AI slots and presence shared per host (#383) ([1eb07da](https://github.com/yannicschuller/flowplan/commit/1eb07dafe3bc5cd1241a6abfa6da0eb4e089ae57))
+- Processes: the bus over IPC, process 1 runs the timed jobs and the restore (#383) ([479d796](https://github.com/yannicschuller/flowplan/commit/479d79678e82bcc7d625f3c0b17bea2df2317ac1))
+- Processes: a supervisor that runs FLOWPLAN_PROCESSES copies of server.js (#383) ([771afe4](https://github.com/yannicschuller/flowplan/commit/771afe47c729197aa4842195414dad96ea8eff24))
+- Design note: several processes behind one port (#383) ([a50fb86](https://github.com/yannicschuller/flowplan/commit/a50fb866af448caf88fd7ed7880d75ed275643a8))
+- Default values per database property (#411) ([f40555c](https://github.com/yannicschuller/flowplan/commit/f40555cf9160d5ad01c341574699d84d37fddb02))
+- Push test: tell "relay could not fetch this instance's keys" apart from Apple/Google (#414) ([9c6c0c7](https://github.com/yannicschuller/flowplan/commit/9c6c0c7ebe12cdff676d926577d4e57021a7dfc6))
+- Change your own e-mail address (#405) ([a105ce2](https://github.com/yannicschuller/flowplan/commit/a105ce2b2cea189403aab8751a7373f90f310da5))
+- Rules: placeholder picker for "Aufgabe erstellen" (#413) ([807dfe0](https://github.com/yannicschuller/flowplan/commit/807dfe043729c9723b5be6d14b2eead7b8f8d99b))
+- Forms: long titles wrap and shrink on narrow screens (#412) ([a6a8462](https://github.com/yannicschuller/flowplan/commit/a6a8462749cb3cfb254c47e621a4a52c9bed8f65))
+- Cluster test: who else has a document open counts across instances (#383) ([678dd1a](https://github.com/yannicschuller/flowplan/commit/678dd1aaa8b84317ace7e4a0c014821bccfce5d1))
+- Bootstrap page list: who reads what kept under "roles" alone (#383) ([cff06ae](https://github.com/yannicschuller/flowplan/commit/cff06ae1dc30d80375483cd7539e29affc2dd53b))
+- Whiteboard pointer only while someone else is on the board (#383) ([a667b62](https://github.com/yannicschuller/flowplan/commit/a667b6239769d11b052acebf4d59713543467e33))
+- Editor cursors over the live channel; none sent while alone (#383) ([fe20298](https://github.com/yannicschuller/flowplan/commit/fe20298dbc171af77fc383d48ab666b6f634d941))
+- Load test: cursors as the web editor sends them, whiteboard pointers (#383) ([b8642f2](https://github.com/yannicschuller/flowplan/commit/b8642f20ffddca3bddec2c0ae2f89305b6e13426))
+
+</details>
+
 ## v0.11.0 – 2026-11-20
 
 ### New
