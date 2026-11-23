@@ -206,9 +206,7 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
 
   // Removing the primary grouping clears the subgroup setting.
   await page.getByRole("button", { name: /^Gruppieren/ }).click();
-  await settings
-    .getByLabel("Gruppieren nach", { exact: true })
-    .selectOption("");
+  await settings.getByRole("radio", { name: "Keine Gruppierung", exact: true }).check();
   await expect
     .poll(async () => (await read()).database.views[1].subGroupBy)
     .toBeUndefined();
