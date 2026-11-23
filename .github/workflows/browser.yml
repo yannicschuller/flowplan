@@ -52,6 +52,14 @@ jobs:
           path: .next-e2e/cache
           key: e2e-build-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
           restore-keys: e2e-build-${{ hashFiles('package-lock.json') }}-
+      # The draw.io Flowplan ships (#454), as in the image: the release
+      # pinned in scripts/drawio.json, checked against its SHA-256 and kept
+      # between runs; build:e2e puts it next to the standalone server.
+      - uses: actions/cache@v6
+        with:
+          path: vendor/drawio
+          key: drawio-${{ hashFiles('scripts/drawio.json', 'scripts/drawio-fetch.mjs') }}
+      - run: node scripts/drawio-fetch.mjs
       # CI checks the types.
       - run: npm run build:e2e
         env:

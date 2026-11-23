@@ -8,6 +8,8 @@ import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-instance-"),
 );
+// No shipped draw.io (vendor/drawio, #454), whatever this checkout holds.
+process.env.FLOWPLAN_DRAWIO_DIR = join(process.env.FLOWPLAN_DATA_DIR, "no-drawio");
 const { run, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
@@ -70,7 +72,7 @@ test("admins configure the instance; stored values override the environment", as
     banners: [],
     allowWorkspaceCreation: false,
     transcription: false,
-    // No DRAWIO_URL: the public diagrams.net (lib/drawio.ts).
+    // No DRAWIO_URL and no shipped copy: the public diagrams.net (lib/drawio.ts).
     drawio: { url: "https://embed.diagrams.net/", origin: "https://embed.diagrams.net", external: true },
     mail: false,
     // No IMPRINT_URL or PRIVACY_URL set.

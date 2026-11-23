@@ -70,6 +70,9 @@ export const templateDraftSchema = z
     presentHidden: z.boolean().optional(),
     url: z.string().max(2000).optional(),
     page: z.number().optional(),
+    opacity: z.number().optional(),
+    highlight: z.boolean().optional(),
+    ownColors: z.array(z.string()).optional(),
     // Racks, devices and cables (#90), checked by cleanRackFields.
     rack: z.custom<RackData>().optional(),
     device: z.custom<DeviceData>().optional(),

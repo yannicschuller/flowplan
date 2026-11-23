@@ -1148,3 +1148,6 @@ p.wb-frame-notes {
   gap: 4px;
   padding: 2px;
 }
+.wb-table-swatches .wb-own-color-panel {
+  flex-basis: 100%;
+}

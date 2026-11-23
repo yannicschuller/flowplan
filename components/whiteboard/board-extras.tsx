@@ -56,6 +56,7 @@ import { boardEmbed, cleanCrop, type PlayerEmbed } from "@/lib/whiteboard-embeds
 import { parsePageLocation } from "@/lib/page-location";
 import type { Draft } from "@/lib/whiteboard-template-gallery";
 import { shortcutLetter } from "@/lib/keymap";
+import type { FrameFolding } from "./frame-collapse";
 
 type View = { x: number; y: number; zoom: number };
 export type ExtraAction = {
@@ -105,6 +106,8 @@ export type BoardApi = {
   dock: boolean;
   templatesOpen: boolean;
   setTemplatesOpen: (open: boolean) => void;
+  // Collapsed frames (#455): `items` is the folded view, this has the rest.
+  folding: FrameFolding;
 };
 const stored = (key: string) => {
   try {
@@ -167,12 +170,14 @@ export function useBoardExtras(api: BoardApi) {
   }, []);
   const jump = useCallback(
     (itemId: string) => {
-      const item = ref.current.byId.get(itemId);
+      const { folding } = ref.current;
+      const item = ref.current.byId.get(itemId) ?? folding.stored(itemId);
       if (!item) {
         ref.current.onError(t("Dieses Element gibt es auf dem Board nicht mehr.", "This element is no longer on the board."));
         return;
       }
-      flyTo(item);
+      // An element in a collapsed frame: the frame opens (#455).
+      flyTo(folding.reveal(itemId) ? (folding.stored(itemId) ?? item) : item);
       ref.current.setSelection(new Set(selectionUnit(item, ref.current.items, null)));
     },
     [flyTo, t],
@@ -338,13 +343,16 @@ export function useBoardExtras(api: BoardApi) {
     }),
     [api.pages, api.rowCards],
   );
-  const matches = useMemo(() => (searchOpen ? searchBoard(items, query, ctx) : []), [searchOpen, items, query, ctx]);
+  // Collapsed frames are searched too; a hit in one opens it (#455).
+  const allItems = api.folding.all;
+  const matches = useMemo(() => (searchOpen ? searchBoard(allItems, query, ctx) : []), [searchOpen, allItems, query, ctx]);
   const current = matches.length ? matches[Math.min(hit, matches.length - 1)] : undefined;
   const lastFlown = useRef("");
   useEffect(() => {
     if (!current || lastFlown.current === `${query}:${current.id}`) return;
     lastFlown.current = `${query}:${current.id}`;
-    const item = ref.current.byId.get(current.id);
+    const { folding } = ref.current;
+    const item = folding.reveal(current.id) ? folding.stored(current.id) : (ref.current.byId.get(current.id) ?? folding.stored(current.id));
     if (item) flyTo(item);
   }, [current, query, flyTo]);
   const step = (delta: number) => {
@@ -615,6 +623,7 @@ export function useBoardExtras(api: BoardApi) {
           }}
           onRename={(id, text) => api.change(() => api.setProps(id, { text: text.slice(0, 200) }))}
           onToggleHidden={(id) => api.change(() => api.setProps(id, { presentHidden: byId.get(id)?.presentHidden ? undefined : true }))}
+          folding={api.folding}
           onMove={(from, to) => {
             const places = moveFrame(
               sequence.map((f) => f.id),
@@ -698,8 +707,8 @@ export function useBoardExtras(api: BoardApi) {
           tab={galleryTab}
           pageId={api.pageId}
           editable={editable}
-          items={items}
-          selection={selection}
+          items={api.folding.all}
+          selection={new Set(api.folding.forCopy(selected).map((i) => i.id))}
           onClose={() => {
             api.setTemplatesOpen(false);
             setGalleryTab("gallery");

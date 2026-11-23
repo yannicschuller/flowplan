@@ -20,6 +20,9 @@ import { itemTags, tagColor } from "./whiteboard-tags";
 // Racks, devices and cables (#90).
 import { applyRackLayout, cableStyle, cleanRackFields, isCable } from "./whiteboard-rack";
 import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "./whiteboard-rack-svg";
+// Pen opacity, highlighter and collapsed frames (#455).
+import { strokeLook } from "./whiteboard-pen";
+import { foldView, isCollapsed } from "./whiteboard-collapse";
 
 export type WhiteboardSvgContext = {
   // A file or image source as used in the export (relative path, https URL),
@@ -52,7 +55,8 @@ const STYLE =
   ".wb-connector-label{display:flex;align-items:center;justify-content:center;height:100%;font:13px system-ui,sans-serif;color:#1f2937}.wb-connector-label span{background:#fff;padding:0 4px;border-radius:4px}" +
   ".wb-table-grid{display:grid;width:100%;height:100%;font-family:system-ui,sans-serif;color:#1f2937}" +
   ".wb-cell{border:1px solid #dee2e6;padding:4px 6px;overflow:hidden;white-space:pre-wrap}.wb-cell.head{font-weight:600;background:#f1f3f5}.wb-cell a{color:#1c7ed6}" +
-  ".wb-emoji-glyph{display:flex;align-items:center;justify-content:center;height:100%}";
+  ".wb-emoji-glyph{display:flex;align-items:center;justify-content:center;height:100%}" +
+  ".wb-frame-folded{display:flex;align-items:center;height:100%;padding:0 12px;font:12px system-ui,sans-serif;color:#868e96}";
 
 function html(width: number, height: number, inner: string, x = 0, y = 0) {
   return `<foreignObject x="${x}" y="${y}" width="${Math.max(1, width)}" height="${Math.max(1, height)}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">${inner}</div></foreignObject>`;
@@ -115,18 +119,26 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     }
     case "timeline":
       return item.timeline ? g(timelineSvg(item, publicTimeline(item.timeline)!, { today: new Date().toISOString().slice(0, 10), weekLabel: ctx.label("KW", "W") })) : "";
-    case "frame":
-      return `<g transform="translate(${item.x} ${item.y})"><rect width="${item.w}" height="${item.h}" fill="${attr(item.fill && item.fill !== "transparent" ? color(item.fill, "#ffffff") : "#ffffff")}" stroke="#ced4da" stroke-width="1" rx="6"/>${html(item.w, 26, `<div class="wb-frame-title">${text(item.text || ctx.label("Rahmen", "Frame"))}</div>`, 0, -28)}</g>`;
+    case "frame": {
+      // A collapsed frame (#455): its bar with the number of hidden elements.
+      const folded = isCollapsed(item)
+        ? html(item.w, item.h, `<div class="wb-frame-folded">${text(item.collapsed!.length === 1 ? ctx.label("1 Element eingeklappt", "1 element collapsed") : ctx.label(`${item.collapsed!.length} Elemente eingeklappt`, `${item.collapsed!.length} elements collapsed`))}</div>`)
+        : "";
+      return `<g transform="translate(${item.x} ${item.y})"><rect width="${item.w}" height="${item.h}" fill="${attr(item.fill && item.fill !== "transparent" ? color(item.fill, "#ffffff") : "#ffffff")}" stroke="#ced4da" stroke-width="1" rx="6"/>${folded}${html(item.w, 26, `<div class="wb-frame-title">${text(item.text || ctx.label("Rahmen", "Frame"))}</div>`, 0, -28)}</g>`;
+    }
     case "pen": {
       const pts = item.points || [];
       const stroke = attr(color(item.stroke, "#1f2937"));
+      // Opacity and highlighter (#455).
+      const look = strokeLook(item);
+      const extra = `${look.opacity !== undefined ? ` opacity="${look.opacity}"` : ""}${look.highlight ? ' style="mix-blend-mode:multiply"' : ""}`;
       if (item.pressures?.length && item.pressures.length * 2 === pts.length) {
         const points = item.pressures.map((p, i) => ({ x: item.x + pts[i * 2] * item.w, y: item.y + pts[i * 2 + 1] * item.h, p }));
-        return `<path d="${pressureOutline(points, num(item.strokeWidth, 3) * 1.6)}" fill="${stroke}" stroke="none"/>`;
+        return `<path d="${pressureOutline(points, num(item.strokeWidth, 3) * 1.6)}" fill="${stroke}" stroke="none"${extra}/>`;
       }
       let d = "";
       for (let i = 0; i + 1 < pts.length; i += 2) d += `${i ? " L" : "M"} ${item.x + pts[i] * item.w} ${item.y + pts[i + 1] * item.h}`;
-      return d ? `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${num(item.strokeWidth, 3)}" stroke-linecap="round" stroke-linejoin="round"/>` : "";
+      return d ? `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${num(item.strokeWidth, 3)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>` : "";
     }
     case "connector": {
       const { a, b, d, endDir, startDir } = connectorGeometry(item, items);
@@ -254,7 +266,8 @@ function clean(raw: WhiteboardItem): WhiteboardItem {
 
 // The SVG, or null for a board without anything to show.
 export function whiteboardSvg(raw: WhiteboardItem[], ctx: WhiteboardSvgContext, title = "") {
-  const all = applyRackLayout(raw.map(clean));
+  // Collapsed frames show their bar only (as on the board).
+  const all = foldView(applyRackLayout(raw.map(clean))).items;
   const items = all.filter((item) => item.type !== "comment");
   const map = new Map(all.map((item) => [item.id, item]));
   const box = contentBounds(items, map);

@@ -95,6 +95,11 @@ export const boardExtrasSchema = z.object({
     .record(z.string().max(2000), linkPreviewSchema)
     .refine((links) => Object.keys(links).length <= MAX_TABLE_LINKS && Object.keys(links).every((url) => webUrl(url) === url))
     .optional(),
+  // #455: pen opacity and highlighter, collapsed frames, own colours.
+  opacity: z.number().finite().min(0.1).max(1).optional(),
+  highlight: z.boolean().optional(),
+  collapsed: z.array(z.string().regex(/^[\w-]{1,64}$/)).max(5000).optional(),
+  ownColors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(6).optional(),
 });
 export type BoardExtras = z.infer<typeof boardExtrasSchema>;
 export function boardExtras(item: Partial<WhiteboardItem>): BoardExtras {

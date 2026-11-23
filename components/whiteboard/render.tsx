@@ -25,6 +25,11 @@ import { useDarkCanvas } from "@/lib/whiteboard-canvas-pref-client";
 // Racks, devices and cables (#90): the same drawing as the exports.
 import { cableStyle, isCable } from "@/lib/whiteboard-rack";
 import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "@/lib/whiteboard-rack-svg";
+// Pen opacity, highlighter, collapsed frames and own colours (#455).
+import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { strokeLook } from "@/lib/whiteboard-pen";
+import { foldView, isCollapsed } from "@/lib/whiteboard-collapse";
+import { ownColorSet, withOwnColors } from "@/lib/whiteboard-own-colors";
 
 export type PageRef = {
   id: string;
@@ -204,7 +209,11 @@ function ShapeBody({
         </g>
       );
     }
-    case "frame":
+    case "frame": {
+      // Collapsed frames (#455): the bar with the number of hidden elements;
+      // the caret before the title folds and unfolds (frame-collapse.tsx).
+      const folded = isCollapsed(item);
+      const name = item.text || t("Rahmen", "Frame");
       return (
         <g transform={`translate(${item.x} ${item.y})`}>
           <rect
@@ -217,15 +226,40 @@ function ShapeBody({
             strokeWidth={1}
             rx={6}
           />
+          {folded && (
+            <foreignObject width={Math.max(1, item.w)} height={Math.max(1, item.h)}>
+              <div className="wb-frame-folded">
+                {item.collapsed!.length === 1
+                  ? t("1 Element eingeklappt", "1 element collapsed")
+                  : t(`${item.collapsed!.length} Elemente eingeklappt`, `${item.collapsed!.length} elements collapsed`)}
+              </div>
+            </foreignObject>
+          )}
           <foreignObject x={0} y={-28} width={Math.max(1, item.w)} height={26}>
-            <div className="wb-frame-title">
-              {text ?? (item.text || t("Rahmen", "Frame"))}
+            <div className={`wb-frame-title${text === undefined ? " has-toggle" : ""}`}>
+              {text === undefined && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="wb-frame-toggle"
+                  data-wb-frame-toggle
+                  aria-expanded={!folded}
+                  aria-label={folded ? t(`„${name}“ aufklappen`, `Expand “${name}”`) : t(`„${name}“ einklappen`, `Collapse “${name}”`)}
+                  title={folded ? t("Aufklappen", "Expand") : t("Einklappen", "Collapse")}
+                >
+                  {folded ? <CaretRight size={13} weight="bold" /> : <CaretDown size={13} weight="bold" />}
+                </button>
+              )}
+              {text ?? name}
             </div>
           </foreignObject>
         </g>
       );
+    }
     case "pen": {
       const pts = item.points || [];
+      // Opacity and highlighter (#455, lib/whiteboard-pen.ts).
+      const look = strokeLook(item);
       // Stylus strokes: a filled outline whose width follows the pressure.
       if (item.pressures?.length && item.pressures.length * 2 === pts.length) {
         const points = item.pressures.map((pressure, i) => ({
@@ -238,6 +272,8 @@ function ShapeBody({
             d={pressureOutline(points, (item.strokeWidth ?? 3) * 1.6)}
             fill={colors.ink(item.stroke || "#1f2937")}
             stroke="none"
+            opacity={look.opacity}
+            className={look.highlight ? "wb-pen-highlight" : undefined}
           />
         );
       }
@@ -252,6 +288,8 @@ function ShapeBody({
           strokeWidth={item.strokeWidth ?? 3}
           strokeLinecap="round"
           strokeLinejoin="round"
+          opacity={look.opacity}
+          className={look.highlight ? "wb-pen-highlight" : undefined}
         />
       );
     }
@@ -575,6 +613,8 @@ export function WhiteboardStatic({
   // Documents, shared pages and the template gallery show boards on the
   // dark canvas too (#399), by the reader's setting.
   const dark = useDarkCanvas();
+  // Collapsed frames show their bar only, as on the board (#455).
+  items = foldView(items).items;
   const map = new Map(items.map((i) => [i.id, i]));
   const box = contentBounds(items, map);
   const pad = 40;
@@ -582,7 +622,7 @@ export function WhiteboardStatic({
     ? `${box.x - pad} ${box.y - pad} ${box.w + pad * 2} ${box.h + pad * 2}`
     : "0 0 800 400";
   return (
-    <BoardColors value={boardPalette(dark)}>
+    <BoardColors value={withOwnColors(boardPalette(dark), ownColorSet(items))}>
     <svg
       className={dark ? `wb-static ${DARK_CANVAS_CLASS}` : "wb-static"}
       viewBox={view}

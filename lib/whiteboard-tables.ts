@@ -126,3 +126,23 @@ export function keptLinks(item: Pick<WhiteboardItem, "cells" | "links">): Record
   const entries = Object.entries(item.links || {}).filter(([url]) => wanted.has(url));
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
+
+// The table's own colours (lib/whiteboard-own-colors.ts) after its row and
+// column colours changed: colours picked with the colour wheel (not in the
+// palette) are kept as chosen on the dark canvas; colours no longer used
+// anywhere on the table leave the list.
+export function tableOwnColors(
+  item: Pick<WhiteboardItem, "fill" | "stroke" | "textColor" | "ownColors">,
+  rowFills: string[] | undefined,
+  colFills: string[] | undefined,
+  palette: readonly string[],
+): string[] | undefined {
+  const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : "");
+  const fills = new Set([...(rowFills || []), ...(colFills || [])].map(lower).filter((c) => TABLE_FILL.test(c)));
+  const used = new Set([lower(item.fill), lower(item.stroke), lower(item.textColor), ...fills]);
+  const before = (Array.isArray(item.ownColors) ? item.ownColors : []).map(lower).filter((c) => TABLE_FILL.test(c) && used.has(c));
+  const known = new Set(palette.map(lower));
+  const added = [...fills].filter((c) => !known.has(c) && !before.includes(c));
+  const out = [...added, ...before].slice(0, 6);
+  return out.length ? out : undefined;
+}

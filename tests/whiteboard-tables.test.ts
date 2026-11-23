@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cellFill, cellLink, cellParts, isHeadCell, keptLinks, setFill, soleUrl, tablePageLinks, trimFills } from "../lib/whiteboard-tables";
+import { cellFill, cellLink, cellParts, isHeadCell, keptLinks, setFill, soleUrl, tableOwnColors, tablePageLinks, trimFills } from "../lib/whiteboard-tables";
 import { boardEmbed, withValidExtras } from "../lib/whiteboard-embeds";
 import { whiteboardSvg } from "../lib/whiteboard-svg";
 import { previewCard } from "../lib/oembed";
@@ -111,4 +111,11 @@ test("link card previews name the site's icon", () => {
   assert.equal(card.kind === "card" && card.icon, "https://cdn.example.org/i.svg");
   const none = previewCard('<head><title>T</title><link rel="icon" href="data:image/png;base64,AAAA"></head>', "https://example.org/");
   assert.equal(none.kind === "card" && none.icon, "");
+});
+
+test("colours from the colour wheel are the table's own colours while used", () => {
+  const palette = ["transparent", "#ffffff", "#ffe3e3"];
+  assert.deepEqual(tableOwnColors({}, ["#ffe3e3", "#12AB34"], undefined, palette), ["#12ab34"]);
+  assert.deepEqual(tableOwnColors({ ownColors: ["#12ab34"] }, ["", "#12ab34"], ["#0000ff"], palette), ["#0000ff", "#12ab34"]);
+  assert.equal(tableOwnColors({ ownColors: ["#12ab34"] }, undefined, undefined, palette), undefined);
 });

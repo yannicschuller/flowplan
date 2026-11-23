@@ -24,6 +24,7 @@ import {
   svgFromDataUrl,
 } from "@/lib/drawio";
 import { openDiagramViewer } from "@/lib/diagram-tools";
+import { drawioKeptOffline, warmDrawio } from "@/lib/drawio-offline";
 import { PAGE_LOCALE, tr } from "@/lib/locale-tag";
 
 export type DrawioTarget = {
@@ -47,11 +48,19 @@ function toolButton(label: string, text: string, onClick: () => void) {
   return button;
 }
 
+// The shipped draw.io kept for offline use once a page with a diagram is
+// shown online (#454, lib/drawio-offline.ts) – on devices with offline use on.
+const offlineOn = () =>
+  import("./offline")
+    .then((offline) => offline.offlineMarker())
+    .then(Boolean, () => false);
+
 export function drawioNodeView(onEdit: (target: DrawioTarget) => void) {
   return DrawioBlock.extend({
     addNodeView() {
       return ({ node, editor, getPos }) => {
         let current = node;
+        if (editor.isEditable) void warmDrawio(drawioEditor(), PAGE_LOCALE, offlineOn);
         const dom = document.createElement("div");
         dom.className = "drawio-block";
         dom.contentEditable = "false";
@@ -152,6 +161,14 @@ export function DrawioEditorDialog({
   const frame = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving">("loading");
   const [problem, setProblem] = useState("");
+  // Without a connection: draw.io loads only from this device's copy (#454).
+  const [unreachable, setUnreachable] = useState<"" | "online-only" | "not-kept">("");
+  useEffect(() => {
+    if (!config || typeof navigator === "undefined" || navigator.onLine) return;
+    if (!config.bundled) setUnreachable("online-only");
+    else void drawioKeptOffline(config).then((kept) => setUnreachable(kept ? "" : "not-kept"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The diagram as it was when the dialog opened (lib/node-target.ts).
   const [opened] = useState(() => (editor ? openedNode(editor.state, target) : null));
   const modified = useRef(false);
@@ -160,6 +177,9 @@ export function DrawioEditorDialog({
 
   useEffect(() => {
     if (!config) return;
+    // The picture's cleaning is loaded while draw.io opens, not on saving –
+    // a connection lost meanwhile does not stop the save.
+    void import("@/lib/drawio-svg").catch(() => undefined);
     const origin = config.origin;
     let saving: string | null = null;
     const post = (message: Record<string, unknown>) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), origin);
@@ -282,6 +302,19 @@ export function DrawioEditorDialog({
             "Während du bearbeitest, wird der Inhalt des Diagramms an diagrams.net (draw.io) gesendet. Zum Anzeigen braucht Flowplan diagrams.net nicht.",
             "While you edit, the diagram's content is sent to diagrams.net (draw.io). Flowplan does not need diagrams.net to show it.",
           )}
+        </p>
+      )}
+      {unreachable && (
+        <p className="drawio-privacy" role="alert">
+          {unreachable === "online-only"
+            ? t(
+                "Ohne Verbindung kann draw.io nicht geladen werden. Deine Diagramme bleiben als Bilder sichtbar.",
+                "draw.io cannot be loaded without a connection. Your diagrams stay visible as pictures.",
+              )
+            : t(
+                "draw.io ist auf diesem Gerät noch nicht offline gespeichert. Öffne den Editor einmal mit Verbindung, dann geht es auch ohne.",
+                "draw.io is not stored on this device for offline use yet. Open the editor once while online, then it also works without a connection.",
+              )}
         </p>
       )}
       {problem && (

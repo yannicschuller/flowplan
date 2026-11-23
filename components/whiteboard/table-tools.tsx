@@ -1,15 +1,16 @@
 "use client";
 // The style bar's buttons for a table: rows and columns, header row and
 // header column, and background colours of whole rows and columns (#455)
-// from the board's fill palette. The colour goes to the row or column of
+// from the board's fill palette or the colour wheel. The colour goes to the row or column of
 // the cell last clicked or edited (lib/whiteboard-tables.ts).
 import { useState } from "react";
 import { PaintBucket } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Select } from "../select";
 import { fillColors, type WhiteboardItem } from "@/lib/whiteboard-model";
-import { cellFill, setFill, tableShape } from "@/lib/whiteboard-tables";
+import { cellFill, setFill, tableOwnColors, tableShape } from "@/lib/whiteboard-tables";
 import { fitBarMenu } from "./item-tools";
+import { BoardColorPicker } from "./board-color-picker";
 
 type Cell = { r: number; c: number };
 type Target = `row:${number}` | `col:${number}`;
@@ -60,12 +61,13 @@ export function TableTools({
   const [kind, at] = target.split(":") as ["row" | "col", string];
   const index = Math.min(Number(at), (kind === "row" ? cells.length : cols) - 1);
   const current = kind === "row" ? cellFill({ rowFills: item.rowFills }, index, -1) : cellFill({ colFills: item.colFills }, -1, index);
-  const paint = (color: string) =>
-    set(
-      kind === "row"
-        ? { rowFills: setFill(item.rowFills, index, color, cells.length) }
-        : { colFills: setFill(item.colFills, index, color, cols) },
-    );
+  // A colour of the palette or the colour wheel (own colours stay as
+  // chosen on the dark canvas, lib/whiteboard-own-colors.ts).
+  const paint = (color: string) => {
+    const rowFills = kind === "row" ? setFill(item.rowFills, index, color, cells.length) : item.rowFills;
+    const colFills = kind === "col" ? setFill(item.colFills, index, color, cols) : item.colFills;
+    set({ rowFills, colFills, ownColors: tableOwnColors(item, rowFills, colFills, fillColors) });
+  };
   const rowName = (r: number) => (r === 0 && item.header !== false ? t("Kopfzeile", "Header row") : t(`Zeile ${r + 1}`, `Row ${r + 1}`));
   const colName = (c: number) => (c === 0 && item.headerCol ? t("Kopfspalte", "Header column") : t(`Spalte ${c + 1}`, `Column ${c + 1}`));
   return (
@@ -133,6 +135,7 @@ export function TableTools({
                   />
                 );
               })}
+              <BoardColorPicker inline label={t("Eigene Hintergrundfarbe", "Custom background colour")} value={current ?? undefined} presets={fillColors} onPick={(c) => paint(c)} />
             </span>
           </span>
         )}

@@ -106,6 +106,9 @@ test("table colours: rows, columns, header column, undo, export", async ({ page 
   await expect.poll(() => background(table.locator("[data-cell='2:2']"))).toBe("rgb(211, 249, 216)");
   await expect.poll(() => background(table.locator("[data-cell='1:2']"))).toBe("rgb(255, 227, 227)");
   await expect(colours.getByRole("radio", { name: "Hintergrund #d3f9d8" })).toHaveAttribute("aria-checked", "true");
+  // Besides the palette, the colour wheel.
+  await colours.getByRole("button", { name: "Eigene Hintergrundfarbe" }).click();
+  await expect(colours.getByRole("group", { name: "Eigene Hintergrundfarbe" })).toBeVisible();
   // The header column.
   await wb.getByRole("button", { name: "Kopfspalte", exact: true }).click();
   await expect(table.locator("[data-cell='2:0']")).toHaveClass(/head/);
