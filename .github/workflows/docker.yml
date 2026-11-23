@@ -7,7 +7,8 @@
 # For linux/amd64 and linux/arm64, each built natively on GitHub's runners
 # (ubuntu-latest and ubuntu-24.04-arm, free for public repositories) in
 # parallel, then joined into one multi-platform image. Images are only built for a release
-# (release.yml calls this workflow with the version, or a pushed tag v1.2.3)
+# (release.yml calls this workflow with the version; the tag it pushes
+# starts no second build – both used to race for the release's archives)
 # or by hand: Actions → Docker image → Run workflow builds :beta from the
 # chosen branch, or rebuilds a release when a version is given. Pushes and
 # pull requests build no image; CI (ci.yml) tests them. Two Coolify
@@ -17,8 +18,6 @@
 name: Docker image
 
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       version:
