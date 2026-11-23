@@ -397,16 +397,22 @@ export type Bootstrap = {
   // The start page: layout, where it comes from, what "Reset" leads to.
   home?: import("./home-layout").HomeState;
   myLimits?: {
+    // 0 = unlimited (storage, workspaces).
     storageMb: number;
     workspaces: number;
     uploadMb: number;
+    // Administrators are not limited: no sources.
+    admin?: boolean;
     // Where each comes from (lib/user-limits.ts) and the names of the groups.
-    sources?: Record<"storageMb" | "workspaces" | "uploadMb", { from: "user" | "group" | "default"; group: string | null }>;
+    sources?: Record<"storageMb" | "workspaces" | "uploadMb", import("./user-limits").LimitSource>;
     groupNames?: Record<string, string>;
     // The instance's "Link für mehr Speicher oder KI" (null: none).
     moreUrl?: string | null;
     usedBytes: number;
     ownedWorkspaces: number;
+    // The person's files per workspace they belong to, largest first; empty
+    // unless files lie in more than one.
+    byWorkspace?: { id: string; name: string; bytes: number }[];
   } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;

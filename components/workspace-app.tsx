@@ -47,6 +47,7 @@ import { SpaceExportDialog } from "./space-export";
 import type { OnboardingStep } from "./onboarding";
 import { FindInPage } from "./find-in-page";
 import { InstanceBanners } from "./instance-banners";
+import { LimitsNotice } from "./limits-notice";
 import { UnconfirmedDeletionNotice } from "./unconfirmed-deletion-notice";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
@@ -5116,6 +5117,8 @@ export default function WorkspaceApp({
           </div>
         )}
         <InstanceBanners initial={boot.instance?.banners || []} />
+        {/* Storage or the AI quota at 80 % / 100 % (Speicher & KI). */}
+        <LimitsNotice boot={boot} />
         {/* Marked for deletion, address unconfirmed (#436). */}
         {boot.pendingDeletion && <UnconfirmedDeletionNotice due={boot.pendingDeletion.due} />}
         {offlineNotice}

@@ -55,12 +55,13 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-user-limits.png`, fullPage: true });
 
     // The person sees what applies to them.
-    await me.page.goto(`${origin}/#settings/account`);
+    await me.page.goto(`${origin}/#settings/usage`);
     await me.page.reload();
-    const limits = me.page.locator(".setting-group", { hasText: "Deine Grenzen" });
-    await expect(limits).toContainText("0 MB / 200 MB");
-    await expect(limits).toContainText("1 / 3");
-    await expect(limits).toContainText("10 MB");
+    const limits = me.page.locator("#storage");
+    await expect(limits).toContainText("0 von 200 MB");
+    await expect(limits).toContainText("für dich festgelegt");
+    await expect(limits.locator("#workspaces")).toContainText("1 von 3");
+    await expect(limits.locator("#upload")).toContainText("10 MB");
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-limits.png`, fullPage: true });
 
     // Fixed language: English everywhere from now on.

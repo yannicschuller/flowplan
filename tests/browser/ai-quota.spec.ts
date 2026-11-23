@@ -7,7 +7,7 @@ keepInstanceAi();
 
 // AI quotas (#382): an administrator sets the default per person under
 // Administration → KI → Kontingente, the person sees what is left under
-// Settings → KI, and the "KI fragen" panel shows the note once little is
+// Settings → Speicher & KI, and the "KI fragen" panel shows the note once little is
 // left. No AI request is made – the usage is written into the counts.
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -54,8 +54,8 @@ test("quotas: the administrator sets the default, the person sees what is left",
     const d = db();
     d.prepare("INSERT INTO ai_quota_usage(day,user_id,model,kind,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?,?,?)").run(new Date().toISOString().slice(0, 10), userId, "quota-model", "person", 3, 6000, 2500);
     d.close();
-    await page.goto("/#settings/ai");
-    const quota = page.locator("section[aria-labelledby='quota-title']");
+    await page.goto("/#settings/usage");
+    const quota = page.locator("section[aria-labelledby='ai-title']");
     await expect(quota).toBeVisible({ timeout: 30_000 });
     await expect(quota).toContainText("Heute");
     await expect(quota).toContainText("1.500 von 10.000 übrig");

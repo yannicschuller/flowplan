@@ -70,6 +70,68 @@
   outline-offset: -2px;
 }
 
+/* ===== The toolbar: title, then search and "Konto anlegen" on one line,
+   the button as high as the field. On phones the search takes the width
+   and the button shrinks to its icon beside it. ===== */
+.admin-users-head .admin-users-tools {
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-inline-start: auto;
+}
+.admin-users-tools .admin-search {
+  flex: 0 1 300px;
+}
+.button.ux-create {
+  flex: none;
+  min-height: 36px;
+  gap: 6px;
+  padding-block: 0;
+}
+.button.ux-create svg {
+  width: 16px;
+  height: 16px;
+  color: var(--blue);
+}
+.button.ux-create:hover {
+  background: var(--hover);
+}
+.button.ux-create:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+@container main (max-width: 767px) {
+  .admin-users-head .admin-users-tools {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+  .admin-users-head .admin-users-tools > * {
+    flex: none;
+  }
+  .admin-users-head .admin-users-tools .admin-search {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+  .button.ux-create {
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .button.ux-create svg {
+    width: 20px;
+    height: 20px;
+  }
+  .ux-create-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 /* ===== The table ===== */
 .ux-sort-bar {
   display: none;
@@ -950,4 +1012,40 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+/* In the table: the pill with a small undo button at its end (cancels the
+   deletion), so a marked row is as high as the others. */
+.status-badge.ux-mark {
+  gap: 5px;
+  padding-inline-end: 2px;
+}
+.ux-mark-cancel {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.ux-mark-cancel:hover {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.ux-mark-cancel:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+/* Touch: a 44 px hit area around the small button. */
+@media (pointer: coarse) {
+  .ux-mark-cancel::after {
+    content: "";
+    position: absolute;
+    inset: -13px;
+  }
 }
