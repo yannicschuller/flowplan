@@ -52,7 +52,8 @@ import { UnconfirmedDeletionNotice } from "./unconfirmed-deletion-notice";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-pane";
-import { TabBar, TabEdgeDrop, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
+import { TabBar, TabEdgeDrop, frameOfElement, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
+import { setSubPageCreator, type SubPageCreator } from "./sub-page-create";
 import { placeOf, tabOf } from "@/lib/frame-tabs";
 import { openModeOf, type OpenMode } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
@@ -914,12 +915,16 @@ export default function WorkspaceApp({
     [wide, setWide] = useState(false),
     // The quick search opens the chosen page in the split view.
     [paletteSplit, setPaletteSplit] = useState(false),
+    // The quick search for a new tab (#444): the frame the chosen page opens in.
+    [paletteTab, setPaletteTab] = useState<number | null>(null),
     // A page from the tree is being dragged: the drop zone at the right edge shows.
     [pageDrag, setPageDrag] = useState(false),
     [splitDropOver, setSplitDropOver] = useState(false);
   // Tabs and frames (#279): on tablets and computers, not on phones.
   const tabletUp = useMedia("(min-width: 768px)");
+  const newTabSearch = useRef<(frame: number) => void>(() => {});
   const tabs = useFrameTabs({
+    onNewTab: (frame) => newTabSearch.current(frame),
     enabled: tabletUp,
     wide,
     userId: boot.user.id,
@@ -1085,7 +1090,15 @@ export default function WorkspaceApp({
   const closeSearch = () => {
     setSearch(false);
     setPaletteSplit(false);
+    setPaletteTab(null);
     setQuery("");
+  };
+  // A new tab (#444): the quick search; the page picked opens in a new tab
+  // of that frame. Nothing is opened before, so Esc leaves the tabs alone.
+  newTabSearch.current = (frame: number) => {
+    setPaletteSplit(false);
+    setPaletteTab(frame);
+    openSearch();
   };
   // The tags the search offers (#328): the chosen space's and the
   // workspace's, or all with the space's name as a hint (#136).
@@ -1908,7 +1921,11 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (!shownPage || focusTitleOf.current !== shownPage) return;
     focusTitleOf.current = null;
-    document.querySelector<HTMLTextAreaElement>("textarea.page-title")?.focus();
+    const title = document.querySelector<HTMLTextAreaElement>("textarea.page-title");
+    title?.focus();
+    // "Ohne Titel" (a page from "/Seite", #444): typing replaces it.
+    if (title && title.value === t("Ohne Titel", "Untitled")) title.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownPage]);
   useEffect(() => {
     if (!shownPage || screenRef.current !== "page") return;
@@ -2992,6 +3009,83 @@ export default function WorkspaceApp({
       }
     return id;
   }
+  // "/Seite" in the editor (#444, components/sub-page-create.ts): an empty
+  // sub-page of the page (of a record: below the record, #231) – offline
+  // made on this device as from "Neue Seite" (#370; a record's sub-page
+  // and pages of encrypted spaces need the connection), encrypted titles
+  // as there – and opened where the editor is, its title focused.
+  const subPageImpl = useRef<SubPageCreator | null>(null);
+  subPageImpl.current = {
+    create: async (hostId, rowId) => {
+      // A page the list does not have yet (made elsewhere a moment ago): asked for.
+      const host =
+        activePages.find((p) => p.id === hostId) ??
+        (deviceOffline() ? undefined : (await api<{ page: Page }>(`/api/pages/${hostId}`).catch(() => null))?.page);
+      if (!host) throw new Error(t("Die Seite wurde nicht gefunden.", "The page was not found."));
+      const title = t("Ohne Titel", "Untitled");
+      const space = boot.spaces.find((s) => s.id === host.space_id) as { encrypted?: number; encrypt_titles?: number } | undefined;
+      if (deviceOffline() || isPendingPage(host.id)) {
+        if (rowId || space?.encrypted || space?.encrypt_titles) {
+          showNotice(offlineNoteText());
+          return null;
+        }
+        const id = crypto.randomUUID();
+        offlineQueue.addPage(
+          pageChange({
+            id,
+            workspaceId: host.workspace_id,
+            spaceId: host.space_id,
+            parentId: host.id,
+            kind: "document",
+            title,
+            newId: () => crypto.randomUUID(),
+            key: newIdempotencyKey(),
+            at: Date.now(),
+          }),
+        );
+        return { id, title };
+      }
+      const encrypted = !!space?.encrypt_titles;
+      if (encrypted && !e2eeState.unlocked) {
+        setE2eeDialog("unlock");
+        return null;
+      }
+      const result = await act({
+        action: "page.create",
+        workspaceId: host.workspace_id,
+        spaceId: host.space_id,
+        parentId: host.id,
+        ...(rowId ? { parentRowId: rowId } : {}),
+        title: encrypted ? ENCRYPTED_TITLE : title,
+        kind: "document",
+      });
+      const id = result?.id ? String(result.id) : null;
+      if (!id) return null;
+      if (encrypted)
+        try {
+          await openSpace(host.space_id);
+          await act({ action: "e2ee.title", pageId: id, cipher: await encryptTitle(host.space_id, id, title) });
+        } catch (error) {
+          notifyError(error);
+        }
+      window.dispatchEvent(new Event("flowplan:pages-changed"));
+      return { id, title };
+    },
+    open: (id, origin) => {
+      // In the right frame it stays there.
+      if (tabs.on && frameOfElement(origin) === 1 && tabs.openPlace(`page=${id}`, "here", 1)) return;
+      focusTitleOf.current = id;
+      location.hash = pageLocationHash({ pageId: id });
+    },
+  };
+  useEffect(
+    () =>
+      setSubPageCreator({
+        create: (hostId, rowId) => subPageImpl.current!.create(hostId, rowId),
+        open: (id, origin) => subPageImpl.current!.open(id, origin),
+      }),
+    [],
+  );
   // A template chosen for the "New page" dialog (#213): a name typed there
   // before stays; otherwise the template's name goes into the field,
   // selected, so typing replaces it and Enter creates the page. `typed`:
@@ -4297,11 +4391,14 @@ export default function WorkspaceApp({
   }, [search, activeItem]);
   const runItem = (item: PaletteItem, mode: OpenMode = "here") => {
     if (item.kind === "command") return runCommand(item.action);
-    const intoSplit = paletteSplit;
+    const intoSplit = paletteSplit,
+      intoTab = paletteTab;
     closeSearch();
     // Chosen for the split view: the page opens next to the open one.
     if (intoSplit) return openSplit(item.result.id);
     const p = item.result;
+    // Chosen for a new tab (#444): there, in the frame it was asked for.
+    if (intoTab !== null && tabs.on && tabs.openPlace(pageLocationHash({ pageId: p.id, rowId: p.rowId }).slice(1), "tab", intoTab)) return;
     // ⌘/Ctrl+Enter or -click: a new tab (with Shift the other frame); a
     // page chosen while the right frame is worked in opens there (#279).
     if (tabs.on && (mode !== "here" || !p.rowId) && tabs.openPlace(pageLocationHash({ pageId: p.id, rowId: p.rowId }).slice(1), mode)) return;
@@ -6835,7 +6932,9 @@ export default function WorkspaceApp({
             placeholder={
               paletteSplit
                 ? t("Seite für die geteilte Ansicht suchen …", "Find a page for the split view …")
-                : t("Suchen … oder > für Befehle", "Search … or > for commands")
+                : paletteTab !== null
+                  ? t("Seite für den neuen Tab suchen …", "Find a page for the new tab …")
+                  : t("Suchen … oder > für Befehle", "Search … or > for commands")
             }
             value={query}
             {...hashTags.fieldProps}
@@ -6877,6 +6976,12 @@ export default function WorkspaceApp({
               </span>
             ))}
           </div>
+        )}
+        {paletteTab !== null && !paletteSplit && (
+          <p className="palette-split-hint" role="note">
+            <Plus size={15} aria-hidden="true" />
+            {t("Die gewählte Seite öffnet sich in einem neuen Tab.", "The chosen page opens in a new tab.")}
+          </p>
         )}
         {paletteSplit && (
           <p className="palette-split-hint" role="note">

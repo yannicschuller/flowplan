@@ -13,8 +13,22 @@ export type Tab = {
   // The places this tab went through and where it stands among them.
   stack: string[];
   index: number;
+  // Pinned (#444): kept at the left of its frame, shown as its icon only,
+  // not closed by the close shortcuts, the middle button or "close other
+  // tabs" – only from its menu.
+  pinned?: boolean;
+  // The id of its group (#444) in the frame's `groups`.
+  group?: string;
 };
-export type Frame = { tabs: Tab[]; active: string };
+// Tab groups (#444): a named, coloured run of tabs in one frame. A group's
+// tabs stand side by side; pinned tabs belong to none; a group without
+// tabs goes; a collapsed group shows as its chip only – never with the
+// active tab inside (switching into it opens it again).
+export const GROUP_COLORS = ["gray", "blue", "green", "red", "yellow", "orange", "purple", "pink", "teal"] as const;
+export type GroupColor = (typeof GROUP_COLORS)[number];
+export type TabGroup = { id: string; name: string; color: GroupColor; collapsed?: boolean };
+export const MAX_GROUP_NAME = 60;
+export type Frame = { tabs: Tab[]; active: string; groups?: TabGroup[] };
 export type Layout = {
   // One frame, or two side by side (index 0: left, the main view).
   frames: Frame[];
@@ -30,6 +44,7 @@ export const MAX_STACK = 50;
 
 let counter = 0;
 export const newTabId = () => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+export const newGroupId = () => `g${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export const placeOf = (tab: Tab) => tab.stack[tab.index];
 export const tabOf = (frame: Frame) => frame.tabs.find((t) => t.id === frame.active) ?? frame.tabs[0];
@@ -38,6 +53,51 @@ export const activePlace = (layout: Layout, frame = layout.focused) => {
   return f ? placeOf(tabOf(f)) : null;
 };
 export const tabCount = (layout: Layout) => layout.frames.reduce((n, f) => n + f.tabs.length, 0);
+// The pinned tabs lead their frame: how many there are.
+export const pinnedCount = (frame: Frame) => {
+  const at = frame.tabs.findIndex((t) => !t.pinned);
+  return at < 0 ? frame.tabs.length : at;
+};
+// Pinned tabs first, otherwise the order kept.
+const pinnedFirst = (tabs: Tab[]) => [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
+const withoutGroup = (tab: Tab): Tab => {
+  if (!tab.group) return tab;
+  const { group: _gone, ...rest } = tab;
+  return rest;
+};
+
+export const groupOf = (frame: Frame, tab: Tab | undefined) => (tab?.group ? (frame.groups?.find((g) => g.id === tab.group) ?? null) : null);
+export const groupTabs = (frame: Frame, groupId: string) => frame.tabs.filter((t) => t.group === groupId);
+// Hidden in a collapsed group.
+export const tabHidden = (frame: Frame, tab: Tab) => !!groupOf(frame, tab)?.collapsed && tab.id !== frame.active;
+
+// The frame with its rules kept: pinned tabs first and in no group; a
+// group's tabs side by side (where its first tab stands); groups without
+// tabs and tabs of unknown groups let go; the active tab's group open.
+export function tidy(frame: Frame): Frame {
+  const known = new Set((frame.groups ?? []).map((g) => g.id));
+  const clean = pinnedFirst(frame.tabs.map((t) => (t.group && (t.pinned || !known.has(t.group)) ? withoutGroup(t) : t)));
+  const tabs: Tab[] = [];
+  const placed = new Set<string>();
+  for (const t of clean) {
+    if (!t.group) tabs.push(t);
+    else if (!placed.has(t.group)) {
+      placed.add(t.group);
+      tabs.push(...clean.filter((x) => x.group === t.group));
+    }
+  }
+  const open = tabs.find((t) => t.id === frame.active)?.group;
+  const groups = (frame.groups ?? [])
+    .filter((g) => placed.has(g.id))
+    .map((g) => {
+      if (g.id !== open || !g.collapsed) return g;
+      const { collapsed: _open, ...rest } = g;
+      return rest;
+    });
+  const next: Frame = { tabs, active: frame.active };
+  if (groups.length) next.groups = groups;
+  return next;
+}
 
 export function singleLayout(place: string, id = newTabId()): Layout {
   return { frames: [{ tabs: [{ id, stack: [place], index: 0 }], active: id }], focused: 0 };
@@ -45,7 +105,7 @@ export function singleLayout(place: string, id = newTabId()): Layout {
 
 const withFrame = (layout: Layout, index: number, frame: Frame): Layout => ({
   ...layout,
-  frames: layout.frames.map((f, i) => (i === index ? frame : f)),
+  frames: layout.frames.map((f, i) => (i === index ? tidy(frame) : f)),
 });
 const withTab = (frame: Frame, tab: Tab): Frame => ({ ...frame, tabs: frame.tabs.map((t) => (t.id === tab.id ? tab : t)) });
 const clampFocus = (layout: Layout): Layout => ({ ...layout, focused: Math.max(0, Math.min(layout.focused, layout.frames.length - 1)) });
@@ -141,10 +201,12 @@ export function activate(layout: Layout, frame: number, tabId: string): Layout {
 // (0-based; Infinity: the last).
 export function cycle(layout: Layout, frame: number, delta: number): Layout {
   const f = layout.frames[frame];
-  if (!f || f.tabs.length < 2) return layout;
-  const at = f.tabs.findIndex((t) => t.id === tabOf(f).id);
-  const n = f.tabs.length;
-  return activate(layout, frame, f.tabs[(((at + delta) % n) + n) % n].id);
+  // Not into collapsed groups.
+  const shown = f ? f.tabs.filter((t) => !tabHidden(f, t)) : [];
+  if (!f || shown.length < 2) return layout;
+  const at = shown.findIndex((t) => t.id === tabOf(f).id);
+  const n = shown.length;
+  return activate(layout, frame, shown[(((at + delta) % n) + n) % n].id);
 }
 export function nth(layout: Layout, frame: number, index: number): Layout {
   const f = layout.frames[frame];
@@ -172,9 +234,13 @@ export function open(
   }
   // Full: the active tab goes to the place instead.
   if (f.tabs.length >= MAX_TABS) return focus(follow(layout, frame, place, "push"), frame);
-  const at = f.tabs.findIndex((t) => t.id === tabOf(f).id);
-  const tabs = [...f.tabs.slice(0, at + 1), tab, ...f.tabs.slice(at + 1)];
-  const next = withFrame(layout, frame, { tabs, active: options.background ? f.active : id });
+  // Beside the active tab, never among the pinned ones; in its group, if
+  // it has one (as a browser does).
+  const current = tabOf(f);
+  const at = Math.max(f.tabs.findIndex((t) => t.id === current.id) + 1, pinnedCount(f));
+  if (current.group && !current.pinned) tab.group = current.group;
+  const tabs = [...f.tabs.slice(0, at), tab, ...f.tabs.slice(at)];
+  const next = withFrame(layout, frame, { ...f, tabs, active: options.background ? f.active : id });
   return options.background ? next : { ...next, focused: frame };
 }
 
@@ -184,7 +250,7 @@ function afterRemoval(f: Frame, at: number, removedId: string): Frame | null {
   const tabs = f.tabs.filter((t) => t.id !== removedId);
   if (!tabs.length) return null;
   const active = f.active === removedId ? tabs[Math.min(at, tabs.length - 1)].id : f.active;
-  return { tabs, active };
+  return { ...f, tabs, active };
 }
 function dropFrame(layout: Layout, frame: number): Layout {
   const frames = layout.frames.filter((_, i) => i !== frame);
@@ -208,7 +274,22 @@ export function closeOthers(layout: Layout, frame: number, tabId: string): Layou
   const f = layout.frames[frame];
   const tab = f?.tabs.find((t) => t.id === tabId);
   if (!tab) return layout;
-  return { ...withFrame(layout, frame, { tabs: [tab], active: tab.id }), focused: frame };
+  // Pinned tabs stay.
+  return { ...withFrame(layout, frame, { ...f, tabs: f.tabs.filter((t) => t.id === tabId || t.pinned), active: tab.id }), focused: frame };
+}
+
+// Pins a tab (to the end of the pinned ones) or unpins it (to the first
+// place after them).
+export function pin(layout: Layout, frame: number, tabId: string, pinned = true): Layout {
+  const f = layout.frames[frame];
+  const tab = f?.tabs.find((t) => t.id === tabId);
+  if (!f || !tab || !!tab.pinned === pinned) return layout;
+  const rest = f.tabs.filter((t) => t.id !== tabId);
+  const at = pinnedCount({ ...f, tabs: rest });
+  const changed: Tab = withoutGroup({ ...tab });
+  if (pinned) changed.pinned = true;
+  else delete changed.pinned;
+  return withFrame(layout, frame, { ...f, tabs: [...rest.slice(0, at), changed, ...rest.slice(at)] });
 }
 // Closes a whole frame (the split view's "close"). The only frame stays.
 export function closeFrame(layout: Layout, frame: number): Layout {
@@ -227,8 +308,14 @@ export function move(layout: Layout, from: number, tabId: string, to: number, in
   if (to === from) {
     const tabs = source.tabs.filter((t) => t.id !== tabId);
     const place = Math.max(0, Math.min(index > at ? index - 1 : index, tabs.length));
-    tabs.splice(place, 0, tab);
-    return { ...withFrame(layout, from, { tabs, active: tabId }), focused: from };
+    // Between two tabs of a group: into it; out of its own group's run:
+    // out of the group; beside its group: it stays in.
+    const left = tabs[place - 1]?.group,
+      right = tabs[place]?.group;
+    const group = left && left === right ? left : tab.group && (left === tab.group || right === tab.group) ? tab.group : undefined;
+    const moved = group ? { ...tab, group } : withoutGroup(tab);
+    tabs.splice(place, 0, moved);
+    return { ...withFrame(layout, from, { ...source, tabs: pinnedFirst(tabs), active: tabId }), focused: from };
   }
   const target = Math.min(to, layout.frames.length, MAX_FRAMES - 1);
   if (target === from) return layout;
@@ -237,11 +324,13 @@ export function move(layout: Layout, from: number, tabId: string, to: number, in
   const rest = afterRemoval(source, at, tabId);
   let next: Layout = rest ? withFrame(layout, from, rest) : layout;
   const dest = next.frames[target];
-  if (!dest) next = { ...next, frames: [...next.frames, { tabs: [tab], active: tab.id }] };
+  // Into the other frame without its group (groups are per frame).
+  const moved = withoutGroup(tab);
+  if (!dest) next = { ...next, frames: [...next.frames, { tabs: [moved], active: tab.id }] };
   else {
     const tabs = dest.tabs.slice();
-    tabs.splice(Math.max(0, Math.min(index, tabs.length)), 0, tab);
-    next = withFrame(next, target, { tabs, active: tab.id });
+    tabs.splice(Math.max(0, Math.min(index, tabs.length)), 0, moved);
+    next = withFrame(next, target, { ...dest, tabs: pinnedFirst(tabs), active: tab.id });
   }
   next = { ...next, focused: target };
   return rest ? next : dropFrame(next, from);
@@ -257,19 +346,161 @@ export function moveBy(layout: Layout, frame: number, tabId: string, delta: numb
 }
 
 // ---------------------------------------------------------------------------
+// Tab groups (#444).
+
+// The colour a new group gets: the first one not used in the frame yet
+// (grey last: it reads as "no colour").
+export function nextGroupColor(frame: Frame): GroupColor {
+  const used = new Set((frame.groups ?? []).map((g) => g.color));
+  const order = [...GROUP_COLORS.filter((c) => c !== "gray"), "gray" as const];
+  return order.find((c) => !used.has(c)) ?? order[(frame.groups?.length ?? 0) % order.length];
+}
+export const groupName = (name: unknown, fallback: string) => {
+  const clean = typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, MAX_GROUP_NAME) : "";
+  return clean || fallback;
+};
+export const isGroupColor = (value: unknown): value is GroupColor => typeof value === "string" && (GROUP_COLORS as readonly string[]).includes(value);
+
+// A new group of one tab (where it stands); not for pinned tabs.
+export function createGroup(layout: Layout, frame: number, tabId: string, group: { name: string; color?: GroupColor; id?: string }): Layout {
+  const f = layout.frames[frame];
+  const tab = f?.tabs.find((t) => t.id === tabId);
+  if (!f || !tab || tab.pinned) return layout;
+  const id = group.id ?? newGroupId();
+  const created: TabGroup = { id, name: groupName(group.name, "…"), color: group.color ?? nextGroupColor(f) };
+  // Out of a group it was in: right after that group.
+  let tabs = f.tabs;
+  if (tab.group) {
+    const rest = f.tabs.filter((t) => t.id !== tabId);
+    const last = rest.map((t) => t.group).lastIndexOf(tab.group);
+    tabs = [...rest.slice(0, last + 1), tab, ...rest.slice(last + 1)];
+  }
+  return withFrame(layout, frame, { ...f, tabs: tabs.map((t) => (t.id === tabId ? { ...t, group: id } : t)), groups: [...(f.groups ?? []), created] });
+}
+
+// A tab into a group of its frame: at the group's end.
+export function joinGroup(layout: Layout, frame: number, tabId: string, groupId: string): Layout {
+  const f = layout.frames[frame];
+  const tab = f?.tabs.find((t) => t.id === tabId);
+  if (!f || !tab || tab.pinned || tab.group === groupId || !f.groups?.some((g) => g.id === groupId)) return layout;
+  const rest = f.tabs.filter((t) => t.id !== tabId);
+  const last = rest.map((t) => t.group).lastIndexOf(groupId);
+  const tabs = [...rest.slice(0, last + 1), { ...tab, group: groupId }, ...rest.slice(last + 1)];
+  return withFrame(layout, frame, { ...f, tabs });
+}
+
+// A tab out of its group: right after the group.
+export function leaveGroup(layout: Layout, frame: number, tabId: string): Layout {
+  const f = layout.frames[frame];
+  const tab = f?.tabs.find((t) => t.id === tabId);
+  if (!f || !tab?.group) return layout;
+  const rest = f.tabs.filter((t) => t.id !== tabId);
+  const last = rest.map((t) => t.group).lastIndexOf(tab.group);
+  const at = last < 0 ? f.tabs.findIndex((t) => t.id === tabId) : last + 1;
+  return withFrame(layout, frame, { ...f, tabs: [...rest.slice(0, at), withoutGroup(tab), ...rest.slice(at)] });
+}
+
+// Name, colour, collapsed. Collapsing the group of the active tab first
+// activates the nearest tab outside it (to the right, else the left); a
+// frame of that group alone does not collapse.
+export function updateGroup(layout: Layout, frame: number, groupId: string, change: { name?: string; color?: GroupColor; collapsed?: boolean }): Layout {
+  const f = layout.frames[frame];
+  const group = f?.groups?.find((g) => g.id === groupId);
+  if (!f || !group) return layout;
+  const next: TabGroup = { ...group };
+  if (change.name !== undefined) next.name = groupName(change.name, group.name);
+  if (change.color && isGroupColor(change.color)) next.color = change.color;
+  let active = f.active;
+  if (change.collapsed === false) delete next.collapsed;
+  else if (change.collapsed) {
+    if (tabOf(f).group === groupId) {
+      const first = f.tabs.findIndex((t) => t.group === groupId),
+        last = f.tabs.map((t) => t.group).lastIndexOf(groupId);
+      const other = f.tabs.slice(last + 1).find((t) => !tabHidden(f, t)) ?? f.tabs.slice(0, first).reverse().find((t) => !tabHidden(f, t));
+      if (!other) return layout;
+      active = other.id;
+    }
+    next.collapsed = true;
+  }
+  if (JSON.stringify(next) === JSON.stringify(group) && active === f.active) return layout;
+  return withFrame(layout, frame, { ...f, active, groups: f.groups!.map((g) => (g.id === groupId ? next : g)) });
+}
+
+// The tabs stay, the group goes.
+export function ungroup(layout: Layout, frame: number, groupId: string): Layout {
+  const f = layout.frames[frame];
+  if (!f?.groups?.some((g) => g.id === groupId)) return layout;
+  return withFrame(layout, frame, { ...f, tabs: f.tabs.map((t) => (t.group === groupId ? withoutGroup(t) : t)), groups: f.groups.filter((g) => g.id !== groupId) });
+}
+
+// Closes the group's tabs. The active one among them: the tab after the
+// group becomes active, else the one before; a frame left empty closes as
+// with its last tab.
+export function closeGroup(layout: Layout, frame: number, groupId: string, fallback = "home"): Layout {
+  const f = layout.frames[frame];
+  if (!f?.groups?.some((g) => g.id === groupId)) return layout;
+  const first = f.tabs.findIndex((t) => t.group === groupId);
+  const tabs = f.tabs.filter((t) => t.group !== groupId);
+  if (!tabs.length) {
+    if (layout.frames.length > 1) return dropFrame(layout, frame);
+    return singleLayout(fallback);
+  }
+  const active = tabs.some((t) => t.id === f.active) ? f.active : tabs[Math.min(first, tabs.length - 1)].id;
+  return withFrame(layout, frame, { ...f, tabs, active });
+}
+
+// The whole group one step left (-1) or right (+1): past the next tab or
+// group beside it, never among the pinned tabs.
+export function moveGroup(layout: Layout, frame: number, groupId: string, delta: number): Layout {
+  const f = layout.frames[frame];
+  if (!f?.groups?.some((g) => g.id === groupId) || !delta) return layout;
+  // The frame as runs: a group, or a single tab.
+  const runs: Tab[][] = [];
+  for (const t of f.tabs) {
+    const last = runs[runs.length - 1];
+    if (t.group && last?.[0].group === t.group) last.push(t);
+    else runs.push([t]);
+  }
+  const at = runs.findIndex((r) => r[0].group === groupId);
+  const to = at + (delta > 0 ? 1 : -1);
+  if (to < 0 || to >= runs.length || runs[to][0].pinned) return layout;
+  [runs[at], runs[to]] = [runs[to], runs[at]];
+  return withFrame(layout, frame, { ...f, tabs: runs.flat() });
+}
+
+// ---------------------------------------------------------------------------
 // Kept per device (components/frame-tabs.tsx: localStorage and the
 // browser tab's sessionStorage).
 
-export type StoredLayout = { v: 1; focused: number; frames: { active: number; tabs: { stack: string[]; index: number }[] }[] };
+// `pinned` and the groups (#444) are only written when set: layouts from
+// before stay valid and older versions of the app read the new ones
+// (without pins and groups). A tab's `group` is the index in its frame's
+// `groups`.
+type StoredGroup = { name: string; color: GroupColor; collapsed?: true };
+export type StoredLayout = {
+  v: 1;
+  focused: number;
+  frames: { active: number; tabs: { stack: string[]; index: number; pinned?: true; group?: number }[]; groups?: StoredGroup[] }[];
+};
 
 export function serialize(layout: Layout): StoredLayout {
   return {
     v: 1,
     focused: layout.focused,
-    frames: layout.frames.map((f) => ({
-      active: Math.max(0, f.tabs.findIndex((t) => t.id === f.active)),
-      tabs: f.tabs.map((t) => ({ stack: t.stack, index: t.index })),
-    })),
+    frames: layout.frames.map((f) => {
+      const groups = f.groups ?? [];
+      const at = (id: string | undefined) => (id ? groups.findIndex((g) => g.id === id) : -1);
+      return {
+        active: Math.max(0, f.tabs.findIndex((t) => t.id === f.active)),
+        tabs: f.tabs.map((t) => ({
+          stack: t.stack,
+          index: t.index,
+          ...(t.pinned ? { pinned: true as const } : {}),
+          ...(at(t.group) >= 0 ? { group: at(t.group) } : {}),
+        })),
+        ...(groups.length ? { groups: groups.map((g): StoredGroup => ({ name: g.name, color: g.color, ...(g.collapsed ? { collapsed: true as const } : {}) })) } : {}),
+      };
+    }),
   };
 }
 
@@ -284,6 +515,16 @@ export function restore(value: unknown, valid: (place: string) => boolean): Layo
   const kept: number[] = [];
   for (const [i, raw] of stored.frames.slice(0, MAX_FRAMES).entries()) {
     if (!raw || !Array.isArray(raw.tabs)) continue;
+    // The frame's groups, checked; a tab's index into them becomes the id.
+    const groups: TabGroup[] = (Array.isArray(raw.groups) ? raw.groups.slice(0, MAX_TABS) : []).map((g: unknown) => {
+      const stored = (g && typeof g === "object" ? g : {}) as Partial<StoredGroup>;
+      return {
+        id: newGroupId(),
+        name: groupName(stored.name, "…"),
+        color: isGroupColor(stored.color) ? stored.color : "gray",
+        ...(stored.collapsed === true ? { collapsed: true } : {}),
+      };
+    });
     const tabs: Tab[] = [];
     let active: string | null = null;
     for (const [j, t] of raw.tabs.slice(0, MAX_TABS).entries()) {
@@ -305,13 +546,21 @@ export function restore(value: unknown, valid: (place: string) => boolean): Layo
         if (position <= at) index = stack.length - 1;
       }
       if (!stack.length) continue;
-      const tab = { id: newTabId(), stack, index: Math.max(0, index) };
+      const extra = t as { pinned?: unknown; group?: unknown };
+      const group = Number.isInteger(extra.group) ? groups[extra.group as number] : undefined;
+      const tab: Tab = {
+        id: newTabId(),
+        stack,
+        index: Math.max(0, index),
+        ...(extra.pinned === true ? { pinned: true } : {}),
+        ...(group ? { group: group.id } : {}),
+      };
       tabs.push(tab);
       if (j === raw.active) active = tab.id;
       else if (active === null && j > (raw.active ?? 0)) active = tab.id;
     }
     if (!tabs.length) continue;
-    frames.push({ tabs, active: active ?? tabs[tabs.length - 1].id });
+    frames.push(tidy({ tabs, active: active ?? tabs[tabs.length - 1].id, groups }));
     kept.push(i);
   }
   if (!frames.length) return null;

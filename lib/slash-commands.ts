@@ -126,3 +126,8 @@ export function rememberSlashCommand(id: string, current = readSlashRecents()): 
   } catch {}
   return next;
 }
+
+// "/Seite" (#444): a new sub-page of this page (of a record: below the
+// record), linked where the cursor is. Found by these words as well; it
+// comes before "Seitenumbruch", whose words start the same.
+export const SUB_PAGE_KEYWORDS = ["page", "seite", "newpage", "neueseite", "neue seite", "subpage", "unterseite", "sub-page", "new page", "nouvellepage", "sous-page", "子页面", "新页面", "страница", "подстраница"];

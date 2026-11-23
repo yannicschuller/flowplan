@@ -207,17 +207,22 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
       ],
     },
     {
-      // components/frame-tabs.tsx (#279). ⌘/Ctrl+W, Ctrl+Tab and ⌘/Ctrl+1…9
-      // belong to the browser's own tabs: only in the desktop app.
+      // components/frame-tabs.tsx (#279, #444). ⌘/Ctrl+W, ⌘/Ctrl+T, Ctrl+Tab
+      // and ⌘/Ctrl+1…9 belong to the browser's own tabs: only in the desktop app.
       title: t("Tabs", "Tabs"),
       items: [
-        { label: t("Tab schließen", "Close the tab"), keys: [k("Alt+W"), ...(desktop ? [k("Mod+W")] : []), t("Mittlere Maustaste", "Middle mouse button")] },
+        { label: t("Neuer Tab (Seite suchen)", "New tab (find a page)"), keys: [k("Alt+T"), ...(desktop ? [k("Mod+T")] : [])] },
+        { label: t("Tab schließen (nicht angeheftete)", "Close the tab (unless pinned)"), keys: [k("Alt+W"), ...(desktop ? [k("Mod+W")] : []), t("Mittlere Maustaste", "Middle mouse button")] },
         { label: t("Nächster / vorheriger Tab", "Next / previous tab"), keys: [k("Mod+Alt+PageDown"), k("Mod+Alt+PageUp"), ...(desktop ? [formatCombo("Ctrl+Tab", mac), formatCombo("Ctrl+Shift+Tab", mac)] : [])] },
         { label: t("Tab nach rechts / links verschieben", "Move the tab right / left"), keys: [k("Mod+Alt+Shift+PageDown"), k("Mod+Alt+Shift+PageUp"), ...(desktop ? [formatCombo("Ctrl+Shift+PageDown", mac)] : [])] },
         ...(desktop ? [{ label: t("Tab 1–8 / letzter Tab", "Tab 1–8 / last tab"), keys: [k("Mod+1"), "…", k("Mod+9")] }] : []),
         { label: t("Zwischen Tabs bewegen (Tab fokussiert)", "Move between tabs (tab focused)"), keys: ["←", "→", "Home", "End"] },
         { label: t("Fokussierten Tab verschieben", "Move the focused tab"), keys: [k("Alt+Shift+ArrowLeft"), k("Alt+Shift+ArrowRight")] },
         { label: t("Fokussierten Tab schließen", "Close the focused tab"), keys: [t("Entf", "Delete")] },
+        { label: t("Tab-Gruppe ein- / ausklappen (Gruppe fokussiert)", "Collapse / expand a tab group (group focused)"), keys: ["↵", t("Leertaste", "Space")] },
+        { label: t("Tab-Gruppe umbenennen (Gruppe fokussiert)", "Rename a tab group (group focused)"), keys: ["F2"] },
+        { label: t("Tab-Gruppe verschieben (Gruppe fokussiert)", "Move a tab group (group focused)"), keys: [k("Alt+Shift+ArrowLeft"), k("Alt+Shift+ArrowRight")] },
+        { label: t("Menü des fokussierten Tabs oder der Gruppe", "Menu of the focused tab or group"), keys: [k("Shift+F10")] },
       ],
     },
     {

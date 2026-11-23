@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rankCommands, slashSections, rememberSlashCommand, readSlashRecents, type SlashCommand } from "../lib/slash-commands";
+import { rankCommands, slashSections, rememberSlashCommand, readSlashRecents, SUB_PAGE_KEYWORDS, type SlashCommand } from "../lib/slash-commands";
 
 const commands = [
   { name: "Text", description: "Einfach losschreiben", keywords: ["p"] },
@@ -75,4 +75,19 @@ test("recently used blocks are kept, newest first, at most five; without storage
   let recents = rememberSlashCommand("h2", []);
   for (const id of ["todo", "table", "h2", "text", "callout-note", "synced"]) recents = rememberSlashCommand(id, recents);
   assert.deepEqual(recents, ["synced", "callout-note", "text", "h2", "table"]);
+});
+
+test("/page, /newpage, /subpage, /seite, /unterseite and /neue seite find the new sub-page first (#444)", () => {
+  // The neighbours that share words with it, as in components/editor.tsx.
+  const menu = (de: boolean): SlashCommand[] => [
+    { id: "subpage", group: "blocks", name: de ? "Seite" : "Page", description: de ? "Neue Unterseite anlegen und hier verlinken" : "Create a sub-page and link it here", keywords: SUB_PAGE_KEYWORDS },
+    { id: "mention", group: "database", name: de ? "Seite, Eintrag oder Person erwähnen" : "Mention a page, record or person", description: "", keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"] },
+    { id: "page-break", group: "text", name: de ? "Seitenumbruch" : "Page break", description: "", keywords: ["seitenumbruch", "pagebreak", "page break", "umbruch", "newpage", "break", "drucken", "print", "pdf"] },
+  ];
+  for (const de of [true, false])
+    for (const query of ["page", "newpage", "subpage", "seite", "unterseite", "neue seite", "Neue Seite", "sub-page"])
+      assert.equal(rankCommands(menu(de), query)[0].id, "subpage", `${de ? "de" : "en"} /${query}`);
+  // Page breaks are still found by their own words.
+  assert.equal(rankCommands(menu(true), "seitenumbruch")[0].id, "page-break");
+  assert.equal(rankCommands(menu(false), "pagebreak")[0].id, "page-break");
 });

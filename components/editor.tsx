@@ -100,7 +100,8 @@ import { BlockGaps } from "@/lib/block-gaps";
 import { useCanCreatePages } from "./create-rights";
 import { readTable, tableTitle } from "@/lib/table-read";
 import { TABLE_DATABASE_LIMITS } from "@/lib/table-database";
-import { registerDocumentFlush } from "@/lib/document-flush";
+import { flushOpenDocuments, registerDocumentFlush } from "@/lib/document-flush";
+import { subPageCreator } from "./sub-page-create";
 import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
 import { toggleDocumentKey } from "@/lib/toggle-memory";
@@ -150,7 +151,7 @@ import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
-import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
+import { readSlashRecents, rememberSlashCommand, slashSections, SUB_PAGE_KEYWORDS, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
 import { type ComponentProps, Fragment, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
@@ -188,6 +189,7 @@ import {
   TextHFour,
   Minus,
   FileDashed,
+  FilePlus,
   Plus,
   Info,
   ChatCenteredText,
@@ -646,6 +648,34 @@ export default function DocumentEditor({
     const tr = editor.state.tr.replaceWith(range.from, range.to, link);
     editor.view.dispatch(tr.scrollIntoView());
     showToast({ text: t("In eine Seite umgewandelt.", "Turned into a page."), action: { label: t("Seite öffnen", "Open page"), run: open } });
+  };
+  // "/Seite" (#444): a new, empty sub-page of this page (of a record: below
+  // the record, #231), asked nothing – "Ohne Titel" – linked where the
+  // cursor is, in one step (undo takes the link away; the page stays, as
+  // with "Umwandeln in → Seite"). Once the link is stored the new page
+  // opens with its title ready for typing; the link text follows its
+  // renames (lib/link-titles.ts).
+  const addSubPage = useRef(async () => {});
+  addSubPage.current = async () => {
+    const creator = subPageCreator();
+    if (!editor || editor.isDestroyed || !creator) return;
+    const before = editor.state.doc,
+      at = editor.state.selection.from;
+    let created: { id: string; title: string } | null = null;
+    try {
+      created = await creator.create(pageId, rowId ?? null);
+    } catch (error) {
+      onError((error as Error).message);
+      return;
+    }
+    if (!created || editor.isDestroyed) return;
+    const link = { type: "text", text: created.title, marks: [{ type: "link", attrs: { href: `/#page=${created.id}` } }] };
+    // Typed on meanwhile: where the cursor is now.
+    const chain = editor.chain().focus();
+    (editor.state.doc === before ? chain.insertContentAt(at, link) : chain.insertContent(link)).run();
+    if (navigator.onLine)
+      await Promise.race([flushOpenDocuments().catch(() => undefined), new Promise((done) => setTimeout(done, 4000))]);
+    creator.open(created.id, editor.isDestroyed ? null : editor.view.dom);
   };
   // "In Datenbank umwandeln" (#118): the table around the cursor becomes a
   // database below this document (the server creates it with its records);
@@ -2298,6 +2328,21 @@ export default function DocumentEditor({
       icon: Note,
       run: () => editor?.chain().focus().openFootnote().run(),
     },
+    ...(editable && canCreatePages && !embedded && !draft?.journal && subPageCreator()
+      ? [
+          {
+            id: "subpage",
+            group: "blocks" as const,
+            name: t("Seite", "Page"),
+            keywords: SUB_PAGE_KEYWORDS,
+            description: rowId
+              ? t("Neue Unterseite des Eintrags anlegen und hier verlinken", "Create a sub-page of the record and link it here")
+              : t("Neue Unterseite anlegen und hier verlinken", "Create a sub-page and link it here"),
+            icon: FilePlus,
+            run: () => void addSubPage.current(),
+          } satisfies SlashItem,
+        ]
+      : []),
     {
       id: "mention",
       group: "database",
