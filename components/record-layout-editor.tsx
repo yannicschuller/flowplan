@@ -73,6 +73,22 @@ export function RecordLayoutEditor({
           <option value="side">{t("Neben dem Inhalt", "Beside the content")}</option>
         </Select>
       </label>
+      <label>
+        {t("Position der Unterseiten", "Position of sub-pages")}
+        <Select
+          value={draft.subpages || "bottom"}
+          disabled={busy}
+          onChange={(e) =>
+            void change({
+              ...draft,
+              subpages: e.target.value as RecordLayout["subpages"],
+            })
+          }
+        >
+          <option value="bottom">{t("Unter dem Inhalt", "Below the content")}</option>
+          <option value="top">{t("Über dem Inhalt", "Above the content")}</option>
+        </Select>
+      </label>
       <label className="checkbox-label">
         <input
           type="checkbox"

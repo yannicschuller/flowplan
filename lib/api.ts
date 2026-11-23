@@ -137,7 +137,7 @@ import { cleanDefaults, creationTime, withDefaults } from "./field-defaults";
 import { cleanRequired } from "./field-required";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
-import { cleanRecordOrder, parseRecordLayout, recordLayoutSchema } from "./record-layout";
+import { cleanRecordLayout, parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { afterContactWrite, contactCellsFor, contactsPageData } from "./contacts";
 import {
   assertRowAccess,
@@ -1479,6 +1479,9 @@ async function runCommand(
                 database: z.object({
                   fields: z.array(field).min(1).max(80),
                   views: z.array(view).min(1).max(30),
+                  // The record layout (#449), read leniently: exports
+                  // from before have none.
+                  recordLayout: z.unknown().optional(),
                 }),
                 rows: z
                   .array(
@@ -1510,6 +1513,12 @@ async function runCommand(
               ),
               np,
             );
+            if (d.database.recordLayout !== undefined)
+              await run(
+                "UPDATE databases SET record_layout=? WHERE page_id=?",
+                JSON.stringify(cleanRecordLayout(parseRecordLayout(d.database.recordLayout), fields)),
+                np,
+              );
             for (const [i, r] of d.rows.entries())
               await run(
                 "INSERT INTO rows(id,page_id,cells,content,position,created_by,updated_by) VALUES(?,?,?,?,?,?,?)",
@@ -3138,17 +3147,11 @@ async function runCommand(
       case "database.recordLayout": {
         const p = await write();
         const fields = (await database(p.id)).fields;
-        const layout = recordLayoutSchema.parse(b.layout);
+        // The title stays visible, unknown properties are dropped, the
+        // record page's order (#305) keeps known properties, each once.
+        const layout = cleanRecordLayout(recordLayoutSchema.parse(b.layout), fields);
         // Kept in the database's versions like its other settings.
         await autoDatabaseSnapshot(user, p);
-        // The title stays visible; unknown properties are dropped.
-        layout.hidden = [...new Set(layout.hidden)].filter(
-          (fid) => fid !== fields[0]?.id && fields.some((f) => f.id === fid),
-        );
-        // The record page's order (#305): known properties, each once.
-        const order = cleanRecordOrder(layout.order, fields);
-        if (order) layout.order = order;
-        else delete layout.order;
         await run(
           "UPDATE databases SET record_layout=? WHERE page_id=?",
           JSON.stringify(layout),

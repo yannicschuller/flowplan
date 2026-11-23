@@ -2613,6 +2613,14 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 .record-subpages .record-subpage > svg:last-child {
   margin-left: auto;
 }
+/* Above the document (#449): directly below the properties; an empty
+   list is only its "Add sub-page" action. */
+.record-subpages.at-top {
+  margin: 0 0 20px;
+}
+.record-subpages.at-top.empty .subpages > .text-button {
+  margin-top: 0;
+}
 .record-subpages.dropping {
   outline: 2px dashed var(--blue);
   outline-offset: 4px;
@@ -8755,6 +8763,10 @@ body:has(.public-page:not(.public-wide) .public-embed) {
 }
 .public-children h2 {
   font-size: 15px;
+}
+/* Above the document (#449): closer to the properties. */
+.public-children-top {
+  margin: 24px 0 32px;
 }
 .public-children > a {
   display: flex;

@@ -115,6 +115,11 @@ const databaseFields = async (pageId: string): Promise<Field[]> => {
   const fields = JSON.parse(String(db?.fields || "[]")) as Field[];
   return orderRecordFields(fields, parseRecordLayout(db?.record_layout).order);
 };
+// Where the shared record shows its sub-pages (#449), as inside Flowplan.
+export async function recordSubPagesPlace(pageId: string) {
+  const db = await one<{ record_layout: string | null }>("SELECT record_layout FROM databases WHERE page_id=?", pageId);
+  return parseRecordLayout(db?.record_layout).subpages;
+}
 
 // ---- Linked records ----
 

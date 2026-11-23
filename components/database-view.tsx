@@ -6536,6 +6536,19 @@ export default function DatabaseView({
                 </>)}
               </div>
               <div className="row-main">
+                {/* Pages below the record (#231) above its document (#449). */}
+                {!record && recordLayout.subpages === "top" && (
+                  <RecordSubPages
+                    key={`subpages-${selected.id}`}
+                    database={page}
+                    rowId={selected.id}
+                    pages={pages}
+                    editable={selectedEditable && !readingRecord && !page.locked}
+                    mutate={mutate}
+                    onError={onError}
+                    place="top"
+                  />
+                )}
                 <RowDocument
                   key={`${selected.id}-${documentRevision}`}
                   pageId={page.id}
@@ -6552,7 +6565,7 @@ export default function DatabaseView({
                   onChanged={onRefresh}
                 />
                 {/* Pages below the record (#231), like a page's sub-pages. */}
-                {!record && (
+                {!record && recordLayout.subpages !== "top" && (
                   <RecordSubPages
                     key={`subpages-${selected.id}`}
                     database={page}

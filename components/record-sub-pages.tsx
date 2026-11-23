@@ -1,12 +1,13 @@
 "use client";
-// "Unterseiten" of a record (#231): below the record's document, in its
-// dialog and on its page – the pages that sit below the record
+// "Unterseiten" of a record (#231): below the record's document (or above
+// it, as the record layout says, #449), in its dialog and on its page – the pages that sit below the record
 // (pages.parent_row_id, lib/record-pages.ts), a way to add one, and a drop
 // zone for pages dragged from the sidebar.
 import { useState } from "react";
 import { ArrowUpRight, Plus } from "@phosphor-icons/react";
 import { pageLocationHash } from "@/lib/page-location";
 import { shownPageIcon } from "@/lib/page-link-icons";
+import type { RecordSubPagesPlace } from "@/lib/record-layout";
 import type { Page } from "@/lib/types";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
@@ -18,6 +19,7 @@ export function RecordSubPages({
   editable,
   mutate,
   onError,
+  place = "bottom",
 }: {
   database: Page;
   rowId: string;
@@ -25,6 +27,8 @@ export function RecordSubPages({
   editable: boolean;
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
   onError: (message: string) => void;
+  // Above the document an empty list shows only the add action, no heading.
+  place?: RecordSubPagesPlace;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false),
@@ -63,9 +67,10 @@ export function RecordSubPages({
     }
   }
   if (!children.length && !editable) return null;
+  const bare = place === "top" && !children.length;
   return (
     <section
-      className={`record-subpages${dropping ? " dropping" : ""}`}
+      className={`record-subpages${place === "top" ? " at-top" : ""}${bare ? " empty" : ""}${dropping ? " dropping" : ""}`}
       aria-label={t("Unterseiten", "Sub-pages")}
       onDragOver={(e) => {
         if (!editable || !e.dataTransfer.types.includes("application/x-flowplan-page")) return;
@@ -83,7 +88,7 @@ export function RecordSubPages({
         void moveHere(source);
       }}
     >
-      <h3>{t("Unterseiten", "Sub-pages")}</h3>
+      {!bare && <h3>{t("Unterseiten", "Sub-pages")}</h3>}
       <div className="subpages">
         {children.map((p) => (
           <a key={p.id} href={pageLocationHash({ pageId: p.id })} className="record-subpage">

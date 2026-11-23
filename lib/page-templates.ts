@@ -34,6 +34,7 @@ import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { claimTicketPrefix } from "./ticket-refs";
 import { databaseSettings, storeSettings } from "./database-settings";
 import { fittingStudySettings } from "./study-schema";
+import { cleanRecordLayout, parseRecordLayout } from "./record-layout";
 
 export const savedRowTemplateSchema = z.object({
   name: z.string().min(1).max(500),
@@ -51,6 +52,10 @@ export const savedDatabaseTemplateSchema = z.object({
     // travels (docs/specs/flashcards.md §8.4) – checked against the
     // properties when applied; learning states never do.
     settings: z.object({ study: z.unknown().optional() }).optional(),
+    // The record layout (how records open, properties, sub-pages #449):
+    // read leniently when applied (lib/record-layout.ts), so an older or
+    // newer template never fails over it.
+    recordLayout: z.unknown().optional(),
   }),
   rows: z
     .array(
@@ -346,6 +351,14 @@ export async function applyPageTemplate(
       ),
       page.id,
     );
+    // The template's record layout, for its properties; a template
+    // without one keeps the database's.
+    if (source.database.recordLayout !== undefined)
+      await run(
+        "UPDATE databases SET record_layout=? WHERE page_id=?",
+        JSON.stringify(cleanRecordLayout(parseRecordLayout(source.database.recordLayout), nextFields)),
+        page.id,
+      );
     // The card mapping of a flashcard deck, before the records (their
     // cards are indexed with it).
     const study = fittingStudySettings(source.database.settings?.study, nextFields);

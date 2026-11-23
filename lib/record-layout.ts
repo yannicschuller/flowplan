@@ -13,6 +13,8 @@ export const recordOpenLabels: Record<RecordOpenMode, string> = {
   side: "Seitenleiste",
   full: "Ganze Seite",
 };
+export const recordSubPagesPlaces = ["top", "bottom"] as const;
+export type RecordSubPagesPlace = (typeof recordSubPagesPlaces)[number];
 export const recordLayoutSchema = z.object({
   open: z.enum(recordOpenModes).default("center"),
   properties: z.enum(["top", "side"]).default("top"),
@@ -27,6 +29,11 @@ export const recordLayoutSchema = z.object({
   // initials, name, company, e-mail, phone, address) – contacts databases,
   // lib/contacts.ts.
   card: z.enum(["contact"]).optional(),
+  // Where the record's sub-pages (#231, components/record-sub-pages.tsx)
+  // sit (#449): "bottom" below its document (the default, as before),
+  // "top" above it, directly below the properties – there an empty list
+  // is only the "Add sub-page" action.
+  subpages: z.enum(recordSubPagesPlaces).default("bottom"),
 });
 export type RecordLayout = z.infer<typeof recordLayoutSchema>;
 export const defaultRecordLayout: RecordLayout = recordLayoutSchema.parse({});
@@ -37,6 +44,19 @@ export function parseRecordLayout(raw: unknown): RecordLayout {
   } catch {
     return defaultRecordLayout;
   }
+}
+// A layout as the server stores it for these fields: the title stays
+// visible, unknown properties are dropped from the hidden ones and the
+// order (#305) keeps known properties, each once.
+export function cleanRecordLayout(layout: RecordLayout, fields: readonly { id: string }[]): RecordLayout {
+  const next: RecordLayout = {
+    ...layout,
+    hidden: [...new Set(layout.hidden)].filter((fid) => fid !== fields[0]?.id && fields.some((f) => f.id === fid)),
+  };
+  const order = cleanRecordOrder(layout.order, fields);
+  if (order) next.order = order;
+  else delete next.order;
+  return next;
 }
 // The fields in the record page's order: the title first, then the listed
 // properties, then the rest in the database's order.

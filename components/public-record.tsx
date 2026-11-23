@@ -11,7 +11,7 @@ import { ReadOnlyDocument } from "./read-only-document";
 import { PublicOutline } from "./document-outline";
 import { PageIcon } from "./ui";
 import { publicFile, publishedHtml, publishedLinkPages } from "@/lib/publication";
-import { recordHtml, recordReferenceNames, recordSharePages, recordTitle, type RecordScope } from "@/lib/record-share";
+import { recordHtml, recordReferenceNames, recordSharePages, recordSubPagesPlace, recordTitle, type RecordScope } from "@/lib/record-share";
 import { publicHiddenFieldIds, stripCells } from "@/lib/field-access";
 import { computedCells } from "@/lib/database";
 import { displayText } from "@/lib/field-format";
@@ -66,6 +66,20 @@ export async function renderPublicRecord(scope: RecordScope) {
   // Links to the included sub-pages show their icons (#96).
   const linkPages = await publishedLinkPages(token, pages);
   const html = await recordHtml(scope);
+  // Its sub-pages, when the share includes them (#231): below the document
+  // or, as the database's record layout says (#449), above it.
+  const subPagesPlace = await recordSubPagesPlace(page.id);
+  const subPages = children.length > 0 && (
+    <nav className={`public-children${subPagesPlace === "top" ? " public-children-top" : ""}`} aria-label={t("Unterseiten", "Sub-pages")}>
+      <h2>{t("Unterseiten", "Sub-pages")}</h2>
+      {children.map((p) => (
+        <a key={p.id} href={`/share/${token}/${p.id}`}>
+          <PageIcon name={linkPages.find((l) => l.id === p.id)?.icon || "file"} /> {p.title}
+          <span>→</span>
+        </a>
+      ))}
+    </nav>
+  );
   const shownPlugins = await publicPluginIds(page.workspace_id);
   const withPlugins = (value: string) =>
     value.includes("data-plugin")
@@ -144,6 +158,7 @@ export async function renderPublicRecord(scope: RecordScope) {
           ))}
         </dl>
       )}
+      {subPagesPlace === "top" && subPages}
       <PublicOutline />
       <ReadOnlyDocument
         className={`font-${page.font}`}
@@ -152,18 +167,7 @@ export async function renderPublicRecord(scope: RecordScope) {
         title={title}
         html={withPlugins(await publishedHtml(html, token, pages))}
       />
-      {/* Its sub-pages, when the share includes them (#231). */}
-      {children.length > 0 && (
-        <nav className="public-children" aria-label={t("Unterseiten", "Sub-pages")}>
-          <h2>{t("Unterseiten", "Sub-pages")}</h2>
-          {children.map((p) => (
-            <a key={p.id} href={`/share/${token}/${p.id}`}>
-              <PageIcon name={linkPages.find((l) => l.id === p.id)?.icon || "file"} /> {p.title}
-              <span>→</span>
-            </a>
-          ))}
-        </nav>
-      )}
+      {subPagesPlace === "bottom" && subPages}
       {/* A publication only reads: no permission line, no guest comments. */}
       {!scope.publication && <SharedInteractions key={row.id} token={token} initial={await sharedContent(token, page.id, row.id)} />}
       <footer className="home-footnote">{t("Mit Flowplan geteilt", "Shared with Flowplan")}</footer>

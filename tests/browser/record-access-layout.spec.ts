@@ -110,6 +110,7 @@ test("record pages get their own permissions and layout options", async ({
       properties: "side",
       hideEmpty: true,
       hidden: ["intern"],
+      subpages: "bottom",
     });
   // "Als Seite öffnen" shows this record as a page of its own (#231);
   // back to the side panel it came from.
