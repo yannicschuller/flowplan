@@ -1686,6 +1686,7 @@ const patterns: [RegExp, string][] = [
   [/^(\d+) Element\(e\) würden nicht übernommen\.$/, "$1 element(s) would not be taken over."],
   // Notebooks (lib/notebook-library.ts).
   [/^Höchstens (\d+) eigene Sticker\.$/, "At most $1 stickers of your own."],
+  [/^Höchstens (\d+) Anhänge pro Kommentar\.$/, "At most $1 attachments per comment."],
   [/^Maximal (\d+) MB pro Vorlage\.$/, "At most $1 MB per template."],
   [/^Dieser Arbeitsbereich hat schon (\d+) Papiervorlagen\.$/, "This workspace already has $1 paper templates."],
   [/^Dieser Arbeitsbereich hat schon (\d+) eigene Schriften\.$/, "This workspace already has $1 fonts of its own."],
