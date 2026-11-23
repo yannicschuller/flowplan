@@ -3,61 +3,90 @@
     {
       "de": "Kommentare: Textkommentare öffnen sich direkt neben der Textstelle (auf dem Telefon als Blatt von unten), mit eigener Farbe pro Thread, der Zahl der Beiträge an der Markierung und einer Vorschau beim Zeigen; im Kommentarfeld rechts lässt sich direkt antworten.",
       "en": "Comments: text comments open right beside their passage (a bottom sheet on phones), with a colour per thread, the number of posts at the highlight and a preview on hover; you can reply right in the comment panel.",
-      "issues": [450]
+      "issues": [
+        450
+      ]
     },
     {
       "de": "Kommentare mit Anhängen (bis zu 10 Dateien und Bilder), @-Erwähnungen von Seiten und Einträgen und Linkvorschauen; Seiten- und Eintragskommentare sind formatiert und lassen sich bearbeiten und löschen.",
       "en": "Comments with attachments (up to 10 files and images), @-mentions of pages and records and link previews; page and record comments are formatted and can be edited and deleted.",
-      "issues": [450]
+      "issues": [
+        450
+      ]
     },
     {
       "de": "draw.io kommt mit Flowplan: Der Editor läuft von deiner eigenen Instanz statt von diagrams.net und funktioniert mit Offline-Nutzung auch ohne Verbindung.",
       "en": "draw.io ships with Flowplan: the editor runs from your own instance instead of diagrams.net and, with offline use, works without a connection too.",
-      "issues": [454]
+      "issues": [
+        454
+      ]
     },
     {
-      "de": "Whiteboard: Rahmen einklappen, Textmarker und Deckkraft für den Stift, Farbrad überall, Farben für Tabellenzeilen und -spalten, Links und Vorschauen in Tabellen, Linkkarten für beliebige Webseiten, scharfe PDFs mit Anmerkungen, Seitenauswahl beim PDF-Import und Board-Kommentare mit Formatierung, Anhängen, Farbe und Vorschau.",
-      "en": "Whiteboard: collapsible frames, highlighter and pen opacity, a colour wheel everywhere, row and column colours for tables, links and previews in tables, link cards for any web page, sharp PDFs with annotations, page choice when adding a PDF, and board comments with formatting, attachments, colour and preview.",
-      "issues": [455]
+      "de": "Whiteboard: Rahmen einklappen, Textmarker und Deckkraft für den Stift, Farbrad überall, Farben für Tabellenzeilen und -spalten, Links und Vorschauen in Tabellen, Linkkarten für beliebige Webseiten.",
+      "en": "Whiteboard: collapsible frames, highlighter and pen opacity, a colour wheel everywhere, row and column colours for tables, links and previews in tables, link cards for any web page.",
+      "issues": [
+        455
+      ]
+    },
+    {
+      "de": "Whiteboard: scharfe PDFs mit Anmerkungen, Seitenauswahl beim PDF-Import und Board-Kommentare mit Formatierung, Anhängen, Farbe und Vorschau.",
+      "en": "Whiteboard: sharp PDFs with annotations, page choice when adding a PDF, and board comments with formatting, attachments, colour and preview.",
+      "issues": [
+        455
+      ]
     },
     {
       "de": "QR-Codes für jede Seite und jeden Eintrag, dazu Etikettenbögen mit QR-Codes für Datenbanken.",
       "en": "QR codes for every page and record, plus QR label sheets for databases.",
-      "issues": [448]
+      "issues": [
+        448
+      ]
     },
     {
       "de": "Administration: alle Einstellungen der Instanz als eine Datei exportieren und importieren.",
       "en": "Administration: export and import all instance settings as one file.",
-      "issues": [447]
+      "issues": [
+        447
+      ]
     },
     {
       "de": "Administration: Personen von Hand zu Verzeichnisgruppen (SCIM, LDAP, SSO) hinzufügen und entfernen.",
       "en": "Administration: add people to directory groups (SCIM, LDAP, SSO) and remove them by hand.",
-      "issues": [451]
+      "issues": [
+        451
+      ]
     }
   ],
   "improvements": [
     {
       "de": "Seitenleiste: Die Navigation oben (Suche, Start, Posteingang …) lässt sich zu einer Reihe Symbole einklappen.",
       "en": "Sidebar: the navigation at the top (Search, Home, Inbox …) folds into one row of icons.",
-      "issues": [452]
+      "issues": [
+        452
+      ]
     },
     {
       "de": "Eintragslayout: Unterseiten stehen wahlweise über oder unter dem Dokument.",
       "en": "Record layout: sub-pages go above or below the document.",
-      "issues": [449]
+      "issues": [
+        449
+      ]
     },
     {
       "de": "Die englische Oberfläche zeigt keine deutschen Reste mehr, auch nicht in Fehlermeldungen.",
       "en": "The English interface shows no German leftovers any more, error messages included.",
-      "issues": [453]
+      "issues": [
+        453
+      ]
     }
   ],
   "fixes": [
     {
       "de": "Whiteboard: Der Export als PNG funktioniert wieder und enthält Bilder.",
       "en": "Whiteboard: exporting as PNG works again and includes pictures.",
-      "issues": [455]
+      "issues": [
+        455
+      ]
     },
     {
       "de": "Fett markierte Teile eines Absatzes bleiben nach dem Speichern fett.",
