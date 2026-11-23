@@ -63,7 +63,7 @@ async function swipe(cdp: CDPSession, page: Page, from: { x: number; y: number }
   await page.waitForTimeout(400);
 }
 
-test("a wide first column stays below 60 % of a phone and the table scrolls sideways by swiping on it", async ({ page }, info) => {
+test("a wide first column stays below 40 % of a phone and the table scrolls sideways by swiping on it", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "Swipes are for touch screens.");
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -86,10 +86,10 @@ test("a wide first column stays below 60 % of a phone and the table scrolls side
   await expect(page.locator("tbody tr")).toHaveCount(12);
   await page.locator("tbody tr").first().evaluate((el) => el.scrollIntoView({ block: "start" }));
   const viewport = page.viewportSize()!;
-  // Pinned: the title column alone, at most 60 % of the screen; the
+  // Pinned: the title column alone, at most 40 % of the screen; the
   // selection column scrolls with the rest.
   const pinned = (await title.boundingBox())!;
-  expect(pinned.width).toBeLessThanOrEqual(viewport.width * 0.6 + 1);
+  expect(pinned.width).toBeLessThanOrEqual(viewport.width * 0.4 + 1);
   expect(await title.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
   // Not pinned (relative while the header row sticks to the top, #287).
   expect(await page.locator("th.selection-cell").evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
@@ -130,6 +130,22 @@ test("a wide first column stays below 60 % of a phone and the table scrolls side
   await page.locator(".row-title-link").nth(6).tap();
   await expect(page.getByRole("dialog", { name: "Eintrag", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+// Design review: below 380 px nothing stays pinned – the title column keeps
+// its capped width and scrolls with the others.
+test("on a very narrow phone the first column is not pinned", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "Only phones.");
+  const { command, database } = await fixture(page);
+  const id = await database("Schmale Tabelle", { id: "table", name: "Tabelle", type: "table", columnWidths: { title: 600 } });
+  await command({ action: "row.create", pageId: id, cells: { title: "Ein ziemlich langer Titel", a: "A", b: "B", c: "C" } });
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(`/#page=${id}`);
+  const title = page.locator('th[data-field-id="title"]');
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(await title.evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
+  expect(await page.locator('tbody td.sticky-col-end').first().evaluate((el) => getComputedStyle(el).position)).toBe("static");
+  expect((await title.boundingBox())!.width).toBeLessThanOrEqual(360 * 0.4 + 1);
 });
 
 test("a swipe on a timeline bar scrolls the timeline instead of moving the bar", async ({ page }, info) => {

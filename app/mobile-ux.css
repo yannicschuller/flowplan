@@ -807,6 +807,11 @@ label.hit-check {
   .my-tasks-range .toolbar-chip {
     height: 40px;
   }
+  /* Choices in a chip's panel (date range, grouping): rows to hit. */
+  .chip-options > label {
+    min-height: 44px;
+    padding-block: 10px;
+  }
   .record-filters :is(.fp-select, .button.compact),
   .record-search input,
   .record-view-name input,

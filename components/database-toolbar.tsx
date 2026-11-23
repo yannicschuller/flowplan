@@ -132,6 +132,7 @@ export function DatabaseToolbarChips({
           name={name(t("Gruppieren", "Group||action"), group)}
           active={group.active}
           panelLabel={t("Gruppierung", "Grouping")}
+          panelClassName="group-chip-popover"
         >
           {(close) => (
             <GroupChipBody
@@ -472,37 +473,36 @@ function GroupChipBody({
   const t = useT();
   const groupField = fields.find((f) => f.id === view.groupBy);
   const subField = fields.find((f) => f.id === view.subGroupBy);
+  const pick = (value: string) =>
+    updateView({
+      groupBy: value,
+      ...(view.subGroupBy === value || !value ? { subGroupBy: undefined, groupLevels: undefined } : {}),
+      // A grouped table is no tree any more.
+      ...(value && view.tree ? { tree: undefined } : {}),
+      groupSettings: { ...groupSettings, collapsed: [], order: [] },
+    });
   return (
-    <fieldset className="chip-panel" disabled={!editable}>
-      <label>
+    <fieldset className="chip-panel chip-options group-chip-panel" disabled={!editable}>
+      {/* The properties to group by as a list of choices (design review):
+          one tap groups; the further options follow below once grouped. */}
+      <legend className="sr-only">{t("Gruppieren nach", "Group by")}</legend>
+      <p className="chip-options-heading" aria-hidden="true">
         {t("Gruppieren nach", "Group by")}
-        <Select
-          aria-label={t("Gruppieren nach", "Group by")}
-          value={view.groupBy || ""}
-          onChange={(e) =>
-            updateView({
-              groupBy: e.target.value,
-              ...(view.subGroupBy === e.target.value || !e.target.value
-                ? { subGroupBy: undefined, groupLevels: undefined }
-                : {}),
-              // A grouped table is no tree any more.
-              ...(e.target.value && view.tree ? { tree: undefined } : {}),
-              groupSettings: { ...groupSettings, collapsed: [], order: [] },
-            })
-          }
-        >
-          <option value="">
-            {view.type === "board" ? t("Automatisch", "Automatic") : t("Keine Gruppierung", "No grouping")}
-          </option>
-          {fields.filter(canGroupField).map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </Select>
-      </label>
+      </p>
+      {[{ id: "", name: view.type === "board" ? t("Automatisch", "Automatic") : t("Keine Gruppierung", "No grouping") }, ...fields.filter(canGroupField)].map((f) => (
+        <label key={f.id || "none"} data-active={(view.groupBy || "") === f.id}>
+          <input
+            type="radio"
+            name={`group-by-${view.id}`}
+            checked={(view.groupBy || "") === f.id}
+            onChange={() => pick(f.id)}
+          />
+          <span>{f.name}</span>
+        </label>
+      ))}
       {groupField && (
-        <>
+        <div className="chip-panel group-chip-more">
+          <div className="chip-options-separator" role="presentation" />
           <label>
             {view.type === "board" ? t("Swimlanes nach", "Swimlanes by") : t("Untergruppen nach", "Sub-groups by")}
             <Select
@@ -576,7 +576,7 @@ function GroupChipBody({
               </button>
             )}
           </div>
-        </>
+        </div>
       )}
     </fieldset>
   );

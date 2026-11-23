@@ -18674,42 +18674,83 @@ label.task-due {
   min-width: 260px;
   padding: 6px;
 }
-.my-tasks-ranges {
+/* A list of choices in a chip's panel (the date range of "Meine Aufgaben",
+   "Gruppieren" of a database): full-width rows, the radio at the left, the
+   title with an optional line below next to it; the chosen row tinted. */
+.chip-panel.chip-options {
   gap: 2px;
 }
-.chip-panel.my-tasks-ranges > label {
+.chip-panel.chip-options > label,
+.chip-options > .chip-option {
   position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 6px 10px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 10px;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 10px;
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.35;
+  color: var(--text);
   cursor: pointer;
 }
-.my-tasks-ranges > label:hover {
+.chip-options > label:hover {
   background: var(--hover);
 }
-.my-tasks-ranges > label[data-active="true"] {
+.chip-options > label[data-active="true"] {
   background: var(--blue-light);
   color: var(--accent-strong);
 }
-.my-tasks-ranges > label:has(input:focus-visible) {
+.chip-options > label:has(input:focus-visible) {
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
-.my-tasks-ranges input {
-  margin: 0;
+.chip-options > label > input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
   accent-color: var(--blue);
 }
-.my-tasks-ranges small {
+.chip-options > label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chip-options small {
   display: block;
+  margin-top: 1px;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 400;
+}
+.chip-options > label[data-active="true"] small {
+  color: color-mix(in srgb, var(--accent-strong) 75%, var(--muted));
+}
+.chip-options-heading {
+  margin: 0;
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+/* "Gruppieren": the properties as choices, the options of a grouping
+   below them (components/database-toolbar.tsx). */
+.group-chip-popover {
+  min-width: 240px;
+  max-height: min(70dvh, 560px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.group-chip-more {
+  padding: 0 6px 6px;
+}
+.chip-options-separator {
+  height: 1px;
+  margin: 6px 2px;
+  background: var(--border);
 }
 /* A task given to me since I last looked (#208). */
 .my-task-new {
@@ -30749,8 +30790,10 @@ td.ai-filled {
   margin: 0;
   font-size: 12.5px;
 }
+/* Text fields and selects fill the panel; checkboxes and radios keep
+   their own size (a radio at 100 % stretched into a bar, design review). */
 .chip-panel .fp-select,
-.chip-panel input:not([type="checkbox"]) {
+.chip-panel input:not([type="checkbox"], [type="radio"]) {
   width: 100%;
   min-width: 0;
 }
@@ -30881,22 +30924,23 @@ td.ai-filled {
     box-shadow: none;
   }
 }
-/* Phones (also turned sideways): what stays pinned takes at most about 60 %
+/* Phones (also turned sideways): what stays pinned takes at most about 40 %
    of the table's width (of the screen where container units are missing),
-   so a swipe sideways always shows the other columns moving (#98). The
-   title column is cut short with an ellipsis (its width,
-   lib/pinned-column.ts) and the selection column scrolls away. */
+   so a swipe sideways always shows the other columns moving (#98; 60 % left
+   too little of them in portrait, design review). The title column is cut
+   short with an ellipsis (its width, lib/pinned-column.ts) and the
+   selection column scrolls away. */
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .pinned-table-scroll {
     container-type: inline-size;
   }
   .configurable-table {
-    --pinned-column-max: 60vw;
+    --pinned-column-max: 40vw;
     --pinned-column-left: 0px;
   }
   @supports (width: 1cqw) {
     .configurable-table {
-      --pinned-column-max: 60cqw;
+      --pinned-column-max: 40cqw;
     }
   }
   .configurable-table .selection-cell.sticky-col {
@@ -30910,6 +30954,26 @@ td.ai-filled {
   .configurable-table th.sticky-col-end {
     min-width: 0;
     max-width: var(--pinned-column-max);
+  }
+}
+/* Very narrow screens (below 380 px): nothing stays pinned – even 40 %
+   left too little room for the other columns. The title keeps its capped
+   width and scrolls with the rest; a stuck header stays positioned. */
+@media (max-width: 379.98px) {
+  .configurable-table .sticky-col {
+    position: static;
+  }
+  .configurable-table thead[data-stuck] .sticky-col {
+    position: relative;
+  }
+  .data-table-scroll.scrolled-x .sticky-col-end {
+    box-shadow: none;
+  }
+  .data-table-scroll.scrolled-x .configurable-table thead[data-stuck] th.sticky-col-end {
+    box-shadow:
+      inset 0 -1px 0 var(--border),
+      inset 0 1px 0 var(--border),
+      0 6px 8px -6px #00000030;
   }
 }
 /* Rows take the keyboard: arrows move, Enter opens. */
