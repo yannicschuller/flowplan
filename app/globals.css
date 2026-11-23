@@ -20705,6 +20705,65 @@ h3 .block-reactions {
 .wb-panel .wb-check {
   grid-column: 1 / -1;
 }
+/* The pen's options (design review): colours as a compact 4 × 2 grid,
+   then the three widths, then the switches – one column, no gaps. */
+.wb-shape-menu.wb-pen-menu {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 168px;
+}
+.whiteboard.wb-layout-dock .wb-shape-menu.wb-pen-menu {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wb-pen-colors {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 4px;
+  justify-content: start;
+  padding: 2px;
+}
+.wb-pen-colors .wb-swatch {
+  justify-self: center;
+  align-self: center;
+}
+.wb-pen-widths {
+  display: flex;
+  gap: 4px;
+  padding: 4px 2px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+.wb-shape-menu .wb-pen-widths button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 8px;
+}
+.wb-pen-width-line {
+  display: block;
+  width: 26px;
+  border-radius: 99px;
+  background: currentColor;
+}
+.wb-pen-width-line.w2 {
+  height: 2px;
+}
+.wb-pen-width-line.w3 {
+  height: 3px;
+}
+.wb-pen-width-line.w5 {
+  height: 6px;
+}
+@media (pointer: coarse) {
+  .wb-pen-colors {
+    grid-template-columns: repeat(4, 40px);
+  }
+  .wb-shape-menu .wb-pen-widths button {
+    height: 40px;
+  }
+}
+
 .wb-check {
   flex-direction: row;
   align-items: center;
