@@ -36,7 +36,7 @@ test("a new status becomes its own board column; a due date can be removed", asy
   // A card created there gets the new status.
   await column.getByRole("button", { name: "Neue Aufgabe" }).click();
   const record = page.getByRole("dialog", { name: "Eintrag" });
-  await expect(record.getByLabel("Status", { exact: true })).toContainText("Warten auf Kunde");
+  await expect(record.getByRole("button", { name: "Status: Warten auf Kunde" })).toBeVisible();
   await record.getByRole("button", { name: "Schließen" }).first().click();
   await expect(column.locator(".record-card").first()).toBeVisible();
 
