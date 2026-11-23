@@ -176,8 +176,15 @@ const APPEARANCE = ["Change icon", "Change cover", "Full width", "Number caption
 async function pageAction(page: Page, item: string) {
   await button(page, "Page actions").click();
   const sub = menu(page).getByRole("menuitem", { name: "Appearance", exact: true });
-  if (APPEARANCE.includes(item) && (await sub.count())) await sub.click();
-  await menu(page).getByRole("menuitem", { name: item, exact: true }).click();
+  const entry = () => menu(page).getByRole("menuitem", { name: item, exact: true });
+  if (APPEARANCE.includes(item) && (await sub.count())) {
+    await sub.click();
+    // Over to the submenu the way a hand moves (a jump past its edge
+    // closes it, as in every Radix menu).
+    const box = (await entry().boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
+  }
+  await entry().click();
 }
 
 // "Share": in the top bar, inside ⋯ on phones (tests/browser/page-top-bar.ts).
