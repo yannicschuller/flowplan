@@ -33,7 +33,7 @@ test("write a flow diagram as text: drawn live, problems by line, saved", async 
   await page.goto(`/#page=${pageId}`);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
   await editor.click();
-  await page.keyboard.type("/Flussdiagramm");
+  await page.keyboard.type("/Sankey");
   await page.keyboard.press("Enter");
   const block = editor.locator(".flow-diagram");
   const text = block.getByLabel("Flüsse – eine Zeile pro Fluss");
@@ -49,7 +49,7 @@ test("write a flow diagram as text: drawn live, problems by line, saved", async 
   // A cycle and a bad number: listed by line, the rest still drawn.
   await text.press("End");
   await text.pressSequentially("\nKonsum -> Hauptjob: 5\nSparen -> Depot: viel");
-  const problems = block.getByRole("status", { name: "Probleme im Flussdiagramm" });
+  const problems = block.getByRole("status", { name: "Probleme im Sankey-Diagramm" });
   await expect(problems.locator("li")).toHaveText([/^Zeile 7: .*Kreis/, /^Zeile 8: „viel“ ist keine Zahl/]);
   await expect(block.locator(".flow-link")).toHaveCount(5);
   await text.fill(await text.inputValue().then((v) => v.split("\n").slice(0, 6).join("\n")));

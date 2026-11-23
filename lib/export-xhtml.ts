@@ -215,7 +215,7 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         return `<p class="placeholder">${xml(ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"))}</p>`;
       case "flowDiagram": {
         // A flow diagram (#427) as its picture, like a draw.io diagram.
-        const label = ct("Flussdiagramm", "Flow diagram");
+        const label = ct("Sankey-Diagramm", "Sankey diagram");
         const svg = flowSourceSvg(String(node.attrs.source || ""), { unit: String(node.attrs.unit || ""), locale: localeTag(contentLocale()), t: ct, fixedSize: true });
         const src = context.svg ? context.svg(svg) : `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
         return `<figure class="flow-diagram"><img src="${xml(src)}" alt="${xml(label)}"/></figure>`;

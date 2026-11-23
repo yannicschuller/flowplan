@@ -111,7 +111,7 @@ export const FlowDiagramView = FlowDiagram.extend({
         errors = document.createElement("ul");
         errors.className = "flow-errors";
         errors.setAttribute("role", "status");
-        errors.setAttribute("aria-label", tr("Probleme im Flussdiagramm", "Problems in the flow diagram"));
+        errors.setAttribute("aria-label", tr("Probleme im Sankey-Diagramm", "Problems in the Sankey diagram"));
         const help = document.createElement("p");
         help.className = "flow-help";
         help.textContent = tr(

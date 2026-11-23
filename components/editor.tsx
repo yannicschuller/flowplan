@@ -2186,7 +2186,7 @@ export default function DocumentEditor({
     {
       id: "flow",
       group: "media",
-      name: t("Flussdiagramm", "Flow diagram"),
+      name: t("Sankey-Diagramm (Flüsse)", "Sankey diagram (flows)"),
       keywords: ["sankey", "fluss", "flow", "geldfluss", "budget", "cashflow", "energiefluss", "diagramm", "diagram"],
       description: t("Beträge, die sich aufteilen – als Sankey-Diagramm", "Amounts that split up – as a Sankey diagram"),
       icon: ArrowsSplit,

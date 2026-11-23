@@ -157,7 +157,7 @@ function collector(t: Translate) {
       const cycle = pathBetween(outgoing, targetName, sourceName);
       if (cycle) {
         const path = [sourceName, ...cycle].join(" → ");
-        return t(`Dieser Fluss schließt einen Kreis (${path}) – Flussdiagramme laufen nur in eine Richtung.`, `This flow closes a cycle (${path}) – flow diagrams only run one way.`);
+        return t(`Dieser Fluss schließt einen Kreis (${path}) – Sankey-Diagramme laufen nur in eine Richtung.`, `This flow closes a cycle (${path}) – Sankey diagrams only run one way.`);
       }
       pairs.set(key, { source: sourceName, target: targetName, value: 0 });
       if (!outgoing.has(sourceName)) outgoing.set(sourceName, new Set());
@@ -361,7 +361,7 @@ export function flowSvg(graph: Pick<FlowGraph, "flows" | "colors" | "order">, op
   const t = options.t ?? tr;
   const values = graph.flows.map((x) => x.value);
   const format = flowFormat(options.unit || "", options.locale, values);
-  const label = options.label || t("Flussdiagramm", "Flow diagram");
+  const label = options.label || t("Sankey-Diagramm", "Sankey diagram");
   if (!graph.flows.length)
     return `<svg class="flow-svg flow-empty" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 80" ${options.fixedSize ? 'width="640" height="80"' : 'width="100%"'} role="img" aria-label="${escape(label)}"><text class="flow-hint" x="320" y="44" text-anchor="middle" font-size="13" fill="#6b6b6b">${escape(t("Noch keine Flüsse – schreib z. B. „Lohn -> Budget: 2500“.", "No flows yet – write e.g. “Salary -> Budget: 2500”."))}</text></svg>`;
   const text = (n: FlowNode) => `${n.name}: ${format(n.value)}`;

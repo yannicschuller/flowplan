@@ -1111,7 +1111,7 @@ function FlowGraphic({ data, config }: { data: NonNullable<ReturnType<typeof cha
       <div
         className="chart-flow"
         dangerouslySetInnerHTML={{
-          __html: flowSvg(data.graph, { unit: chartFlowUnit(config), palette: paletteOf(config), t, label: t("Flussdiagramm", "Flow diagram") }),
+          __html: flowSvg(data.graph, { unit: chartFlowUnit(config), palette: paletteOf(config), t, label: t("Sankey-Diagramm", "Sankey diagram") }),
         }}
       />
       {data.graph.dropped > 0 && (

@@ -35,7 +35,7 @@ const names: Record<string, string> = {
   mathBlock: tr("Formel", "Formula"),
   mermaidBlock: tr("Diagramm", "Diagram"),
   drawioBlock: tr("draw.io-Diagramm", "draw.io diagram"),
-  flowDiagram: tr("Flussdiagramm", "Flow diagram"),
+  flowDiagram: tr("Sankey-Diagramm (Flüsse)", "Sankey diagram (flows)"),
   columns: tr("Spalten", "Columns"),
   tabs: tr("Tabs", "Tabs"),
   media: tr("Medium", "Media"),

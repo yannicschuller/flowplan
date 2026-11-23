@@ -128,7 +128,7 @@ export const chartKinds = {
   horizontal: "Balken",
   line: "Linie",
   donut: "Donut",
-  flow: "Flussdiagramm",
+  flow: "Sankey-Diagramm (Flüsse)",
 };
 export const chartAggregates = {
   count: "Anzahl Einträge",
@@ -186,11 +186,11 @@ export function chartConfigError(
 function flowConfigError(config: ChartConfig, fields: Field[]): string | null {
   const usable = (id: string | undefined) => !!id && fields.some((f) => f.id === id && chartGroupField(f));
   if (!usable(config.xField))
-    return "Ein Flussdiagramm braucht eine Eigenschaft für die Quelle. Bitte das Diagramm konfigurieren.";
+    return "Ein Sankey-Diagramm braucht eine Eigenschaft für die Quelle. Bitte das Diagramm konfigurieren.";
   if (!usable(config.targetField) || config.targetField === config.xField)
-    return "Ein Flussdiagramm braucht eine Eigenschaft für das Ziel, die sich von der Quelle unterscheidet.";
+    return "Ein Sankey-Diagramm braucht eine Eigenschaft für das Ziel, die sich von der Quelle unterscheidet.";
   if (config.aggregate !== "count" && config.aggregate !== "sum")
-    return "Flussdiagramme zählen Einträge oder summieren einen Betrag.";
+    return "Sankey-Diagramme zählen Einträge oder summieren einen Betrag.";
   if (config.aggregate === "sum" && !fields.some((f) => f.id === config.yField && chartNumberField(f)))
     return "Für den Betrag eine Zahl-, Formel- oder Rollup-Eigenschaft wählen.";
   return null;

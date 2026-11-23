@@ -289,7 +289,7 @@ export async function PublicChart({
   if (config.kind === "flow") {
     const { flows, graph } = chartFlows(records, fields, config);
     return (
-      <section className="public-chart" aria-label={t(`Flussdiagramm: ${measure}`, `Flow diagram: ${measure}`)}>
+      <section className="public-chart" aria-label={t(`Sankey-Diagramm: ${measure}`, `Sankey diagram: ${measure}`)}>
         <div
           className="chart-flow"
           dangerouslySetInnerHTML={{ __html: flowSvg(graph, { unit: chartFlowUnit(config), locale: tag, palette: colors, t, label: measure }) }}
