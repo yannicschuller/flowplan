@@ -5,6 +5,7 @@ import "./whiteboard-diagrams.css";
 import "./whiteboard-board.css";
 import "./whiteboard-facilitation.css";
 import "./whiteboard-racks.css";
+import "./whiteboard-draw.css";
 import "./contacts.css";
 import "./page-properties.css";
 import "./option-colors.css";

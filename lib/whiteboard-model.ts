@@ -129,6 +129,16 @@ export type WhiteboardItem = {
   rackId?: string;
   u?: number;
   cable?: CableData;
+  // Pen strokes (#455): opacity 0.1–1 (missing: opaque) and highlighter
+  // strokes, multiplied over what lies under them (lib/whiteboard-pen.ts).
+  opacity?: number;
+  highlight?: boolean;
+  // Frames (#455): collapsed to their title bar, with the ids of what they
+  // hide (lib/whiteboard-collapse.ts).
+  collapsed?: string[];
+  // Colours picked freely with the colour wheel (#455): shown as stored on
+  // the dark canvas too (lib/whiteboard-own-colors.ts).
+  ownColors?: string[];
 };
 export type WhiteboardMessage = {
   id: string;

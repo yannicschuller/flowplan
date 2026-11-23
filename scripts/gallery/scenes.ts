@@ -1350,6 +1350,19 @@ const whiteboardScenes: Scene[] = [
       await button(page, "Draw").click();
     },
   },
+  {
+    // The colour wheel besides the palettes (#455), here in the pen's options.
+    id: "whiteboard-own-color",
+    group: "Whiteboard",
+    title: "Custom colour",
+    path: (c) => `#page=${c.ids.whiteboardId}`,
+    covers: ["components/whiteboard/board-color-picker.tsx"],
+    steps: async (page) => {
+      await button(page, "Draw").click();
+      await page.locator(".wb-pen-menu").getByRole("button", { name: "Custom colour", exact: true }).click();
+      await page.locator(".wb-own-color-panel .color-picker").waitFor();
+    },
+  },
 ];
 
 const journalScenes: Scene[] = [
