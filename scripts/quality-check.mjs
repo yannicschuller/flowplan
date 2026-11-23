@@ -75,10 +75,16 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // the shell for offline use (components/offline-local-data.ts, the new-page
 // dialog and the built-in templates) stayed. The budgets are about 3 %
 // above.
+// 2026-11-23 again, 0.11.3: the tab bar with pinned tabs and tab groups
+// (#444), the board's move retry (#445) and the $-formula input (#446) –
+// all in the shell, +2-6 KB per page. Measured: document 1264.1, database
+// 927.5, workflow 1032.5, home 790.5, settings 804.0, settings section
+// 890.3, administration 811.4, monitoring 839.2, push 819.7 KB; every
+// budget is about 3 % above.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1265 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1302 },
   // The signed-in pages were raised on 2026-11-19 by 7-15 KB (under 1.5 %):
   // offline creation (#370: the queue of new pages and uploads, the "not yet
   // synced" marks), the library (#329), passkeys from the apps and the
@@ -104,7 +110,7 @@ const PAGES = [
   // list, the group chip with one-tap choices, the kind of a new database
   // as a select) and the limits notice in the shell. Measured: database
   // 920.3, settings section 884.3 KB; both budgets are about 3 % above.
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 948 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 955 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -114,19 +120,19 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1028, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1063, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 788, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 801, ready: ".settings-tile" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 911, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 809, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 814, ready: ".home-grid" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 828, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 917, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 836, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 837, ready: ".mon-health" },
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 864, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 818, ready: "#relay" },
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 844, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";
