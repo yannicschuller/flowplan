@@ -6365,6 +6365,7 @@ export default function WorkspaceApp({
                       comments={data.comments}
                       textComments={data.page.kind === "document"}
                       canResolve={data.role !== "viewer"}
+                      userId={boot.user.id}
                       act={act}
                       time={(value) => relativeTime(value, clock, locale)}
                     />

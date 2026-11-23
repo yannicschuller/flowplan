@@ -4,9 +4,8 @@ import { Select } from "./select";
 import { useCallback, useEffect, useState } from "react";
 import { ChatCircle, Quotes } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
-import { Reactions } from "./reactions";
+import { PageComment } from "./page-comment";
 import { CommentQuote } from "./comment-quote";
-import { CommentBody } from "./comment-body";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
@@ -30,10 +29,13 @@ export function CommentHub({
   comments,
   textComments,
   canResolve,
+  userId,
   act,
   time,
 }: {
   pageId: string;
+  // The signed-in person: their own page comments can be edited and deleted.
+  userId?: string;
   comments: Comment[];
   textComments: boolean;
   canResolve: boolean;
@@ -133,48 +135,32 @@ export function CommentHub({
       )}
       {items.map((item) =>
         item.kind === "page" ? (
-          <div
-            className={`comment ${item.comment.resolved ? "resolved" : ""}`}
+          <PageComment
             key={item.comment.id}
+            comment={item.comment}
+            pageId={pageId}
+            userId={userId}
+            act={act}
+            time={time(item.comment.created_at)}
           >
-            <Avatar name={item.comment.name} small />
-            <div>
-              <strong>{item.comment.name}</strong>
-              <small>{time(item.comment.created_at)}</small>
-              <CommentBody content={item.comment.content} body={item.comment.body} />
-              {item.comment.author_id && (
-                <Reactions
-                  reactions={item.comment.reactions || []}
-                  onToggle={(emoji, active) =>
-                    act({
-                      action: "comment.react",
-                      pageId,
-                      commentId: item.comment.id,
-                      emoji,
-                      active,
-                    })
-                  }
-                />
-              )}
-              {canResolve && (
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    act({
-                      action: "comment.resolve",
-                      pageId,
-                      commentId: item.comment.id,
-                      resolved: !item.comment.resolved,
-                    })
-                  }
-                >
-                  {item.comment.resolved
-                    ? t("Wieder öffnen", "Reopen")
-                    : t("Als erledigt markieren", "Mark as resolved")}
-                </button>
-              )}
-            </div>
-          </div>
+            {canResolve && (
+              <button
+                className="text-button"
+                onClick={() =>
+                  act({
+                    action: "comment.resolve",
+                    pageId,
+                    commentId: item.comment.id,
+                    resolved: !item.comment.resolved,
+                  })
+                }
+              >
+                {item.comment.resolved
+                  ? t("Wieder öffnen", "Reopen")
+                  : t("Als erledigt markieren", "Mark as resolved")}
+              </button>
+            )}
+          </PageComment>
         ) : (
           <div
             className={`comment comment-text ${item.thread.resolved ? "resolved" : ""}`}

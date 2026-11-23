@@ -306,6 +306,10 @@ export type Comment = {
   resolved: number;
   created_at: string;
   reactions?: Reaction[];
+  // Edits by the author (#450, comment.edit / comment.delete): the version
+  // an edit or deletion names, and when it was last edited (null: never).
+  version?: number;
+  edited_at?: string | null;
 };
 export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
 export type PageCounts = {

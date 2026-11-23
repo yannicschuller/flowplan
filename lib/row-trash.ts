@@ -223,7 +223,7 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
     );
   for (const c of payload.comments)
     await run(
-      "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+      "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at,rich_body,version,edited_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
       String(c.id),
       page.id,
       trashId,
@@ -233,6 +233,9 @@ export async function restoreTrashedRow(user: Identity, raw: unknown) {
       String(c.created_at || ""),
       // Formatted comments (#450); deleted before schema 125: none.
       typeof c.rich_body === "string" ? c.rich_body : null,
+      // Edits (#450); deleted before schema 126: none.
+      Number(c.version) > 0 ? Number(c.version) : 1,
+      typeof c.edited_at === "string" ? c.edited_at : null,
     );
   for (const c of payload.reactions || [])
     await run(
