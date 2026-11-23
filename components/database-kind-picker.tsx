@@ -1,10 +1,10 @@
 "use client";
 // What a new database starts as: tasks, documents, contacts, only a title, or one of
 // the saved database templates. The last choice is remembered per device.
-import { useEffect, useState } from "react";
-import { AddressBook, Cards, CheckSquare, Files, Rows, Star } from "@phosphor-icons/react";
+import { useEffect, useId, useState } from "react";
 import { useT } from "./i18n";
 import { api } from "./ui";
+import { Select } from "./select";
 import { moduleShown, useHiddenModules } from "@/lib/feature-modules-client";
 
 export const DATABASE_KIND_KEY = "flowplan-database-kind";
@@ -61,59 +61,63 @@ export function DatabaseKindPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
   const kinds = [
-    { id: "tasks" as const, icon: CheckSquare, label: t("Aufgaben", "Tasks"), hint: t("Status, Priorität, Fälligkeit, Verantwortlich", "Status, priority, due date, assignee") },
-    { id: "documents" as const, icon: Files, label: t("Dokumente", "Documents"), hint: t("Titel, Tags, Erstellt, Bearbeitet – Einträge öffnen als ganze Seite", "Title, tags, created, edited – records open as a full page") },
+    { id: "tasks" as const, label: t("Aufgaben", "Tasks"), hint: t("Status, Priorität, Fälligkeit, Verantwortlich", "Status, priority, due date, assignee") },
+    { id: "documents" as const, label: t("Dokumente", "Documents"), hint: t("Titel, Tags, Erstellt, Bearbeitet – Einträge öffnen als ganze Seite", "Title, tags, created, edited – records open as a full page") },
     {
       id: "contacts" as const,
-      icon: AddressBook,
       label: t("Kontakte", "Contacts"),
       hint: t("Name, Firma, E-Mail, Telefon, Adresse, Geburtstag – mit Profilseite, vCard und LDAP", "Name, company, e-mail, phone, address, birthday – with a profile page, vCard and LDAP"),
     },
     {
       id: "flashcards" as const,
-      icon: Cards,
       label: t("Lernkarten", "Flashcards"),
       hint: t("Vorderseite, Rückseite, Tags – mit der Ansicht „Lernen“ und Wiederholung in Abständen", "Front, back, tags – with the view “Study” and spaced repetition"),
     },
-    { id: "empty" as const, icon: Rows, label: t("Leer", "Empty"), hint: t("Nur ein Titel", "Only a title") },
+    { id: "empty" as const, label: t("Leer", "Empty"), hint: t("Nur ein Titel", "Only a title") },
     // Flashcards switched off (#378): no such kind, unless it is chosen.
   ].filter((kind) => kind.id !== "flashcards" || value === "flashcards" || !hiddenModules.includes("flashcards"));
-  const hint = kinds.find((kind) => kind.id === value)?.hint;
-  // "Art" with the kinds as one segmented row, the chosen one's fields as a
-  // line below; saved database templates follow as chips (the "New page"
-  // dialog, app/new-page-dialog.css).
+  const hint = kinds.find((kind) => kind.id === value)?.hint || (value.startsWith("template:") ? t("Eine deiner gespeicherten Datenbank-Vorlagen", "One of your saved database templates") : undefined);
+  const hintId = useId();
+  // "Art" as one select – the kinds, then the saved database templates –
+  // with the chosen one's fields as a line below (design review: five
+  // segments wrapped into a centred 3 + 2). The "New page" dialog,
+  // app/new-page-dialog.css.
   return (
-    <fieldset className="np-kind" aria-label={t("Art der Datenbank", "Kind of database")}>
-      <span className="np-row-label" aria-hidden="true">
+    <div className="np-kind">
+      <label className="np-row-label" htmlFor={`${hintId}-select`}>
         {t("Art", "Kind")}
-      </span>
-      <div className="segmented np-segmented">
+      </label>
+      <Select
+        id={`${hintId}-select`}
+        className="np-kind-select"
+        aria-label={t("Art der Datenbank", "Kind of database")}
+        aria-describedby={hint ? hintId : undefined}
+        value={value}
+        onChange={(e) => {
+          const next = e.target.value as DatabaseChoice;
+          onChange(next, templates.find((template) => `template:${template.id}` === next));
+        }}
+      >
         {kinds.map((kind) => (
-          <label key={kind.id} data-active={value === kind.id} title={kind.hint}>
-            <input type="radio" name="database-kind" checked={value === kind.id} onChange={() => onChange(kind.id)} />
-            <kind.icon size={14} aria-hidden="true" />
+          <option key={kind.id} value={kind.id}>
             {kind.label}
-          </label>
+          </option>
         ))}
-      </div>
-      {hint && <small className="np-kind-hint">{hint}</small>}
-      {templates.length > 0 && (
-        <div className="np-kind-templates">
-          <span className="np-kind-templates-heading">{t("Deine Vorlagen", "Your templates")}</span>
-          {templates.map((template) => (
-            <label key={template.id} className="np-kind-template" data-active={value === `template:${template.id}`}>
-              <input
-                type="radio"
-                name="database-kind"
-                checked={value === `template:${template.id}`}
-                onChange={() => onChange(`template:${template.id}`, template)}
-              />
-              <Star size={13} aria-hidden="true" />
-              {template.name}
-            </label>
-          ))}
-        </div>
+        {templates.length > 0 && (
+          <optgroup label={t("Deine Vorlagen", "Your templates")}>
+            {templates.map((template) => (
+              <option key={template.id} value={`template:${template.id}`}>
+                {template.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </Select>
+      {hint && (
+        <small id={hintId} className="np-kind-hint">
+          {hint}
+        </small>
       )}
-    </fieldset>
+    </div>
   );
 }

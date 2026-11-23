@@ -106,7 +106,7 @@ test("scrolled content scrolls instead of moving the sheet; the handle still clo
   const sheet = await openNewPage(page);
   // The compact dialog fits almost; a database's options make it longer.
   await sheet.getByRole("radio", { name: "Datenbank", exact: true }).click();
-  await expect(sheet.getByRole("group", { name: "Art der Datenbank" })).toBeVisible();
+  await expect(sheet.getByLabel("Art der Datenbank")).toBeAttached();
   const scroll = await sheet.evaluate((el) => {
     el.scrollTop = 120;
     return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight };

@@ -137,9 +137,9 @@
   font-size: 13px;
   color: var(--secondary);
 }
-/* The kinds share the row, each at least as wide as its icon and text
-   ("Dokumente" is the longest): a squeezed one put them on its border
-   (#314). Too narrow for all, they wrap to a second line. */
+/* Segmented choices ("Wie anlegen?") share the row, each at least as wide
+   as its icon and text: a squeezed one put them on its border (#314). Too
+   narrow for all, they wrap to a second line. */
 .np-segmented {
   flex-wrap: wrap;
   width: 100%;
@@ -167,50 +167,12 @@
   font-weight: 400;
   color: var(--muted);
 }
-/* Saved database templates. */
-.np-kind-templates {
-  grid-column: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.np-kind-templates-heading {
-  font-size: 12px;
-  color: var(--muted);
-}
-.np-kind-template {
-  position: relative;
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
-  margin: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--secondary);
-  cursor: pointer;
-}
-.np-kind-template[data-active="true"] {
-  border-color: var(--blue);
-  background: var(--blue-light);
-  color: var(--accent-strong);
-}
-.np-kind-template input {
-  position: absolute;
-  inset: 0;
+/* The kind of database as a select over the row's width, the saved
+   database templates in it (design review: five segments wrapped into a
+   centred 3 + 2). */
+.np-kind-select {
   width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.np-kind-template:has(input:focus-visible) {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
+  min-width: 0;
 }
 .np-pdf {
   margin: 0;
@@ -298,8 +260,7 @@
   .np-kind {
     grid-template-columns: minmax(0, 1fr);
   }
-  .np-kind-hint,
-  .np-kind-templates {
+  .np-kind-hint {
     grid-column: 1;
   }
   .np-row {
