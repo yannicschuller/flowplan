@@ -48,6 +48,7 @@ import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
 import { cancelUnconfirmed, markUnconfirmed, pendingDeletionOf, resendKeepLink, unconfirmedPlan } from "./unconfirmed-deletion";
 import { assertMayCreateWorkspace, limitGroupNames, ownedWorkspaces, setGroupLimits, setUserLimits, userBytes, userLimitDetails, userStorageCheckpoint } from "./user-limits";
+import { exportLimitsFile, importLimitsFile } from "./limits-file";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
@@ -1247,6 +1248,13 @@ async function runCommand(
       case "admin.groupLimits":
         requireAdmin(user);
         result = await setGroupLimits(user.id, b);
+        break;
+      // Export / import of the limits and AI settings as one file (lib/limits-file.ts).
+      case "admin.limitsExport":
+        result = await exportLimitsFile(user);
+        break;
+      case "admin.limitsImport":
+        result = await importLimitsFile(user, { file: b.file, dryRun: b.dryRun });
         break;
       // "Neuigkeiten nach Updates" of a person (#223): a level or null for
       // the instance's default (lib/user-update-notes.ts).
@@ -4278,6 +4286,8 @@ async function runCommand(
         "admin.unconfirmedPlan",
         "admin.unconfirmedMark",
         "admin.unconfirmedCancel",
+        // Written per change (lib/limits-file.ts); a dry run changes nothing.
+        "admin.limitsImport",
         "document.sync",
         "document.markdown",
         "row.document.sync",

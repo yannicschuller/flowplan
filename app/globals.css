@@ -11852,7 +11852,7 @@ details[data-heading] > summary {
   gap: 8px;
 }
 .lifecycle-error {
-  color: var(--danger, #b42318);
+  color: var(--red, #b42318);
   overflow-wrap: anywhere;
 }
 /* Trash (#123, #124): one fixed icon column, so titles line up whether the
@@ -20433,7 +20433,7 @@ h3 .block-reactions {
   justify-content: center;
 }
 .notebook-menu .notebook-audio-actions .icon-button.danger {
-  color: var(--danger, #b42318);
+  color: var(--red, #b42318);
 }
 @media (max-width: 640px) {
   .notebook-audio-bar {
@@ -38725,6 +38725,47 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   min-height: 90px;
   font-family: var(--font-mono);
   font-size: 12.5px;
+}
+/* Export / import of the limits (Administration → Grenzen & Aufbewahrung,
+   components/settings/admin/limits-file.tsx). */
+.setting-row.limits-file {
+  gap: 10px;
+}
+.limits-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.limits-file-actions > * {
+  margin: 0;
+}
+.limits-file-label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.limits-file-text {
+  width: 100%;
+  min-height: 180px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.limits-file-head {
+  margin: 0;
+  font-weight: 600;
+}
+.limits-file-head[data-tone="error"] {
+  color: var(--red, #b42318);
+}
+.limits-file-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.limits-file-notes {
+  color: var(--muted);
 }
 /* Folding headings (#71, lib/heading-folds-plugin.ts): the arrow before a
    top-level heading – left of the block handle while editing, in the

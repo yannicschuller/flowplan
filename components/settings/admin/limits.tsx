@@ -1,7 +1,7 @@
 "use client";
 // Administration → Grenzen & Aufbewahrung: the defaults for storage, own
-// workspaces and uploads, the limits per group, and how long page versions
-// are kept. Single workspaces and people can differ (Arbeitsbereiche,
+// workspaces and uploads, the limits per group, their export / import as
+// one file (limits-file.tsx), and how long page versions are kept. Single workspaces and people can differ (Arbeitsbereiche,
 // Benutzer).
 import { Trash } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
@@ -11,6 +11,7 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, InstanceNumber, InstanceText, NumberInput } from "./parts";
 import { WorkflowLimits } from "./workflow-limits";
 import { GroupPicker, groupLabel } from "./group-picker";
+import { LimitsFile } from "./limits-file";
 import { Select } from "../../select";
 import type { GroupLimitRule, GroupLimits, StorageMode, UserLimits } from "@/lib/user-limits";
 
@@ -100,6 +101,7 @@ export default function LimitsSection() {
         />
       </SettingGroup>
       <GroupLimits />
+      <LimitsFile />
       <SettingGroup
         id="retention"
         title={t("Aufbewahrung", "Retention")}
