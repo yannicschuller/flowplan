@@ -4,8 +4,10 @@
 // order of the presentation; the title can be renamed in place; the eye
 // leaves a frame out of the presentation; each frame has speaker notes for
 // the presenter view. On phones the panel is a sheet at the bottom.
-import { memo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
+  CaretDown,
+  CaretRight,
   DotsSixVertical,
   DownloadSimple,
   Eye,
@@ -21,6 +23,7 @@ import { WhiteboardDefs, WhiteboardShape, type PageRef, type RowCard } from "./r
 import { useBoardColors } from "./board-colors";
 import { connectorPoint, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { frameMembers } from "@/lib/whiteboard-frames";
+import type { FrameFolding } from "./frame-collapse";
 
 const FrameThumb = memo(function FrameThumb({
   frame,
@@ -62,6 +65,7 @@ export function FramesPanel({
   onFly,
   onRename,
   onToggleHidden,
+  folding,
   onMove,
   onStep,
   onNotes,
@@ -80,6 +84,8 @@ export function FramesPanel({
   onFly: (frame: WhiteboardItem) => void;
   onRename: (id: string, text: string) => void;
   onToggleHidden: (id: string) => void;
+  // Collapsed frames (#455): fold and unfold; their pictures show what they hide.
+  folding?: FrameFolding;
   onMove: (from: number, to: number) => void;
   // One place up or down from where the frame is now – not from where the
   // last drawing put it: a key pressed twice before the panel redraws moves
@@ -96,6 +102,8 @@ export function FramesPanel({
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const list = useRef<HTMLOListElement>(null);
   const shownCount = frames.filter((f) => !f.presentHidden).length;
+  const allItems = folding?.all;
+  const allById = useMemo(() => (allItems ? new Map(allItems.map((i) => [i.id, i])) : null), [allItems]);
   // Dragging a row by its grip: the gap follows the pointer.
   const target = (clientY: number) => {
     const rows = [...(list.current?.querySelectorAll<HTMLElement>(":scope > li") || [])];
@@ -182,7 +190,11 @@ export function FramesPanel({
                   )}
                   <button type="button" className="wb-frame-fly" onClick={() => onFly(frame)} aria-label={t(`Zu „${frame.text || t("Rahmen", "Frame")}“`, `Go to “${frame.text || t("Rahmen", "Frame")}”`)}>
                     <span className="wb-frame-number">{frame.presentHidden ? "–" : frames.slice(0, index + 1).filter((f) => !f.presentHidden).length}</span>
-                    <FrameThumb frame={frame} items={items} byId={byId} pages={pages} cards={cards} />
+                    {folding?.folded(frame.id) && allItems && allById ? (
+                      <FrameThumb frame={allById.get(frame.id) ?? frame} items={allItems} byId={allById} pages={pages} cards={cards} />
+                    ) : (
+                      <FrameThumb frame={frame} items={items} byId={byId} pages={pages} cards={cards} />
+                    )}
                   </button>
                   <div className="wb-frame-info">
                     {editable ? (
@@ -207,6 +219,17 @@ export function FramesPanel({
                       <span className="wb-frame-name">{frame.text || t("Rahmen", "Frame")}</span>
                     )}
                     <span className="wb-frame-actions">
+                      {folding && (
+                        <button
+                          type="button"
+                          aria-expanded={!folding.folded(frame.id)}
+                          aria-label={folding.folded(frame.id) ? t("Rahmen aufklappen", "Expand frame") : t("Rahmen einklappen", "Collapse frame")}
+                          title={folding.folded(frame.id) ? t("Rahmen aufklappen", "Expand frame") : t("Rahmen einklappen", "Collapse frame")}
+                          onClick={() => folding.toggle(frame.id)}
+                        >
+                          {folding.folded(frame.id) ? <CaretRight size={15} /> : <CaretDown size={15} />}
+                        </button>
+                      )}
                       {editable && (
                         <button
                           type="button"

@@ -88,6 +88,9 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await page.mouse.up();
   await expect(wb.locator(".wb-shape")).toHaveCount(1);
   await expect(wb.locator(".wb-pen")).toHaveCount(0);
+  // Back to selecting: the pen's options (#455: pen or highlighter,
+  // opacity) would cover the notes.
+  await page.keyboard.press("Escape");
 
   // Hidden voting: the result waits for the end.
   await boardModeration(wb, "Abstimmung");

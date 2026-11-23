@@ -11,6 +11,8 @@ export const EXPORT_CSS =
   ".wb-text{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;white-space:pre-wrap;word-break:break-word;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;box-sizing:border-box}" +
   ".wb-rich{white-space:normal}.wb-rich p{margin:0;min-height:1.2em}.wb-rich ul,.wb-rich ol{margin:0;padding-left:1.3em;text-align:left}.wb-link{color:inherit;text-decoration:underline}" +
   ".wb-frame-title{font:600 14px system-ui,sans-serif;color:#495057;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+  // Highlighter strokes and collapsed frames (#455).
+  ".wb-pen-highlight{mix-blend-mode:multiply}.wb-frame-folded{display:flex;align-items:center;height:100%;padding:0 12px;font:12px system-ui,sans-serif;color:#868e96}" +
   ".wb-card-body{display:flex;flex-direction:column;justify-content:center;height:100%;font:14px system-ui,sans-serif;color:#1f2937;overflow:hidden}.wb-card-body small{color:#868e96;font-size:12px}.wb-card-excerpt{font-size:12px;color:#495057}" +
   ".wb-connector-label{display:flex;align-items:center;justify-content:center;height:100%;font:13px system-ui,sans-serif;color:#1f2937}" +
   ".wb-table-grid{display:grid;width:100%;height:100%;font-family:system-ui,sans-serif;color:#1f2937}.wb-cell{border:1px solid #dee2e6;padding:4px 6px;overflow:hidden;white-space:pre-wrap}.wb-cell.head{font-weight:600;background:#f1f3f5}" +
