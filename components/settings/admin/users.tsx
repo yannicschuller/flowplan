@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  ArrowCounterClockwise,
   ArrowDown,
   ArrowsLeftRight,
   ArrowsMerge,
@@ -282,9 +283,10 @@ export default function UsersSection() {
                 onChange={(e) => changeQuery(e.target.value)}
               />
             </span>
+            {/* Icon and label; on phones the icon only (the label stays the accessible name). */}
             {data.localLogin && (
-              <button type="button" className="button primary" aria-haspopup="dialog" onClick={() => setCreating(true)}>
-                <UserPlus size={16} aria-hidden /> {t("Konto anlegen", "Create account")}
+              <button type="button" className="button compact ux-create" aria-haspopup="dialog" aria-label={t("Konto anlegen", "Create account")} title={t("Konto anlegen", "Create account")} onClick={() => setCreating(true)}>
+                <UserPlus size={16} aria-hidden /> <span className="ux-create-label">{t("Konto anlegen", "Create account")}</span>
               </button>
             )}
           </div>
@@ -791,10 +793,20 @@ function DeletionBadge({ due, short }: { due?: number | null; short?: boolean })
 }
 
 // Marked for deletion while the address is unconfirmed (#436): the day
-// and "Abbrechen".
-function UnconfirmedMark({ due, name, onCancel }: { due: number; name: string; onCancel: () => void }) {
+// and "Abbrechen". `inline` (the table): cancelling is a small undo button
+// at the end of the pill, so the row keeps its height.
+function UnconfirmedMark({ due, name, onCancel, inline }: { due: number; name: string; onCancel: () => void; inline?: boolean }) {
   const t = useT();
   const date = new Date(due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short", year: "numeric" });
+  if (inline)
+    return (
+      <span className="status-badge error ux-mark">
+        <span title={t("E-Mail-Adresse unbestätigt", "E-mail address unconfirmed")}>{t(`Löschung am ${date}`, `Deletion on ${date}`)}</span>
+        <button type="button" className="ux-mark-cancel" aria-label={t("Löschung abbrechen", "Cancel deletion")} title={t("Löschung abbrechen", "Cancel deletion")} onClick={onCancel}>
+          <ArrowCounterClockwise size={12} weight="bold" aria-hidden />
+        </button>
+      </span>
+    );
   return (
     <span className="admin-unconfirmed-mark">
       <StatusBadge tone="error" title={t("E-Mail-Adresse unbestätigt", "E-mail address unconfirmed")}>
@@ -1009,7 +1021,7 @@ function UserRow({
       </td>
       <td className="state">
         {markDue ? (
-          <UnconfirmedMark due={markDue} name={u.name} onCancel={onCancelMark} />
+          <UnconfirmedMark due={markDue} name={u.name} onCancel={onCancelMark} inline />
         ) : u.deletion_due_at && !u.disabled ? (
           <DeletionBadge due={u.deletion_due_at} short />
         ) : (
