@@ -32,6 +32,13 @@ async function setup(page: Page) {
   await command({ action: "admin.ai", settings: { enabled: true, provider: { kind: "openai", baseUrl: "http://127.0.0.1:9/v1", model: "quota-model", embeddingModel: "" } } });
   await command({ action: "ai.settings", enabled: true });
   await command({ action: "admin.aiQuotas", settings: { unit: "tokens", timeZone: "UTC", weekStart: "monday", warnAt: 80, workflowsCountInstance: true }, rules: [] });
+  // The usage starts at nothing: the AI specs before this one on the same
+  // server (ai-ask-*, ai-page-*, … against their mock provider) counted
+  // tokens for the same demo account today.
+  const d = db();
+  d.prepare("DELETE FROM ai_quota_usage WHERE user_id=?").run(boot.user.id);
+  d.prepare("DELETE FROM ai_quota_after_usage WHERE user_id=?").run(boot.user.id);
+  d.close();
   return { command, userId: boot.user.id as string };
 }
 
