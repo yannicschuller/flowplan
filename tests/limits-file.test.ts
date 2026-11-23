@@ -75,7 +75,7 @@ const sample = () => ({
       prices: [{ interval: "month", eur: 5, usd: 5 }],
       _ids: { productId: "pro_1" },
     },
-    { group: "Flowplan Pro", kind: "plan", storageMb: 102400, uploadMb: 5120, workspaces: 50, aiActions: 5000, aiModels: "all", aiAfter: "haiku" },
+    { group: "Flowplan Pro", kind: "plan", storageMb: 102400, uploadMb: 20480, workspaces: 50, aiActions: 5000, aiModels: "all", aiAfter: "haiku" },
     { group: "Flowplan +50 GB", kind: "addon", storageMb: 51200, uploadMb: 0, aiActions: 0, aiModels: "haiku" },
   ],
   flowplan: {
@@ -149,8 +149,8 @@ test("dry run lists every change and writes nothing; applying maps every plan; a
   assert.ok(dry.changes.some((c) => c.area === "limits" && c.name === "Flowplan Plus" && c.field === "storageMb" && c.after === 25600));
   assert.ok(dry.changes.some((c) => c.area === "quota" && c.scope === "group" && c.name === "Flowplan Pro" && c.before === null && c.after?.actions === 5000 && c.after.after === MODELS.haiku));
   assert.ok(dry.changes.some((c) => c.area === "setting" && c.field === "unit" && c.after === "cost"));
-  // Pro's 5,120 MB upload is capped at the server's 1,024 MB, with a note.
-  assert.deepEqual(dry.notes, [{ path: "plans[1].uploadMb", code: "capped", max: 1024 }]);
+  // Pro's 20,480 MB upload is capped at the server's 10,240 MB (10 GB), with a note.
+  assert.deepEqual(dry.notes, [{ path: "plans[1].uploadMb", code: "capped", max: 10240 }]);
 
   const applied = await importFile(sample(), false);
   assert.equal(applied.applied, true);
@@ -159,7 +159,7 @@ test("dry run lists every change and writes nothing; applying maps every plan; a
   const limits = Object.fromEntries((await all<{ target: string; limits: string }>("SELECT target,limits FROM group_limits")).map((r) => [r.target, JSON.parse(r.limits)]));
   assert.deepEqual(limits, {
     "dir:Flowplan Plus": { storageMb: 25600, uploadMb: 1024 },
-    "dir:Flowplan Pro": { storageMb: 102400, workspaces: 50, uploadMb: 1024 },
+    "dir:Flowplan Pro": { storageMb: 102400, workspaces: 50, uploadMb: 10240 },
     "dir:Flowplan +50 GB": { storageMb: 51200, storageMode: "add" },
   });
   // AI quota rules in cost: actions × 0.02 USD per month; the add-on has none.
@@ -308,4 +308,103 @@ test("members and API tokens are refused", async () => {
   const token = { ...admin, apiScope: "write" } as Identity;
   await assert.rejects(command(token, { action: "admin.limitsExport" }), (e: { status?: number }) => e.status === 403);
   await assert.rejects(command(token, { action: "admin.limitsImport", file: sample(), dryRun: true }), (e: { status?: number }) => e.status === 403);
+});
+
+test("aiTokens: tokens per period directly with the unit tokens, aiActions still read; cost needs actions", async () => {
+  // The instance counts in cost: tokens alone are an error, next to actions a note.
+  const costly = sample() as Json;
+  costly.plans[0].aiTokens = 5_000_000;
+  delete costly.plans[0].aiActions;
+  costly.flowplan.aiQuota.defaultTokens = 150_000;
+  delete costly.flowplan.aiQuota.defaultActions;
+  const refused = await importFile(costly, true);
+  assert.equal(refused.ok, false);
+  assert.deepEqual(
+    refused.errors.map((e) => `${e.path} ${e.code} ${e.value}`).sort(),
+    ["flowplan.aiQuota.defaultTokens tokens_need_unit cost", "plans[0].aiTokens tokens_need_unit cost"],
+  );
+  const both = sample() as Json;
+  both.plans[0].aiTokens = 5_000_000;
+  const ignored = await importFile(both, true);
+  assert.equal(ignored.ok, true);
+  assert.deepEqual(ignored.notes.filter((n) => n.code !== "capped"), [{ path: "plans[0].aiTokens", code: "tokens_ignored", value: "cost" }]);
+
+  // With the unit tokens: aiTokens without conversion, and it wins over aiActions.
+  const file = sample() as Json;
+  file.flowplan.aiQuota = { unit: "tokens", defaultTokens: 150_000, defaultAfter: "off", instanceCapTokens: 900_000_000 };
+  file.plans[0].aiTokens = 5_000_000;
+  file.plans[1].aiTokens = 20_000_000;
+  delete file.plans[1].aiActions;
+  file.plans.push({ group: "Flowplan Old", kind: "plan", aiActions: 200, aiAfter: "off" });
+  const dry = await importFile(file, true);
+  assert.equal(dry.ok, true, JSON.stringify(dry.errors));
+  assert.deepEqual(dry.notes.filter((n) => n.code !== "capped"), [{ path: "plans[0].aiActions", code: "tokens_win", value: "aiTokens" }]);
+  const plusChange = dry.changes.find((c) => c.area === "quota" && c.name === "Flowplan Plus");
+  assert.ok(plusChange?.area === "quota" && plusChange.after?.limit === 5_000_000 && plusChange.after.actions === null, JSON.stringify(plusChange));
+  assert.equal((await importFile(file, false)).applied, true);
+  const rules = Object.fromEntries((await quotaRules()).map((r) => [`${r.scope}|${r.target}`, r]));
+  assert.equal((await quotaSettings()).unit, "tokens");
+  assert.deepEqual(rules["group|dir:Flowplan Plus"].limits, { month: 5_000_000 });
+  assert.deepEqual(rules["group|dir:Flowplan Pro"].limits, { month: 20_000_000 });
+  // An older file's actions: converted with tokensPerAction (5,000).
+  assert.deepEqual(rules["group|dir:Flowplan Old"].limits, { month: 1_000_000 });
+  assert.deepEqual(rules["default|"].limits, { month: 150_000 });
+  assert.deepEqual(rules["instance|"].limits, { month: 900_000_000 });
+
+  // The export writes aiTokens (and defaultTokens) in the unit tokens; the round trip has no changes.
+  const exported = (await command(admin, { action: "admin.limitsExport" })) as Json;
+  const plus = exported.plans.find((p: Json) => p.group === "Flowplan Plus");
+  assert.equal(plus.aiTokens, 5_000_000);
+  assert.equal(plus.aiActions, undefined);
+  assert.equal(exported.plans.find((p: Json) => p.group === "Flowplan Old").aiTokens, 1_000_000);
+  assert.equal(exported.flowplan.aiQuota.defaultTokens, 150_000);
+  assert.equal(exported.flowplan.aiQuota.defaultActions, undefined);
+  assert.equal(exported.flowplan.aiQuota.unit, "tokens");
+  const again = await importFile(JSON.stringify(exported), true);
+  assert.deepEqual([again.ok, again.changes, again.notes], [true, [], []]);
+  // aiTokens null removes the rule, as aiActions null does.
+  const remove = JSON.parse(JSON.stringify(exported)) as Json;
+  remove.plans.find((p: Json) => p.group === "Flowplan Old").aiTokens = null;
+  await importFile(remove, false);
+  assert.equal((await quotaRules()).find((q) => q.target === "dir:Flowplan Old"), undefined);
+});
+
+test("aiAfterTokens: the limit of the model after the quota, tokens only; export and import round trip", async () => {
+  const base = (await command(admin, { action: "admin.limitsExport" })) as Json;
+  assert.equal(base.flowplan.aiQuota.unit, "tokens");
+  const file = JSON.parse(JSON.stringify(base)) as Json;
+  const plus = file.plans.find((p: Json) => p.group === "Flowplan Plus");
+  plus.aiAfter = "haiku";
+  plus.aiAfterTokens = 20_000_000;
+  file.flowplan.aiQuota.defaultAfter = "haiku";
+  file.flowplan.aiQuota.defaultAfterTokens = 1_000_000;
+  const dry = await importFile(file, true);
+  assert.equal(dry.ok, true, JSON.stringify(dry.errors));
+  const change = dry.changes.find((c) => c.area === "quota" && c.name === "Flowplan Plus");
+  assert.ok(change?.area === "quota" && change.after?.after === MODELS.haiku && change.after.afterLimit === 20_000_000, JSON.stringify(change));
+  assert.equal((await importFile(file, false)).applied, true);
+  const rules = Object.fromEntries((await quotaRules()).map((r) => [`${r.scope}|${r.target}`, r]));
+  assert.deepEqual(rules["group|dir:Flowplan Plus"].afterLimits, { month: 20_000_000 });
+  assert.equal(rules["group|dir:Flowplan Plus"].after, MODELS.haiku);
+  assert.deepEqual(rules["default|"].afterLimits, { month: 1_000_000 });
+  // Exported again, and a round trip without changes.
+  const exported = (await command(admin, { action: "admin.limitsExport" })) as Json;
+  assert.equal(exported.plans.find((p: Json) => p.group === "Flowplan Plus").aiAfterTokens, 20_000_000);
+  assert.equal(exported.flowplan.aiQuota.defaultAfterTokens, 1_000_000);
+  assert.deepEqual((await importFile(JSON.stringify(exported), true)).changes, []);
+  // null: unlimited again; "off" drops the limit with the model.
+  const open = JSON.parse(JSON.stringify(exported)) as Json;
+  open.plans.find((p: Json) => p.group === "Flowplan Plus").aiAfterTokens = null;
+  open.flowplan.aiQuota.defaultAfter = "off";
+  await importFile(open, false);
+  const after = Object.fromEntries((await quotaRules()).map((r) => [`${r.scope}|${r.target}`, r]));
+  assert.equal(after["group|dir:Flowplan Plus"].afterLimits, undefined);
+  assert.equal(after["group|dir:Flowplan Plus"].after, MODELS.haiku);
+  assert.equal(after["default|"].after, undefined);
+  assert.equal(await one("SELECT 1 x FROM ai_quota_rules WHERE scope='default' AND after_limits IS NOT NULL"), undefined);
+  // With the unit cost: an error that explains it.
+  const cost = JSON.parse(JSON.stringify(exported)) as Json;
+  cost.flowplan.aiQuota = { unit: "cost", defaultAfter: "haiku", defaultAfterTokens: 5 };
+  const refused = await importFile(cost, true);
+  assert.ok(refused.errors.some((e) => e.path === "flowplan.aiQuota.defaultAfterTokens" && e.code === "tokens_need_unit"), JSON.stringify(refused.errors));
 });

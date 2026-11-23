@@ -10,6 +10,7 @@
 //   folder per upload, named after the person, and kept after a preview so
 //   the import does not upload it again. It is deleted after the import, on
 //   "discard", and at the latest six hours later (swept on every upload).
+import { IN_MEMORY_FILE_MB } from "../upload-limit";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { staging, stagingInBucket } from "../staging";
 import { createHash, randomUUID } from "node:crypto";
@@ -32,9 +33,10 @@ export function importEnvMb(raw = process.env.FLOWPLAN_IMPORT_MAX_MB): number | 
   return Number.isInteger(n) && n >= 1 ? Math.min(n, MAX_ENV_MB) : null;
 }
 // The limit in MB: the variable, else the person's largest upload, at
-// least 100 MB.
+// least 100 MB and at most 1 GB (IN_MEMORY_FILE_MB, the former maximum of
+// uploads: the importers read parts of the file into memory).
 export function importLimitMb(uploadMb: number, envMb = importEnvMb()) {
-  return envMb ?? Math.max(IMPORT_MIN_MB, uploadMb);
+  return envMb ?? Math.max(IMPORT_MIN_MB, Math.min(IN_MEMORY_FILE_MB, uploadMb));
 }
 export const importLimitFor = async (user: Pick<Identity, "id" | "isAdmin">) => importLimitMb(await maxUploadMbFor(user));
 // The refusal names the limit and where it is changed.

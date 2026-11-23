@@ -99,6 +99,22 @@ export function unseal(data: Uint8Array, extra: Key[] = []): Buffer {
   }
 }
 
+// The same piece by piece, for code that cuts the output itself (the parts
+// of a multipart upload, lib/storage.ts): null without a key. The pieces
+// joined – head, every update(), final() – are what seal() returns.
+export function sealer(): { head: Buffer; update(chunk: Uint8Array): Buffer; final(): Buffer } | null {
+  const key = encryptionKeys().current;
+  if (!key) return null;
+  const head = header(key);
+  const cipher = createCipheriv("aes-256-gcm", key.secret, head.subarray(MAGIC.length + ID_BYTES));
+  cipher.setAAD(head.subarray(0, MAGIC.length + ID_BYTES));
+  return {
+    head,
+    update: (chunk) => cipher.update(chunk),
+    final: () => Buffer.concat([cipher.final(), cipher.getAuthTag()]),
+  };
+}
+
 // The same for streams (the instance backup can be many gigabytes).
 export function sealStream(): Transform {
   const key = encryptionKeys().current;

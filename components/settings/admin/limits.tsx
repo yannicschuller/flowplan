@@ -15,6 +15,7 @@ import { GroupPicker, groupLabel } from "./group-picker";
 import { LimitsFile } from "./limits-file";
 import { Select } from "../../select";
 import type { GroupLimitRule, GroupLimits, StorageMode, UserLimits } from "@/lib/user-limits";
+import { MAX_UPLOAD_MB } from "@/lib/upload-limit";
 
 export default function LimitsSection() {
   const t = useT();
@@ -82,12 +83,12 @@ export default function LimitsSection() {
           field="maxUploadMb"
           label={t("Größte Datei beim Hochladen", "Largest upload")}
           description={t(
-            "Für jede einzelne Datei; je Person änderbar. Gilt auch für Importe aus AFFiNE (mindestens 100 MB).",
-            "For each single file; can differ per person. Also applies to imports from AFFiNE (at least 100 MB).",
+            "Für jede einzelne Datei, bis 10240 MB (10 GB); je Person änderbar. Gilt auch für Importe aus AFFiNE (mindestens 100 MB, höchstens 1024 MB). Für große Dateien muss auch der Reverse Proxy so große Anfragen durchlassen.",
+            "For each single file, up to 10240 MB (10 GB); can differ per person. Also applies to imports from AFFiNE (at least 100 MB, at most 1024 MB). For large files the reverse proxy must let requests that large through too.",
           )}
           unit="MB"
           min={1}
-          max={1024}
+          max={MAX_UPLOAD_MB}
           fallback={10}
         />
         <InstanceText
@@ -262,7 +263,7 @@ function GroupLimits() {
               {
                 key: "upload",
                 header: t("Größte Datei (MB)", "Largest file (MB)"),
-                render: (r) => <NumberInput value={r.limits.uploadMb ?? null} min={1} max={1024} label={t(`${name(r.target)}: größte Datei`, `${name(r.target)}: largest file`)} placeholder={String(s.maxUploadMb)} onCommit={(v) => set(r, "uploadMb", v)} />,
+                render: (r) => <NumberInput value={r.limits.uploadMb ?? null} min={1} max={MAX_UPLOAD_MB} label={t(`${name(r.target)}: größte Datei`, `${name(r.target)}: largest file`)} placeholder={String(s.maxUploadMb)} onCommit={(v) => set(r, "uploadMb", v)} />,
               },
               {
                 key: "remove",

@@ -268,9 +268,17 @@ export const config = {
   matcher: [
     // Every request without a body: custom domains (lib/custom-domains.ts)
     // must not reach the app. Requests with a body are left out – the proxy
-    // would buffer uploads in memory (proxyClientMaxBodySize) – and are
-    // guarded by the origin check and by never carrying cookies there.
-    { source: "/:path*", missing: [{ type: "header", key: "content-length" }] },
+    // would buffer uploads in memory (proxyClientMaxBodySize) and cut them
+    // off at 10 MB – and are guarded by the origin check and by never
+    // carrying cookies there. A body sent in chunks (Transfer-Encoding,
+    // no Content-Length) is one too.
+    {
+      source: "/:path*",
+      missing: [
+        { type: "header", key: "content-length" },
+        { type: "header", key: "transfer-encoding" },
+      ],
+    },
     "/api/caldav",
     "/api/caldav/:path*",
     "/.well-known/caldav",

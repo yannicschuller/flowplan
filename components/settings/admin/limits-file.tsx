@@ -22,7 +22,8 @@ function quotaText(t: T, s: QuotaSide | null, unit: "tokens" | "cost", currency:
   if (s.exempt) return t("ausgenommen", "exempt");
   const amount = s.limit === null ? t("ohne Grenze", "no limit") : unit === "tokens" ? t(`${num(s.limit)} Tokens`, `${num(s.limit)} tokens`) : `${s.limit.toLocaleString(LOCALE_TAG, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
   const actions = scope !== "instance" && s.actions !== null ? t(`${num(s.actions)} Aktionen (${amount})`, `${num(s.actions)} actions (${amount})`) : amount;
-  const after = scope === "instance" ? "" : s.after ? t(`, danach ${s.after}`, `, then ${s.after}`) : t(", danach KI aus", ", then AI off");
+  const afterLimit = typeof s.afterLimit === "number" ? (unit === "tokens" ? t(` (höchstens ${num(s.afterLimit)} Tokens)`, ` (at most ${num(s.afterLimit)} tokens)`) : ` (≤ ${s.afterLimit.toLocaleString(LOCALE_TAG, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency})`) : "";
+  const after = scope === "instance" ? "" : s.after ? t(`, danach ${s.after}${afterLimit}`, `, then ${s.after}${afterLimit}`) : t(", danach KI aus", ", then AI off");
   return `${actions} ${periodWord(t, s.period)}${after}`;
 }
 
@@ -104,6 +105,15 @@ export function issueText(t: T, e: FileIssue): string {
       return t(`${where}: passt nicht zur Einheit ${e.value} der KI-Kontingente – nimm ${list} oder setze „unit“`, `${where}: does not fit the AI quotas' unit ${e.value} – use ${list} or set “unit”`);
     case "currency_mismatch":
       return t(`${where}: die KI-Preise der Instanz sind in ${e.value} – nimm ${list}`, `${where}: the instance's AI prices are in ${e.value} – use ${list}`);
+    case "tokens_need_unit":
+      return t(
+        `${where}: Tokens gelten nur, wenn die KI-Kontingente in Tokens zählen (jetzt: Kosten) – setze „flowplan.aiQuota.unit“ auf „tokens“ oder gib die Grenze als Kosten an (aiActions mit costPerAction)`,
+        `${where}: tokens only apply when the AI quotas count in tokens (now: cost) – set “flowplan.aiQuota.unit” to “tokens” or give the limit as cost (aiActions with costPerAction)`,
+      );
+    case "tokens_win":
+      return t(`${where}: ${e.value} ist ebenfalls angegeben und gilt – dieser Wert wird nicht verwendet`, `${where}: ${e.value} is given too and applies – this value is not used`);
+    case "tokens_ignored":
+      return t(`${where}: nicht verwendet – die KI-Kontingente zählen in Kosten, es gilt aiActions`, `${where}: not used – the AI quotas count in cost, aiActions applies`);
     case "capped":
       return t(`${where}: auf ${num(e.max ?? 0)} MB begrenzt (größte Datei, die dieser Server annimmt)`, `${where}: capped at ${num(e.max ?? 0)} MB (the largest file this server takes)`);
     default:

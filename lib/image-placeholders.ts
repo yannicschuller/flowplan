@@ -83,10 +83,13 @@ export async function storePlaceholder(fileId: string, placeholder: Placeholder 
 
 /** The placeholder of a new upload, computed from its bytes and stored.
  *  Never throws: an upload does not fail for its placeholder. */
-export async function placeholderForUpload(fileId: string, mime: string, pageId: string, data: Uint8Array): Promise<PlaceholderInfo | null> {
+// `data` may also be a file on disk ({ size, read }): read only when it is
+// small enough to compute (large uploads, lib/multipart-stream.ts).
+export async function placeholderForUpload(fileId: string, mime: string, pageId: string, data: Uint8Array | { size: number; read: () => Uint8Array }): Promise<PlaceholderInfo | null> {
   try {
-    const wanted = await eligible({ mime, page_id: pageId }) && data.length <= MAX_BYTES;
-    await storePlaceholder(fileId, wanted ? await computePlaceholder(data) : null);
+    const size = data instanceof Uint8Array ? data.length : data.size;
+    const wanted = await eligible({ mime, page_id: pageId }) && size <= MAX_BYTES;
+    await storePlaceholder(fileId, wanted ? await computePlaceholder(data instanceof Uint8Array ? data : data.read()) : null);
   } catch (error) {
     console.error("Platzhalter konnte nicht berechnet werden:", (error as Error).message);
     return null;

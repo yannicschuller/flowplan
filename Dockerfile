@@ -148,6 +148,9 @@ COPY --from=build --chown=node:node /app/release-notes ./release-notes
 # the supervisor next to server.js; docker/entrypoint.sh starts it instead
 # of server.js when FLOWPLAN_PROCESSES is more than 1.
 COPY --chmod=644 scripts/processes.mjs /app/processes.mjs
+# Uploads of up to 10 GB: Node.js's 5 minutes for a whole request become
+# FLOWPLAN_REQUEST_TIMEOUT (docker/entrypoint.sh loads it before the app).
+COPY --chmod=644 docker/request-timeout.mjs /app/request-timeout.mjs
 # Emergency decryption of encrypted backups and objects (docs: storage).
 COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 # Instance move without the web interface (docs: Instanz umziehen):

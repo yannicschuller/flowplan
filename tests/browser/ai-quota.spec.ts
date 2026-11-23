@@ -74,3 +74,48 @@ test("quotas: the administrator sets the default, the person sees what is left",
     d.close();
   }
 });
+
+// "Danach: weiter mit …" with a limit of its own (schema 122): the
+// administrator sets "höchstens" next to the model, the person sees what is
+// left of the continuation once the quota is used up.
+test("quotas: the continuation after the quota has a limit, the person sees what is left of it", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "The tables of the administration: the desktop run.");
+  test.setTimeout(120_000);
+  const { command, userId } = await setup(page);
+  try {
+    await command({ action: "admin.aiQuotas", rules: [{ scope: "default", target: "", exempt: false, limits: { month: 1000 } }] });
+    await page.goto("/#admin/ai");
+    const limits = page.locator("section[aria-labelledby='quota-limits-title']");
+    await expect(limits).toBeVisible({ timeout: 30_000 });
+    await limits.getByRole("combobox", { name: "Standard je Person: nach Erreichen des Kontingents" }).selectOption("quota-model");
+    const most = limits.getByRole("spinbutton", { name: "Standard je Person: weiter mit quota-model: höchstens (leer = unbegrenzt, Tokens)" });
+    await expect(most).toBeVisible();
+    await expect(limits.getByRole("combobox", { name: "Standard je Person: weiter mit quota-model: Zeitraum" })).toHaveValue("month");
+    await most.fill("20000");
+    await most.press("Enter");
+    await expect
+      .poll(async () => ((await (await page.request.get("/api/ai/admin/quotas")).json()).rules as { scope: string; after?: string; afterLimits?: Record<string, number> }[]).find((r) => r.scope === "default")?.afterLimits?.month)
+      .toBe(20_000);
+
+    // The quota is used up (1,500 of 1,000); 5,000 went on with the model.
+    const d = db();
+    const day = new Date().toISOString().slice(0, 10);
+    d.prepare("INSERT INTO ai_quota_usage(day,user_id,model,kind,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?,?,?)").run(day, userId, "quota-model", "person", 3, 6000, 500);
+    d.prepare("INSERT INTO ai_quota_after_usage(day,user_id,model,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?,?)").run(day, userId, "quota-model", 2, 4000, 1000);
+    d.close();
+    const status = (await (await page.request.get("/api/ai/quota")).json()) as { blocked: boolean; after: { model: string; limit: number; used: number; left: number } };
+    expect(status.after).toMatchObject({ model: "quota-model", limit: 20_000, used: 5000, left: 15_000 });
+    expect(status.blocked).toBe(false);
+    await page.goto("/#settings/usage");
+    const quota = page.locator("section[aria-labelledby='ai-title']");
+    await expect(quota).toBeVisible({ timeout: 30_000 });
+    await expect(quota).toContainText("Danach geht es mit quota-model weiter – noch");
+    await expect(quota).toContainText("Tokens diesen Monat");
+  } finally {
+    await command({ action: "admin.aiQuotas", rules: [] });
+    const d = db();
+    d.prepare("DELETE FROM ai_quota_usage WHERE user_id=?").run(userId);
+    d.prepare("DELETE FROM ai_quota_after_usage WHERE user_id=?").run(userId);
+    d.close();
+  }
+});

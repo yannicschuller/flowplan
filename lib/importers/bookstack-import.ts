@@ -6,6 +6,7 @@
 // (lib/importers/write.ts), with the import report. The token is an
 // argument here and nothing more: never stored, never logged, and no
 // message that leaves here carries it.
+import { IN_MEMORY_FILE_MB } from "../upload-limit";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
 import { maxUploadMbFor } from "../user-limits";
@@ -60,7 +61,7 @@ export async function importBookStack(
     const { tree, counts } = await readBookStack(credentials, selection, {
       sleep: options.sleep,
       dryRun: !!options.dryRun,
-      maxFileBytes: (await maxUploadMbFor(user)) * 1024 * 1024,
+      maxFileBytes: Math.min(IN_MEMORY_FILE_MB, await maxUploadMbFor(user)) * 1024 * 1024,
     });
     try {
       await jobProgress(0.9);

@@ -50,6 +50,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   // AI quota usage (lib/ai/quota.ts forgetQuotaPerson, from forgetAiPerson):
   // kept in the instance's totals without a person.
   "ai_quota_usage.user_id": "custom",
+  // The continuation after the quota (schema 122): forgotten with the person.
+  "ai_quota_after_usage.user_id": "custom",
   "user_totp.user_id": "custom",
   "recovery_codes.user_id": "custom",
   "e2ee_identities.user_id": "custom",

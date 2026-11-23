@@ -30,14 +30,15 @@
 // cache (withUploadFile, openUploadStream). The SQLite database is never
 // part of this.
 import { AwsClient } from "aws4fetch";
-import { createReadStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { all, one, run, sql } from "./db";
-import { currentKeyId, isEncrypted, OVERHEAD, seal, unseal } from "./encryption";
+import { currentKeyId, fileIsEncrypted, OVERHEAD, seal, sealer, unsealFile } from "./encryption";
 import { DELETED_UPLOADS, deletedName } from "./deleted-uploads";
 import { clusterMode } from "./cluster/config";
 import { channelName, listen } from "./cluster/pg-session";
@@ -322,11 +323,11 @@ async function drain() {
               throw new Error(clusterMode() ? "Datei liegt auf einer anderen Instanz." : "Lokale Datei fehlt noch.");
             }
             const keyId = currentKeyId();
-            const response = await aws(config).fetch(objectUrl(config, job.key), {
-              method: "PUT",
-              body: new Uint8Array(seal(readFileSync(path))),
+            // A large file takes a while: the lease is renewed part by part,
+            // so no other round takes the job meanwhile.
+            await putObject(config, job.key, path, async () => {
+              await run("UPDATE storage_queue SET next_at=? WHERE key=? AND op=? AND attempts=?", Date.now() + LEASE_MS, job.key, job.op, job.attempts);
             });
-            if (!response.ok) throw new Error(`PUT ${response.status}`);
             await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", job.key, keyId);
             // Now confirmed in the bucket: may leave the cache if it is full.
             schedulePrune(30_000);
@@ -378,6 +379,16 @@ export async function ensureLocal(key: string) {
   if (existsSync(path)) return true;
   const config = storageConfig();
   if (!config) return false;
+  // One download per file at a time: the others wait for it.
+  const fetching = (fetchingState.flowplanFetching ??= new Map());
+  const running = fetching.get(key);
+  if (running) return await running;
+  const job = fetchLocal(config, key, path).finally(() => fetching.delete(key));
+  fetching.set(key, job);
+  return await job;
+}
+const fetchingState = globalThis as unknown as { flowplanFetching?: Map<string, Promise<boolean>> };
+async function fetchLocal(config: StorageConfig, key: string, path: string) {
   try {
     let response = await aws(config).fetch(objectUrl(config, key));
     // Cluster mode: written moments ago on another instance, whose upload
@@ -388,16 +399,10 @@ export async function ensureLocal(key: string) {
       response = await aws(config).fetch(objectUrl(config, key));
     }
     if (!response.ok) return false;
-    // Plain objects (from before encryption) come back as they are – but one
-    // that went up encrypted must still be: a plain object in its place was
-    // swapped in the bucket.
-    const raw = Buffer.from(await response.arrayBuffer());
-    const sealedWith = state.flowplanStorage ? (await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key)) : undefined;
-    if (sealedWith?.key_id && !isEncrypted(raw)) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
-    const data = unseal(raw);
+    // Streamed to disk (files of several gigabytes), decrypted from there.
     mkdirSync(uploadsDir(), { recursive: true });
-    const partial = `${path}.${process.pid}.part`;
-    writeFileSync(partial, data);
+    const partial = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.part`;
+    await settleDownload(key, response, partial, `${partial}.raw`);
     renameSync(partial, path);
     return true;
   } catch (error) {
@@ -406,6 +411,125 @@ export async function ensureLocal(key: string) {
     return false;
   }
 }
+// ---- Objects of any size ----
+//
+// Up to SINGLE_PUT_BYTES a file goes up in one PUT (read into memory, as
+// before); a larger one as a multipart upload in parts of PART_BYTES, read
+// and sealed part by part: the memory stays at about one part whatever the
+// file's size (uploads of up to 10 GB), and S3's limit of 5 GB per PUT does
+// not apply. At most LARGE_PUTS large files go up at once, so a queue full
+// of them cannot add up either. Downloads are streamed to a file and
+// decrypted from there (unsealFile), never held in memory.
+export const SINGLE_PUT_BYTES = 16 * 1024 * 1024;
+export const PART_BYTES = 16 * 1024 * 1024;
+const LARGE_PUTS = 2;
+const largeSlots = globalThis as unknown as { flowplanLargePuts?: { active: number; waiting: (() => void)[] } };
+async function withLargeSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const slots = (largeSlots.flowplanLargePuts ??= { active: 0, waiting: [] });
+  while (slots.active >= LARGE_PUTS) await new Promise<void>((r) => slots.waiting.push(r));
+  slots.active++;
+  try {
+    return await fn();
+  } finally {
+    slots.active--;
+    slots.waiting.shift()?.();
+  }
+}
+const xmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Puts the file at `path` as the object of `key`, sealed with the current
+// key. `progress` runs after every part of a multipart upload.
+export async function putObject(config: StorageConfig, key: string, path: string, progress?: () => Promise<void>): Promise<void> {
+  const size = statSync(path).size;
+  const url = objectUrl(config, key);
+  if (size <= SINGLE_PUT_BYTES) {
+    const response = await aws(config).fetch(url, { method: "PUT", body: new Uint8Array(seal(readFileSync(path))) });
+    if (!response.ok) throw new Error(`PUT ${response.status}`);
+    return;
+  }
+  await withLargeSlot(async () => {
+    const created = await aws(config).fetch(`${url}?uploads`, { method: "POST" });
+    if (!created.ok) throw new Error(`POST uploads ${created.status}`);
+    const uploadId = (await created.text()).match(/<UploadId>([^<]+)<\/UploadId>/)?.[1];
+    if (!uploadId) throw new Error("Multipart-Upload ohne UploadId.");
+    const query = `uploadId=${encodeURIComponent(uploadId)}`;
+    const etags: string[] = [];
+    const sendPart = async (body: Buffer) => {
+      const number = etags.length + 1;
+      let last: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt) await new Promise((r) => setTimeout(r, 500 * 4 ** (attempt - 1)));
+        try {
+          const response = await aws(config).fetch(`${url}?partNumber=${number}&${query}`, { method: "PUT", body: new Uint8Array(body.buffer as ArrayBuffer, body.byteOffset, body.length) });
+          const etag = response.headers.get("etag");
+          if (response.ok && etag) {
+            etags.push(etag);
+            await progress?.();
+            return;
+          }
+          last = new Error(`PUT part ${number} ${response.status}`);
+        } catch (error) {
+          last = error;
+        }
+      }
+      throw last;
+    };
+    try {
+      const sealing = sealer();
+      let pending: Buffer[] = sealing ? [sealing.head] : [];
+      let pendingSize = sealing ? sealing.head.length : 0;
+      const add = async (piece: Buffer) => {
+        if (!piece.length) return;
+        pending.push(piece);
+        pendingSize += piece.length;
+        while (pendingSize >= PART_BYTES) {
+          const joined = Buffer.concat(pending, pendingSize);
+          await sendPart(joined.subarray(0, PART_BYTES));
+          const rest = joined.subarray(PART_BYTES);
+          pending = rest.length ? [Buffer.from(rest)] : [];
+          pendingSize = rest.length;
+        }
+      };
+      for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) await add(sealing ? sealing.update(chunk as Buffer) : (chunk as Buffer));
+      if (sealing) await add(sealing.final());
+      if (pendingSize || !etags.length) await sendPart(Buffer.concat(pending, pendingSize));
+      const parts = etags.map((etag, i) => `<Part><PartNumber>${i + 1}</PartNumber><ETag>${xmlEscape(etag)}</ETag></Part>`).join("");
+      const done = await aws(config).fetch(`${url}?${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/xml" },
+        body: `<CompleteMultipartUpload>${parts}</CompleteMultipartUpload>`,
+      });
+      // S3 may answer 200 and still report an error in the body.
+      const text = await done.text();
+      if (!done.ok || /<Error>/.test(text)) throw new Error(`POST complete ${done.status}`);
+    } catch (error) {
+      await aws(config).fetch(`${url}?${query}`, { method: "DELETE" }).catch(() => {});
+      throw error;
+    }
+  });
+}
+
+// Writes a fetched object to `target`, decrypted: streamed to `raw` first
+// (or straight to `target` when it is plain). An object that went up
+// encrypted must still be: a plain one in its place was swapped in the
+// bucket. Nothing is left behind on a failure.
+async function settleDownload(key: string, response: Response, target: string, raw: string, checkSealed = !!state.flowplanStorage) {
+  try {
+    await pipeline(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>), createWriteStream(raw));
+    const encrypted = fileIsEncrypted(raw);
+    const sealedWith = checkSealed ? await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key) : undefined;
+    if (sealedWith?.key_id && !encrypted) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
+    rmSync(target, { force: true });
+    if (encrypted) await unsealFile(raw, target);
+    else renameSync(raw, target);
+  } catch (error) {
+    rmSync(target, { force: true });
+    throw error;
+  } finally {
+    rmSync(raw, { force: true });
+  }
+}
+
 // ---- Reading and writing through the storage layer ----
 
 // The local path of a stored file, fetched from the bucket first when this
@@ -465,17 +589,13 @@ export async function publishUpload(key: string): Promise<void> {
   const path = uploadPath(key);
   const job = (async () => {
     const keyId = currentKeyId();
-    const body = new Uint8Array(seal(readFileSync(path)));
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise((r) => setTimeout(r, 250 * 4 ** (attempt - 1)));
       try {
-        const response = await aws(config).fetch(objectUrl(config, key), { method: "PUT", body });
-        if (response.ok) {
-          await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", key, keyId);
-          return;
-        }
-        lastError = new Error(`PUT ${response.status}`);
+        await putObject(config, key, path);
+        await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", key, keyId);
+        return;
       } catch (error) {
         lastError = error;
       }
@@ -493,6 +613,17 @@ export async function publishUpload(key: string): Promise<void> {
   } finally {
     uploadsInFlight().delete(job);
   }
+}
+// Takes back what publishUpload put into the bucket, for a file that was
+// refused after it went up (lib/page-upload.ts storeUploadFile). Outside
+// cluster mode nothing went up early: nothing to do.
+export async function unpublishUpload(key: string): Promise<void> {
+  const config = storageConfig();
+  if (!clusterMode() || !config || !validKey(key)) return;
+  if (await one("SELECT 1 FROM files WHERE id=?", key)) return;
+  const response = await aws(config).fetch(objectUrl(config, key), { method: "DELETE" });
+  if (!response.ok && response.status !== 404) throw new Error(`DELETE ${response.status}`);
+  await run("DELETE FROM storage_sealed WHERE key=?", key);
 }
 // Writes a stored file and publishes it (see publishUpload).
 export async function writeUpload(key: string, data: Uint8Array) {
@@ -761,12 +892,9 @@ async function fetchTemporary(key: string): Promise<string | null> {
   try {
     const response = await aws(config).fetch(objectUrl(config, key));
     if (!response.ok) return null;
-    const raw = Buffer.from(await response.arrayBuffer());
-    const sealedWith = await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key);
-    if (sealedWith?.key_id && !isEncrypted(raw)) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
     mkdirSync(uploadsDir(), { recursive: true });
     const path = `${localPath(key)}.${randomBytes(6).toString("hex")}.read`;
-    writeFileSync(path, unseal(raw));
+    await settleDownload(key, response, path, `${localPath(key)}.${randomBytes(6).toString("hex")}.read`, true);
     return path;
   } catch (error) {
     console.error(`Dateispeicher: ${key} – ${(error as Error).message}`);

@@ -8,7 +8,7 @@ import { useEffect } from "react";
 import { ArrowRight, ArrowSquareOut, Gauge } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { explainStorage, storageSizeText } from "@/lib/limit-explain";
-import { USAGE_LINK, aiState, aiSummary, instanceCeiling, personalPeriod, quotaPossible, storageSummary, type MyLimits, type T } from "@/lib/limits-summary";
+import { USAGE_LINK, afterLine, aiState, aiSummary, instanceCeiling, personalPeriod, quotaPossible, storageSummary, type MyLimits, type T } from "@/lib/limits-summary";
 import { AI_REASON_TEXT, type AiStatus } from "@/lib/ai/features";
 import { settingsHash } from "@/lib/settings-sections";
 import { useT } from "../../i18n";
@@ -140,7 +140,16 @@ function AiCard({ ai, quota }: { ai: AiStatus | null | undefined; quota: ReturnT
           <QuotaBarList status={quota} periods={periods} />
           {personal &&
             (quota.after ? (
-              <p className="muted ai-quota-free">{t(`Danach geht es mit ${quota.after} weiter.`, `After that, AI goes on with ${quota.after}.`)}</p>
+              <p className="muted ai-quota-free">
+                {afterLine(quota, t, LOCALE_TAG)!.spent && quota.after.resetAt
+                  ? t(
+                      `Danach ging es mit ${quota.after.model} weiter – auch das ist aufgebraucht. KI ist aus bis ${resetText({ ...personal, resetAt: Math.min(quota.after.resetAt, personal.resetAt) }, quota.timeZone)}.`,
+                      `After that, AI went on with ${quota.after.model} – that is used up as well. AI is off until ${resetText({ ...personal, resetAt: Math.min(quota.after.resetAt, personal.resetAt) }, quota.timeZone)}.`,
+                    )
+                  : afterLine(quota, t, LOCALE_TAG)!.left
+                    ? t(`Danach geht es mit ${quota.after.model} weiter – ${afterLine(quota, t, LOCALE_TAG)!.left}.`, `After that, AI goes on with ${quota.after.model} – ${afterLine(quota, t, LOCALE_TAG)!.left}.`)
+                    : t(`Danach geht es mit ${quota.after.model} weiter.`, `After that, AI goes on with ${quota.after.model}.`)}
+              </p>
             ) : (
               <p className="muted ai-quota-free">
                 {t(`Danach ist KI aus – bis ${resetText(personal, quota.timeZone)}.`, `After that, AI is off – until ${resetText(personal, quota.timeZone)}.`)}
@@ -181,7 +190,7 @@ function AiCard({ ai, quota }: { ai: AiStatus | null | undefined; quota: ReturnT
         >
           <span className="usage-models">
             <code>{ai.provider.model}</code>
-            {quota?.after && state === "quota" && <small className="muted">{t(`danach ${quota.after}`, `then ${quota.after}`)}</small>}
+            {quota?.after && state === "quota" && <small className="muted">{afterLine(quota, t, LOCALE_TAG)!.text}</small>}
           </span>
         </SettingRow>
       )}

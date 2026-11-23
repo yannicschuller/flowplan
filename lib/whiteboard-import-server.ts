@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { IN_MEMORY_FILE_MB } from "./upload-limit";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -48,7 +49,7 @@ export async function storeBoardImages(
 ) {
   const urls = new Map<string, string>();
   if (!board.images.length) return urls;
-  const maxFile = (await maxUploadMbFor(user)) * 1024 * 1024;
+  const maxFile = Math.min(IN_MEMORY_FILE_MB, await maxUploadMbFor(user)) * 1024 * 1024;
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   mkdirSync(dir, { recursive: true });
   for (const image of board.images) {

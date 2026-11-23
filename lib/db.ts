@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 121;
+export const SCHEMA_VERSION = 122;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1663,11 +1663,31 @@ function migrate(d: DatabaseSync) {
   // Schema 121 – accounts with an unconfirmed address marked for deletion
   // (#436, lib/unconfirmed-deletion.ts).
   migrateUnconfirmedDeletions(d);
+  // Schema 122 – a limit for going on after a used-up AI quota
+  // (lib/ai/quota.ts): after_limits and the usage of the continuation.
+  migrateAiAfterLimits(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 122 – a limit for the continuation after a used-up AI quota
+// ("Danach: weiter mit <Modell>", after_model):
+// - ai_quota_rules.after_limits: per period (JSON like limits, in the
+//   quota's unit) how much a person may use with that model once the
+//   rule's own limits are used up; NULL or {}: unlimited, as before.
+// - ai_quota_after_usage: the tokens of the requests sent with the model
+//   after the quota, per day in the quota's time zone, person and model –
+//   besides ai_quota_usage, where they count as before (the person, the
+//   instance ceiling). Kept 400 days like ai_quota_usage. An older version
+//   would neither stop at the limit nor count the continuation, hence the
+//   number.
+function migrateAiAfterLimits(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(ai_quota_rules)").all() as { name: string }[]).some((c) => c.name === "after_limits"))
+    d.exec("ALTER TABLE ai_quota_rules ADD COLUMN after_limits TEXT");
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_quota_after_usage(day TEXT NOT NULL,user_id TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,user_id,model));
+    CREATE INDEX IF NOT EXISTS ai_quota_after_usage_user ON ai_quota_after_usage(user_id,day);`);
 }
 // Schema 121 – deleting accounts whose e-mail address was never confirmed
 // (#436, lib/unconfirmed-deletion.ts): one row per marked account with the

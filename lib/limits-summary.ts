@@ -88,6 +88,21 @@ export function quotaAmount(n: number, s: Pick<QuotaStatus, "unit" | "currency">
   return new Intl.NumberFormat(tag, { notation: n >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(n);
 }
 
+// The model after the quota with what is left of its own limit:
+// "danach weiter mit Haiku – noch 12 Mio. Tokens diesen Monat". `spent`:
+// that limit is used up as well (then AI is off until a period resets).
+// `left`: "noch 12 Mio. Tokens diesen Monat" (null: unlimited).
+export function afterLine(status: Pick<QuotaStatus, "after" | "unit" | "currency">, t: T, tag: string): { text: string; left: string | null; spent: boolean } | null {
+  const a = status.after;
+  if (!a) return null;
+  if (a.limit === null || a.left === null || !a.period) return { text: t(`danach weiter mit ${a.model}`, `then goes on with ${a.model}`), left: null, spent: false };
+  const when = periodPhrase(a.period, t);
+  if (a.left <= 0) return { text: t(`danach weiter mit ${a.model} – auch das ist ${when} aufgebraucht`, `then goes on with ${a.model} – used up as well ${when}`), left: null, spent: true };
+  const amount = quotaAmount(a.left, status, tag);
+  const left = status.unit === "tokens" ? t(`noch ${amount} Tokens ${when}`, `${amount} tokens left ${when}`) : t(`noch ${amount} ${when}`, `${amount} left ${when}`);
+  return { text: t(`danach weiter mit ${a.model} – ${left}`, `then goes on with ${a.model} – ${left}`), left, spent: false };
+}
+
 // The person's own period that is closest to its limit (the instance's
 // ceiling is not theirs).
 export function personalPeriod(status: QuotaStatus | null): QuotaPeriodState | null {

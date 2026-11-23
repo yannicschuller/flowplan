@@ -54,6 +54,7 @@ import { ago, duration, mbText } from "./format";
 import { activityState, type UserActivity } from "@/lib/user-activity-state";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { explainStorage } from "@/lib/limit-explain";
+import { MAX_UPLOAD_MB } from "@/lib/upload-limit";
 
 type Local = {
   admin: boolean;
@@ -1539,7 +1540,7 @@ function UserDrawer({
               label={t(`Größte Datei für ${u.name}`, `Largest file for ${u.name}`)}
               value={limits.uploadMb}
               min={1}
-              max={1024}
+              max={MAX_UPLOAD_MB}
               unit="MB"
               placeholder={defaults.upload}
               onChange={(uploadMb) => setLimits({ ...limits, uploadMb })}

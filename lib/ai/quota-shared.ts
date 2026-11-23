@@ -34,7 +34,10 @@ export type QuotaRole = (typeof QUOTA_ROLES)[number];
 // counted, not limited; the instance ceiling still applies. Absent or null:
 // AI stops until the period resets. afterKind: the provider kind the model
 // was chosen for (another kind: the rule stops as without one).
-export type QuotaRule = { scope: QuotaScope; target: string; exempt: boolean; limits: QuotaLimits; after?: string | null; afterKind?: string | null };
+// afterLimits: how much may be used with that model per period (in the
+// quota's unit) once the rule's limits are used up; then AI is off until a
+// period resets. Absent or empty: the continuation is unlimited.
+export type QuotaRule = { scope: QuotaScope; target: string; exempt: boolean; limits: QuotaLimits; after?: string | null; afterKind?: string | null; afterLimits?: QuotaLimits | null };
 
 export type QuotaUnit = "tokens" | "cost";
 export type QuotaSettings = {
@@ -76,8 +79,19 @@ export type QuotaStatus = {
   low: boolean;
   blocked: boolean;
   // The model requests go on with once the personal limit is used up
-  // (null: AI stops).
-  after?: string | null;
+  // (null: AI stops), with the continuation's own limit: `limit`, `used`
+  // and `left` of its tightest period (null: unlimited), `periods` all of
+  // them (level "person").
+  after?: QuotaAfterStatus | null;
+};
+export type QuotaAfterStatus = {
+  model: string;
+  limit: number | null;
+  used: number;
+  left: number | null;
+  period: QuotaPeriod | null;
+  resetAt: number | null;
+  periods: QuotaPeriodState[];
 };
 
 // Share of a limit used, 0…1 (a limit of 0 is used up).
