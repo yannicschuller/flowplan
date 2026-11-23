@@ -8,6 +8,7 @@ import { MathBlock, MathInline } from "@/lib/document-schema";
 import { loadMath, mathLoaded, renderMathInto, MAX_MATH_LENGTH } from "@/lib/math-render-lazy";
 import { Modal } from "./ui";
 import { beginUndoStep, nodeTargetPosition, openedNode } from "@/lib/node-target";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 export type MathTarget = {
   type: "mathBlock" | "mathInline";
   expression: string;
@@ -100,6 +101,7 @@ export function MathEditorDialog({
 }) {
   const t = useT();
   const locale = useLocale();
+  const hints = useKeyboardHints();
   const [expression, setExpression] = useState(target.expression);
   // KaTeX for the check and the preview (lib/math-render-lazy.ts).
   const [math, setMath] = useState(mathLoaded);
@@ -139,6 +141,8 @@ export function MathEditorDialog({
   }
   const [conflict, setConflict] = useState("");
   const inline = target.type === "mathInline";
+  // The shortcut shown on the primary button.
+  const submitKeys = inline ? "Enter" : "Mod+Enter";
   const error = math ? math.mathError(expression, inline) : null;
   function apply(remove = false) {
     if (!editor?.isEditable) {
@@ -191,6 +195,17 @@ export function MathEditorDialog({
         onSubmit={(event) => {
           event.preventDefault();
           if (!error) apply();
+        }}
+        // ⌘/Ctrl+Enter inserts or saves, like the button (#446); in an
+        // inline formula Enter alone does too (⇧Enter: a new line), in a
+        // formula block Enter stays a new line. Esc cancels (the Modal).
+        // Never while an input method composes.
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229 || event.altKey) return;
+          const submit = event.metaKey || event.ctrlKey || (inline && !event.shiftKey && event.target === input.current);
+          if (!submit) return;
+          event.preventDefault();
+          event.currentTarget.requestSubmit();
         }}
       >
         <label>
@@ -261,8 +276,18 @@ export function MathEditorDialog({
           <button type="button" className="button" onClick={onClose}>
             {t("Abbrechen", "Cancel")}
           </button>
-          <button className="button primary" disabled={!!error}>
+          <button
+            className="button primary"
+            disabled={!!error}
+            title={(target.getPos ? t("Speichern", "Save") : t("Einfügen", "Insert")) + hints.suffix(submitKeys)}
+            aria-keyshortcuts={inline ? "Enter" : hints.mac ? "Meta+Enter" : "Control+Enter"}
+          >
             {target.getPos ? t("Speichern", "Save") : t("Einfügen", "Insert")}
+            {hints.keys(submitKeys) && (
+              <kbd className="button-kbd" aria-hidden>
+                {hints.keys(submitKeys)}
+              </kbd>
+            )}
           </button>
         </div>
       </form>

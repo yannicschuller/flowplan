@@ -10043,6 +10043,16 @@ tr.order-drop-after > td {
 .math-preview .katex-display {
   margin: 0;
 }
+/* The shortcut on the formula dialog's primary button (#446). */
+.button .button-kbd {
+  margin-inline-start: 8px;
+  padding: 0 4px;
+  color: inherit;
+  opacity: 0.8;
+  border-color: color-mix(in srgb, currentColor 45%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .math-validation {
   color: #b42318;
   overflow-wrap: anywhere;
