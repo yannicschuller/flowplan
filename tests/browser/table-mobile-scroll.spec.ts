@@ -99,8 +99,11 @@ test("a wide first column stays below 40 % of a phone and the table scrolls side
   const cell = (await page.locator("tbody tr").nth(2).locator('td').nth(1).boundingBox())!;
   const y = cell.y + cell.height / 2;
   const box = (await scroller.boundingBox())!;
-  // Swipe to the left starting on the title column.
-  await swipe(cdp, page, { x: pinned.x + pinned.width - 20, y }, { x: pinned.x + 10, y: y + 3 });
+  // Swipe to the left starting on the title column, across the screen:
+  // the column takes at most 40 % now (was 60 %), and a swipe that ended on
+  // it moved the finger only about 105 px – scarcely more than the 100 px
+  // asked for below (92 on a slower runner).
+  await swipe(cdp, page, { x: pinned.x + pinned.width - 10, y }, { x: 20, y: y + 3 });
   const scrolled = await scroller.evaluate((el) => el.scrollLeft);
   expect(scrolled).toBeGreaterThan(100);
   // Other columns now show to the right of the pinned one.
