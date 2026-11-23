@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { drawsWith, forgetPen, isEraser, nearBox, notePenActivity, PALM_MS, palmLikely, pushPressure, SCRIBBLE_MARGIN, stylusTouch, writingInField, type PressureTrack } from "../lib/stylus";
+import { createPalmGuard, drawsWith, forgetPen, isEraser, nearBox, notePenActivity, PALM_MS, PALM_SIZE, palmLikely, palmSized, penNear, pushPressure, SCRIBBLE_MARGIN, stylusTouch, writingInField, type PressureTrack } from "../lib/stylus";
 import { pressureOutline } from "../lib/whiteboard-tools";
 
 const track = (): PressureTrack => ({ pressures: [], measured: false });
@@ -111,4 +111,64 @@ test("a drawing block inserted from the slash menu starts drawing once, when its
   assert.equal(takeDrawingStart("ink-b"), false, "another block");
   assert.equal(takeDrawingStart("ink-a"), true);
   assert.equal(takeDrawingStart("ink-a"), false, "only once (a remount, undo/redo, a copy)");
+});
+
+test("palm rejection: a pen held still on the screen keeps the hand a palm (#441)", () => {
+  forgetPen();
+  const now = 2_000_000;
+  // Down (buttons 1): near however long it rests without moving …
+  notePenActivity({ pointerType: "pen", buttons: 1 }, now);
+  assert.equal(palmLikely({ pointerType: "touch" }, now + PALM_MS * 3), true);
+  assert.equal(penNear(now + PALM_MS * 3), true);
+  // … but not for ever when its pointerup never came.
+  assert.equal(penNear(now + 60_000), false);
+  // The eraser end on the screen (buttons 32) is down too.
+  notePenActivity({ pointerType: "pen", buttons: 32 }, now);
+  assert.equal(penNear(now + PALM_MS * 2), true);
+  // Lifted (buttons 0): only the moment after it.
+  notePenActivity({ pointerType: "pen", buttons: 0 }, now);
+  assert.equal(palmLikely({ pointerType: "touch" }, now + PALM_MS - 1), true);
+  assert.equal(palmLikely({ pointerType: "touch" }, now + PALM_MS), false);
+  // A window of its own.
+  assert.equal(palmLikely({ pointerType: "touch" }, now + PALM_MS, PALM_MS * 2), true);
+  assert.equal(penNear(now + PALM_MS * 2, PALM_MS * 2), false);
+  // Events without buttons (a mouse-like call) leave the state alone.
+  notePenActivity({ pointerType: "pen", buttons: 1 }, now);
+  notePenActivity({ pointerType: "pen" }, now);
+  assert.equal(penNear(now + PALM_MS * 2), true);
+  forgetPen();
+  assert.equal(penNear(now + 10), false, "forgotten: neither near nor down");
+});
+
+test("palm rejection: the hand stays the hand until it lifts; a finger with the pen away scrolls (#441)", () => {
+  forgetPen();
+  const now = 3_000_000;
+  const guard = createPalmGuard();
+  const finger = { identifier: 1, radiusX: 8, radiusY: 8 };
+  const palm = { identifier: 2, radiusX: PALM_SIZE / 2 + 5, radiusY: 30 };
+  // No pen yet: a fingertip is a finger, a contact as wide as a palm is not.
+  assert.equal(guard.check([finger], now), false);
+  assert.equal(guard.check([palm], now), true);
+  assert.equal(palmSized(finger), false);
+  assert.equal(palmSized({ width: PALM_SIZE + 1 }), true, "PointerEvent width counts too");
+  guard.lift([palm]);
+  // The pen draws: a touch coming down now is the hand …
+  notePenActivity({ pointerType: "pen", buttons: 1 }, now);
+  const resting = { identifier: 3, radiusX: 6, radiusY: 6 };
+  assert.equal(guard.check([resting], now + 50), true);
+  // … and stays it after the pen lifted and went away, while it slides on.
+  notePenActivity({ pointerType: "pen", buttons: 0 }, now + 100);
+  assert.equal(guard.check([resting], now + 100 + PALM_MS * 4), true);
+  assert.equal(guard.has(3), true);
+  // Lifted, it is forgotten; a new finger with the pen away scrolls again.
+  guard.lift([resting]);
+  assert.equal(guard.has(3), false);
+  assert.equal(guard.check([{ identifier: 4 }], now + 100 + PALM_MS * 4), false);
+  // A finger that was down before the pen came becomes the hand once it does.
+  const early = { identifier: 5 };
+  assert.equal(guard.check([early], now + 10_000), false);
+  notePenActivity({ pointerType: "pen", buttons: 1 }, now + 10_010);
+  assert.equal(guard.check([early], now + 10_020), true);
+  guard.clear();
+  forgetPen();
 });

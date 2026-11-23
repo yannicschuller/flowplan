@@ -6,7 +6,8 @@
 //   switched off; remembered per device).
 // - Palm rejection: a touch while the pen draws, hovers or was lifted a
 //   moment ago is the hand holding it – it never draws, also with pen-only
-//   drawing switched off.
+//   drawing switched off. On a surface being drawn on it does not scroll
+//   either, and stays the hand until it lifts (createPalmGuard, #441).
 // - Pressure sets the stroke width; readings of 0 (the first contact) and
 //   jitter are evened out (pushPressure).
 // - Scribble (handwriting into text fields) runs past a field's edges: the
@@ -79,15 +80,63 @@ export function onPencilAction(listener: (action: PencilAction) => void) {
 // How long after the pen was last seen (drawing, hovering, lifting) a touch
 // still counts as the palm.
 export const PALM_MS = 600;
+// A contact this wide (CSS pixels, Touch.radiusX/Y × 2 or PointerEvent
+// width/height) is a palm or the side of the hand, not a fingertip.
+export const PALM_SIZE = 40;
+// The pen counts as down at most this long without an event of its own
+// (a pointerup that never came: the element went away under it).
+const PEN_DOWN_MAX = 5000;
 let lastPen = Number.NEGATIVE_INFINITY;
-export function notePenActivity(event: { pointerType: string }, now = Date.now()) {
-  if (event.pointerType === "pen") lastPen = now;
+let penDown = false;
+// Any pointer event: a pen's marks the pen as near; with `buttons` it also
+// says whether the tip (or the eraser end) touches the screen – a pen held
+// still on the screen sends no events but is still drawing.
+export function notePenActivity(event: { pointerType: string; buttons?: number }, now = Date.now()) {
+  if (event.pointerType !== "pen") return;
+  lastPen = now;
+  if (typeof event.buttons === "number") penDown = (event.buttons & (1 | 32)) !== 0;
 }
+// The pen touches the screen, or was seen within `within` ms.
+export const penNear = (now = Date.now(), within = PALM_MS) => (penDown && now - lastPen < PEN_DOWN_MAX) || now - lastPen < within;
 // A finger on the screen while the pen is near: the hand holding it.
-export const palmLikely = (event: { pointerType: string }, now = Date.now()) => event.pointerType === "touch" && now - lastPen < PALM_MS;
+export const palmLikely = (event: { pointerType: string }, now = Date.now(), within = PALM_MS) => event.pointerType === "touch" && penNear(now, within);
 // Changing the setting starts over (the next finger is meant).
 export function forgetPen() {
   lastPen = Number.NEGATIVE_INFINITY;
+  penDown = false;
+}
+
+type TouchPoint = { identifier: number; radiusX?: number; radiusY?: number };
+// A contact as wide as a palm.
+export const palmSized = (touch: { radiusX?: number; radiusY?: number; width?: number; height?: number }) =>
+  Math.max(2 * (touch.radiusX || 0), 2 * (touch.radiusY || 0), touch.width || 0, touch.height || 0) > PALM_SIZE;
+
+// The hand on a surface drawn on with a pen (#441), by Touch.identifier:
+// every touch while the pen is near (down, or seen within `within` ms), and
+// every palm-sized one, is the hand – and stays it until it lifts, also once the pen has
+// been away for longer (the resting hand slides on to the next line). Its
+// touchstart and touchmove are cancelled, so it neither scrolls nor zooms
+// the page. A finger that comes down with the pen away scrolls as before.
+export function createPalmGuard({ within = PALM_MS }: { within?: number } = {}) {
+  const hand = new Set<number>();
+  return {
+    // touchstart / touchmove: whether the event is the hand's (cancel it).
+    check(touches: ArrayLike<TouchPoint>, now = Date.now()) {
+      const near = penNear(now, within);
+      let palm = false;
+      for (const touch of Array.from(touches)) {
+        if (near || palmSized(touch)) hand.add(touch.identifier);
+        if (hand.has(touch.identifier)) palm = true;
+      }
+      return palm;
+    },
+    // touchend / touchcancel: the lifted touches are gone.
+    lift(changed: ArrayLike<TouchPoint>) {
+      for (const touch of Array.from(changed)) hand.delete(touch.identifier);
+    },
+    has: (identifier: number) => hand.has(identifier),
+    clear: () => hand.clear(),
+  };
 }
 
 // ---- Pressure ----

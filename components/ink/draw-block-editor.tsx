@@ -9,7 +9,10 @@
 // Entered with a pen or finger, a touch shield (touch-shield.tsx) keeps the
 // resting hand from the rest of the app until Done (#311). Beside
 // "Zeichnen", a "…" menu deletes, duplicates and moves the block – the
-// block handle is out of reach on a tablet (#322). Loaded with the first
+// block handle is out of reach on a tablet (#322). A new block comes into
+// view with its toolbar (#440); while fingers draw, two of them scroll the
+// page. The palm resting on the block while the pen draws neither draws nor
+// scrolls (ink-layer.tsx, lib/stylus.ts, #441). Loaded with the first
 // block.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -21,7 +24,8 @@ import { api } from "../ui";
 import { BlockMenu, type BlockMenuClose, type BlockMenuItem } from "../block-menu";
 import { layerHost } from "../layer-host";
 import { applyBlockChange } from "@/lib/block-shortcuts";
-import { drawBlockChange, drawBlockMoves, takeHeightTip, HEIGHT_TIP_MS, type DrawBlockAction } from "@/lib/draw-block-actions";
+import { drawBlockChange, drawBlockMoves, revealOffset, takeHeightTip, HEIGHT_TIP_MS, type DrawBlockAction } from "@/lib/draw-block-actions";
+import { popoverArea } from "../slash-menu";
 import { InkLayer } from "./ink-layer";
 import { InkToolbar } from "./ink-toolbar";
 import { useInkEditor, useInkShortcuts } from "./use-ink-editor";
@@ -50,6 +54,41 @@ function releaseText(text: HTMLElement) {
   if (selection?.rangeCount && text.contains(selection.anchorNode)) selection.removeAllRanges();
 }
 const onInkUi = (target: EventTarget | null) => !!(target as Element | null)?.closest?.(".ink-ui");
+// What scrolls the block: the document's pane (.main-scroll), a dialog, or
+// the document itself.
+function scrollerOf(el: HTMLElement | null): HTMLElement {
+  for (let at = el?.parentElement; at; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at);
+    if ((overflowY === "auto" || overflowY === "scroll") && at.scrollHeight > at.clientHeight) return at;
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}
+// The block and its toolbar (above it while drawing) into view (#440): the
+// part of the screen the person sees, inside the scrolling pane, without
+// the bars, the on-screen keyboard and the safe areas (popoverArea).
+function revealBlock(block: HTMLElement) {
+  const box = { top: Infinity, bottom: -Infinity };
+  for (const el of [block, ...block.querySelectorAll<HTMLElement>(".ink-toolbar")]) {
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;
+    box.top = Math.min(box.top, r.top);
+    box.bottom = Math.max(box.bottom, r.bottom);
+  }
+  if (box.top === Infinity) return;
+  const scroller = scrollerOf(block);
+  const area = popoverArea();
+  if (scroller !== document.scrollingElement && scroller !== document.documentElement) {
+    const pane = scroller.getBoundingClientRect();
+    area.top = Math.max(area.top, pane.top);
+    area.bottom = Math.min(area.bottom, pane.bottom);
+  }
+  const by = revealOffset(box, area);
+  if (by) scroller.scrollBy({ top: by, behavior: "instant" });
+}
+// How long a new block keeps coming into view: the on-screen keyboard goes
+// with the text's focus and the window grows a moment later (the Android
+// app resizes its web view on keyboardDidHide).
+const REVEAL_MS = 1500;
 
 export default function DrawBlockEditor({ node, editor: doc, extension, updateAttributes, getPos }: NodeViewProps) {
   const t = useT();
@@ -177,8 +216,10 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   // first one on this device shows for a few seconds, at its top (the hand
   // covers the bottom), where its height is changed after Done (#324).
   const [tip, setTip] = useState(false);
+  const revealUntil = useRef(0);
   useEffect(() => {
     if (!loaded || !writable || !id || !takeDrawingStart(id)) return;
+    revealUntil.current = Date.now() + REVEAL_MS;
     activate(coarse());
     if (takeHeightTip(() => window.localStorage)) setTip(true);
   }, [loaded, writable, id, activate]);
@@ -189,6 +230,43 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   }, [tip]);
   useEffect(() => {
     if (!active) setTip(false);
+  }, [active]);
+  // The new block comes into view with its toolbar (#440) – again while the
+  // keyboard goes and the window grows, until the person touches, scrolls
+  // or types.
+  useEffect(() => {
+    const block = root.current;
+    if (!active || !block || revealUntil.current < Date.now()) return;
+    let frame = 0;
+    const reveal = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (Date.now() > revealUntil.current || !block.isConnected) return stop();
+        revealBlock(block);
+      });
+    };
+    const resized = new ResizeObserver(reveal);
+    const stop = () => {
+      revealUntil.current = 0;
+      detach();
+    };
+    const detach = () => {
+      window.clearTimeout(timer);
+      resized.disconnect();
+      window.removeEventListener("resize", reveal);
+      window.visualViewport?.removeEventListener("resize", reveal);
+      for (const type of ["pointerdown", "wheel", "keydown"]) window.removeEventListener(type, stop, true);
+    };
+    const timer = window.setTimeout(stop, Math.max(0, revealUntil.current - Date.now()));
+    resized.observe(block);
+    window.addEventListener("resize", reveal);
+    window.visualViewport?.addEventListener("resize", reveal);
+    for (const type of ["pointerdown", "wheel", "keydown"]) window.addEventListener(type, stop, true);
+    reveal();
+    return () => {
+      cancelAnimationFrame(frame);
+      detach();
+    };
   }, [active]);
   // Stylus touches on the canvas of the block being drawn on never start
   // Scribble, the long-press callout or a text selection. Native and not
@@ -498,6 +576,9 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
             editor={ink}
             editing={writable && active}
             fingersScroll={!active}
+            // Fingers drawing (no pen yet): two of them scroll the page,
+            // also while the shield holds the rest of it (#440).
+            onPan={active ? (_dx, dy) => scrollerOf(root.current).scrollBy({ top: dy, behavior: "instant" }) : undefined}
             onConvert={writable && canRecognize ? () => void convert() : undefined}
             aiPageId={writable ? pageId : undefined}
             label={t("Handschrift", "Handwriting")}

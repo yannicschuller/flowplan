@@ -62,6 +62,8 @@ import {
   notePen,
   notePenActivity,
   palmLikely,
+  penNear,
+  createPalmGuard,
   pushPressure,
   samples,
   stillWriting,
@@ -325,11 +327,18 @@ export function InkLayer({
   // A pen on the page never scrolls it, selects text or opens the callout;
   // with pen-only drawing off, neither does a finger. pointerdown comes
   // before touchstart, so the gesture already knows what touches.
+  // Palm rejection for scrolling (#441): the hand holding the pen – a touch
+  // while the pen is near, or as wide as a palm – stays the hand until it
+  // lifts (lib/stylus.ts createPalmGuard), so moving it on to the next line
+  // does not scroll the page; a finger that comes with the pen away does.
   const penOnly = fingersScroll || (editor?.penOnly ?? true);
   useEffect(() => {
     const el = root.current;
     if (!el || !active) return;
+    const hand = createPalmGuard();
     const block = (event: TouchEvent) => {
+      // Marked before anything else: a touch is the hand from its start on.
+      const palm = hand.check(event.touches);
       if (!event.cancelable) return;
       // Fingers on the ruler or a shape's handles move those, never the page.
       if ((event.target as Element | null)?.closest?.(".ink-ruler-layer, .ink-shape-edit")) return event.preventDefault();
@@ -337,16 +346,43 @@ export function InkLayer({
       const stylus = stylusTouch(event);
       const g = gesture.current;
       // A palm next to the pen (also on another page) does not scroll the pages away under it.
-      const palm = palmLikely({ pointerType: "touch" });
       if (stylus || (g && g.kind !== "tap") || !penOnly || palm) event.preventDefault();
     };
+    const lift = (event: TouchEvent) => hand.lift(event.changedTouches);
     el.addEventListener("touchstart", block, { passive: false });
     el.addEventListener("touchmove", block, { passive: false });
+    el.addEventListener("touchend", lift);
+    el.addEventListener("touchcancel", lift);
     return () => {
       el.removeEventListener("touchstart", block);
       el.removeEventListener("touchmove", block);
+      el.removeEventListener("touchend", lift);
+      el.removeEventListener("touchcancel", lift);
     };
   }, [active, penOnly]);
+  // While the pen is near, the surface takes no touch gesture at all
+  // (touch-action: none from the class, app/globals.css): a palm coming
+  // down then cannot start a scroll or a pinch, also where the browser
+  // does not wait for touchstart (a fling still running).
+  const penNearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function notePenNear(e: { pointerType: string; buttons?: number }) {
+    notePenActivity(e);
+    const el = root.current;
+    if (e.pointerType !== "pen" || !el) return;
+    el.classList.add("is-pen-near");
+    const check = () => {
+      penNearTimer.current = null;
+      if (penNear()) penNearTimer.current = setTimeout(check, 200);
+      else el.classList.remove("is-pen-near");
+    };
+    if (!penNearTimer.current) penNearTimer.current = setTimeout(check, 200);
+  }
+  useEffect(
+    () => () => {
+      if (penNearTimer.current) clearTimeout(penNearTimer.current);
+    },
+    [],
+  );
 
   // The laser trail fades.
   useEffect(() => {
@@ -462,7 +498,7 @@ export function InkLayer({
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    notePenActivity(e);
+    notePenNear(e);
     const ed = editor;
     if (!ed || !active || (e.target as Element).closest(".ink-ui")) return;
     // Scribble into a focused field near the pen – unless the field holds
@@ -496,6 +532,16 @@ export function InkLayer({
       };
       setPreview(base);
       return;
+    }
+    // The pen comes while a finger draws (pen-only drawing not on yet: the
+    // first pen on this device, #441): that finger was the hand resting
+    // before the pen – its stroke goes, and the pen draws.
+    if (e.pointerType === "pen" && running?.kind === "draw" && running.type === "touch") {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      clearDraft();
+      if (root.current?.hasPointerCapture?.(running.pointer)) root.current.releasePointerCapture(running.pointer);
+      gesture.current = null;
+      return onPointerDown(e);
     }
     // The hand holding the pen, or anything else while a gesture runs.
     if (running) return;
@@ -605,7 +651,7 @@ export function InkLayer({
   const lastTouch = useRef<XY | null>(null);
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    notePenActivity(e);
+    notePenNear(e);
     const g = gesture.current;
     if (e.pointerType === "touch") lastTouch.current = { x: e.clientX, y: e.clientY };
     if (!g) return;
@@ -710,6 +756,8 @@ export function InkLayer({
   }
 
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>, cancelled = false) {
+    // The pen lifted (buttons 0): only its moment near counts from now on.
+    notePenNear(e);
     const g = gesture.current;
     const ed = editor;
     if (!g || !ed) return;
@@ -887,7 +935,6 @@ export function InkLayer({
     active && editor?.tool === "lasso" && editor.picked?.page === page ? (shown.find((i) => i.id === editor.picked!.id && i.type === "image") as InkImage | undefined) : undefined;
   const percent = (v: number, of: number) => `${(v / (of || 1)) * 100}%`;
   const center = (p: XY) => ({ cx: p.x, cy: p.y });
-  const touchAction = !active ? undefined : penOnly ? "pan-x pan-y pinch-zoom" : "none";
   return (
     <div
       ref={root}
@@ -895,7 +942,9 @@ export function InkLayer({
       data-editing={active ? "true" : undefined}
       data-tool={active ? editor?.tool : undefined}
       data-page={page}
-      style={{ touchAction }}
+      // Fingers scroll and zoom the page, or draw (app/globals.css sets the
+      // touch-action: no style attribute, strict CSP).
+      data-fingers={active ? (penOnly ? "scroll" : "draw") : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => onPointerUp(e)}

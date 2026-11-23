@@ -51,3 +51,22 @@ export function takeHeightTip(storageOf: () => TipStorage | null | undefined): b
     return false;
   }
 }
+
+// A new drawing block comes into view (#440): inserted at the end of a page
+// on a tablet, the view stayed on the line below it (where the caret went,
+// above the on-screen keyboard), and once the keyboard went the block sat
+// half out of sight with the touch shield around it. `target` is the block
+// with its toolbar, `area` the part of the screen the person sees (client
+// coordinates, without bars, keyboard and safe areas). The result is how
+// far to scroll down (negative: up): nothing when it is fully in view; a
+// block that fits is brought fully into view, the shortest way; one taller
+// than the area has its top at the area's top.
+export const REVEAL_MARGIN = 12;
+export function revealOffset(target: { top: number; bottom: number }, area: { top: number; bottom: number }, margin = REVEAL_MARGIN) {
+  const top = area.top + margin,
+    bottom = area.bottom - margin;
+  if (target.bottom - target.top > bottom - top) return Math.round(target.top - top);
+  if (target.top < top) return Math.round(target.top - top);
+  if (target.bottom > bottom) return Math.round(target.bottom - bottom);
+  return 0;
+}

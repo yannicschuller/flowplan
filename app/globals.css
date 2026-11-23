@@ -22839,6 +22839,16 @@ h3 .block-reactions {
   user-select: none;
   -webkit-touch-callout: none;
 }
+/* Being drawn on: with pen-only drawing, fingers scroll and zoom the page;
+   otherwise they draw. While the pen is near (ink-layer.tsx), no touch
+   gesture at all: the resting palm scrolls nothing (#441). */
+.ink-layer[data-editing][data-fingers="scroll"] {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.ink-layer[data-editing][data-fingers="draw"],
+.ink-layer[data-editing].is-pen-near {
+  touch-action: none;
+}
 .ink-layer[data-tool="text"] {
   cursor: text;
 }

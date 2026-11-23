@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { EditorState } from "@tiptap/pm/state";
 import type { Node } from "@tiptap/pm/model";
 import { documentSchema } from "../lib/document-schema";
-import { drawBlockChange, drawBlockMoves, takeHeightTip, HEIGHT_TIP_KEY } from "../lib/draw-block-actions";
+import { drawBlockChange, drawBlockMoves, revealOffset, takeHeightTip, HEIGHT_TIP_KEY, REVEAL_MARGIN } from "../lib/draw-block-actions";
 
 const schema = documentSchema();
 const p = (text: string) => schema.nodes.paragraph.create(null, schema.text(text));
@@ -76,4 +76,23 @@ test("the height tip is taken once per device; failing storage shows none", () =
   );
   const full = { getItem: () => null, setItem: () => { throw new Error("QuotaExceededError"); } };
   assert.equal(takeHeightTip(() => full), false);
+});
+
+test("a new drawing block comes into view: fully when it fits, else its top at the top (#440)", () => {
+  const area = { top: 100, bottom: 900 };
+  const m = REVEAL_MARGIN;
+  // In view: nothing moves.
+  assert.equal(revealOffset({ top: 200, bottom: 600 }, area), 0);
+  // Below the visible part (the view stayed on the line under it): down by
+  // just enough for its bottom.
+  assert.equal(revealOffset({ top: 700, bottom: 1100 }, area), 1100 - (900 - m));
+  // Out of sight below altogether: the same, the block ends up at the bottom.
+  assert.equal(revealOffset({ top: 1500, bottom: 1900 }, area), 1900 - (900 - m));
+  // Above (under the top bar): up to the area's top.
+  assert.equal(revealOffset({ top: 40, bottom: 400 }, area), 40 - (100 + m));
+  // Taller than the area: its top at the area's top, from either side.
+  assert.equal(revealOffset({ top: 500, bottom: 1500 }, area), 500 - (100 + m));
+  assert.equal(revealOffset({ top: -300, bottom: 900 }, area), -300 - (100 + m));
+  // An area shrunk by the keyboard to almost nothing: the top still shows.
+  assert.equal(revealOffset({ top: 400, bottom: 500 }, { top: 100, bottom: 110 }), 400 - (100 + m));
 });
