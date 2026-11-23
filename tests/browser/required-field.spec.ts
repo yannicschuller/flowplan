@@ -65,9 +65,13 @@ test("required property: settings, missing marks, no empty choice, refused clear
   const now = await read();
   await command({ action: "database.update", pageId: db.id, version: now.database.version, views: now.database.views, fields: now.database.fields.map((f: { id: string }) => (f.id === "note" ? { ...f, required: true } : f)) });
 
-  // The old record: marked as missing, nothing changed.
+  // The old record: marked as missing – the status and, once the table has
+  // the change made through the API, the note too –, nothing changed. The
+  // open page is fetched again at most every 5 s on the live signal
+  // (PAGE_GAP_MS, components/use-workspace-signals.ts), and the dialog's
+  // save has just used that turn.
   const oldRow = page.locator(`tr[data-row-id="${old.id}"]`);
-  await expect(oldRow.locator(".required-missing").first()).toBeVisible();
+  await expect(oldRow.locator(".required-missing")).toHaveCount(2, { timeout: 15_000 });
   await expect(oldRow.getByText("Wert fehlt (Pflichtfeld)").first()).toBeAttached();
   expect((await read()).rows.find((r: { id: string }) => r.id === old.id).cells.status).toBeUndefined();
 
