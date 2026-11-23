@@ -109,6 +109,7 @@ import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
 import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { shortcutLetter } from "@/lib/keymap";
+import { serverMessage } from "@/lib/server-message";
 type Positioned = DocumentBlock & {
   left: number;
   top: number;
@@ -513,7 +514,7 @@ export function DocumentBlockControls({
       setError("");
       focusEditor();
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   function placeBeside(target: number, side: "left" | "right") {
@@ -529,7 +530,7 @@ export function DocumentBlockControls({
       setError("");
       focusEditor();
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   function shift(direction: -1 | 1) {
@@ -542,7 +543,7 @@ export function DocumentBlockControls({
       );
       if (target !== undefined) perform("move", target);
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     }
   }
   // Where the receiving block of a drop is on the surface (#255).
@@ -1699,7 +1700,7 @@ export function DocumentBlockControls({
         keywords: "page sub-page subpage unterseite",
         run: () => {
           const positions = [...selected.current];
-          void onTurnIntoPage(positions).catch((e: Error) => setError(e.message));
+          void onTurnIntoPage(positions).catch((e: Error) => setError(serverMessage(e.message)));
         },
       });
     const columnsFit = (count: number) => {

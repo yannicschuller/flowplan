@@ -127,7 +127,7 @@ export function CommentComposer({
                   normalizeCommentContent(transaction.doc.toJSON());
                   return true;
                 } catch (e) {
-                  queueMicrotask(() => setError((e as Error).message));
+                  queueMicrotask(() => setError(serverMessage((e as Error).message)));
                   return false;
                 }
               },

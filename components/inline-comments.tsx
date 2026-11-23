@@ -365,7 +365,8 @@ export function InlineComments({
       setEditing(null);
       setError("");
     } catch (e) {
-      setError((e as Error).message);
+      // The anchor is checked in the browser, with the server's German texts.
+      setError(serverMessage((e as Error).message));
       setOpen(true);
     }
   }

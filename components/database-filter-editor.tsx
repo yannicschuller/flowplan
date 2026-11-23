@@ -37,6 +37,7 @@ import type {
   User,
   View,
 } from "@/lib/types";
+import { serverMessage } from "@/lib/server-message";
 // A fresh condition on the first property, with its first operator.
 export function newFilterCondition(fields: Field[]): Filter & { kind: "condition" } {
   const op = operatorsFor(fields[0])[0],
@@ -634,7 +635,7 @@ export default function DatabaseFilterEditor({
                     t("Filter wurden nicht gespeichert. Dein Entwurf bleibt erhalten.", "Filters were not saved. Your draft is kept."),
                   );
               } catch (e) {
-                setError((e as Error).message);
+                setError(serverMessage((e as Error).message));
               } finally {
                 setBusy(false);
               }

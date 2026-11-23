@@ -1624,6 +1624,17 @@ const exact: Record<string, string> = {
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
   "Keine Checkliste „Erste Schritte“ in diesem Arbeitsbereich.": "No “Getting started” checklist in this workspace.",
   "Kein Beispielbereich vorhanden.": "There is no sample space.",
+  // Messages that had no English yet (#453): shared pages and backups,
+  // workflow steps, storage overview.
+  "Anfrage konnte nicht verarbeitet werden.": "The request could not be processed.",
+  "Upload konnte nicht verarbeitet werden.": "The upload could not be processed.",
+  "Sicherung konnte nicht verarbeitet werden.": "The backup could not be processed.",
+  "Nicht verfügbar.": "Not available.",
+  "Das Archiv entspricht nicht dem unterstützten Flowplan-Format.": "The archive does not match the supported Flowplan format.",
+  "Dieses Journal ist mit einer PIN gesperrt – Workflows lesen es nicht.": "This journal is locked with a PIN – workflows do not read it.",
+  "Das Journal liegt in einem verschlüsselten Bereich, dort kann der Server nichts lesen.": "The journal is in an encrypted space, the server cannot read anything there.",
+  "Die Datenbank liegt in einem anderen Arbeitsbereich als der Workflow.": "The database is in another workspace than the workflow.",
+  "Nicht erreichbar": "Not reachable",
 };
 const patterns: [RegExp, string][] = [
   // Directory groups by hand (lib/directory-groups.ts, #451).
@@ -1906,6 +1917,19 @@ const patterns: [RegExp, string][] = [
   ],
   [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
   [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
+  // Messages with values that had no English yet (#453).
+  [/^Der Import würde (\d+) neue Auswahl-Optionen anlegen \(höchstens (\d+)\)\. Passt die Spalte zur Eigenschaft\?$/, "The import would create $1 new select options (at most $2). Does the column fit the property?"],
+  [/^„(.+)“ hätte mehr als (\d+) Optionen\.$/, "“$1” would have more than $2 options."],
+  [/^Unbekannte Funktion „(.+)“\.$/, "Unknown function “$1”."],
+  [/^Höchstens (\d+) Einladungslinks können gleichzeitig offen sein\. Zieh zuerst einen zurück\.$/, "At most $1 invite links can be open at the same time. Revoke one first."],
+  [/^Zu viele Elemente \(höchstens (\d+)\)\.$/, "Too many elements (at most $1)."],
+  [/^Der Host (\S+) steht in keinem HTTP-Knoten dieser Version\.$/, "The host $1 is not in any HTTP node of this version."],
+  [/^Zahl oder Text in \[ \] erwartet bei Zeichen (\d+)\.$/, "Number or text expected in [ ] at character $1."],
+  [/^Liste der Litestream-Replik: HTTP (\d+)$/, "List of the Litestream replica: HTTP $1"],
+  [/^FLOWPLAN_SECRETS_KEY_FILE kann nicht gelesen werden: (.+)$/s, "FLOWPLAN_SECRETS_KEY_FILE cannot be read: $1"],
+  [/^Ungültiger Pfad: (.+)$/s, "Invalid path: $1"],
+  [/^Ungültiger Dateischlüssel: (.+)$/s, "Invalid file key: $1"],
+  [/^Datei (.+) weder lokal noch im Bucket\.$/, "File $1 is neither local nor in the bucket."],
 ];
 
 // An incident of the instance for the administrators (lib/security-detect.ts

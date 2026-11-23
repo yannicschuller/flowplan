@@ -55,6 +55,7 @@ import {
 } from "@/lib/date-values";
 import { scheduleFields, dateDay } from "@/lib/database-timeline";
 import type { Field, Row, View } from "@/lib/types";
+import { serverMessage } from "@/lib/server-message";
 
 const PX = 1; // One elapsed minute per pixel; DST days have 23/24/25 real hours.
 type Drag = {
@@ -266,7 +267,7 @@ export default function DatabaseCalendar({
       try {
         await onView({ calendar: next });
       } catch (e) {
-        setError((e as Error).message);
+        setError(serverMessage((e as Error).message));
       } finally {
         pending.current = false;
         setBusy(false);
@@ -295,7 +296,7 @@ export default function DatabaseCalendar({
       });
       if (close) setDraft(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(serverMessage((e as Error).message));
     } finally {
       pending.current = false;
       setBusy(false);
