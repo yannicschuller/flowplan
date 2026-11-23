@@ -317,9 +317,11 @@ test("embeds load only on click; template gallery and own templates; export dial
   const insert = (name: string) => boardInsert(wb, name);
   await insert("Einbetten");
   const dialog = page.getByRole("dialog", { name: "Einbetten" });
-  await dialog.locator("#wb-embed-url").fill("https://evil.example/video");
+  // Any web page becomes a link card (#455, whiteboard-455-tables.spec.ts);
+  // what is no web address is refused.
+  await dialog.locator("#wb-embed-url").fill("ftp://evil.example/video");
   await dialog.getByRole("button", { name: "Einbetten" }).click();
-  await expect(dialog.getByRole("alert")).toContainText("lässt sich nicht einbetten");
+  await expect(dialog.getByRole("alert")).toContainText("keine Webadresse");
   await dialog.locator("#wb-embed-url").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
   await dialog.getByRole("button", { name: "Einbetten" }).click();
   await expect(dialog).toHaveCount(0);

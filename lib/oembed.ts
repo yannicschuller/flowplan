@@ -12,6 +12,8 @@ export type ResolvedEmbed =
       provider: string;
       description: string;
       image: string;
+      // The site's icon (https, "" when the page names none), #455.
+      icon: string;
     };
 const decode = (value: string) =>
   value
@@ -37,9 +39,9 @@ function iframeSrc(html: string) {
 }
 // What a link card needs from a page: its title, the meta tags (the first
 // of each name) and the oEmbed address, up to the end of <head>.
-type PageHead = { title: string; meta: Map<string, string>; oembed: string };
+type PageHead = { title: string; meta: Map<string, string>; oembed: string; icon: string };
 function readHead(html: string): PageHead {
-  const head: PageHead = { title: "", meta: new Map(), oembed: "" };
+  const head: PageHead = { title: "", meta: new Map(), oembed: "", icon: "" };
   let title: string | undefined;
   let inTitle = false;
   scanHtml(html.slice(0, HEAD_LIMIT), {
@@ -55,6 +57,8 @@ function readHead(html: string): PageHead {
         /alternate/i.test(attrs.get("rel") || "")
       )
         head.oembed = decode(attrs.get("href") || "");
+      else if (name === "link" && !head.icon && /(^|\s)(shortcut\s+)?icon(\s|$)|apple-touch-icon/i.test(attrs.get("rel") || ""))
+        head.icon = decode(attrs.get("href") || "");
       else if (name === "title" && title === undefined) {
         title = "";
         inTitle = true;
@@ -126,6 +130,7 @@ export function previewCard(
   const title =
     clip(oembed.title, 300) ||
     clip(meta("og:title"), 300) ||
+    clip(meta("twitter:title"), 300) ||
     clip(head.title, 300);
   if (!title && !Object.keys(oembed).length)
     throw new HttpError(422, "Für diese Seite gibt es keine Vorschau.");
@@ -139,10 +144,13 @@ export function previewCard(
       new URL(pageUrl).hostname,
     description:
       clip(meta("og:description"), 300) ||
+      clip(meta("twitter:description"), 300) ||
       clip(meta("description"), 300),
     image: httpsUrl(
-      String(oembed.thumbnail_url || meta("og:image") || ""),
+      String(oembed.thumbnail_url || meta("og:image") || meta("og:image:secure_url") || meta("twitter:image") || ""),
       pageUrl,
     ),
+    // Shown from the site itself, like the picture; no request here.
+    icon: head.icon ? httpsUrl(head.icon, pageUrl) : "",
   };
 }

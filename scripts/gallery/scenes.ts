@@ -254,6 +254,20 @@ async function boardInsert(page: Page, name?: string) {
   if (name) await page.locator(".wb-plus, .wb-sheet").getByRole("button", { name, exact: true }).first().click();
 }
 
+// A whiteboard of its own with a table on it, selected (#455).
+async function boardTable(page: Page, ctx: SceneContext) {
+  const id = await ctx.fixture({ kind: "whiteboard", title: "Table" });
+  await ctx.open(`#page=${id}`);
+  await loaded(page);
+  const canvas = page.locator(".wb-canvas");
+  await button(page, "Table").first().click();
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const table = page.locator("[data-item] .wb-table-grid").first();
+  await table.waitFor();
+  return table;
+}
+
 const RICH_HTML =
   "<h2>Goals</h2><p>We ship the new version in the autumn.</p><p>Alpha</p><p>Bravo</p><ul><li><p>Onboarding</p></li><li><p>Offline mode</p></li></ul>";
 
@@ -1341,6 +1355,32 @@ const whiteboardScenes: Scene[] = [
       },
     }),
   ),
+  // Tables (#455): the colour popover of a table, and a video from a cell.
+  {
+    id: "whiteboard-table-colours",
+    group: "Whiteboard",
+    title: "Table colours",
+    covers: ["components/whiteboard/table-tools.tsx"],
+    steps: async (page, ctx) => {
+      await boardTable(page, ctx);
+      await button(page, "Colour of row or column").click();
+      await waitDialog(page, "Table colours");
+    },
+  },
+  {
+    id: "whiteboard-cell-player",
+    group: "Whiteboard",
+    title: "Video from a table cell",
+    covers: ["components/whiteboard/player-dialog.tsx"],
+    steps: async (page, ctx) => {
+      const table = await boardTable(page, ctx);
+      await table.locator("[data-cell='1:0']").dblclick();
+      await page.keyboard.type("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+      await page.keyboard.press("Escape");
+      await button(page, "Play YouTube").click();
+      await waitDialog(page, "YouTube");
+    },
+  },
   {
     id: "whiteboard-draw",
     group: "Whiteboard",

@@ -5,6 +5,7 @@
 import * as Y from "yjs";
 import { diagramText, type MarkerKind, type TimelineData } from "./whiteboard-diagram-model";
 import { plainText } from "./whiteboard-richtext";
+import type { LinkPreview } from "./whiteboard-tables";
 // Rack planning (#90): racks, devices and cables between their ports.
 import { portAnchor, rackItemText, type CableData, type DeviceData, type RackData } from "./whiteboard-rack";
 export const whiteboardItemTypes = [
@@ -76,9 +77,16 @@ export type WhiteboardItem = {
   // answers hidden, then reveal together). Its content is not rendered.
   covered?: boolean;
   author?: string;
-  // Tables: cell texts by row; the first row can be a header.
+  // Tables: cell texts by row; the first row can be a header, the first
+  // column too (#455). Background colours of whole rows and columns
+  // ("#rrggbb" or "" for none), and the previews of lone addresses in cells
+  // by address (lib/whiteboard-tables.ts).
   cells?: string[][];
   header?: boolean;
+  headerCol?: boolean;
+  rowFills?: string[];
+  colFills?: string[];
+  links?: Record<string, LinkPreview>;
   // Comment pins: the thread, and whether it is done.
   messages?: WhiteboardMessage[];
   resolved?: boolean;
@@ -116,7 +124,8 @@ export type WhiteboardItem = {
   slide?: number;
   notes?: string;
   presentHidden?: boolean;
-  // Embeds: the link as pasted, and the PDF page shown.
+  // Embeds: the link as pasted, and the PDF page shown. A link card (an
+  // embed without src, #455) shows `url` with the page's preview.
   url?: string;
   page?: number;
   // PDFs (#455, lib/whiteboard-pdf-pages.ts): the pages the element shows
@@ -126,6 +135,7 @@ export type WhiteboardItem = {
   // Comment pins (#455): the badge's colour, a name of lib/comment-colors.ts
   // (absent: the orange every pin had before).
   commentColor?: string;
+  preview?: LinkPreview;
   // Planning poker: the value taken over for this note (a label on it).
   estimate?: string;
   // Rack planning (lib/whiteboard-rack.ts): a rack's units and limits, a
@@ -213,6 +223,7 @@ export function itemText(item: Partial<WhiteboardItem>) {
     typeof item.text === "string" ? plainText(item.text) : item.text,
     ...(Array.isArray(item.tags) ? item.tags.filter((tag) => typeof tag === "string") : []),
     item.type === "embed" && typeof item.url === "string" ? item.url : undefined,
+    item.type === "embed" && typeof item.preview?.title === "string" ? item.preview.title : undefined,
     item.emoji,
     ...(item.cells || []).flat(),
     ...(item.messages || []).map((m) => m.text),

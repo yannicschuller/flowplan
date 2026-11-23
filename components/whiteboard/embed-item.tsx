@@ -12,6 +12,8 @@ import { useT } from "../i18n";
 import { PdfBoardPage } from "./pdf-board-page";
 import { EMBED_ALLOW, EMBED_SANDBOX, boardEmbed } from "@/lib/whiteboard-embeds";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
+import { LinkCardShape } from "./link-card";
+import { videoThumbnail } from "@/lib/whiteboard-tables";
 
 // Which players are loaded, on this device only (a click is consent for
 // this view, not for everyone on the board).
@@ -53,6 +55,8 @@ export function EmbedShape({ item, transform, interactive = true }: { item: Whit
         <rect width={item.w} height={item.h} rx={10} fill="#f1f3f5" stroke="#dee2e6" />
       </g>
     );
+  // Web pages: a link card (#455).
+  if (embed.kind === "link") return <LinkCardShape item={item} transform={transform} />;
   const w = Math.max(1, item.w),
     h = Math.max(1, item.h);
   if (embed.kind === "pdf")
@@ -64,8 +68,9 @@ export function EmbedShape({ item, transform, interactive = true }: { item: Whit
         </foreignObject>
       </g>
     );
+  // The exports show a player's still picture where it has one (#455).
   return (
-    <g transform={transform}>
+    <g transform={transform} data-export-thumb={videoThumbnail(embed.src)}>
       <rect width={w} height={h} rx={10} fill="#1f2937" filter="url(#wb-shadow)" />
       <foreignObject width={w} height={h}>
         {on && interactive ? (

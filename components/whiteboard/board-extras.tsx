@@ -31,6 +31,7 @@ import { ExportDialog, type ExportScope } from "./export-dialog";
 import { TemplateGallery } from "./template-gallery";
 import { ItemTools } from "./item-tools";
 import { pdfPageCount, setEmbedLoaded } from "./embed-item";
+import { useBoardLinks } from "./board-links";
 import { boardDeck, useBoardPresenter } from "./board-presenter";
 import type { PageRef, RowCard } from "./render";
 import { connectorPoint, type Point, type WhiteboardItem } from "@/lib/whiteboard-model";
@@ -53,7 +54,7 @@ import { searchBoard } from "@/lib/whiteboard-search";
 import { boardTags, hasTag } from "@/lib/whiteboard-tags";
 import { elementLink, linkTarget } from "@/lib/whiteboard-links";
 import { continueList, insertLink, toggleList, toggleMark, type Edit } from "@/lib/whiteboard-richtext";
-import { boardEmbed, cleanCrop, type BoardEmbed } from "@/lib/whiteboard-embeds";
+import { boardEmbed, cleanCrop, type PlayerEmbed } from "@/lib/whiteboard-embeds";
 import { parsePageLocation } from "@/lib/page-location";
 import type { Draft } from "@/lib/whiteboard-template-gallery";
 import { shortcutLetter } from "@/lib/keymap";
@@ -212,9 +213,16 @@ export function useBoardExtras(api: BoardApi) {
   // ---- pointer on links and buttons inside elements ----
   function onPointerDownCapture(e: React.PointerEvent): boolean {
     if (e.button !== 0) return false;
-    const el = (e.target as Element | null)?.closest?.("[data-wb-href], [data-wb-item], [data-wb-embed], [data-wb-pdf]");
+    const el = (e.target as Element | null)?.closest?.("[data-wb-href], [data-wb-item], [data-wb-embed], [data-wb-pdf], [data-wb-play]");
     if (!el) return false;
     e.stopPropagation();
+    // The play button of a video in a table cell (#455).
+    const play = el.getAttribute("data-wb-play");
+    if (play) {
+      e.preventDefault();
+      links.play(play);
+      return true;
+    }
     const owner = el.closest("[data-item]")?.getAttribute("data-item") || "";
     const href = el.getAttribute("data-wb-href");
     if (href) {
@@ -251,6 +259,7 @@ export function useBoardExtras(api: BoardApi) {
   // enters the group.
   function onDoubleClickItem(item: WhiteboardItem | undefined): boolean {
     if (!item) return false;
+    if (links.openCard(item)) return true;
     if (item.type === "embed") {
       const embed = boardEmbed(item);
       if (embed?.kind === "pdf") {
@@ -481,7 +490,7 @@ export function useBoardExtras(api: BoardApi) {
     const scale = Math.min(1, (rect.width * 0.85) / api.view.zoom / w, (rect.height * 0.75) / api.view.zoom / h);
     return { w: Math.round(w * scale), h: Math.round(h * scale) };
   };
-  const addEmbed = (embed: BoardEmbed, url: string) => {
+  const addEmbed = (embed: PlayerEmbed, url: string) => {
     const at = api.center();
     const { w, h } = fitted(480, 300);
     place({ type: "embed", src: embed.src, url, text: embed.provider, x: at.x - w / 2, y: at.y - h / 2, w, h });
@@ -490,6 +499,8 @@ export function useBoardExtras(api: BoardApi) {
   // A PDF: first its pages are chosen (pdf-pages-dialog.tsx, #455), then
   // it is uploaded – as one element limited to those pages, or one per page.
   const [pdfPick, setPdfPick] = useState<{ file: File; at: Point } | null>(null);
+  // Web addresses: link cards, previews in table cells, players (#455).
+  const links = useBoardLinks(api, addEmbed);
   const addPdf = async (file: File, at = api.center()) => {
     if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
       api.onError(t("Das ist keine PDF-Datei.", "This is not a PDF file."));
@@ -702,8 +713,21 @@ export function useBoardExtras(api: BoardApi) {
           <p>{currentSlide?.notes || t("Keine Notizen für diesen Rahmen.", "No notes for this frame.")}</p>
         </div>
       )}
-      {embedOpen && <EmbedDialog open onClose={() => setEmbedOpen(false)} onEmbed={addEmbed} onPdf={(file) => addPdf(file)} />}
       {pdfPick && <PdfPagesDialog key={`${pdfPick.file.name}-${pdfPick.file.size}`} file={pdfPick.file} onClose={() => setPdfPick(null)} onAdd={placePdf} onError={api.onError} />}
+      {embedOpen && (
+        <EmbedDialog
+          open
+          onClose={() => setEmbedOpen(false)}
+          onEmbed={addEmbed}
+          onLink={(url) => {
+            const added = links.addLink(url);
+            if (added) setEmbedOpen(false);
+            return added;
+          }}
+          onPdf={(file) => addPdf(file)}
+        />
+      )}
+      {links.overlay}
       {cropId && byId.get(cropId)?.src && (
         <CropDialog open src={byId.get(cropId)!.src!} crop={cleanCrop(byId.get(cropId)!.crop)} onClose={() => setCropId(null)} onApply={applyCrop} />
       )}
@@ -850,5 +874,6 @@ export function useBoardExtras(api: BoardApi) {
     exportActions,
     presentControls,
     addPdf,
+    pasteLink: links.pasteLink,
   };
 }
