@@ -33,6 +33,16 @@ ARG FLOWPLAN_SKIP_TYPECHECK=""
 # whose server takes the demo sign-in (lib/e2e-build.ts) – whatever a build
 # argument or a later ENV says.
 RUN --mount=type=cache,target=/app/.next/cache FLOWPLAN_E2E_BUILD= npm run build
+# The draw.io editor Flowplan ships (#454): the web app of the jgraph/drawio
+# release pinned in scripts/drawio.json (Apache-2.0), checked against its
+# SHA-256 and pruned to what the embed mode needs (scripts/drawio-fetch.mjs),
+# served same-origin under /drawio/<version>/. The same for every platform;
+# the download survives between builds (BuildKit cache mount).
+FROM deps AS drawio
+COPY scripts/drawio.json scripts/drawio-fetch.mjs /app/scripts/
+COPY licenses/drawio-LICENSE.txt /app/licenses/
+RUN --mount=type=cache,target=/root/.cache/drawio node scripts/drawio-fetch.mjs /out/drawio --cache /root/.cache/drawio \
+  && chmod -R a+rX /out/drawio
 # Per target platform, still without emulation: packages built for another
 # CPU are swapped for their twin of the target (e.g. sharp for arm64).
 FROM --platform=$BUILDPLATFORM node:26-trixie-slim AS standalone
@@ -141,6 +151,9 @@ RUN mkdir /app/data && chown node:node /app/data
 COPY --from=standalone --chown=node:node /out ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+# The shipped draw.io (lib/drawio-bundle.ts reads /app/vendor/drawio), owned
+# by root and read-only for the app like its code.
+COPY --from=drawio /out/drawio ./vendor/drawio
 # The curated release notes for "Neu in Flowplan" (#223; next.config.ts also
 # traces them into the standalone output).
 COPY --from=build --chown=node:node /app/release-notes ./release-notes

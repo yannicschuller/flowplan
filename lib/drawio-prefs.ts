@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { DRAWIO_THEMES, DRAWIO_UIS, type DrawioConfig, type DrawioTheme, type DrawioUi } from "./drawio";
+import { DRAWIO_THEMES, DRAWIO_UIS, resolveDrawioConfig, type DrawioConfig, type DrawioTheme, type DrawioUi } from "./drawio";
 
 // The draw.io editor in the browser (#110): which draw.io the instance uses
 // (from the start data, components/workspace-app.tsx) and how this person
@@ -8,8 +8,9 @@ import { DRAWIO_THEMES, DRAWIO_UIS, type DrawioConfig, type DrawioTheme, type Dr
 // dark mode – and its interface. Kept in the browser; other tabs follow.
 
 let instance: DrawioConfig | null = null;
+// The shipped copy (#454) is served by this origin: its path is completed here.
 export const setDrawioEditor = (config: DrawioConfig | null | undefined) => {
-  instance = config ?? null;
+  instance = resolveDrawioConfig(config, typeof location !== "undefined" ? location.origin : "");
 };
 export const drawioEditor = () => instance;
 
