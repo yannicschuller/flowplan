@@ -32,7 +32,11 @@ export type TileSummary = {
   sparkTone?: 1 | 2 | 3 | 4 | 5;
   meter?: number;
   meterLabel?: string;
+  // Several labelled figures, each with an optional bar (share 0–1, null:
+  // no bar – unlimited or off), shown on phones too (Speicher & KI).
+  bars?: TileBar[];
 };
+export type TileBar = { label: string; text: string; share: number | null };
 
 // Set when a tile (or a search result) opened the section: "back" can then
 // go back in the history instead of adding an entry.
@@ -237,6 +241,33 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
         <span style={{ width: `${Math.max(2, Math.min(1, summary.meter) * 100)}%` }} />
       </span>
     ) : null;
+  if (summary?.bars?.length)
+    return (
+      <a className="settings-tile rich bars" href={settingsHash({ area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
+        <span className="settings-tile-icon" aria-hidden>
+          <Icon size={20} />
+        </span>
+        <span className="settings-tile-text">
+          <strong>
+            {title}
+            {level && <LevelDot level={level} decorative />}
+          </strong>
+          <small>{summary.line || tx(section.description)}</small>
+        </span>
+        <CaretRight size={16} className="settings-tile-caret" aria-hidden />
+        <span className="settings-tile-bars">
+          {summary.bars.map((b) => (
+            <span key={b.label} className={`settings-tile-bar${b.share === null ? "" : b.share >= 1 ? " full" : b.share >= 0.8 ? " high" : ""}`}>
+              <span className="settings-tile-bar-text">
+                <span>{b.label}</span>
+                <strong>{b.text}</strong>
+              </span>
+              {b.share !== null && <progress max={1000} value={Math.round(Math.min(1, b.share) * 1000)} aria-label={`${b.label}: ${b.text}`} />}
+            </span>
+          ))}
+        </span>
+      </a>
+    );
   if (visual || summary?.valueLabel)
     return (
       <a className={`settings-tile rich${tone === "error" ? " alert" : ""}`} href={settingsHash({ area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>

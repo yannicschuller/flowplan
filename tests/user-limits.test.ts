@@ -83,3 +83,34 @@ test("the administration sees every workspace a person belongs to and the own on
   assert.deepEqual(of(guest.id).memberOf, [ws]);
   assert.equal(of(guest.id).workspaces, 0);
 });
+
+test("Speicher & KI: the bootstrap's limits for members and administrators, files per workspace", async () => {
+  const { bootstrap } = await import("../lib/api");
+  type Mine = { storageMb: number; uploadMb: number; admin?: boolean; usedBytes: number; byWorkspace: { name: string; bytes: number }[] };
+  const user = await person();
+  const one = ((await command(user, { action: "workspace.create", name: "Eins" })) as { id: string }).id;
+  const two = ((await command(user, { action: "workspace.create", name: "Zwei" })) as { id: string }).id;
+  const pageIn = async (ws: string) => {
+    const id = randomUUID();
+    await run("INSERT INTO pages(id,workspace_id,title) VALUES(?,?,'P')", id, ws);
+    return id;
+  };
+  const add = async (page: string, size: number) => run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,'f','text/plain',?,?)", randomUUID(), page, size, user.id);
+  await add(await pageIn(one), 1000);
+  let mine = ((await bootstrap(user, one)) as unknown as { myLimits: Mine }).myLimits;
+  // Files in one workspace only: no list.
+  assert.deepEqual(mine.byWorkspace, []);
+  await add(await pageIn(two), 3000);
+  // A workspace the person is not a member of stays out of the list.
+  await file(user.id, 500);
+  mine = ((await bootstrap(user, one)) as unknown as { myLimits: Mine }).myLimits;
+  assert.deepEqual(mine.byWorkspace.map((w) => [w.name, w.bytes]), [["Zwei", 3000], ["Eins", 1000]]);
+  assert.equal(mine.admin, undefined);
+  // Administrators: no limits, the instance's largest upload.
+  const admin = await person(true);
+  await command(admin, { action: "workspace.create", name: "Admin" });
+  const theirs = ((await bootstrap(admin)) as unknown as { myLimits: Mine }).myLimits;
+  assert.equal(theirs.admin, true);
+  assert.equal(theirs.storageMb, 0);
+  assert.equal(theirs.uploadMb, (await instanceSettings()).maxUploadMb);
+});

@@ -50,6 +50,7 @@ import { AdminLoading } from "./shell";
 // carries none of them, the landing page only the tiles. The outline
 // (AdminLoading) stands in while a section loads.
 const Loading = () => <AdminLoading />;
+const UsageSection = dynamic(() => loadView(() => import("./user/usage")), { ssr: false, loading: Loading });
 const AccountSection = dynamic(() => loadView(() => import("./user/account")), { ssr: false, loading: Loading });
 const MySecuritySection = dynamic(() => loadView(() => import("./user/security")), { ssr: false, loading: Loading });
 const AppearanceSection = dynamic(() => loadView(() => import("./user/appearance")), { ssr: false, loading: Loading });
@@ -131,6 +132,7 @@ export const ICONS: Record<string, Icon> = {
 };
 
 const USER_COMPONENTS: Record<string, ComponentType> = {
+  usage: UsageSection,
   account: AccountSection,
   security: MySecuritySection,
   appearance: AppearanceSection,

@@ -2,13 +2,11 @@
 // Settings → Konto & Sicherheit, as cards: Profil, Anmeldung & Sicherheit
 // (password, two-factor, passkeys, signed-in devices), Ende-zu-Ende-
 // Verschlüsselung, Notfallzugriff (trusted contacts, #281), Nachricht bei
-// Inaktivität (#282), one's limits on this instance and – at the end – the
-// danger zone (reset encryption keys, delete the account).
-import { LOCALE_TAG } from "@/lib/locale-tag";
-import { explainStorage } from "@/lib/limit-explain";
+// Inaktivität (#282), a line pointing to Speicher & KI (one's limits) and –
+// at the end – the danger zone (reset encryption keys, delete the account).
 import { useT } from "../../i18n";
 import { Avatar } from "../../ui";
-import { DangerZone, SettingGroup, SettingRow, StatusBadge, UsageMeter } from "../../settings-ui";
+import { DangerZone, SettingGroup, SettingRow, StatusBadge } from "../../settings-ui";
 import { EmailChangeRow, PasskeysRow, PasswordRow, ProfileNameRow } from "../../account-security";
 import { TwoFactorSettings } from "../../two-factor";
 import { DeleteOwnAccount } from "../../delete-own-account";
@@ -18,6 +16,7 @@ import { EmergencyAccessSettings } from "../../emergency-access";
 import { DeadManSwitchSettings } from "../../dead-man-switch";
 import { SignInMethods } from "../../sign-in-methods";
 import { useUserSettings } from "../user-context";
+import { UsageMovedNote } from "./usage";
 
 export default function AccountSection() {
   const t = useT();
@@ -68,7 +67,8 @@ export default function AccountSection() {
 
       {!demo && <DeadManSwitchSettings onError={onError} />}
 
-      {boot.myLimits && <MyLimits limits={boot.myLimits} />}
+      {/* "Deine Grenzen" moved to Speicher & KI (0.11.3). */}
+      <UsageMovedNote />
 
       {!demo && (
         <DangerZone id="danger" description={t("Was du hier tust, lässt sich nicht rückgängig machen.", "What you do here cannot be undone.")}>
@@ -83,66 +83,5 @@ export default function AccountSection() {
         </DangerZone>
       )}
     </>
-  );
-}
-
-type Limits = NonNullable<ReturnType<typeof useUserSettings>["boot"]["myLimits"]>;
-// "Deine Grenzen": what applies, where it comes from (own, a group, the
-// default) and, when the instance has one, its link for more.
-function MyLimits({ limits }: { limits: Limits }) {
-  const t = useT();
-  const from = (field: "storageMb" | "workspaces" | "uploadMb") => {
-    const source = limits.sources?.[field];
-    const groupName = (group: string | null) => (group && limits.groupNames?.[group]) || t("einer deiner Gruppen", "one of your groups");
-    // Storage with add-ons: the base plus each add-on group.
-    const sum = explainStorage(source, t, groupName, LOCALE_TAG);
-    if (sum) return sum;
-    if (!source || source.from === "default") return null;
-    if (source.from === "user") return t("für dich festgelegt", "set for you");
-    const name = groupName(source.group);
-    return t(`aus Gruppe ${name}`, `from group ${name}`);
-  };
-  const note = (field: "storageMb" | "workspaces" | "uploadMb") => {
-    const text = from(field);
-    return text ? <small className="limit-source">{text}</small> : null;
-  };
-  return (
-    <SettingGroup
-      id="limits"
-      title={t("Deine Grenzen", "Your limits")}
-      description={
-        limits.moreUrl ? (
-          <>
-            {t("So viel steht dir auf dieser Instanz zur Verfügung.", "This is what you have on this instance.")}{" "}
-            <a href={limits.moreUrl} target="_blank" rel="noopener noreferrer">
-              {t("Mehr Speicher oder KI? →", "More storage or AI? →")}
-            </a>
-          </>
-        ) : (
-          t("So viel steht dir auf dieser Instanz zur Verfügung. Mehr gibt es bei den Admins.", "This is what you have on this instance. Admins can give you more.")
-        )
-      }
-    >
-      <div className="setting-row wide">
-        <div className="limits-overview">
-          <div>
-            <UsageMeter
-              label={t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")}
-              used={limits.usedBytes}
-              limit={limits.storageMb * 1024 * 1024}
-              format={(n) => `${(n / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: n < 10 * 1024 * 1024 ? 1 : 0 })} MB`}
-            />
-            {note("storageMb")}
-          </div>
-          <div>
-            <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={limits.ownedWorkspaces} limit={limits.workspaces} format={(n) => String(n)} />
-            {note("workspaces")}
-          </div>
-        </div>
-      </div>
-      <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")} description={from("uploadMb") ?? undefined}>
-        <strong className="setting-value">{limits.uploadMb} MB</strong>
-      </SettingRow>
-    </SettingGroup>
   );
 }

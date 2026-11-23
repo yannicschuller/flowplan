@@ -6,7 +6,7 @@ import { join } from "node:path";
 // Limits per group (Administration → Grenzen & Aufbewahrung): an
 // administrator gives a directory group more storage; a member of that
 // group (pushed over SCIM, no workspace or mapping needed) sees it under
-// "Deine Grenzen" with the group named, and the administration's account
+// Settings → Speicher & KI with the group named, and the administration's account
 // panel says where it comes from. A second group is an add-on
 // ("Zusätzlich (Add-on)"): its storage comes on top, and both are named.
 test("limits per group: set by an administrator, shown to a member", async ({ browser }, info) => {
@@ -76,9 +76,9 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-group-limits.png`, fullPage: true });
 
     // The member sees the sum and where it comes from: 2,000 MB + 50 GB.
-    await me.page.goto(`${origin}/#settings/account`);
-    const limits = me.page.locator(".setting-group", { hasText: "Deine Grenzen" });
-    await expect(limits).toContainText("53.200 MB", { timeout: 20_000 });
+    await me.page.goto(`${origin}/#settings/usage`);
+    const limits = me.page.locator("#storage");
+    await expect(limits).toContainText("0 von 53.200 MB", { timeout: 20_000 });
     await expect(limits).toContainText(`2.000 MB aus Gruppe ${group} + 50 GB aus Gruppe ${addon}`);
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-group-limits.png`, fullPage: true });
 
