@@ -1,0 +1,14 @@
+{
+  "features": [
+    {
+      "de": "Grenzen pro Gruppe: Speicher einer Gruppe als Add-on – er kommt zum Speicher aus Tarif oder Standard dazu, statt ihn zu ersetzen (z. B. 25 GB + 50 GB = 75 GB).",
+      "en": "Limits per group: a group's storage as an add-on – it is added to the storage from the plan or the default instead of replacing it (e.g. 25 GB + 50 GB = 75 GB)."
+    }
+  ],
+  "improvements": [
+    {
+      "de": "„Deine Grenzen“ und das Konto in der Administration zeigen, woraus sich der Speicher zusammensetzt.",
+      "en": "\"Your limits\" and the account in Administration show what the storage is made of."
+    }
+  ]
+}
