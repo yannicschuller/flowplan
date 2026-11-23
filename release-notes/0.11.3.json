@@ -1,0 +1,70 @@
+{
+  "features": [
+    {
+      "de": "Pflichtfelder in Datenbanken: Eine Eigenschaft lässt sich als „Pflichtfeld“ markieren – neue Einträge bekommen den Standardwert oder die erste Option, leeren geht nicht mehr, und ein Board nach diesem Feld zeigt keine leere Spalte.",
+      "en": "Required properties in databases: mark a property as required – new records get its default value or the first option, it can't be cleared any more, and a board grouped by it has no empty column.",
+      "issues": [443]
+    },
+    {
+      "de": "/seite legt eine Unterseite an, fügt einen Link darauf ein und öffnet sie – auch in Datenbank-Einträgen.",
+      "en": "/page creates a sub-page, inserts a link to it and opens it – in database records too.",
+      "issues": [444]
+    },
+    {
+      "de": "Tabs: neuer Tab mit ⌥T (Desktop-App ⌘T) oder „+“, angeheftete Tabs und Tab-Gruppen mit Namen und Farbe.",
+      "en": "Tabs: a new tab with Alt+T (desktop app ⌘T) or \"+\", pinned tabs, and named, coloured tab groups.",
+      "issues": [444]
+    },
+    {
+      "de": "Formeln mit $…$ und $$ direkt im Text tippen; im Formel-Dialog fügt ⌘/Strg+Enter ein.",
+      "en": "Type formulas as $…$ and $$ right in the text; ⌘/Ctrl+Enter inserts in the formula dialog.",
+      "issues": [446]
+    },
+    {
+      "de": "Uploads bis 10 GB: Dateien werden direkt auf die Platte gestreamt statt in den Speicher gelesen; die Grenze in der Administration gilt jetzt auch über 12 MB.",
+      "en": "Uploads up to 10 GB: files are streamed to disk instead of read into memory; the limit set in Administration now applies above 12 MB too.",
+      "issues": [442]
+    },
+    {
+      "de": "Einstellungen → „Speicher & KI“: dein Speicher und deine KI-Kontingente auf einen Blick, mit einem Hinweis ab 80 %.",
+      "en": "Settings → \"Storage & AI\": your storage and AI quotas at a glance, with a notice from 80 %."
+    },
+    {
+      "de": "Administration: Grenzen und KI-Einstellungen als eine Datei exportieren und importieren (mit Vorschau); KI-Kontingente auch in Tokens und eine eigene Grenze für das Modell nach dem Kontingent.",
+      "en": "Administration: export and import the limits and AI settings as one file (with a preview); AI quotas in tokens too, and a limit of its own for the model after the quota."
+    },
+    {
+      "de": "Eigenes Titelbild zeichnen.",
+      "en": "Draw your own cover image."
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Sankey-Diagramme heißen jetzt so (statt „Flussdiagramm“) – keine Verwechslung mehr mit Flussdiagrammen auf dem Whiteboard.",
+      "en": "Sankey diagrams are now called that (instead of \"flow diagram\") – no mix-up with the whiteboard's flowcharts."
+    },
+    {
+      "de": "Fußnoten mit Formatierung; das Seitenmenü in beschrifteten Abschnitten; kompaktere Stiftoptionen auf dem Whiteboard und weitere Feinschliffe aus der Design-Durchsicht.",
+      "en": "Formatted footnotes; the page menu in labelled sections; compact pen options on the whiteboard and more polish from the design review."
+    },
+    {
+      "de": "Fehlermeldungen nennen den genauen Grund, wenn der Server einen angibt, statt „an anderer Stelle geändert“.",
+      "en": "Error messages give the exact reason when the server names one, instead of \"changed elsewhere\"."
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Board: Karten lassen sich in leere Felder einer Swimlane verschieben; ein Verschieben nach einer Änderung von anderswo wird einmal neu versucht statt abgelehnt.",
+      "en": "Board: cards can be moved into empty swimlane cells; a move after a change made elsewhere is retried once instead of refused.",
+      "issues": [445]
+    },
+    {
+      "de": "Whiteboard: Tabellen sind im dunklen Modus lesbar.",
+      "en": "Whiteboard: tables are readable in dark mode."
+    },
+    {
+      "de": "PostgreSQL: Andere Tabs bekommen Änderungen wie das Umbenennen einer Seite zuverlässig mit.",
+      "en": "PostgreSQL: other tabs reliably get changes such as renaming a page."
+    }
+  ]
+}
