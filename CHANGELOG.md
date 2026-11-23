@@ -2,6 +2,83 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.3 – 2026-11-23
+
+### New
+
+- Required properties in databases: mark a property as required – new records get its default value or the first option, it can't be cleared any more, and a board grouped by it has no empty column ([#443](https://github.com/yannicschuller/flowplan/issues/443)).
+- /page creates a sub-page, inserts a link to it and opens it – in database records too ([#444](https://github.com/yannicschuller/flowplan/issues/444)).
+- Tabs: a new tab with Alt+T (desktop app ⌘T) or "+", pinned tabs, and named, coloured tab groups ([#444](https://github.com/yannicschuller/flowplan/issues/444)).
+- Type formulas as $…$ and $$ right in the text; ⌘/Ctrl+Enter inserts in the formula dialog ([#446](https://github.com/yannicschuller/flowplan/issues/446)).
+- Uploads up to 10 GB: files are streamed to disk instead of read into memory; the limit set in Administration now applies above 12 MB too ([#442](https://github.com/yannicschuller/flowplan/issues/442)).
+- Settings → "Storage & AI": your storage and AI quotas at a glance, with a notice from 80 %.
+- Administration: export and import the limits and AI settings as one file (with a preview); AI quotas in tokens too, and a limit of its own for the model after the quota.
+- Draw your own cover image.
+
+### Improved
+
+- Sankey diagrams are now called that (instead of "flow diagram") – no mix-up with the whiteboard's flowcharts.
+- Formatted footnotes; the page menu in labelled sections; compact pen options on the whiteboard and more polish from the design review.
+- Error messages give the exact reason when the server names one, instead of "changed elsewhere".
+
+### Bug fixes
+
+- Board: cards can be moved into empty swimlane cells; a move after a change made elsewhere is retried once instead of refused ([#445](https://github.com/yannicschuller/flowplan/issues/445)).
+- Whiteboard: tables are readable in dark mode.
+- PostgreSQL: other tabs reliably get changes such as renaming a page.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes for 0.11.3 ([9184d7a](https://github.com/yannicschuller/flowplan/commit/9184d7a32305b6a614a082d2e9ad9e946eb6218e))
+- PostgreSQL: a committed transaction counts as a write again ([74a6322](https://github.com/yannicschuller/flowplan/commit/74a6322b1fe842998995f220737e0b9834a9c005))
+- Help docs: formulas with $ and $$ (#446) ([99d95a9](https://github.com/yannicschuller/flowplan/commit/99d95a9f2709c714528119540b13c505cd4bf355))
+- Shortcut flashcards: the new tab, tab group and formula shortcuts ([16d86a6](https://github.com/yannicschuller/flowplan/commit/16d86a62fa0401db586db8c396ad9c3e326dff10))
+- Quality: JS budgets for 0.11.3 (tab groups, move retry, $ formulas in the shell) ([f96f6b6](https://github.com/yannicschuller/flowplan/commit/f96f6b629c82f2c86815c8b1403ccec33a9426cf))
+- Paste: $…$ becomes a formula only when it looks like LaTeX (#446) ([ba0e243](https://github.com/yannicschuller/flowplan/commit/ba0e243c97546501513689085c196eb155ed014a))
+- Editor: $…$ and $$…$$ become formulas; formula dialog keys (#446) ([7a706c7](https://github.com/yannicschuller/flowplan/commit/7a706c7da69634faa6ee3806b539cffea2ce8ccf))
+- Help docs: /page sub-pages, new tab, pinned tabs and tab groups (#444) ([4a37346](https://github.com/yannicschuller/flowplan/commit/4a37346a4c723bf4f56cfe0d52fb28bdd534ff64))
+- Test: study.params no longer depends on the time of day ([9d1a6bd](https://github.com/yannicschuller/flowplan/commit/9d1a6bdba72e35da41023cda95e366fa4aaeca77))
+- Tab groups (#444) ([0a9b68e](https://github.com/yannicschuller/flowplan/commit/0a9b68e2577af4c58b5cceee1890309bb66f07c6))
+- Help docs: Sankey diagrams ([c60904b](https://github.com/yannicschuller/flowplan/commit/c60904bfefeb41c7f03df79e23065457df017502))
+- "/Seite" sub-pages, a new tab with Alt+T / ⌘T and "+", pinned tabs (#444) ([83c3a8e](https://github.com/yannicschuller/flowplan/commit/83c3a8e19309e0c0d341946d5accc56d264a781f))
+- Test: the record's status is a picker button (board-add-group.spec) ([2d916f1](https://github.com/yannicschuller/flowplan/commit/2d916f14f60c017a63cf1977c2209a60c1e54f4f))
+- Sankey diagrams are called Sankey diagrams, not "flow diagrams" ([7886eca](https://github.com/yannicschuller/flowplan/commit/7886ecad4e674f49e174c7074417180aa41a2a0a))
+- Board: move cards into empty swimlane cells; retry stale moves once (#445) ([7eb595d](https://github.com/yannicschuller/flowplan/commit/7eb595d5c4fcdc1a27d7d7d9d4284c2fe72d89d6))
+- Help docs: required properties (#443) ([0baa871](https://github.com/yannicschuller/flowplan/commit/0baa8717ef2be0ff7d0f9566d3f8fd50596ab770))
+- Required properties ("Pflichtfeld") for databases (#443) ([3d390ed](https://github.com/yannicschuller/flowplan/commit/3d390edb1377d5576b5d878e3aa44524381f0883))
+- CI: limits import transaction test under PostgreSQL, JS budgets for 0.11.3 ([79e6033](https://github.com/yannicschuller/flowplan/commit/79e6033d2276182d01232858c510634472a05123))
+- Visual baselines from ubuntu-latest ([61181ef](https://github.com/yannicschuller/flowplan/commit/61181ef464e73a331d5c82c39f4a9c3a5fdcb878))
+- Help docs for 0.11.3: uploads, AI tokens, limit after the quota ([9723f82](https://github.com/yannicschuller/flowplan/commit/9723f8258561e8b7f9b79f8ead7850e8856c71fa))
+- AI quotas: a limit for "Danach: weiter mit <Modell>" ([6b774c0](https://github.com/yannicschuller/flowplan/commit/6b774c0e42c4425f0f2539147a5b019c15d49c05))
+- Design review: Dialogs – the database kind's label centred on its row ([21d3ff7](https://github.com/yannicschuller/flowplan/commit/21d3ff7ac90b78f2935013504037377aeb3d055c))
+- Whiteboard: table cells follow the board's display colours (readable in dark mode) ([b9837ba](https://github.com/yannicschuller/flowplan/commit/b9837ba02968b7ddc53559795e001960de4cd94a))
+- Design review: Dialogs – the database kind beside its label on phones, Draw next to Upload ([63b93e8](https://github.com/yannicschuller/flowplan/commit/63b93e873580d97486384f6987f1427a05b70272))
+- Limits file: aiTokens sets the AI quota in tokens directly ([6c56b0c](https://github.com/yannicschuller/flowplan/commit/6c56b0c9a108b8aa0da78e886f030ad8c96bc4c2))
+- Uploads up to 10 GB, streamed to disk instead of read into memory ([52f65eb](https://github.com/yannicschuller/flowplan/commit/52f65eb5cbbe055a80e21a1cafe10088e6f5b28a))
+- Unconfirmed deletion: the notice's resend button waits for the app to take over ([b9bc5a3](https://github.com/yannicschuller/flowplan/commit/b9bc5a3c22213de0b2e5e40301248e7b22637dfb))
+- Design review: browser specs for the design batch; gallery reaches the Appearance submenu ([8428bf5](https://github.com/yannicschuller/flowplan/commit/8428bf591506ab1e390cb5209f6cf8883aaa2d4e))
+- Help docs: Storage & AI, limits export/import ([d91910d](https://github.com/yannicschuller/flowplan/commit/d91910d13e781dfc207d03e2d61526c6b8075260))
+- Limits per group: a change right after another no longer undoes it ([03c4df4](https://github.com/yannicschuller/flowplan/commit/03c4df43119ab92fa403b09f8f15c2123e72be21))
+- Limits file spec: Speicher & KI shows the storage as "von 25 GB" ([ed46d71](https://github.com/yannicschuller/flowplan/commit/ed46d716a6da56dad6457361ce86a03621335c1b))
+- Limits: the more-link shows under Speicher & KI, not „Deine Grenzen“ ([c506a9a](https://github.com/yannicschuller/flowplan/commit/c506a9ae929a0c4c156f8286cdb33b8a20ce50f3))
+- Limits file spec: the member's limits under Settings → Speicher & KI ([89ae180](https://github.com/yannicschuller/flowplan/commit/89ae180c8f9e60603fa6c111ec142afe080303c7))
+- Limits: export / import of the limits and AI settings as one file ([411118a](https://github.com/yannicschuller/flowplan/commit/411118a59b23f6cd4395adf6132db92acb30df3e))
+- Design review: translations for the design batch (fr, zh, ru) ([cda6cb6](https://github.com/yannicschuller/flowplan/commit/cda6cb6dc5cabd15bd27f612a89ee7c924aa0cf8))
+- Design review: Documents & editor – draw your own cover ([1544703](https://github.com/yannicschuller/flowplan/commit/15447038eac872ab4fb1f819455c1f4f170ebd0d))
+- Design review: Documents & editor – formatted footnotes, no empty strip in the footnote dialog ([8057c3e](https://github.com/yannicschuller/flowplan/commit/8057c3e3d1b9fb48303b8e27f66c87b0f524a6e2))
+- Settings: "Speicher & KI" page and tile, notice at 80 % ([203ee1d](https://github.com/yannicschuller/flowplan/commit/203ee1d245ae6cdf581b91431e221281d2c26f36))
+- Design review: Documents & editor – the page menu in labelled sections ([0b8c0fa](https://github.com/yannicschuller/flowplan/commit/0b8c0faba64f1c266aeb5b76462796fbd39f4c9e))
+- Design review: Whiteboard – compact pen options with three widths ([82a0efc](https://github.com/yannicschuller/flowplan/commit/82a0efcf1370c53366865c67b7cdc783a4caba32))
+- Design review: Admin users – toolbar and cancel deletion inline ([fdeec1c](https://github.com/yannicschuller/flowplan/commit/fdeec1c117fa09f8282b5c6e2a668ae720095b0a))
+- Design review: Dialogs – the kind of a new database as a select ([0167539](https://github.com/yannicschuller/flowplan/commit/0167539eef98d8b574adaed133c41dd7653b7b6d))
+- Design review: Databases – study header names its counts, the card fits its content ([1109af5](https://github.com/yannicschuller/flowplan/commit/1109af538596487a7750e283cb9962b492b8acfd))
+- Design review: Admin – Refresh as a compact icon button in the page header ([f0d8024](https://github.com/yannicschuller/flowplan/commit/f0d80242c3dde4bbf8df2f90213aa6f398e26216))
+- Design review: Databases – tests pick the grouping property with one tap ([3011674](https://github.com/yannicschuller/flowplan/commit/3011674616a246615d91297a048d819b47c4a96e))
+- Design review: Pages – date range menu as a proper option list, Group chip with one-tap choices, narrower pinned table column ([bdd0db4](https://github.com/yannicschuller/flowplan/commit/bdd0db4d33b277486db3710b43a60124f7b3e539))
+
+</details>
+
 ## v0.11.2 – 2026-11-23
 
 ### New
