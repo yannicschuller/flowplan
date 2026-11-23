@@ -100,7 +100,7 @@ export const commandActionNames = [
   "notebook.sheet.meta", "notebook.sheet.links", "notebook.outline", "notebook.outline.add", "notebook.sheets.duplicate", "notebook.sheets.delete",
   "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete",
   "collection.create", "collection.update", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder",
-  "thread.create", "thread.reply", "thread.resolve", "thread.reanchor", "thread.edit", "thread.deleteMessage", "thread.react",
+  "thread.create", "thread.reply", "thread.resolve", "thread.color", "thread.reanchor", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
   "notification.prefs", "notification.read", "notification.mark", "notification.delete",
   "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme",

@@ -810,6 +810,7 @@ const exact: Record<string, string> = {
   "Eine erwähnte Person hat keinen Zugriff mehr. Bitte entferne die Erwähnung oder wähle eine berechtigte Person.": "A mentioned person no longer has access. Please remove the mention or choose a person with access.",
   "Die ausgewählte Textstelle hat sich geändert. Bitte erneut auswählen; dein Entwurf bleibt erhalten.": "The selected passage has changed. Please select it again; your draft is kept.",
   "Nur Verfasser oder Bearbeiter können diesen Thread abschließen.": "Only authors or editors can resolve this thread.",
+  "Nur Verfasser oder Bearbeiter können die Farbe dieses Threads ändern.": "Only authors or editors can change the colour of this thread.",
   "Der Thread wurde geändert. Bitte prüfe die neueste Antwort.": "The thread was changed. Please check the latest reply.",
   "Bitte den Thread zuerst wieder öffnen.": "Please reopen the thread first.",
   "Antwort nicht gefunden.": "Reply not found.",

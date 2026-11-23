@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 122;
+export const SCHEMA_VERSION = 124;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1666,11 +1666,22 @@ function migrate(d: DatabaseSync) {
   // Schema 122 – a limit for going on after a used-up AI quota
   // (lib/ai/quota.ts): after_limits and the usage of the continuation.
   migrateAiAfterLimits(d);
+  // Schema 124 – the highlight colour of a text comment thread (#450).
+  migrateInlineThreadColor(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 124 – the highlight colour of a text comment thread (#450,
+// lib/comment-colors.ts): inline_threads.color holds a palette name of the
+// text background colours ("blue", "green", …); NULL is the default yellow,
+// so every older thread stays as it was. An older version would show every
+// thread yellow and drop the colour on its next write, hence the number.
+function migrateInlineThreadColor(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(inline_threads)").all() as { name: string }[]).some((c) => c.name === "color"))
+    d.exec("ALTER TABLE inline_threads ADD COLUMN color TEXT");
 }
 // Schema 122 – a limit for the continuation after a used-up AI quota
 // ("Danach: weiter mit <Modell>", after_model):

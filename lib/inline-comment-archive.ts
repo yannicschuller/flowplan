@@ -10,6 +10,7 @@ import { withCommentDocument } from "./inline-comments";
 import { commentAnchor, commentQuote, commentRange } from "./comment-positions";
 import type { CommentAnchor } from "./inline-comment-types";
 import { mapAsync } from "./each-async";
+import { COMMENT_COLORS, storedCommentColor } from "./comment-colors";
 export const archivedThreadsSchema = z
   .array(
     z.object({
@@ -23,6 +24,8 @@ export const archivedThreadsSchema = z
         })
         .nullable(),
       resolved: z.number().int().min(0).max(1),
+      // The highlight colour (#450); absent in archives before it: yellow.
+      color: z.enum(COMMENT_COLORS).nullable().optional(),
       created_at: z.string().max(100),
       messages: z
         .array(
@@ -68,6 +71,7 @@ export async function exportInlineComments(pageId: string): Promise<ArchivedThre
     row_id: string | null;
     anchor: string;
     resolved: number;
+    color: string | null;
     created_at: string;
   }>(
     "SELECT * FROM inline_threads WHERE page_id=? ORDER BY created_at,id",
@@ -89,12 +93,15 @@ export async function exportInlineComments(pageId: string): Promise<ArchivedThre
     }
   }
   return await mapAsync(threads, async (t) => {
-    const anchor = JSON.parse(t.anchor) as CommentAnchor;
+    const anchor = JSON.parse(t.anchor) as CommentAnchor,
+      color = storedCommentColor(t.color);
     return {
       row_id: t.row_id,
       quote: anchor.quote,
       range: ranges.get(t.id) || null,
       resolved: t.resolved,
+      // Only a chosen colour: archives of yellow threads stay as before.
+      ...(color ? { color } : {}),
       created_at: t.created_at,
       messages: await mapAsync(await all<{
         id: string;
@@ -179,13 +186,14 @@ export async function importInlineComments(
       }
     const tid = id();
     await run(
-      "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
+      "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor,resolved,color,created_at) VALUES(?,?,?,?,?,?,?,?)",
       tid,
       pageId,
       rowId,
       ownerId,
       JSON.stringify(anchor),
       t.resolved,
+      storedCommentColor(t.color),
       t.created_at,
     );
     for (const m of t.messages)

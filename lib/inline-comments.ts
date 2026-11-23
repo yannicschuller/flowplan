@@ -33,12 +33,17 @@ import english from "emojibase-data/en/data.json";
 import { emojiPresentation } from "./emoji-presentation";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
+import { COMMENT_COLORS, storedCommentColor } from "./comment-colors";
+// A colour sent with thread.create / thread.color (#450): a palette name, or
+// null/absent for the default. Anything else is refused.
+const commentColorSchema = z.enum(COMMENT_COLORS).nullable().optional();
 // The emojis a reaction may be (the picker's, with every skin tone).
 const emojis = new Set((english as { emoji: string; skins?: { emoji: string }[] }[]).flatMap((e) => [e.emoji, ...(e.skins || []).map((s) => s.emoji)]));
 const bodySchema = z.string().trim().min(1).max(5000);
 const versionSchema = z.number().int().positive();
-type StoredThread = Omit<InlineThread, "anchor" | "messages" | "canResolve"> & {
+type StoredThread = Omit<InlineThread, "anchor" | "messages" | "canResolve" | "color"> & {
   anchor: string;
+  color: string | null;
 };
 type StoredMessage = Omit<InlineMessage, "reactions" | "name"> & {
   thread_id: string;
@@ -94,6 +99,7 @@ export async function inlineThreads(
     rowId || null,
   ), async (t) => ({
     ...t,
+    color: storedCommentColor(t.color),
     anchor: {
       ...JSON.parse(t.anchor),
       quote: JSON.parse(t.anchor).quote.slice(
@@ -286,7 +292,8 @@ export async function inlineCommentCommand(
       messageId = z.uuid().parse(input.messageId),
       messageInputValue = await messageInput(input, page),
       { body } = messageInputValue,
-      anchor = commentAnchorSchema.parse(input.anchor);
+      anchor = commentAnchorSchema.parse(input.anchor),
+      color = storedCommentColor(commentColorSchema.parse(input.color));
     const existing = await one<StoredThread>(
       "SELECT * FROM inline_threads WHERE id=?",
       threadId,
@@ -334,12 +341,13 @@ export async function inlineCommentCommand(
         );
     });
     await run(
-      "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor) VALUES(?,?,?,?,?)",
+      "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor,color) VALUES(?,?,?,?,?,?)",
       threadId,
       pageId,
       rowId || null,
       user.id,
       JSON.stringify(anchor),
+      color,
     );
     await run(
       "INSERT INTO inline_messages(id,thread_id,author_id,author_name,body,rich_body) VALUES(?,?,?,?,?,?)",
@@ -382,6 +390,20 @@ export async function inlineCommentCommand(
     await run(
       "UPDATE inline_threads SET resolved=?,version=version+1 WHERE id=?",
       z.boolean().parse(input.resolved) ? 1 : 0,
+      thread.id,
+    );
+  } else if (action === "thread.color") {
+    // The highlight colour (#450): who may resolve the thread – its author
+    // or an editor – may recolour it. Not a change of the discussion, so
+    // the version stays (an open reply or resolve is not refused for it).
+    if (thread.author_id !== user.id && (await pageRole(user, page)) === "viewer")
+      throw new HttpError(
+        403,
+        "Nur Verfasser oder Bearbeiter können die Farbe dieses Threads ändern.",
+      );
+    await run(
+      "UPDATE inline_threads SET color=? WHERE id=?",
+      storedCommentColor(commentColorSchema.parse(input.color)),
       thread.id,
     );
   } else if (action === "thread.reanchor") {

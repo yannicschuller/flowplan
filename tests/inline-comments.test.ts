@@ -1094,3 +1094,57 @@ test("thread.reanchor moves a thread to its moved passage, only for editors, the
     });
   }
 });
+test("thread colours (#450): chosen at creation, changed by the author or editors, counted, kept in archives; old threads stay yellow", async () => {
+  const { commentColorOf, storedCommentColor } = await import("../lib/comment-colors");
+  assert.equal(storedCommentColor("blue"), "blue");
+  assert.equal(storedCommentColor("yellow"), null, "the default is stored as NULL");
+  assert.equal(storedCommentColor("#ff0000"), null);
+  assert.equal(commentColorOf(null), "yellow");
+  assert.equal(commentColorOf("nonsense"), "yellow");
+  const f = await fixture();
+  // A thread without a colour (as every thread before schema 124): yellow.
+  const plain = await f.create();
+  assert.equal((await inlineThreads(f.owner, f.pageId))[0].color, null);
+  // Refused: a colour value instead of a palette name.
+  await assert.rejects(f.create(f.owner, { color: "#ff0000" }));
+  const green = await f.create(f.viewer, { color: "green" });
+  // The retry of the same create is still idempotent.
+  await f.act(green, f.viewer);
+  const byId = async (threadId: string, u = f.owner) =>
+    (await inlineThreads(u, f.pageId)).find((t) => t.id === threadId)!;
+  assert.equal((await byId(green.threadId)).color, "green");
+  // The reader authored it: they may change it; the version stays.
+  const version = (await byId(green.threadId)).version;
+  await f.act({ action: "thread.color", pageId: f.pageId, threadId: green.threadId, color: "purple" }, f.viewer);
+  assert.equal((await byId(green.threadId, f.viewer)).color, "purple");
+  assert.equal((await byId(green.threadId)).version, version);
+  // A reader may not recolour someone else's thread; an editor may.
+  await assert.rejects(
+    f.act({ action: "thread.color", pageId: f.pageId, threadId: plain.threadId, color: "red" }, f.viewer),
+    /Farbe dieses Threads/,
+  );
+  await f.act({ action: "thread.color", pageId: f.pageId, threadId: green.threadId, color: "blue" });
+  assert.equal((await byId(green.threadId)).color, "blue");
+  await assert.rejects(f.act({ action: "thread.color", pageId: f.pageId, threadId: green.threadId, color: "magenta" }));
+  // Back to the default: NULL again.
+  await f.act({ action: "thread.color", pageId: f.pageId, threadId: green.threadId, color: null });
+  assert.equal((await byId(green.threadId)).color, null);
+  await f.act({ action: "thread.color", pageId: f.pageId, threadId: green.threadId, color: "orange" });
+  // The count shown after the passage: every message of the thread, also in
+  // the summaries the panel and the right comment panel load.
+  await f.act({ action: "thread.reply", pageId: f.pageId, threadId: green.threadId, messageId: id(), body: "One" });
+  await f.act({ action: "thread.reply", pageId: f.pageId, threadId: green.threadId, messageId: id(), body: "Two" }, f.viewer);
+  const summary = (await inlineThreads(f.owner, f.pageId, undefined, true)).find((t) => t.id === green.threadId)!;
+  assert.equal(summary.messageCount, 3);
+  assert.equal(summary.messages.length, 1);
+  assert.equal(summary.color, "orange");
+  // Archives: the chosen colour travels along; a yellow thread has none.
+  const bytes = await exportArchive(f.owner, f.wid),
+    manifest = JSON.parse((await readZip(bytes)).get("flowplan.json")!.toString());
+  const archived = manifest.pages.find((p: any) => p.id === f.pageId).inlineThreads;
+  assert.deepEqual(archived.map((t: any) => t.color ?? null).sort(), [null, "orange"].sort());
+  assert.ok(!("color" in archived.find((t: any) => !t.color)));
+  const imported = await importArchive(f.owner, f.wid, bytes);
+  const colors = (await inlineThreads(f.owner, imported.pageIds[f.pageId])).map((t) => t.color);
+  assert.deepEqual(colors.sort(), [null, "orange"].sort());
+});
