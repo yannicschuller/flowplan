@@ -185,6 +185,9 @@ export type Field = {
   // "Standardwert" (#411, lib/field-defaults.ts): a fixed value, "Heute"/
   // "Jetzt" (dates) or "Ersteller" (people) for new records without a value.
   defaultValue?: import("./field-defaults").FieldDefault;
+  // "Pflichtfeld" (#443, lib/field-required.ts): new records get a value
+  // where one can be found, and the value cannot be cleared.
+  required?: boolean;
 };
 export type Row = {
   id: string;

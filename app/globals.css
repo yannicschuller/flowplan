@@ -41386,3 +41386,71 @@ a.favorite-nav.selected {
   padding: 6px 12px;
   font-size: 13px;
 }
+/* "Pflichtfeld" (#443, components/field-required.tsx): the switch in a
+   property's settings, the mark of a required property without a value,
+   the refused clearing of a cell and the empty group that needs values. */
+:root {
+  --required-missing: #b4471f;
+}
+[data-theme="dark"] {
+  --required-missing: #ff9a6e;
+}
+.field-required {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.field-required legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+.field-required-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+.field-required-notice svg,
+.required-missing svg {
+  flex: none;
+  color: var(--required-missing);
+}
+.required-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  vertical-align: middle;
+}
+td > span > .required-missing:only-child {
+  margin-left: 0;
+}
+.required-mark {
+  margin-left: 2px;
+  color: var(--muted);
+}
+.cell-required-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--required-missing);
+  white-space: normal;
+}
+.group-missing {
+  color: var(--required-missing);
+  font-weight: 600;
+}
+.tag.group-missing {
+  background: transparent;
+  border: 1px dashed var(--required-missing);
+}

@@ -18,6 +18,7 @@ import { replaceRowDocument } from "./row-documents";
 import { relationPairs } from "./relation-sync";
 import { parseAliases } from "./page-aliases";
 import { colorOptions } from "./option-colors";
+import { clearedRequired, requiredMessage } from "./field-required";
 import type { Identity, Field, Page, Row } from "./types";
 const computed = [
   "formula",
@@ -230,7 +231,15 @@ export async function validateCellPatch(
   }
   if (JSON.stringify(result).length > 200000)
     throw new HttpError(413, "Änderung zu groß.");
+  // A required property keeps its value (#443) – on an existing record.
+  if (before) assertRequiredKept(fields, result, before);
   return result;
+}
+// Clearing a required property (#443, lib/field-required.ts) is refused; a
+// value that was already empty may stay so. `before`: the stored cells.
+export function assertRequiredKept(fields: Field[], patch: Record<string, unknown>, before: Record<string, unknown>) {
+  const cleared = clearedRequired(fields, patch, before);
+  if (cleared) throw new HttpError(400, requiredMessage(cleared));
 }
 // Automatic database version at the start of an editing session: the first
 // edit after 10 quiet minutes keeps the previous state.
@@ -348,6 +357,8 @@ export async function bulkRows(
       : null;
   const snapshotId = await databaseSnapshot(user, page),
     mapping = new Map(source.map((r) => [r.id, id()]));
+  // Required properties (#443): none of the records loses its value.
+  if (patch) for (const row of source) assertRequiredKept(fields, patch, JSON.parse(row.cells));
   for (const row of source) {
     if (operation === "update") {
       const cells = { ...JSON.parse(row.cells), ...patch };

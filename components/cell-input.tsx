@@ -2,7 +2,9 @@
 import { choiceChipClass, optionColor } from "@/lib/option-colors";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ComponentProps, type KeyboardEvent, type ReactNode } from "react";
+import { isEmptyValue } from "@/lib/empty-value";
+import { isRequired } from "@/lib/field-required";
 import { InlineText } from "./inline-text";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
@@ -63,7 +65,41 @@ function useRichTextEditor(wanted: boolean) {
 export function FieldLabel({ field, children }: { field: Pick<Field, "type" | "tagOptions">; children: ReactNode }) {
   return field.type === "date" || (field.type === "multiselect" && field.tagOptions) ? <div className="field-group">{children}</div> : <label>{children}</label>;
 }
-export function CellInput({
+// A stored record's value (`keepRequired`): a required property (#443,
+// lib/field-required.ts) that has a value is not offered empty – a select
+// has no empty choice, the picker no ✕ for the last option – and an edit
+// that would clear it anyway (a text deleted) is not saved: the field
+// shows the value again with the server's message. Values already empty
+// may stay so. Forms and bulk changes leave it out.
+export function CellInput({ keepRequired, ...props }: ComponentProps<typeof CellInputBody> & { keepRequired?: boolean }) {
+  const t = useT();
+  const { field, value, onChange } = props;
+  const keep = !!keepRequired && isRequired(field) && !isEmptyValue(value, field.type);
+  const [refused, setRefused] = useState(false);
+  // Remounting the editor shows the stored value again.
+  const [reset, setReset] = useState(0);
+  useEffect(() => setRefused(false), [value]);
+  const change = (next: unknown) => {
+    if (keep && isEmptyValue(next, field.type)) {
+      setRefused(true);
+      setReset((n) => n + 1);
+      return undefined;
+    }
+    setRefused(false);
+    return onChange(next);
+  };
+  return (
+    <>
+      <CellInputBody key={reset} {...props} keep={keep} onChange={change} />
+      {refused && keep && (
+        <span className="cell-required-error" role="alert">
+          {t(`„${field.name}“ ist ein Pflichtfeld und kann nicht leer sein.`, `“${field.name}” is required and cannot be empty.`)}
+        </span>
+      )}
+    </>
+  );
+}
+function CellInputBody({
   field: f,
   value,
   members,
@@ -80,7 +116,10 @@ export function CellInput({
   formatted,
   multiline = false,
   optionPicker,
+  keep = false,
 }: {
+  // A required property's value that may not become empty (CellInput).
+  keep?: boolean;
   // Select and multi-select values with the search (#423,
   // components/option-picker.tsx) – in the database's own views; `create`
   // for people who may change its properties. Left out (forms, bulk
@@ -237,6 +276,7 @@ export function CellInput({
         disabled={disabled}
         editing={editing}
         create={optionPicker.create}
+        keep={keep}
         onChange={onChange}
         onCancel={onCancel}
       />
@@ -253,7 +293,7 @@ export function CellInput({
         value={cellText(value)}
         onChange={(e) => onChange(e.target.value)}
       >
-        <option value="">{t("Auswählen …", "Select …")}</option>
+        {!keep && <option value="">{t("Auswählen …", "Select …")}</option>}
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.name}

@@ -24,12 +24,15 @@
 // - Records made offline (#370) show their defaults on the device at once
 //   (lib/offline-queue.ts applyQueue) and get them from the server when
 //   they are sent, "Heute"/"Jetzt" as of the moment they were made.
+// - Required properties (#443, lib/field-required.ts) go through the same
+//   paths: withDefaults also gives them their value.
 //
 // Client-safe: no database access here.
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
 import { isEmptyValue } from "./empty-value";
 import { validDateValue, validZone } from "./date-values";
+import { isRequired, requiredFallback } from "./field-required";
 import type { Field } from "./types";
 
 export const fieldDefaultSchema = z.discriminatedUnion("kind", [
@@ -127,6 +130,9 @@ export function defaultCell(field: Field & { defaultValue?: unknown }, context: 
 }
 // The cells of a new record with the defaults of the properties it has no
 // value for (see DefaultMode); the given cells are not changed.
+// Required properties (#443, lib/field-required.ts): an empty value counts
+// as none in every mode, and without a default a select gets its first
+// option; other required properties without a default stay empty.
 export function withDefaults(
   fields: (Field & { defaultValue?: unknown })[],
   cells: Record<string, unknown>,
@@ -134,10 +140,11 @@ export function withDefaults(
 ): Record<string, unknown> {
   let out = cells;
   for (const f of fields) {
-    if (f.defaultValue === undefined) continue;
-    const given = context.mode === "missing" ? f.id in cells : !isEmptyValue(cells[f.id], f.type);
+    const required = isRequired(f);
+    if (f.defaultValue === undefined && !required) continue;
+    const given = context.mode === "missing" && !required ? f.id in cells : !isEmptyValue(cells[f.id], f.type);
     if (given) continue;
-    const value = defaultCell(f, context);
+    const value = defaultCell(f, context) ?? requiredFallback(f);
     if (value === undefined) continue;
     if (out === cells) out = { ...cells };
     out[f.id] = value;

@@ -163,6 +163,8 @@ import {
 import { CellInput, FieldLabel } from "./cell-input";
 import { FieldAccessEditor, FieldLock } from "./field-access-editor";
 import { FieldDefaultEditor } from "./field-default-editor";
+import { FieldRequiredEditor, RequiredMark, RequiredMissing } from "./field-required";
+import { isMissing, isRequired } from "@/lib/field-required";
 import { renameDefault } from "@/lib/field-defaults";
 import { describeRule } from "@/lib/field-access-rules";
 export { CellInput } from "./cell-input";
@@ -1171,6 +1173,8 @@ export default function DatabaseView({
             (f, i) =>
               i > 0 &&
               !computedTypes.includes(f.type) &&
+              // A required property without a value stays in sight (#443).
+              !isRequired(f) &&
               emptyCell(selected.cells[f.id], f.type),
           )
           .map((f) => f.id)
@@ -2949,7 +2953,7 @@ export default function DatabaseView({
             size={13}
             style={{ transform: closed ? undefined : "rotate(90deg)" }}
           />
-          <span>{g.label}</span>
+          <span className={g.missing ? "group-missing" : undefined}>{g.label}</span>
           <span className="muted">{g.rows.length}</span>
         </button>
         <span className="group-summary">{summaries(g.rows)}</span>
@@ -2997,7 +3001,7 @@ export default function DatabaseView({
                 size={12}
                 style={{ transform: closed ? undefined : "rotate(90deg)" }}
               />
-              <span>{g.label}</span>
+              <span className={g.missing ? "group-missing" : undefined}>{g.label}</span>
               <span className="muted">{g.rows.length}</span>
             </button>
             {!closed && deepCards(g.rows, [...path, g], key)}
@@ -3031,7 +3035,7 @@ export default function DatabaseView({
             size={14}
             style={{ transform: closed ? undefined : "rotate(90deg)" }}
           />
-          <span>{sub.label}</span>
+          <span className={sub.missing ? "group-missing" : undefined}>{sub.label}</span>
           <span className="muted">{sub.rows.length}</span>
         </button>
         <span className="group-summary">{summaries(sub.rows)}</span>
@@ -3073,7 +3077,7 @@ export default function DatabaseView({
               transform: collapsed(group.key) ? undefined : "rotate(90deg)",
             }}
           />
-          <span>{group.label}</span>
+          <span className={group.missing ? "group-missing" : undefined}>{group.label}</span>
           <span className="muted">{group.rows.length}</span>
         </button>
         {editable && view.type === "table" && (
@@ -3208,6 +3212,7 @@ export default function DatabaseView({
                   related={related}
                   // A multi-select's search stays open for more (#423).
                   onChange={(v) => updateCell(r, f, v, f.type === "multiselect" && !f.tagOptions)}
+                  keepRequired
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
                   links
@@ -3269,6 +3274,9 @@ export default function DatabaseView({
                     value={cellText(r.cells[f.id])}
                     onEdit={() => setEditingCell({ rowId: r.id, fieldId: f.id, groupKey })}
                   />
+                ) : isMissing(f, r.cells) ? (
+                  // A required property without a value (#443).
+                  <RequiredMissing />
                 ) : (
                   display(r, f)
                 )}
@@ -3966,7 +3974,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
+                <span className={g.missing ? "tag tag-choice group-missing" : g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -4094,7 +4102,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
+                <span className={g.missing ? "tag tag-choice group-missing" : g.value === null ? `tag tag-choice tag-${legacyOptionColor(g.label)}` : chipClass(groupField, g.label)} {...(g.value === null ? {} : optionData(groupField, g.label))}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -4252,6 +4260,7 @@ export default function DatabaseView({
                         members={members}
                         related={related}
                         onChange={(v) => updateCell(r, f, v)}
+                        keepRequired
                         upload={uploadFile}
                         files={data.files}
                         links
@@ -5886,6 +5895,17 @@ export default function DatabaseView({
               })
             }
           />
+          <FieldRequiredEditor
+            draft={fieldDraft}
+            rows={data.rows}
+            disabled={!editable || !allowFieldChanges || schemaBusy}
+            onChange={(required) =>
+              setFieldDraft((f) => {
+                const { required: _old, ...rest } = f;
+                return required ? { ...rest, required: true } : rest;
+              })
+            }
+          />
           <FieldAccessEditor
             draft={fieldDraft}
             groups={data.groups || []}
@@ -6354,7 +6374,9 @@ export default function DatabaseView({
                       <PropertyRow group={f.type === "files" || f.type === "date" || f.type === "select" || f.type === "multiselect" || isTagField(f)}>
                         <span>
                           {f.name}
+                          {isRequired(f) && <RequiredMark />}
                           {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
+                          {isMissing(f, selected.cells) && <RequiredMissing label />}
                         </span>
                         {computedTypes.includes(f.type) ? (
                           <span>
@@ -6384,6 +6406,7 @@ export default function DatabaseView({
                               multiline
                               optionPicker={optionPicker(f)}
                               onChange={(v) => updateCell(selected, f, v)}
+                              keepRequired
                               upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
                               files={data.files}
                             />

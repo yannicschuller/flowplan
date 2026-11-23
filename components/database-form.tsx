@@ -27,7 +27,9 @@ import {
   formSuggestionsAllowed,
   suggestible,
   type SuggestionScope,
+  withRequiredProperties,
 } from "@/lib/form-settings";
+import { isRequired } from "@/lib/field-required";
 import type { Field, Page, Row } from "@/lib/types";
 import { SurveyBuilder } from "./survey-builder";
 import { SurveyRunner } from "./survey-runner";
@@ -141,7 +143,9 @@ export default function DatabaseForm({
     });
   const updateBlock = (id: string, patch: Partial<FormBlock>) => setDraft({ ...draft, blocks: draft.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   const removeBlock = (id: string) => setDraft({ ...draft, blocks: draft.blocks.filter((b) => b.id !== id) });
-  const survey = config.survey?.enabled ? config.survey : null;
+  // The preview asks required properties (#443) as the form does.
+  const asked = withRequiredProperties(fields, config);
+  const survey = asked.survey?.enabled ? asked.survey : null;
   // Fixed suggestion lists (#385): cleaned on saving; too long ones block it.
   const listsInvalid = Object.values(draft.suggestionLists || {}).some((lines) => !!suggestionListProblem(cleanSuggestionList(lines)));
   // Earlier answers (#374) only in members-only forms that record who
@@ -240,7 +244,7 @@ export default function DatabaseForm({
           related={related}
           upload={upload}
           fields={fields}
-          config={config}
+          config={asked}
           disabled={!editable}
           suggest={suggest}
           submitLabel={texts.submitLabel}
@@ -460,8 +464,11 @@ export default function DatabaseForm({
                   <input
                     type="checkbox"
                     aria-label={t(`${f.name} ist Pflichtfeld`, `${f.name} is required`)}
-                    disabled={draft.hiddenFields.includes(f.id)}
-                    checked={draft.requiredFields.includes(f.id)}
+                    // A required property of the database (#443) is a
+                    // required question wherever it is asked.
+                    title={isRequired(f) ? t("Pflichtfeld der Datenbank", "Required in the database") : undefined}
+                    disabled={draft.hiddenFields.includes(f.id) || isRequired(f)}
+                    checked={draft.requiredFields.includes(f.id) || isRequired(f)}
                     onChange={(e) =>
                       setDraft({
                         ...draft,

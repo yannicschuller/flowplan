@@ -33,6 +33,7 @@ import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
 import { flatMapAsync, mapAsync } from "./each-async";
 import { recordCells, recordFileIds, recordScope, recordSharePages, type RecordScope } from "./record-share";
 import { withDefaults } from "./field-defaults";
+import { clearedRequired, requiredMessage } from "./field-required";
 
 // Properties with a read rule are never public (lib/field-access.ts).
 export const publicField = (f: Field) =>
@@ -418,6 +419,9 @@ async function validatedCells(
       cells[key] = text;
     }
   }
+  // A required property keeps its value (#443).
+  const cleared = clearedRequired(fields, cells, current);
+  if (cleared) throw new HttpError(400, requiredMessage(cleared));
   return cells;
 }
 async function writableHtml(

@@ -132,6 +132,7 @@ import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
 import { adminCreateAccount, adminResendWelcome } from "./account-create";
 import { adminChangeEmail } from "./email-change";
 import { cleanDefaults, creationTime, withDefaults } from "./field-defaults";
+import { cleanRequired } from "./field-required";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { cleanRecordOrder, parseRecordLayout, recordLayoutSchema } from "./record-layout";
@@ -2735,6 +2736,8 @@ async function runCommand(
         // Defaults (#411): only where they fit the property; renamed
         // options take theirs along.
         cleanDefaults(fields, optionRenamesSchema.parse(b.optionRenames ?? []));
+        // "Pflichtfeld" (#443): only where the property can be required.
+        cleanRequired(fields);
         await validateDatabaseRelations(user, await write(), fields, d.fields);
         await validateTicketPrefix(await write(), fields);
         for (const v of views) {

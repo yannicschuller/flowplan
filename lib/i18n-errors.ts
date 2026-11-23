@@ -1712,6 +1712,8 @@ const patterns: [RegExp, string][] = [
   [/^(.+): Höchstens 2000 Zeichen\.$/, "$1: at most 2000 characters."],
   [/^(.+): Mitglied fehlt\.$/, "$1: member missing."],
   [/^(.+): Unbekannte Auswahl\.$/, "$1: unknown option."],
+  // Required properties (#443, lib/field-required.ts requiredMessage).
+  [/^„(.+)“ ist ein Pflichtfeld und kann nicht leer sein\.$/, "“$1” is required and cannot be empty."],
   [/^(.+): Ungültiger Wert\.$/, "$1: invalid value."],
   [/^Höchstens (\d+) Banner – lösche zuerst alte\.$/, "At most $1 banners – delete old ones first."],
   [/^Ein Notizbuch hat höchstens (\d+) Blätter\.$/, "A notebook has at most $1 sheets."],

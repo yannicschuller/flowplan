@@ -3,6 +3,7 @@ import { numberCell } from "./field-format";
 import { z } from "zod";
 import { newTimeRefused, validDateValue } from "./date-values";
 import type { Field } from "./types";
+import { isRequired } from "./field-required";
 import { isQuestion, surveyLogic, surveySchema, validateSurvey } from "./survey";
 import { conditionSchema, evaluateLogic, validRedirect, type Condition, type LogicItem } from "./form-logic";
 import { cleanSuggestionList, SUGGESTION_LIST_ITEM_MAX, SUGGESTION_LIST_MAX } from "./form-suggestion-list";
@@ -147,6 +148,29 @@ export type FormConfig = z.infer<typeof formConfigSchema>;
 export const FORM_FILES_PER_QUESTION = 5;
 export const FORM_FILE_BYTES = 10 * 1024 * 1024;
 export const FORM_TOTAL_BYTES = 25 * 1024 * 1024;
+// Required properties of the database (#443, lib/field-required.ts) are
+// required questions in every form and survey that asks them – on top of
+// the form's own "Pflichtfeld" ticks, which stay as they are. Applied where
+// a form is shown and checked, never to the stored settings.
+export function withRequiredProperties<T extends FormConfig>(fields: Field[], config: T): T {
+  const required = fields.filter(isRequired).map((f) => f.id);
+  if (!required.length) return config;
+  const ids = new Set(required);
+  return {
+    ...config,
+    requiredFields: [...new Set([...config.requiredFields, ...required])],
+    ...(config.survey
+      ? {
+          survey: {
+            ...config.survey,
+            items: config.survey.items.map((item) =>
+              isQuestion(item) && !item.required && item.type !== "matrix" && ids.has(item.field) ? { ...item, required: true } : item,
+            ),
+          },
+        }
+      : {}),
+  };
+}
 // People and relations reveal members and records, so only forms restricted
 // to workspace members ask for them.
 export function publicFormFields(fields: Field[], internal = false) {

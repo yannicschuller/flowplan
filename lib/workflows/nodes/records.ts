@@ -24,6 +24,7 @@ import { dateOnly } from "../../date-values";
 import { databaseFields, recordValue, refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 import { withDefaults } from "../../field-defaults";
+import { clearedRequired, requiredMessage } from "../../field-required";
 
 type Cells = Record<string, unknown>;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -113,6 +114,9 @@ export const recordUpdate: NodeImpl = async (ctx) => {
       if (refused.length) throw new StepError(`Keine Schreibrechte für „${batch.fields.find((f) => f.id === refused[0])?.name}“.`, "permission");
     }
     if (c.onlyEmpty) values = Object.fromEntries(Object.entries(values).filter(([k]) => isEmpty({ ...batch.row.cells, ...batch.patch }[k])));
+    // A required property keeps its value (#443), as with row.update.
+    const cleared = clearedRequired(batch.fields, values, { ...batch.row.cells, ...batch.patch });
+    if (cleared) throw new StepError(requiredMessage(cleared));
     const before = Object.fromEntries(Object.keys(values).map((k) => [k, { ...batch.row.cells, ...batch.patch }[k] ?? null]));
     Object.assign(batch.patch, values);
     for (const k of Object.keys(values)) batch.setBy[k] = setter(ctx);

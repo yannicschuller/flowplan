@@ -89,6 +89,9 @@ export const field = z.object({
   // "Standardwert" (#411, lib/field-defaults.ts): what a new record gets
   // when it has no value for the property.
   defaultValue: fieldDefaultSchema.optional(),
+  // "Pflichtfeld" (#443, lib/field-required.ts): new records get a value
+  // where one can be found, and the value cannot be cleared.
+  required: z.boolean().optional(),
 });
 export const view = z
   .object({

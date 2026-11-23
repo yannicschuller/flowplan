@@ -576,6 +576,7 @@ export type Field = {
   } | {
     kind: "creator";
   };
+  required?: boolean;
 };
 
 /** A view of a database (table, board, calendar, …). */
@@ -2862,6 +2863,7 @@ export type CommandDatabaseUpdate = {
     } | {
       kind: "creator";
     };
+    required?: boolean;
   })[];
   views?: ({
     id: string;
@@ -3042,7 +3044,7 @@ export type CommandDatabaseUpdateResult = {
   ok: true;
 };
 
-/** Create a record in a database. Properties without a value in `cells` (missing or empty) get their `defaultValue`, after the record template's values: a fixed value, `now` (today, or the current time for a date property with time) or `creator` (the calling person). Existing records never change. */
+/** Create a record in a database. Properties without a value in `cells` (missing or empty) get their `defaultValue`, after the record template's values: a fixed value, `now` (today, or the current time for a date property with time) or `creator` (the calling person). A property with `required: true` without a value gets its default; without one, a select gets its first option, other properties stay empty (shown as missing). Existing records never change. */
 export type CommandRowCreate = {
   action: "row.create";
   /** Page ID of the database */
@@ -3061,7 +3063,7 @@ export type CommandRowCreateResult = {
   id: string;
 };
 
-/** Change properties of a record. `version` must match the record's current version – or, with `base`, the properties in `cells` must still have the values in `base` (the values the change was made on); properties not named stay as they are. The answer holds the record's new `rowVersion`. */
+/** Change properties of a record. `version` must match the record's current version – or, with `base`, the properties in `cells` must still have the values in `base` (the values the change was made on); properties not named stay as they are. Clearing a property with `required: true` that has a value is refused (400). The answer holds the record's new `rowVersion`. */
 export type CommandRowUpdate = {
   action: "row.update";
   pageId: string;

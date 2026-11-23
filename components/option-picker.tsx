@@ -35,12 +35,15 @@ export function OptionInput({
   disabled,
   editing,
   create,
+  keep = false,
   onChange,
   onCancel,
 }: {
   field: Field;
   value: unknown;
   disabled?: boolean;
+  // A required property (#443): the last value cannot be removed.
+  keep?: boolean;
   // A table cell that was clicked: the search is open at once, and closing
   // it ends the edit (onCancel).
   editing?: boolean;
@@ -74,6 +77,7 @@ export function OptionInput({
     return saved;
   };
   const chip = (o: string) => choiceChipClass(field, o);
+  const removable = !keep || chosen.length > 1;
   const search = open && !disabled && (
     <OptionSearch
       field={field}
@@ -81,6 +85,7 @@ export function OptionInput({
       multi={multi}
       create={create}
       onPick={(o) => (multi ? (chosen.includes(o) ? undefined : set([...chosen, o])) : set([o]))}
+      removable={removable}
       onRemove={(o) => set(chosen.filter((x) => x !== o))}
       onClose={close}
     />
@@ -111,7 +116,7 @@ export function OptionInput({
         chosen.map((o) => (
         <span key={o} className={`${chip(o)} option-input-chip`}>
           {o}
-          {!disabled && (
+          {!disabled && removable && (
             <button
               type="button"
               className="page-tag-remove"
@@ -150,11 +155,14 @@ function OptionSearch({
   onPick,
   onRemove,
   onClose,
+  removable = true,
 }: {
   field: Field;
   chosen: string[];
   multi: boolean;
   create?: CreateOption;
+  // False: the chosen value stays (a required property's last one, #443).
+  removable?: boolean;
   onPick: (option: string) => unknown;
   onRemove: (option: string) => unknown;
   onClose: (refocus: boolean) => void;
@@ -240,7 +248,7 @@ function OptionSearch({
       e.stopPropagation();
       onClose(true);
     } else if (e.key === "Tab") onClose(false);
-    else if (!query && chosen.length && (e.key === "Backspace" || e.key === "ArrowLeft")) {
+    else if (!query && chosen.length && removable && (e.key === "Backspace" || e.key === "ArrowLeft")) {
       // The empty search: Backspace removes the last value, ArrowLeft goes
       // to its chip.
       e.preventDefault();
@@ -250,11 +258,12 @@ function OptionSearch({
   };
   const chips = () => [...(box.current?.querySelectorAll<HTMLButtonElement>(".option-picker-chosen button") || [])];
   const remove = (option: string) => {
+    if (!removable) return;
     void onRemove(option);
     input.current?.focus({ preventScroll: true });
   };
   const chipKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    if (e.key === "Delete" || e.key === "Backspace") {
+    if ((e.key === "Delete" || e.key === "Backspace") && removable) {
       e.preventDefault();
       const next = chips()[i + 1] ? i : i - 1;
       void onRemove(chosen[i]);
@@ -299,15 +308,17 @@ function OptionSearch({
           {chosen.map((o, i) => (
             <span key={o} className={`${choiceChipClass(field, o)} option-input-chip`}>
               {o}
-              <button
-                type="button"
-                className="page-tag-remove"
-                aria-label={t(`„${o}“ entfernen`, `Remove “${o}”`)}
-                onKeyDown={(e) => chipKeyDown(e, i)}
-                onClick={() => remove(o)}
-              >
-                <X size={11} weight="bold" />
-              </button>
+              {removable && (
+                <button
+                  type="button"
+                  className="page-tag-remove"
+                  aria-label={t(`„${o}“ entfernen`, `Remove “${o}”`)}
+                  onKeyDown={(e) => chipKeyDown(e, i)}
+                  onClick={() => remove(o)}
+                >
+                  <X size={11} weight="bold" />
+                </button>
+              )}
             </span>
           ))}
         </span>

@@ -13,6 +13,7 @@ import {
   orderedFormFields,
   suggestionList,
   validateFormValues,
+  withRequiredProperties,
   type FormConfig,
 } from "./form-settings";
 import { answerText, answersByName, fillPlaceholders } from "./form-logic";
@@ -79,14 +80,15 @@ export async function getForm(token: string, user: Identity | null) {
   );
   return {
     ...f,
-    // Fixed suggestions (#385) only for questions this form asks.
-    config: {
+    // Fixed suggestions (#385) only for questions this form asks; required
+    // properties (#443) are required questions.
+    config: withRequiredProperties(questions, {
       ...config,
       suggestionLists: Object.fromEntries(questions.flatMap((q) => {
         const list = suggestionList(q, config);
         return list ? [[q.id, list]] : [];
       })),
-    },
+    }),
     title: config.title || f.title,
     fields: questions,
     // Choices for people and relations, only for signed-in members; guests
@@ -169,11 +171,13 @@ export async function saveFormSubmission(
   }
   // A property that got a read or write rule is no longer asked, so it is
   // no longer required either.
+  // Required properties of the database (#443) are required questions too.
+  const asked = withRequiredProperties(fields, config);
   const result = validateFormValues(
     fields,
     {
-      ...config,
-      requiredFields: config.requiredFields.filter((key) => {
+      ...asked,
+      requiredFields: asked.requiredFields.filter((key) => {
         const f = fields.find((f) => f.id === key);
         return !f || publicWritable(f, fields);
       }),

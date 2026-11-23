@@ -3,11 +3,15 @@ import { toPlain } from "./inline-markdown";
 import { tr } from "./locale-tag";
 import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
+import { isRequired } from "./field-required";
 export type DatabaseGroup = {
   key: string;
   label: string;
   value: unknown;
   rows: Row[];
+  // The empty group of a required property (#443): records that still
+  // need a value.
+  missing?: boolean;
 };
 // Group labels are in the page's language in the browser and German on the
 // server; components may pass their own t.
@@ -19,12 +23,17 @@ export function databaseGroups(
   t: (de: string, en: string) => string = tr,
 ) {
   const groups = new Map<string, DatabaseGroup>();
+  // Grouped by a required property (#443, lib/field-required.ts): the empty
+  // group only while records are still empty, named for what they need.
+  const required = isRequired(field);
   function add(value: unknown, row?: Row) {
     const empty = value === null || value === undefined || value === "";
     const key = groupKey(value);
     if (!groups.has(key)) {
       const label = empty
-        ? t("Ohne Gruppe", "No group")
+        ? required
+          ? t("Wert fehlt (Pflichtfeld)", "Value missing (required)")
+          : t("Ohne Gruppe", "No group")
         : field?.type === "relation"
           ? cellText(
               related[field.relationPage || ""]?.find((r) => r.id === value)
@@ -41,7 +50,7 @@ export function databaseGroups(
                 field?.type === "text" && field.id !== "title"
                 ? toPlain(cellText(value))
                 : cellText(value);
-      groups.set(key, { key, label, value: empty ? null : value, rows: [] });
+      groups.set(key, { key, label, value: empty ? null : value, rows: [], ...(empty && required ? { missing: true } : {}) });
     }
     if (row) groups.get(key)!.rows.push(row);
   }
@@ -65,7 +74,7 @@ export function databaseGroups(
       }
     } else add(value, row);
   }
-  if (field?.type !== "checkbox") add(null);
+  if (field?.type !== "checkbox" && !required) add(null);
   return [...groups.values()];
 }
 export function groupCellValue(
