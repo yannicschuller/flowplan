@@ -15,6 +15,7 @@ import { taskList } from "./task-list-html";
 import { splitTabs } from "./tabs-markdown";
 import { PAGE_BREAK_HTML } from "./page-break-node";
 import { BLOCK_COLOR_COMMENT, CELL_COLORS_COMMENT, blockColor, parseCellColors } from "./block-colors";
+import { dollarMathAt } from "./math-dollars";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -258,9 +259,53 @@ export function markdownToRawHtml(
       return `<span data-cloze="${Number(token.n)}"${hint}>${this.parser.parseInline(token.tokens || [])}</span>`;
     },
   };
+  // Formulas written with dollars (#446, the rule of lib/math-dollars.ts,
+  // as Pandoc reads them; pasted text follows it too, lib/chat-paste.ts):
+  // $…$ and $$…$$ inside text are inline formulas – the editor has no
+  // display formula inside a line – and $$…$$ on lines of its own a formula
+  // block. $`…`$ (GitLab, Flowplan's own export) is read below.
+  const dollarMath: TokenizerAndRendererExtension = {
+    name: "dollarMath",
+    level: "inline",
+    start(src: string) {
+      const index = src.indexOf("$");
+      return index < 0 ? undefined : index;
+    },
+    tokenizer(src: string) {
+      if (src[0] !== "$" || src[1] === "`") return undefined;
+      const math = dollarMathAt(src, 0);
+      if (math) return { type: "dollarMath", raw: src.slice(0, math.to), expression: math.expression };
+      // A "$$" that opens nothing is text; its second "$" opens nothing either.
+      if (src[1] === "$") return { type: "text", raw: "$$", text: "$$" };
+      return undefined;
+    },
+    renderer: (token) => `<span data-math="${escaped(String(token.expression))}">${escaped(String(token.expression))}</span>`,
+  };
+  const mathBlockAt = (src: string, at: number) => {
+    const lead = /^ {0,3}/.exec(src.slice(at))![0].length;
+    if (!src.startsWith("$$", at + lead)) return null;
+    const math = dollarMathAt(src, at + lead);
+    const rest = math?.display ? /^[ \t]*(?:\n+|$)/.exec(src.slice(math.to)) : null;
+    return math && rest ? { raw: src.slice(at, math.to + rest[0].length), expression: math.expression } : null;
+  };
+  const dollarMathBlock: TokenizerAndRendererExtension = {
+    name: "dollarMathBlock",
+    level: "block",
+    // Only where a whole formula block starts, so a paragraph is not cut
+    // at a line that merely begins with "$$".
+    start(src: string) {
+      for (const line of src.matchAll(/^ {0,3}\$\$/gm)) if (mathBlockAt(src, line.index)) return line.index;
+      return undefined;
+    },
+    tokenizer(src: string) {
+      const block = mathBlockAt(src, 0);
+      return block ? { type: "dollarMathBlock", ...block } : undefined;
+    },
+    renderer: (token) => `<div data-math="${escaped(String(token.expression))}">${escaped(String(token.expression))}</div>\n`,
+  };
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
-    extensions: [footnoteRef, caret, pageBreak, cloze],
+    extensions: [footnoteRef, caret, pageBreak, cloze, dollarMath, dollarMathBlock],
     hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {

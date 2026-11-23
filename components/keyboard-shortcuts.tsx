@@ -154,6 +154,10 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Zeile zur Aufgabe machen, dann Status wechseln: offen → in Arbeit → erledigt", "Turn the line into a task, then change its status: open → in progress → done"), keys: [k("Mod+L")] },
         { label: t("Block verschieben", "Move the block"), keys: [k("Mod+Shift+ArrowUp"), k("Mod+Shift+ArrowDown")] },
         { label: t("Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"), keys: [k("Mod+Alt+Enter")] },
+        // Formulas (#446).
+        { label: t("Formel im Satz: zwischen Dollarzeichen schreiben", "Inline formula: write it between dollar signs"), keys: ["$x^2$"] },
+        { label: t("Formelblock: $$ in einer leeren Zeile, dann Leertaste oder Enter", "Formula block: $$ in an empty line, then Space or Enter"), keys: ["$$"] },
+        { label: t("Im Formeldialog einfügen oder speichern (Inline-Formel: auch Enter)", "Insert or save in the formula dialog (inline formula: Enter too)"), keys: [k("Mod+Enter")] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Shift+Z")] },
         { label: t("Seitenlink in neuem Tab öffnen", "Open a page link in a new tab"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
         { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ ⇧ + Klick", "⌘ ⇧ + click") : t("Ctrl + Shift + Klick", "Ctrl + Shift + click")] },

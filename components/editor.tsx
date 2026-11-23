@@ -25,6 +25,7 @@ import { FlowDiagramView, openNextFlowDiagram } from "./flow-diagram-view";
 import { MetricView } from "./metric-view";
 import { TicketRefs } from "@/lib/ticket-ref-plugin";
 import { AutoLinkRules } from "@/lib/auto-link-plugin";
+import { MathDollars, outsideDollarMath } from "@/lib/math-input";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -918,6 +919,9 @@ export default function DocumentEditor({
         TicketRefs.configure({ pageId }),
         // The workspace's automatic links (#202) while typing and pasting.
         AutoLinkRules,
+        // $…$ and $$…$$ become formulas as they are typed; "$$" + space or
+        // Enter in an empty line opens the formula dialog (#446).
+        MathDollars.configure({ openBlock: () => setMath({ type: "mathBlock", expression: "" }) }),
         emojiSuggest.extension,
         Suggestion,
         SuggestChanges.configure({
@@ -982,7 +986,8 @@ export default function DocumentEditor({
             return rest;
           },
         }).configure({ types: ["heading", "paragraph"] }),
-        Typography,
+        // Not inside a formula being typed between dollars (#446).
+        outsideDollarMath(Typography),
         // A new page in print, PDF and Word (#216).
         PageBreak,
         Callout,

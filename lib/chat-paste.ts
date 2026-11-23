@@ -1,10 +1,12 @@
 // Pasting answers from ChatGPT and similar assistants: formulas written as
-// LaTeX (\[ … \], \( … \), $$ … $$) become formula blocks and inline
-// formulas, Markdown (headings, bold, lists, tables) is formatted,
+// LaTeX (\[ … \], \( … \), $$ … $$, $ … $ by the rule of
+// lib/math-dollars.ts) become formula blocks and inline formulas, Markdown
+// (headings, bold, lists, tables) is formatted,
 // tab-separated lines become a table, "☐" a checklist, and every line its own
 // paragraph. Copied web pages with rendered KaTeX keep their formulas as LaTeX.
 import { Marked, type Tokens } from "marked";
 import { taskList } from "./task-list-html";
+import { findDollarMath } from "./math-dollars";
 
 const OPEN = "",
   CLOSE = "",
@@ -16,8 +18,13 @@ const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 // A single line only with a formula that looks like one ("\(t=0\)",
 // "$$\frac{a}{b}$$"), not "sed 's/\(foo\)/'" or "kill $$".
 const MATH_LIKE = /\\[A-Za-z]+|[\^_=]/;
+// $…$ follows the dollar rule (#446) and must look like LaTeX: "costs $5
+// and $10" or "echo $HOME/$USER" is no formula.
 export function looksLikeChatText(text: string) {
-  if (!text.includes("\n")) return [...text.matchAll(LATEX_PATTERN)].some((m) => MATH_LIKE.test(m[1] ?? m[2] ?? m[3]));
+  const dollars = () => dollarFormulas(text);
+  if (!text.includes("\n"))
+    return [...text.matchAll(LATEX_PATTERN)].some((m) => MATH_LIKE.test(m[1] ?? m[2] ?? m[3])) || dollars().some((m) => !m.display);
+  if (dollars().length) return true;
   // A fenced code block (```mermaid … ```) becomes a code block; a Mermaid
   // diagram shows its picture (#95).
   if (/^ {0,3}(`{3,}|~{3,})[^`\n]*\n[\s\S]*?\n {0,3}\1\s*$/m.test(text)) return true;
@@ -34,10 +41,17 @@ export function chatTextToHtml(text: string): string {
   // Formulas first, so Markdown does not touch their backslashes and stars.
   s = s
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, tex: string) => `\n\n${OPEN}${keep(tex)}${CLOSE}\n\n`)
-    .replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => `\n\n${OPEN}${keep(tex)}${CLOSE}\n\n`)
-    .replace(/\\\(([\s\S]+?)\\\)/g, (_, tex: string) => `${INLINE_OPEN}${keep(tex)}${INLINE_CLOSE}`)
-    // $…$ only when it is clearly maths (not "5 $ and 6 $").
-    .replace(/(?<![\\$\w])\$(?!\s)([^$\n]*?[\\^_=][^$\n]*?)(?<!\s)\$(?![\w$])/g, (_, tex: string) => `${INLINE_OPEN}${keep(tex)}${INLINE_CLOSE}`);
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, tex: string) => `${INLINE_OPEN}${keep(tex)}${INLINE_CLOSE}`);
+  // $$…$$ and $…$ by the dollar rule (lib/math-dollars.ts), outside code.
+  // $$…$$ inside a line becomes a block here too: chat answers mean a
+  // display formula by it.
+  let replaced = "",
+    last = 0;
+  for (const math of dollarFormulas(s)) {
+    replaced += s.slice(last, math.from) + (math.display ? `\n\n${OPEN}${keep(math.expression)}${CLOSE}\n\n` : `${INLINE_OPEN}${keep(math.expression)}${INLINE_CLOSE}`);
+    last = math.to;
+  }
+  s = replaced + s.slice(last);
   const lines = s.split("\n");
   const out: string[] = [];
   let fence = false;
@@ -87,6 +101,23 @@ export function chatTextToHtml(text: string): string {
   return html
     .replace(new RegExp(`<p>\\s*${OPEN}(\\d+)${CLOSE}\\s*</p>`, "g"), (_, i: string) => `<div data-math="${tex(i)}"></div>`)
     .replace(new RegExp(`[${OPEN}${INLINE_OPEN}](\\d+)[${CLOSE}${INLINE_CLOSE}]`, "g"), (_, i: string) => `<span data-math="${tex(i)}"></span>`);
+}
+
+// Dollar formulas outside fenced code blocks and code spans, with their
+// offsets in the whole text. Pasted $…$ must also look like LaTeX, so
+// shell lines ("echo $HOME/$USER") and prices stay text (typing and the
+// Markdown import take the plain rule).
+const LATEX_LIKE = /[\\^_={]/;
+function dollarFormulas(text: string) {
+  const found: ReturnType<typeof findDollarMath> = [];
+  let offset = 0;
+  for (const part of text.split(/(^ {0,3}(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}(?:`{3,}|~{3,})[ \t]*$)/m)) {
+    if (!/^ {0,3}(?:`{3,}|~{3,})/.test(part))
+      for (const math of findDollarMath(part, { codeSpans: true }))
+        if (math.display || LATEX_LIKE.test(math.expression)) found.push({ ...math, from: math.from + offset, to: math.to + offset });
+    offset += part.length;
+  }
+  return found;
 }
 
 // Formulas written as text: \[ … \] and $$ … $$ (display), \( … \) (inline).
