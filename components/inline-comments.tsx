@@ -30,6 +30,8 @@ import { useCommentMargin } from "@/lib/comment-margin-pref-client";
 import { COMMENT_MARGIN_MIN_ROOM } from "@/lib/comment-margin-pref";
 import { loadView } from "./view-fallback";
 import type { ThreadEditing, ThreadReply } from "./inline-comment-thread";
+import { commentColorOf, DEFAULT_COMMENT_COLOR, type CommentColor } from "@/lib/comment-colors";
+import type { Box } from "@/lib/comment-popover-layout";
 import type {
   InlineThread,
   CommentAnchor,
@@ -44,6 +46,14 @@ const InlineCommentDraft = dynamic(
   { ssr: false },
 );
 const CommentMargin = dynamic(() => loadView(() => import("./comment-margin")), { ssr: false });
+// Where the margin has no room, the thread opens beside its passage (#450);
+// hovering a highlight shows a preview. Both load with their first use.
+const CommentPopover = dynamic(() => loadView(() => import("./comment-popover")), { ssr: false });
+const CommentPreview = dynamic(() => loadView(() => import("./comment-preview")), { ssr: false });
+// How long the pointer rests on a highlight before its preview shows, and
+// how long the preview waits for the pointer to come over to it.
+const PREVIEW_DELAY = 300,
+  PREVIEW_GRACE = 150;
 
 // Whether the page has room for the margin beside its text (#387): the
 // page layout's width without side panels (the page comments, the AI
@@ -115,6 +125,9 @@ export function InlineComments({
       anchor: CommentAnchor;
       threadId: string;
       messageId: string;
+      color?: CommentColor;
+      // Started with "New" in the panel: the form stays there (no margin).
+      inPanel?: boolean;
     } | null>(null),
     [body, setBody] = useState(() => readCommentDrafts(draftKey).body);
   const [bodyContent, setBodyContent] = useState<CommentNode | null>(
@@ -151,6 +164,13 @@ export function InlineComments({
   const marginPref = useCommentMargin();
   const room = useMarginRoom(editor);
   const marginMode = marginPref && room;
+  // No room for the margin (#450): the active thread or the new comment
+  // opens as a popover at its passage; `floating` says the active thread
+  // was opened there (a highlight, a link) and not from the panel's list.
+  const popoverMode = marginPref && !room && !!editor;
+  const [floating, setFloating] = useState(false);
+  // The hover preview (#450): the thread and the hovered highlight's box.
+  const [preview, setPreview] = useState<{ id: string; box: Box } | null>(null);
   const mounted = useRef(true),
     inflight = useRef<AbortController | null>(null);
   const refresh = useCallback(
@@ -220,14 +240,14 @@ export function InlineComments({
   // panel while the panel shows its thread.
   useEffect(() => {
     if (!editor) return;
-    if (marginMode && draft)
+    if ((marginMode || popoverMode) && draft)
       setCommentHighlights(
         editor,
-        [...threads, { id: draft.threadId, anchor: draft.anchor, resolved: 0 } as InlineThread],
+        [...threads, { id: draft.threadId, anchor: draft.anchor, resolved: 0, color: draft.color || null, messageCount: 0 } as InlineThread],
         draft.threadId,
       );
-    else setCommentHighlights(editor, threads, marginMode || open ? active : null);
-  }, [editor, threads, active, open, marginMode, draft]);
+    else setCommentHighlights(editor, threads, marginMode || open || (popoverMode && floating) ? active : null);
+  }, [editor, threads, active, open, marginMode, popoverMode, floating, draft]);
   useEffect(() => {
     const navigate = () => {
       const target = parsePageLocation(location.hash);
@@ -239,6 +259,7 @@ export function InlineComments({
         linkedThread.current = target.threadId;
         scrolledThread.current = null;
         setActive(target.threadId);
+        setFloating(false);
         setOpen(true);
         setDraft(null);
         setEditing(null);
@@ -256,6 +277,11 @@ export function InlineComments({
   function range(t: InlineThread) {
     const binding = editor && editorCommentBinding(editor);
     return binding ? commentRange(binding, t.anchor, generation) : null;
+  }
+  // A thread that can open at its passage: open, its passage still there.
+  function popoverable(id: string) {
+    const t = threads.find((thread) => thread.id === id);
+    return !!t && !t.resolved && !!range(t);
   }
   // The open threads beside the text, in the order of their passages.
   const marginThreads: InlineThread[] = [];
@@ -276,9 +302,15 @@ export function InlineComments({
     const from = binding ? commentRange(binding, draft.anchor, generation)?.from : undefined;
     // A passage that cannot be placed: the form stays in the panel.
     if (from === undefined) return null;
-    return { id: draft.threadId, index: marginThreads.filter((t) => positions.get(t.id)! < from).length };
+    return { id: draft.threadId, color: draft.color, index: marginThreads.filter((t) => positions.get(t.id)! < from).length };
   })();
-  const draftInPanel = !!draft && !marginDraft;
+  // Without the margin's room: the new comment's form at its passage.
+  const popoverDraft = (() => {
+    if (!popoverMode || !draft || draft.inPanel) return false;
+    const binding = editor && editorCommentBinding(editor);
+    return !!binding && !!commentRange(binding, draft.anchor, generation);
+  })();
+  const draftInPanel = !!draft && !marginDraft && !popoverDraft;
   useEffect(() => {
     if (draftInPanel) setOpen(true);
   }, [draftInPanel]);
@@ -304,12 +336,19 @@ export function InlineComments({
       scrolledThread.current = active;
       setOpen(false);
       setReveal((r) => ({ id: active, n: (r?.n || 0) + 1 }));
+    } else if (popoverMode && popoverable(active)) {
+      // No room for the margin: the thread opens at its passage.
+      scrolledThread.current = active;
+      setOpen(false);
+      setFloating(true);
+      const mark = editor?.view.dom.querySelector<HTMLElement>(`[data-comment-thread="${CSS.escape(active)}"]`);
+      mark?.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
     } else if (!open) setOpen(true);
     else if (panel.current) {
       panel.current.scrollIntoView({ block: "start" });
       scrolledThread.current = active;
     }
-  }, [open, active, loadedActive, marginMode, marginIds]);
+  }, [open, active, loadedActive, marginMode, marginIds, popoverMode, threads]);
   // A highlight clicked while the panel is used: its thread into view.
   useEffect(() => {
     if (!open || !active || panelReveal.current !== active || !panel.current) return;
@@ -323,9 +362,15 @@ export function InlineComments({
   function close() {
     setOpen(false);
     setDraft(null);
-    setActive(null);
-    setEditing(null);
+    closeFloating();
     setHint(false);
+  }
+  // The popover's thread closes (#450): back to the text; a link to the
+  // thread leaves the address as the panel's X does.
+  function closeFloating() {
+    setActive(null);
+    setFloating(false);
+    setEditing(null);
     setError("");
     const target = parsePageLocation(location.hash);
     if (
@@ -359,9 +404,13 @@ export function InlineComments({
         anchor,
         threadId: crypto.randomUUID(),
         messageId: crypto.randomUUID(),
+        inPanel: !blockFallback,
       });
-      if (!marginMode) setOpen(true);
+      // The form opens beside its passage, in the margin or as a popover
+      // (a passage that cannot be placed: in the panel, draftInPanel).
+      if (!marginMode && !popoverMode) setOpen(true);
       setActive(null);
+      setFloating(false);
       setEditing(null);
       setError("");
     } catch (e) {
@@ -425,7 +474,19 @@ export function InlineComments({
     setDraft(null);
     setHint(false);
     setEditing(null);
+    setPreview(null);
     if (marginMode && inMargin(id)) return;
+    // No room for the margin (#450): beside the passage, not below the
+    // document.
+    if (popoverMode && popoverable(id)) {
+      setFloating(true);
+      // A selection left on the passage (the new comment's) would bring
+      // up the text menu over the popover: it collapses to its end.
+      if (editor && !editor.isDestroyed && !editor.state.selection.empty)
+        editor.commands.setTextSelection(editor.state.selection.to);
+      return;
+    }
+    setFloating(false);
     setOpen(true);
     panelReveal.current = id;
   };
@@ -447,6 +508,80 @@ export function InlineComments({
       editor.off("transaction", update);
     };
   }, [editor]);
+  // The hover preview (#450): a mouse resting on a highlight for a moment
+  // shows its thread's preview below it; moving on to the preview keeps it,
+  // leaving both (or scrolling, typing, Escape) closes it. Not for the
+  // thread that is open already, and not for touch.
+  const previewState = useRef({ active, floating, marginMode, draftId: draft?.threadId });
+  previewState.current = { active, floating, marginMode, draftId: draft?.threadId };
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const previewOver = useRef(false);
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const hidePreview = useCallback((delay = 0) => {
+    clearTimeout(previewTimer.current);
+    if (!delay) {
+      previewOver.current = false;
+      return setPreview(null);
+    }
+    previewTimer.current = setTimeout(() => {
+      if (!previewOver.current) setPreview(null);
+    }, delay);
+  }, []);
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const shownOpen = (id: string) => {
+      const now = previewState.current;
+      return id === now.draftId || (id === now.active && (now.marginMode || now.floating));
+    };
+    const over = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse") return;
+      const mark = (event.target as Element | null)?.closest?.<HTMLElement>("[data-comment-thread]");
+      const id = mark?.dataset.commentThread;
+      if (!mark || !id || shownOpen(id)) return;
+      if (previewRef.current?.id === id) {
+        clearTimeout(previewTimer.current);
+        return;
+      }
+      clearTimeout(previewTimer.current);
+      const wait = previewRef.current ? 0 : PREVIEW_DELAY;
+      previewTimer.current = setTimeout(() => {
+        if (!mark.isConnected || shownOpen(id)) return;
+        const r = mark.getBoundingClientRect();
+        setPreview({ id, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
+      }, wait);
+    };
+    const out = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse") return;
+      const from = (event.target as Element | null)?.closest?.<HTMLElement>("[data-comment-thread]");
+      if (!from) return;
+      const to = (event.relatedTarget as Element | null)?.closest?.<HTMLElement>("[data-comment-thread]");
+      // Within the same passage (its lines and pieces): nothing changes.
+      if (to?.dataset.commentThread === from.dataset.commentThread) return;
+      hidePreview(previewRef.current ? PREVIEW_GRACE : 0);
+    };
+    const gone = () => hidePreview();
+    const key = (event: KeyboardEvent) => {
+      if (!previewRef.current) return;
+      if (event.key === "Escape") event.preventDefault();
+      hidePreview();
+    };
+    dom.addEventListener("pointerover", over);
+    dom.addEventListener("pointerout", out);
+    window.addEventListener("scroll", gone, true);
+    window.addEventListener("blur", gone);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      clearTimeout(previewTimer.current);
+      dom.removeEventListener("pointerover", over);
+      dom.removeEventListener("pointerout", out);
+      window.removeEventListener("scroll", gone, true);
+      window.removeEventListener("blur", gone);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [editor, hidePreview]);
+  const previewThread = preview ? threads.find((t) => t.id === preview.id) : undefined;
   const thread = threads.find((t) => t.id === active);
   async function act(action: string, data: Record<string, unknown>) {
     setBusy(true);
@@ -472,6 +607,7 @@ export function InlineComments({
   // From the panel's list: a thread with a card in the margin opens there.
   function navigate(id: string) {
     setActive(id);
+    setFloating(false);
     setDraft(null);
     setEditing(null);
     setError("");
@@ -497,11 +633,14 @@ export function InlineComments({
       if (
         await act("thread.create", {
           ...draft,
+          color: draft.color && draft.color !== DEFAULT_COMMENT_COLOR ? draft.color : null,
           body,
           content: bodyContent,
         })
       ) {
         setActive(draft.threadId);
+        // Written in the popover: the thread goes on there.
+        setFloating(popoverDraft);
         setDraft(null);
         setBody("");
         setBodyContent(null);
@@ -527,6 +666,8 @@ export function InlineComments({
         content={bodyContent}
         busy={busy}
         compact={compact}
+        color={draft.color || DEFAULT_COMMENT_COLOR}
+        onColor={(color) => setDraft((d) => (d ? { ...d, color } : d))}
         onChange={(text, content) => {
           setBody(text);
           setBodyContent(content);
@@ -544,8 +685,12 @@ export function InlineComments({
       busy={busy}
       act={async (action, data) => {
         const ok = await act(action, data);
-        // A resolved thread leaves the margin; its card closes.
-        if (ok && compact && action === "thread.resolve" && data.resolved) setActive(null);
+        // A resolved thread leaves the margin and the popover; its card
+        // closes.
+        if (ok && compact && action === "thread.resolve" && data.resolved) {
+          setActive(null);
+          setFloating(false);
+        }
         return ok;
       }}
       editing={editing}
@@ -576,7 +721,8 @@ export function InlineComments({
   );
   // The panel shows the threads without a card: resolved ones, those whose
   // passage is gone, all of them below the document.
-  const panelThread = thread && !inMargin(thread.id) ? thread : undefined;
+  const popoverThread = popoverMode && floating && thread && popoverable(thread.id) ? thread : undefined;
+  const panelThread = thread && !inMargin(thread.id) && !popoverThread ? thread : undefined;
   const marginActive = inMargin(active);
   // revision updates the availability of anchors when remote text changes.
   void revision;
@@ -632,8 +778,8 @@ export function InlineComments({
               {t("Dein Entwurf bleibt im geöffneten Editor. Der Browser konnte ihn für einen Seitenwechsel nicht sichern.", "Your draft stays in the open editor. The browser could not keep it for a page change.")}
             </p>
           )}
-          {/* With the margin, the open card shows its own errors. */}
-          {!(marginMode && (marginDraft || marginActive)) && errorLine}
+          {/* With the margin or the popover, the open card shows its own errors. */}
+          {!(marginMode && (marginDraft || marginActive)) && !popoverThread && !popoverDraft && errorLine}
           {draftInPanel && renderDraft(false)}
           {active && !thread ? (
             <p role="status">
@@ -671,7 +817,7 @@ export function InlineComments({
                     aria-current={thread.id === active ? "true" : undefined}
                     onClick={() => navigate(thread.id)}
                   >
-                    <blockquote>
+                    <blockquote data-comment-color={commentColorOf(thread.color)}>
                       <CommentQuote quote={thread.anchor.quote} />
                     </blockquote>
                     <span>
@@ -722,6 +868,58 @@ export function InlineComments({
               <p role="status">{t("Thread wird geladen …", "Loading thread …")}</p>
             )
           }
+        />
+      )}
+      {editor && popoverThread && (
+        <CommentPopover
+          key={popoverThread.id}
+          editor={editor}
+          id={popoverThread.id}
+          color={commentColorOf(popoverThread.color)}
+          label={t(`Textkommentar von ${popoverThread.messages[0]?.name || "?"}`, `Text comment by ${popoverThread.messages[0]?.name || "?"}`)}
+          onClose={closeFloating}
+        >
+          {popoverThread.complete ? (
+            <>
+              {errorLine}
+              {renderThread(popoverThread, true)}
+            </>
+          ) : (
+            <p role="status">{t("Thread wird geladen …", "Loading thread …")}</p>
+          )}
+        </CommentPopover>
+      )}
+      {editor && popoverDraft && draft && (
+        <CommentPopover
+          key={draft.threadId}
+          editor={editor}
+          id={draft.threadId}
+          color={draft.color || DEFAULT_COMMENT_COLOR}
+          label={t("Neuer Textkommentar", "New text comment")}
+          // A click into the text keeps the form (as in the margin).
+          dismissOnOutside={false}
+          onClose={() => setDraft(null)}
+        >
+          {errorLine}
+          {renderDraft(true)}
+        </CommentPopover>
+      )}
+      {preview && previewThread && (
+        <CommentPreview
+          thread={previewThread}
+          anchor={preview.box}
+          onEnter={() => {
+            previewOver.current = true;
+            clearTimeout(previewTimer.current);
+          }}
+          onLeave={() => {
+            previewOver.current = false;
+            hidePreview(PREVIEW_GRACE);
+          }}
+          onOpen={() => {
+            previewOver.current = false;
+            showRef.current(previewThread.id);
+          }}
         />
       )}
       <Modal

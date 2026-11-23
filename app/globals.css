@@ -12312,13 +12312,16 @@ details[data-heading] > summary {
 .collaborator-selection {
   border-radius: 2px;
 }
+/* The thread's colour (#450, data-comment-color): --comment-tint,
+   --comment-line and --comment-strong come from app/comment-margin.css;
+   without one the yellow of before. */
 .inline-comment-mark {
-  background: #f8d66455;
-  border-bottom: 2px solid #dab234;
+  background: var(--comment-tint, #f8d66455);
+  border-bottom: 2px solid var(--comment-line, #dab234);
   cursor: pointer;
 }
 .inline-comment-active {
-  background: #f8d66499;
+  background: var(--comment-strong, #f8d66499);
 }
 /* Resizable images carry the mark on the image itself, not on the container. */
 [data-resize-container].inline-comment-mark {
@@ -12326,7 +12329,7 @@ details[data-heading] > summary {
   border-bottom: 0;
 }
 img.inline-comment-mark {
-  outline: 3px solid #dab234;
+  outline: 3px solid var(--comment-line, #dab234);
   outline-offset: 2px;
 }
 .inline-comment-tools,
@@ -12389,7 +12392,7 @@ img.inline-comment-mark {
 .inline-comment-panel blockquote {
   margin: 12px 0;
   padding: 8px 12px;
-  border-left: 3px solid #dab234;
+  border-left: 3px solid var(--comment-line, #dab234);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 140px;
@@ -12860,6 +12863,41 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
+}
+/* A chosen thread colour (#450) marks its quote; yellow keeps the accent. */
+.comment-text blockquote[data-comment-color]:not([data-comment-color="yellow"]) {
+  border-left-color: var(--comment-line);
+}
+/* Replies to a text comment right in the panel (#450,
+   components/comment-hub-reply.tsx). */
+.comment-hub-reply {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.comment-hub-reply > .text-button {
+  justify-self: start;
+}
+.comment-hub-replies {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  list-style: none;
+}
+.comment-hub-replies strong {
+  font-size: 12.5px;
+}
+.comment-hub-replies p {
+  margin: 2px 0;
+}
+.comment-hub-reply form {
+  display: grid;
+  gap: 6px;
+}
+.comment-hub-reply form > .button {
+  justify-self: start;
 }
 .comment-hub-filters .chip {
   border: 1px solid var(--border);

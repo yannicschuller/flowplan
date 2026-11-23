@@ -178,23 +178,26 @@ test.describe("text comments in the margin (#387)", () => {
     expect(f.errors).toEqual([]);
   });
 
-  test("narrow and with the setting off: the panel, and a clicked highlight brings its thread into view", async ({ page }) => {
+  test("narrow: a popover at the passage (#450); with the setting off: the panel, and a clicked highlight brings its thread into view", async ({ page }) => {
     const f = await fixture(page);
     await open(page, `#page=${f.doc.id}`);
     await comment(page, "Bravo", "Note for the narrow view");
     await page.screenshot({ path: `${shots}/margin-composer.png` });
-    // Narrow (the window too small for the margin): the panel.
-    await page.setViewportSize({ width: 1100, height: 900 });
+    // Narrow (the window too small for the margin): the thread opens as a
+    // popover at its passage, not in the panel below the document.
+    await page.setViewportSize({ width: 1000, height: 900 });
     await expect(page.locator(".comment-margin")).toHaveCount(0);
     await page.reload();
     await expect(page.locator(".tiptap.document-editor")).toContainText("Alpha Bravo", { timeout: LOAD });
     await expect(mark(page, "Bravo")).toBeVisible({ timeout: LOAD });
     await expect(page.locator(".comment-margin")).toHaveCount(0);
     await mark(page, "Bravo").click();
+    const popover = page.locator(".comment-popover");
+    await expect(popover.locator(".inline-comment-message")).toContainText("Note for the narrow view");
+    await expect(page.locator(".inline-comment-panel")).toHaveCount(0);
+    const near = (await mark(page, "Bravo").boundingBox())!;
+    expect(Math.abs((await popover.boundingBox())!.y - near.y)).toBeLessThan(near.height + 40);
     const panel = page.locator(".inline-comment-panel");
-    await expect(panel.locator(".inline-comment-message")).toContainText("Note for the narrow view");
-    await expect.poll(async () => (await panel.boundingBox())!.y).toBeLessThan(900 - 100);
-    expect((await panel.boundingBox())!.y).toBeGreaterThanOrEqual(0);
     await page.screenshot({ path: `${shots}/margin-narrow-light.png` });
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");

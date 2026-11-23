@@ -114,7 +114,9 @@ test("by default a touch selection on a phone shows no text menu; the toolbar co
   await expect(comment).toHaveCount(1);
   await comment.scrollIntoViewIfNeeded();
   await comment.click();
-  await expect(page.getByRole("region", { name: "Textkommentare" }).or(page.locator(".inline-comment-panel"))).toBeVisible();
+  // On a phone the new comment opens at its passage, as a sheet (#450) – or
+  // in the panel while the passage cannot be placed yet (a new document).
+  await expect(page.locator(":is(.comment-popover, .inline-comment-panel) .inline-comment-new")).toBeVisible();
   await page.keyboard.press("Escape");
 
   // A right click (a long press where the browser reports one) opens it.

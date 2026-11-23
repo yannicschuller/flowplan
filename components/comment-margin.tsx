@@ -22,6 +22,7 @@ import { CaretUp } from "@phosphor-icons/react";
 import type { InlineThread } from "@/lib/inline-comment-types";
 import { layoutMarginCards, marginExtent, type MarginItem } from "@/lib/comment-margin-layout";
 import { prefersReducedMotion } from "@/lib/motion";
+import { commentColorOf } from "@/lib/comment-colors";
 import { useT } from "./i18n";
 import { Avatar } from "./ui";
 
@@ -44,7 +45,7 @@ export default function CommentMargin({
   active: string | null;
   // The new comment: its highlight's id (the thread it will become) and
   // how many of `threads` come before it.
-  draft: { id: string; index: number } | null;
+  draft: { id: string; index: number; color?: string } | null;
   // Scroll to this card's passage (a link to the thread, the panel's list).
   reveal: { id: string; n: number } | null;
   onActivate: (id: string | null) => void;
@@ -135,7 +136,7 @@ export default function CommentMargin({
     const down = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (!target?.closest || !root.current) return;
-      if (root.current.contains(target) || target.closest("[data-comment-thread], .modal, [role=dialog], [role=listbox], .inline-comment-panel, .inline-comment-tools"))
+      if (root.current.contains(target) || target.closest("[data-comment-thread], .modal, [role=dialog], [role=listbox], .inline-comment-panel, .inline-comment-tools, .comment-preview"))
         return;
       live.current.onActivate(null);
     };
@@ -166,7 +167,7 @@ export default function CommentMargin({
   }, [reveal, editor]);
 
   const draftCard = draft && (
-    <section key={draft.id} data-margin-card={draft.id} className="comment-margin-card active" aria-label={t("Neuer Textkommentar", "New text comment")}>
+    <section key={`draft:${draft.id}`} data-margin-card={draft.id} data-comment-color={draft.color || "yellow"} className="comment-margin-card active" aria-label={t("Neuer Textkommentar", "New text comment")}>
       {renderDraft()}
     </section>
   );
@@ -183,6 +184,7 @@ export default function CommentMargin({
           <section
             key={thread.id}
             data-margin-card={thread.id}
+            data-comment-color={commentColorOf(thread.color)}
             className={`comment-margin-card${open ? " active" : ""}`}
             aria-label={t(`Textkommentar von ${first?.name || "?"}`, `Text comment by ${first?.name || "?"}`)}
             // Before the comment fields see it (their editor takes Escape);

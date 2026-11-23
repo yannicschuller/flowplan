@@ -1,6 +1,8 @@
 import { Extension, type Editor, type NodeViewRenderer } from "@tiptap/core";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { commentColorOf } from "./comment-colors";
 import { ySyncPluginKey, isStructuralTransaction } from "@tiptap/y-tiptap";
 import type { InlineThread } from "./inline-comment-types";
 import {
@@ -78,7 +80,41 @@ export function setCommentHighlights(
   if (!editor.isDestroyed)
     editor.view.dispatch(editor.state.tr.setMeta(key, { threads, active }));
 }
-type CommentAttrs = { class: string; "data-comment-thread": string };
+type CommentAttrs = {
+  class: string;
+  "data-comment-thread": string;
+  "data-comment-color": string;
+  "data-comment-count"?: string;
+};
+// The number shown after a passage (#450): every message of the thread, the
+// first one included – a new comment's own highlight (no messages yet)
+// shows none.
+export function commentCount(thread: Pick<InlineThread, "messageCount">): string {
+  const n = Number(thread.messageCount) || 0;
+  return n > 0 ? (n > 99 ? "99+" : String(n)) : "";
+}
+function countWidget(id: string, color: string, count: string) {
+  const el = document.createElement("span");
+  el.className = "inline-comment-count";
+  el.contentEditable = "false";
+  el.dataset.commentThread = id;
+  el.dataset.commentColor = color;
+  el.dataset.commentCount = count;
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}
+// The end of the last text inside from…to: where the count goes (a passage
+// may end in an empty paragraph or after a hard break).
+export function lastTextPosition(doc: ProseMirrorNode, from: number, to: number): number | null {
+  let last: number | null = null;
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.isText) {
+      const end = Math.min(to, pos + node.nodeSize);
+      if (end > Math.max(from, pos)) last = end;
+    }
+  });
+  return last;
+}
 // Wrapping node views (resizable images) render the node inside a container,
 // which receives the node decoration; the mark belongs on the inner element.
 export function commentMarkedNodeView(
@@ -100,8 +136,24 @@ export function commentMarkedNodeView(
         "inline-comment-active",
         !!attrs?.class.includes("inline-comment-active"),
       );
-      if (attrs) target.dataset.commentThread = attrs["data-comment-thread"];
-      else delete target.dataset.commentThread;
+      if (attrs) {
+        target.dataset.commentThread = attrs["data-comment-thread"];
+        target.dataset.commentColor = attrs["data-comment-color"];
+      } else {
+        delete target.dataset.commentThread;
+        delete target.dataset.commentColor;
+      }
+      // The count (#450) at the corner of the box around the image (an
+      // image draws no ::after of its own; the container is as wide as the
+      // text, app/comment-margin.css).
+      const box = target.closest<HTMLElement>("[data-resize-wrapper]");
+      if (box && attrs?.["data-comment-count"]) {
+        box.dataset.commentCount = attrs["data-comment-count"];
+        box.dataset.commentColor = attrs["data-comment-color"];
+      } else if (box) {
+        delete box.dataset.commentCount;
+        delete box.dataset.commentColor;
+      }
     };
     mark(props.decorations);
     const update = nodeView.update?.bind(nodeView);
@@ -208,20 +260,42 @@ export function inlineCommentExtension(generation: string) {
                   );
                   if (range) {
                     const node = state.doc.nodeAt(range.from);
-                    const attrs = {
+                    const count = commentCount(t);
+                    const attrs: CommentAttrs = {
                       class: `inline-comment-mark${t.id === active ? " inline-comment-active" : ""}`,
                       "data-comment-thread": t.id,
+                      "data-comment-color": commentColorOf(t.color),
                     };
-                    marks.push(
-                      node?.isBlock && range.to === range.from + node.nodeSize
-                        ? Decoration.node(range.from, range.to, attrs, {
-                            comment: attrs,
-                          })
-                        : Decoration.inline(range.from, range.to, attrs, {
-                            inclusiveStart: false,
-                            inclusiveEnd: true,
+                    if (node?.isBlock && range.to === range.from + node.nodeSize) {
+                      const block = count ? { ...attrs, "data-comment-count": count } : attrs;
+                      marks.push(
+                        Decoration.node(range.from, range.to, block, {
+                          comment: block,
+                        }),
+                      );
+                    } else {
+                      marks.push(
+                        Decoration.inline(range.from, range.to, attrs, {
+                          inclusiveStart: false,
+                          inclusiveEnd: true,
+                        }),
+                      );
+                      // The number of comments, raised after the passage
+                      // (#450): an empty widget at its last letter that CSS
+                      // draws (::after) from its data attribute – never text
+                      // in the document, so copying, exports and the
+                      // collaboration never see it, and the highlight stays
+                      // one piece.
+                      const last = count ? lastTextPosition(state.doc, range.from, range.to) : null;
+                      if (last !== null)
+                        marks.push(
+                          Decoration.widget(last, () => countWidget(t.id, attrs["data-comment-color"], count), {
+                            side: -1,
+                            ignoreSelection: true,
+                            key: `comment-count:${t.id}:${count}:${attrs["data-comment-color"]}`,
                           }),
-                    );
+                        );
+                    }
                   }
                 }
               return {

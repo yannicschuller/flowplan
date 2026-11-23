@@ -44,12 +44,12 @@
   transition: translate var(--motion-base, 0.2s) var(--ease-standard, ease);
 }
 .comment-margin-card:not(.active):hover {
-  border-color: #dab234;
+  border-color: var(--comment-line, #dab234);
 }
 .comment-margin-card.active {
   z-index: 2;
   padding: 10px 12px 12px;
-  border-color: #dab234;
+  border-color: var(--comment-line, #dab234);
   box-shadow: var(--shadow);
 }
 .comment-margin-summary {
@@ -96,43 +96,400 @@
   height: 26px;
   color: var(--muted);
 }
-/* The thread inside the open card: tighter than in the panel. */
-.comment-margin-card > .inline-comment-actions:first-of-type {
+/* The thread inside the open card and the popover (#450): tighter than in
+   the panel. */
+:is(.comment-margin-card, .comment-popover-body) > .inline-comment-actions:first-of-type {
   min-height: 26px;
   padding-right: 28px;
   gap: 6px;
 }
-.comment-margin-card .inline-comment-message {
+:is(.comment-margin-card, .comment-popover-body) .inline-comment-message {
   gap: 8px;
   padding: 10px 0;
 }
-.comment-margin-card .inline-comment-message p {
+:is(.comment-margin-card, .comment-popover-body) .inline-comment-message p {
   margin: 4px 0;
 }
-.comment-margin-card .inline-comment-actions .button.compact {
+:is(.comment-margin-card, .comment-popover-body) .inline-comment-actions .button.compact {
   font-size: 12.5px;
 }
-.comment-margin-card .comment-composer {
+:is(.comment-margin-card, .comment-popover-body) .comment-composer {
   margin: 8px 0;
 }
-.comment-margin-card .inline-comment-new {
+:is(.comment-margin-card, .comment-popover-body) .inline-comment-new {
   margin: 0;
   padding: 0;
   border: 0;
 }
-.comment-margin-card .inline-comment-error {
+:is(.comment-margin-card, .comment-popover-body) .inline-comment-error {
   margin: 0 28px 8px 0;
 }
-.comment-margin-card form > .button {
+:is(.comment-margin-card, .comment-popover-body) form > .button {
   margin-top: 2px;
 }
-/* The passage of the open card, more strongly than the others. */
-.editor-wrapper.with-comment-margin .inline-comment-active {
-  background: #f8d664cc;
-  border-bottom-color: #c3961c;
+/* The passage of the open card or popover, more strongly than the others. */
+.editor-wrapper.with-comment-margin .inline-comment-active,
+.editor-wrapper[data-comment-popover] .inline-comment-active {
+  background: var(--comment-active, #f8d664cc);
+  border-bottom-color: var(--comment-active-line, #c3961c);
 }
-.editor-wrapper.with-comment-margin img.inline-comment-active {
-  outline-color: #c3961c;
+.editor-wrapper.with-comment-margin img.inline-comment-active,
+.editor-wrapper[data-comment-popover] img.inline-comment-active {
+  outline-color: var(--comment-active-line, #c3961c);
+}
+
+/* ===== Colours of text comment threads (#450, lib/comment-colors.ts).
+   data-comment-color on the highlight (lib/inline-comment-plugin.ts), the
+   margin card, the popover, the preview and the swatches gives the shades,
+   from the block colours' tokens (globals.css, light and dark). Yellow – the
+   default and every older thread – keeps the yellow of before. ===== */
+[data-comment-color="yellow"] {
+  --comment-tint: #f8d66455;
+  --comment-line: #dab234;
+  --comment-strong: #f8d66499;
+  --comment-active: #f8d664cc;
+  --comment-active-line: #c3961c;
+  --comment-swatch: #f8d664;
+  --comment-count: #8a6a00;
+}
+[data-theme="dark"] [data-comment-color="yellow"] {
+  --comment-count: #f0c030;
+}
+[data-comment-color="gray"] {
+  --comment-tint: color-mix(in srgb, var(--block-gray-bg) 85%, transparent);
+  --comment-line: var(--block-gray);
+  --comment-strong: color-mix(in srgb, var(--block-gray) 22%, var(--block-gray-bg));
+  --comment-active: color-mix(in srgb, var(--block-gray) 34%, var(--block-gray-bg));
+  --comment-active-line: var(--block-gray);
+  --comment-swatch: color-mix(in srgb, var(--block-gray) 45%, var(--block-gray-bg));
+  --comment-count: var(--block-gray);
+}
+[data-comment-color="brown"] {
+  --comment-tint: color-mix(in srgb, var(--block-brown-bg) 85%, transparent);
+  --comment-line: var(--block-brown);
+  --comment-strong: color-mix(in srgb, var(--block-brown) 22%, var(--block-brown-bg));
+  --comment-active: color-mix(in srgb, var(--block-brown) 34%, var(--block-brown-bg));
+  --comment-active-line: var(--block-brown);
+  --comment-swatch: color-mix(in srgb, var(--block-brown) 45%, var(--block-brown-bg));
+  --comment-count: var(--block-brown);
+}
+[data-comment-color="orange"] {
+  --comment-tint: color-mix(in srgb, var(--block-orange-bg) 85%, transparent);
+  --comment-line: var(--block-orange);
+  --comment-strong: color-mix(in srgb, var(--block-orange) 22%, var(--block-orange-bg));
+  --comment-active: color-mix(in srgb, var(--block-orange) 34%, var(--block-orange-bg));
+  --comment-active-line: var(--block-orange);
+  --comment-swatch: color-mix(in srgb, var(--block-orange) 45%, var(--block-orange-bg));
+  --comment-count: var(--block-orange);
+}
+[data-comment-color="green"] {
+  --comment-tint: color-mix(in srgb, var(--block-green-bg) 85%, transparent);
+  --comment-line: var(--block-green);
+  --comment-strong: color-mix(in srgb, var(--block-green) 22%, var(--block-green-bg));
+  --comment-active: color-mix(in srgb, var(--block-green) 34%, var(--block-green-bg));
+  --comment-active-line: var(--block-green);
+  --comment-swatch: color-mix(in srgb, var(--block-green) 45%, var(--block-green-bg));
+  --comment-count: var(--block-green);
+}
+[data-comment-color="blue"] {
+  --comment-tint: color-mix(in srgb, var(--block-blue-bg) 85%, transparent);
+  --comment-line: var(--block-blue);
+  --comment-strong: color-mix(in srgb, var(--block-blue) 22%, var(--block-blue-bg));
+  --comment-active: color-mix(in srgb, var(--block-blue) 34%, var(--block-blue-bg));
+  --comment-active-line: var(--block-blue);
+  --comment-swatch: color-mix(in srgb, var(--block-blue) 45%, var(--block-blue-bg));
+  --comment-count: var(--block-blue);
+}
+[data-comment-color="purple"] {
+  --comment-tint: color-mix(in srgb, var(--block-purple-bg) 85%, transparent);
+  --comment-line: var(--block-purple);
+  --comment-strong: color-mix(in srgb, var(--block-purple) 22%, var(--block-purple-bg));
+  --comment-active: color-mix(in srgb, var(--block-purple) 34%, var(--block-purple-bg));
+  --comment-active-line: var(--block-purple);
+  --comment-swatch: color-mix(in srgb, var(--block-purple) 45%, var(--block-purple-bg));
+  --comment-count: var(--block-purple);
+}
+[data-comment-color="pink"] {
+  --comment-tint: color-mix(in srgb, var(--block-pink-bg) 85%, transparent);
+  --comment-line: var(--block-pink);
+  --comment-strong: color-mix(in srgb, var(--block-pink) 22%, var(--block-pink-bg));
+  --comment-active: color-mix(in srgb, var(--block-pink) 34%, var(--block-pink-bg));
+  --comment-active-line: var(--block-pink);
+  --comment-swatch: color-mix(in srgb, var(--block-pink) 45%, var(--block-pink-bg));
+  --comment-count: var(--block-pink);
+}
+[data-comment-color="red"] {
+  --comment-tint: color-mix(in srgb, var(--block-red-bg) 85%, transparent);
+  --comment-line: var(--block-red);
+  --comment-strong: color-mix(in srgb, var(--block-red) 22%, var(--block-red-bg));
+  --comment-active: color-mix(in srgb, var(--block-red) 34%, var(--block-red-bg));
+  --comment-active-line: var(--block-red);
+  --comment-swatch: color-mix(in srgb, var(--block-red) 45%, var(--block-red-bg));
+  --comment-count: var(--block-red);
+}
+/* The number of comments after a passage (#450): the attribute on its last
+   letter, drawn after it – no text in the document. */
+.inline-comment-count::after {
+  content: attr(data-comment-count);
+  position: relative;
+  top: -0.55em;
+  margin-left: 0.12em;
+  color: var(--comment-count, var(--secondary));
+  font-size: 0.66em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 0;
+  user-select: none;
+}
+/* A commented block (an image, a code block …): the number at its corner. */
+.ProseMirror [data-comment-count]:not(.inline-comment-count):not(img) {
+  position: relative;
+}
+.ProseMirror [data-comment-count]:not(.inline-comment-count):not(img)::after {
+  content: attr(data-comment-count);
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--comment-line, #dab234);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--comment-count, var(--secondary));
+  font: 700 11px/16px var(--font-sans, sans-serif);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+/* A resizable image: the number at the image's own box, not at the
+   container as wide as the text; the container shows no highlight. */
+.ProseMirror [data-resize-container][data-comment-count]::after {
+  content: none;
+}
+.editor-wrapper [data-resize-container].inline-comment-mark.inline-comment-active {
+  background: none;
+  border-bottom: 0;
+}
+/* The swatch and the choice of colours in a thread and a new comment. */
+.comment-color-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.comment-color-picker:has(.comment-color-choices) {
+  flex-basis: 100%;
+}
+.comment-color-toggle {
+  width: 28px;
+  height: 28px;
+}
+.comment-color-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--comment-line, #dab234);
+  border-radius: 50%;
+  background: var(--comment-swatch, #f8d664);
+}
+.comment-color-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.comment-color-choice {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+.comment-color-choice:hover {
+  background: var(--hover);
+}
+.comment-color-choice[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2px var(--comment-line, var(--blue));
+}
+.comment-color-choice[aria-checked="true"] > .comment-color-swatch {
+  --comment-line: currentColor;
+}
+/* ===== The thread beside its passage without the margin's room (#450,
+   components/comment-popover.tsx): placed by script with --popover-left /
+   --popover-top (CSSOM). On phones a bottom sheet on the keyboard
+   (--sheet-bottom). ===== */
+.comment-popover {
+  position: fixed;
+  top: var(--popover-top, 0px);
+  left: var(--popover-left, 0px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 16px));
+  max-height: var(--popover-max-height, 70vh);
+  overflow: hidden;
+  padding: 10px 2px 2px 12px;
+  border: 1px solid var(--comment-line, #dab234);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+/* The thread scrolls; the close button stays in its corner. */
+.comment-popover-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px 10px 0;
+}
+.comment-popover:not([data-side]):not(.comment-popover-sheet),
+.comment-popover[data-detached]:not(.comment-popover-sheet) {
+  visibility: hidden;
+}
+.comment-popover-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+.comment-popover-sheet {
+  top: auto;
+  right: 0;
+  bottom: var(--sheet-bottom, 0px);
+  left: 0;
+  width: auto;
+  max-height: min(60dvh, calc(var(--sheet-height, 100dvh) - 56px));
+  padding: 0 calc(6px + var(--safe-right, 0px)) calc(4px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
+  border-width: 1px 0 0;
+  border-color: var(--border);
+  border-radius: 16px 16px 0 0;
+  font-size: 14px;
+  animation: sheet-in var(--motion-slow, 0.25s) var(--ease-standard, ease) backwards;
+}
+.comment-popover-sheet > .sheet-handle {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  height: 18px;
+  margin: 0 -6px 0 -16px;
+  background: var(--bg);
+  touch-action: none;
+  cursor: grab;
+}
+.comment-popover-sheet > .sheet-handle::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 36px;
+  height: 5px;
+  margin-left: -18px;
+  border-radius: 3px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+.comment-popover-sheet > .comment-popover-close {
+  top: 20px;
+  width: 40px;
+  height: 40px;
+}
+.comment-popover-sheet .comment-popover-body > .inline-comment-actions:first-of-type {
+  padding-right: 44px;
+  min-height: 40px;
+}
+/* The passage stays in sight above the sheet (scrolled into view with the
+   sheet's height as its margin); the document keeps room below its end for
+   a passage in its last lines. */
+.inline-comment-active {
+  scroll-margin-bottom: var(--comment-sheet-room, 0px);
+}
+@media (max-width: 600px) {
+  .page-layout .editor-wrapper[data-comment-popover] {
+    padding-bottom: calc(56px + var(--comment-sheet-room, 0px));
+  }
+}
+/* ===== The hover preview of a highlight (#450, components/comment-
+   preview.tsx). ===== */
+.comment-preview {
+  position: fixed;
+  top: var(--popover-top, 0px);
+  left: var(--popover-left, 0px);
+  z-index: 61;
+  display: grid;
+  gap: 4px;
+  width: min(280px, calc(100vw - 16px));
+  padding: 9px 12px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--comment-line, #dab234);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  visibility: hidden;
+}
+.comment-preview[data-placed] {
+  visibility: visible;
+  animation: comment-preview-in var(--motion-fast, 0.12s) var(--ease-standard, ease) backwards;
+}
+@keyframes comment-preview-in {
+  from {
+    opacity: 0;
+  }
+}
+.comment-preview:hover {
+  border-color: var(--comment-line, #dab234);
+}
+.comment-preview-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.comment-preview-author strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comment-preview-resolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.comment-preview-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.comment-preview-replies {
+  color: var(--muted);
+  font-size: 12px;
 }
 /* A thread opened from a highlight below the document scrolls into view
    with some room above it (the toolbar, the window's top). */
@@ -143,10 +500,20 @@
   .comment-margin-card[data-placed]:not([data-hidden]) {
     transition: none;
   }
+  .comment-preview[data-placed],
+  .comment-popover-sheet {
+    animation: none;
+  }
 }
 @media print {
-  .comment-margin {
+  .comment-margin,
+  .comment-popover,
+  .comment-preview {
     display: none;
+  }
+  .inline-comment-count::after,
+  .ProseMirror [data-comment-count]::after {
+    content: none;
   }
   .editor-wrapper.with-comment-margin {
     padding-right: 0;

@@ -10,6 +10,13 @@ import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
 import { liveOpenFor, THREADS_EVENT, threadsKey } from "@/lib/live-state";
+import { commentColorOf } from "@/lib/comment-colors";
+import dynamic from "next/dynamic";
+import { loadView } from "./view-fallback";
+
+// The replies and the reply field of a text comment (#450): loaded with the
+// first text comment shown here.
+const CommentHubReply = dynamic(() => loadView(() => import("./comment-hub-reply")), { ssr: false });
 
 type Item =
   | { kind: "page"; at: string; comment: Comment }
@@ -178,7 +185,7 @@ export function CommentHub({
             <div>
               <strong>{item.thread.messages[0]?.name || t("Unbekannt", "Unknown")}</strong>
               <small>{time(item.thread.created_at)}</small>
-              <blockquote>
+              <blockquote data-comment-color={commentColorOf(item.thread.color)}>
                 <Quotes size={12} />{" "}
                 <CommentQuote quote={item.thread.anchor.quote} />
               </blockquote>
@@ -192,7 +199,7 @@ export function CommentHub({
                     ? t("1 Antwort · Zur Textstelle", "1 reply · Go to passage")
                     : item.thread.messageCount > 2
                       ? t(`${item.thread.messageCount - 1} Antworten · Zur Textstelle`, `${item.thread.messageCount - 1} replies · Go to passage`)
-                      : t("Zur Textstelle und antworten", "Go to passage and reply")}
+                      : t("Zur Textstelle", "Go to passage")}
                 </a>
                 {item.thread.canResolve && (
                   <button
@@ -214,6 +221,7 @@ export function CommentHub({
                   </button>
                 )}
               </span>
+              <CommentHubReply pageId={pageId} thread={item.thread} onSent={load} />
             </div>
           </div>
         ),

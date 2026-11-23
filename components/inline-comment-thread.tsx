@@ -7,6 +7,8 @@
 // thread or new comment, not with the document.
 import { useState, type FormEvent } from "react";
 import { ArrowCounterClockwise, Check, Link, PencilSimple, Smiley, Trash } from "@phosphor-icons/react";
+import { blockColorLabels } from "@/lib/block-colors";
+import { COMMENT_COLORS, commentColorOf, DEFAULT_COMMENT_COLOR, type CommentColor } from "@/lib/comment-colors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { pageLocationHash } from "@/lib/page-location";
 import type { CommentNode } from "@/lib/comment-content";
@@ -75,7 +77,7 @@ export default function InlineCommentThread({
         </button>
       )}
       {!compact && (
-        <blockquote>
+        <blockquote data-comment-color={commentColorOf(thread.color)}>
           <CommentQuote quote={thread.anchor.quote} />
         </blockquote>
       )}
@@ -114,6 +116,14 @@ export default function InlineCommentThread({
             {thread.resolved ? <ArrowCounterClockwise /> : <Check />}
             {thread.resolved ? t("Wieder öffnen", "Reopen") : t("Thread erledigen", "Resolve thread")}
           </button>
+        )}
+        {/* The highlight's colour (#450): who may resolve may recolour. */}
+        {thread.canResolve && (
+          <CommentColorPicker
+            value={commentColorOf(thread.color)}
+            disabled={busy}
+            onChange={(color) => void act("thread.color", { color: color === DEFAULT_COMMENT_COLOR ? null : color })}
+          />
         )}
       </div>
       {thread.messages.map((m) => (
@@ -255,6 +265,8 @@ export function InlineCommentDraft({
   content,
   busy,
   compact = false,
+  color = DEFAULT_COMMENT_COLOR,
+  onColor,
   onChange,
   onSubmit,
   onCancel,
@@ -266,6 +278,9 @@ export function InlineCommentDraft({
   content: CommentNode | null;
   busy: boolean;
   compact?: boolean;
+  // The highlight colour the new thread gets (#450).
+  color?: CommentColor;
+  onColor?: (color: CommentColor) => void;
   onChange: (body: string, content: CommentNode | null) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -301,6 +316,7 @@ export function InlineCommentDraft({
         <button type="button" className="button" disabled={busy} onClick={onCancel}>
           {t("Abbrechen", "Cancel")}
         </button>
+        {onColor && <CommentColorPicker value={color} disabled={busy} onChange={onColor} />}
       </div>
       {!compact && (
         <p className="muted">
@@ -308,5 +324,69 @@ export function InlineCommentDraft({
         </p>
       )}
     </form>
+  );
+}
+
+// The highlight colour of a thread (#450): a swatch that opens the nine
+// text background colours (lib/comment-colors.ts) as a row of choices.
+export function CommentColorPicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: CommentColor;
+  disabled?: boolean;
+  onChange: (color: CommentColor) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const labels = blockColorLabels(t);
+  return (
+    <span className="comment-color-picker">
+      <button
+        type="button"
+        className="icon-button comment-color-toggle"
+        aria-expanded={open}
+        aria-label={t(`Farbe der Markierung: ${labels[value]}`, `Highlight colour: ${labels[value]}`)}
+        title={t("Farbe der Markierung", "Highlight colour")}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="comment-color-swatch" data-comment-color={value} aria-hidden />
+      </button>
+      {open && (
+        <span
+          role="radiogroup"
+          aria-label={t("Farbe der Markierung", "Highlight colour")}
+          className="comment-color-choices"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+        >
+          {COMMENT_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              role="radio"
+              aria-checked={color === value}
+              aria-label={labels[color]}
+              title={labels[color]}
+              className="comment-color-choice"
+              disabled={disabled}
+              onClick={() => {
+                setOpen(false);
+                if (color !== value) onChange(color);
+              }}
+            >
+              <span className="comment-color-swatch" data-comment-color={color} aria-hidden />
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
