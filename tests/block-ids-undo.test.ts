@@ -127,3 +127,24 @@ test("typing stays grouped as before: ids in between neither split nor stretch t
   assert.equal(editor.state.doc.textContent, "Alt");
   editor.destroy();
 });
+
+// "**fetter**" typed: the input rule makes it bold and keeps the bold from
+// the text typed next (stored marks). The ids coming right after must not
+// drop that – a step clears the stored marks, and " Absatz" came out bold.
+test("the ids keep the marks for what is typed next", async () => {
+  const { editor, undo } = await editorOf("<p>Ein </p>");
+  const bold = editor.schema.marks.bold;
+  const end = editor.state.doc.firstChild!.nodeSize - 1;
+  editor.commands.setTextSelection(end);
+  editor.view.dispatch(editor.state.tr.insertText("fetter").addMark(end, end + 6, bold.create()).removeStoredMark(bold));
+  assert.deepEqual(editor.state.storedMarks, []);
+  await busy(undo, 0);
+  assert.match(String(editor.state.doc.firstChild!.attrs.blockId), /^[a-z0-9]{8}$/, "the block got its id");
+  editor.view.dispatch(editor.state.tr.insertText(" Absatz"));
+  const marked: string[] = [];
+  editor.state.doc.descendants((node) => {
+    if (node.isText && node.marks.some((m) => m.type === bold)) marked.push(node.text!);
+  });
+  assert.deepEqual(marked, ["fetter"]);
+  editor.destroy();
+});

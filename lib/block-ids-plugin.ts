@@ -41,6 +41,9 @@ export function blockIdTransaction(state: EditorState, ranges: Range[]): Transac
   if (!fix.length) return null;
   const change = state.tr;
   for (const { pos, id } of fix) change.setNodeAttribute(pos, "blockId", id);
+  // A step clears the stored marks: the bold an input rule ("**fetter**")
+  // just ended would otherwise go on with the text typed next.
+  if (state.storedMarks) change.setStoredMarks(state.storedMarks);
   return change.setMeta(blockIdsKey, true);
 }
 
