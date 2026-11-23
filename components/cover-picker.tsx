@@ -268,13 +268,13 @@ export function CoverPicker({
             <UploadSimple size={16} aria-hidden />
             {t("Coverbild hochladen", "Upload cover image")}
           </label>
-          <span id={`${uploadId}-name`} className="file-pick-name muted">
-            {fileName || t("Keine Datei ausgewählt", "No file chosen")}
-          </span>
           <button type="button" className="button cover-draw-start" onClick={() => void startDrawing()}>
             <PencilSimple size={16} aria-hidden />
             {redraw ? t("Zeichnung bearbeiten", "Edit drawing") : t("Zeichnen", "Draw")}
           </button>
+          <span id={`${uploadId}-name`} className="file-pick-name muted">
+            {fileName || t("Keine Datei ausgewählt", "No file chosen")}
+          </span>
         </div>
         <p className="muted">{t("PNG, JPEG, GIF, WebP oder AVIF · maximal 10 MB", "PNG, JPEG, GIF, WebP or AVIF · at most 10 MB")}</p>
         {/* The page's images as a list of pictures to pick (pressed: the

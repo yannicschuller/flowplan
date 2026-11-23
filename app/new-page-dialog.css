@@ -174,6 +174,11 @@
   width: 100%;
   min-width: 0;
 }
+/* As tall and in the same type as the space's select below it. */
+.np-kind .np-kind-select.fp-select {
+  padding: 7px 10px;
+  font-size: 13.5px;
+}
 .np-pdf {
   margin: 0;
   font-size: 13px;
@@ -255,15 +260,10 @@
   .np-segmented label svg {
     display: none;
   }
-  /* Phones stack the kind of database: the label above, the control at
-     full width. */
+  /* The kind of database in a row like "Bereich": the label beside its
+     select. */
+  .np-row,
   .np-kind {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .np-kind-hint {
-    grid-column: 1;
-  }
-  .np-row {
     grid-template-columns: 56px minmax(0, 1fr);
   }
   .np-desc {
