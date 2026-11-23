@@ -10,10 +10,9 @@ import { useSyncExternalStore } from "react";
 import { Play, X } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { PdfBoardPage } from "./pdf-board-page";
-import { EMBED_ALLOW, EMBED_SANDBOX, boardEmbed } from "@/lib/whiteboard-embeds";
+import { EMBED_ALLOW, EMBED_SANDBOX, boardEmbed, linkPreviewSchema } from "@/lib/whiteboard-embeds";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import { LinkCardShape } from "./link-card";
-import { videoThumbnail } from "@/lib/whiteboard-tables";
 
 // Which players are loaded, on this device only (a click is consent for
 // this view, not for everyone on the board).
@@ -68,9 +67,11 @@ export function EmbedShape({ item, transform, interactive = true }: { item: Whit
         </foreignObject>
       </g>
     );
-  // The exports show a player's still picture where it has one (#455).
+  // The exports show a player's still picture where it has one (#455), a
+  // file of the board (lib/link-pictures.ts).
+  const still = linkPreviewSchema.safeParse(item.preview);
   return (
-    <g transform={transform} data-export-thumb={videoThumbnail(embed.src)}>
+    <g transform={transform} data-export-thumb={still.success ? still.data.image : undefined}>
       <rect width={w} height={h} rx={10} fill="#1f2937" filter="url(#wb-shadow)" />
       <foreignObject width={w} height={h}>
         {on && interactive ? (

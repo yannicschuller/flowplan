@@ -197,3 +197,77 @@ test("comment pins have formatted comments, page mentions, links, a colour and a
   await expect(comment).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("comment pins: authors edit and delete their own messages", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop-Zeigergesten");
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { board } = await setup(page, `Kommentare bearbeiten ${Date.now()}`);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  const canvas = wb.locator(".wb-canvas");
+  await expect(canvas).toBeVisible();
+  await wb.getByRole("button", { name: "Kommentar", exact: true }).click();
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const comment = wb.getByRole("dialog", { name: "Kommentar" });
+  await expect(comment.getByRole("textbox", { name: "Kommentar schreiben" })).toBeFocused();
+  await page.keyboard.type("Erste Fassung");
+  await comment.locator('input[type="file"]').setInputFiles({ name: "anhang.txt", mimeType: "text/plain", buffer: Buffer.from("Hallo") });
+  await expect(comment.locator(".comment-files").getByText("anhang.txt")).toBeVisible({ timeout: 15_000 });
+  await comment.getByRole("button", { name: "Senden" }).click();
+  const first = comment.locator(".wb-comment-message").first();
+  await expect(first).toContainText("Erste Fassung");
+  await comment.getByRole("textbox", { name: "Antworten" }).click();
+  await page.keyboard.type("Eine Antwort");
+  await comment.getByRole("button", { name: "Senden" }).click();
+  const messages = comment.locator(".wb-comment-message");
+  await expect(messages).toHaveCount(2);
+
+  // Edit in place with the composer: "· bearbeitet".
+  await first.hover();
+  await first.getByRole("button", { name: "Kommentar bearbeiten" }).click();
+  const edit = first.getByRole("textbox", { name: "Kommentartext bearbeiten" });
+  await expect(edit).toBeFocused();
+  await expect(edit).toContainText("Erste Fassung");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Zweite Fassung");
+  await first.getByRole("button", { name: "Änderung speichern" }).click();
+  await expect(first).toContainText("Zweite Fassung");
+  await expect(first).toContainText("bearbeitet");
+  await expect(first.getByRole("textbox")).toHaveCount(0);
+  // Cancelling keeps the text.
+  await first.hover();
+  await first.getByRole("button", { name: "Kommentar bearbeiten" }).click();
+  await page.keyboard.type(" verworfen");
+  await first.getByRole("button", { name: "Bearbeitung abbrechen" }).click();
+  await expect(first).not.toContainText("verworfen");
+
+  // Deleting the first message (with a reply): asked first, a placeholder
+  // stays, its attachment goes to the file trash.
+  const trash = page.waitForRequest((r) => r.url().endsWith(`/api/whiteboards/${board.id}/comments`) && (r.postData() || "").includes('"trash"'), { timeout: 20_000 });
+  await first.hover();
+  await first.getByRole("button", { name: "Kommentar löschen" }).click();
+  const confirm = page.getByRole("dialog", { name: "Kommentar löschen" });
+  await expect(confirm).toContainText("Papierkorb");
+  await confirm.getByRole("button", { name: "Kommentar endgültig löschen" }).click();
+  await expect(first).toContainText("Kommentar gelöscht");
+  await expect(first.getByRole("button", { name: "Kommentar bearbeiten" })).toHaveCount(0);
+  await expect(messages.nth(1)).toContainText("Eine Antwort");
+  await trash;
+  await comment.getByRole("button", { name: "Kommentar schließen" }).click();
+  await wb.locator("g.wb-comment").hover();
+  await expect(page.locator(".wb-comment-preview")).toContainText("Kommentar gelöscht");
+  await expect(page.locator(".wb-comment-preview")).toContainText("1 Antwort");
+  await page.locator(".wb-comment-preview").click();
+
+  // Deleting the last message left removes the pin.
+  const reply = messages.nth(1);
+  await reply.hover();
+  await reply.getByRole("button", { name: "Kommentar löschen" }).click();
+  await confirm.getByRole("button", { name: "Kommentar endgültig löschen" }).click();
+  await expect(comment).toHaveCount(0);
+  await expect(wb.locator("g.wb-comment")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

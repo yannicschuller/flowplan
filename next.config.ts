@@ -99,8 +99,10 @@ const config: NextConfig = {
   // app/api/[...path]/route.ts: 34 copies instead of 77). The browser's
   // chunks do this by default.
   experimental: { turbopackServerSideNestedAsyncChunking: true },
-  // next/image is not used: no image optimisation on the server, so sharp
-  // (and its native builds for glibc and musl, @img/*) stays out.
+  // next/image is not used: no image optimisation on the server. sharp is
+  // used only to draw the pictures of link cards anew (lib/link-pictures.ts,
+  // #455) – its glibc build goes into the image (scripts/standalone-arch.mjs
+  // swaps it for the target CPU), the musl and WebAssembly builds stay out.
   images: { unoptimized: true },
   // CalDAV collections end in "/"; proxy.ts redirects pages itself.
   skipTrailingSlashRedirect: true,
@@ -176,8 +178,9 @@ const config: NextConfig = {
       "./release-notes/*.json",
     ],
   },
-  // What the tracing finds but the server never loads: sharp (see
-  // `images`; "next-server" is Next.js's own server), the tesseract cores
+  // What the tracing finds but the server never loads: sharp for Next.js's
+  // own server ("next-server", see `images`) and sharp's musl and
+  // WebAssembly builds, the tesseract cores
   // without LSTM and the browser's copies, pdf.js's modern build and its
   // viewer (the server uses legacy/build), and the sources and the data
   // folder of the checkout (file access with a runtime path makes the
@@ -192,8 +195,11 @@ const config: NextConfig = {
       "./tests/**/*",
       "./docs/**/*",
       "./data/**/*",
-      "./node_modules/sharp/**/*",
-      "./node_modules/@img/**/*",
+      "./node_modules/@img/sharp-linuxmusl-*/**/*",
+      "./node_modules/@img/sharp-libvips-linuxmusl-*/**/*",
+      "./node_modules/@img/sharp-wasm32/**/*",
+      "./node_modules/@img/sharp-webcontainers-wasm32/**/*",
+      "./node_modules/@img/sharp-freebsd-wasm32/**/*",
       "./node_modules/tesseract.js-core/tesseract-core.{js,wasm}",
       "./node_modules/tesseract.js-core/tesseract-core-simd.{js,wasm}",
       "./node_modules/tesseract.js-core/tesseract-core-relaxedsimd.{js,wasm}",

@@ -12102,6 +12102,7 @@
   "The collection's query is empty.": "The collection's query is empty.",
   "The collection's query is too long.": "The collection's query is too long.",
   "The comment is removed with its reactions. Attached files that are not used anywhere else go to the trash.": "The comment is removed with its reactions. Attached files that are not used anywhere else go to the trash.",
+  "The comment is removed. Attached files that are not used anywhere else go to the trash.": "The comment is removed. Attached files that are not used anywhere else go to the trash.",
   "The comment is removed. Replies stay in the thread.": "The comment is removed. Replies stay in the thread.",
   "The comment refers to a foreign record.": "The comment refers to a foreign record.",
   "The comment still has its passage.": "The comment still has its passage.",

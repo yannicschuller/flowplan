@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
-import { boardDraw, boardDrawOptions } from "./whiteboard-ui";
+import { boardDraw, boardDrawOptions, boardView } from "./whiteboard-ui";
 
 // #455 on the whiteboard: the pen's highlighter and opacity (remembered,
 // stored per stroke), the colour wheel besides the palettes (own colours
@@ -216,6 +216,97 @@ test("collapsible frames: hidden content, connector to the bar, moving, sync, se
   await page.keyboard.press("Control+f");
   await page.getByRole("searchbox", { name: "Suchbegriff" }).fill("Drinnen");
   await expect(note).toBeVisible();
-  await expect.poll(async () => (await stored(page, board.id)).find((i) => i.id === frameId)?.collapsed).toBeUndefined();
+  // … only for the person who searched: the board keeps it collapsed.
+  await page.waitForTimeout(1500);
+  expect((await stored(page, board.id)).find((i) => i.id === frameId)?.collapsed).toEqual([noteId]);
+  expect(errors).toEqual([]);
+});
+
+test("collapsed frames: presenting opens one for the presenter only, its own export shows it all, deleting takes what it hides", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop pointer gestures");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const frameId = randomUUID(),
+    noteId = randomUUID(),
+    openId = randomUUID(),
+    otherNote = randomUUID();
+  const { board } = await setup(page, `Eingeklappt präsentieren ${Date.now()}`, [
+    { id: frameId, type: "frame", x: 40, y: 80, w: 400, h: 300, z: -2, text: "Zu", collapsed: [noteId] },
+    { id: noteId, type: "sticky", x: 80, y: 140, w: 300, h: 200, z: 1, text: "Versteckt", fill: "#e03131" },
+    { id: openId, type: "frame", x: 600, y: 80, w: 300, h: 200, z: -1, text: "Offen" },
+    { id: otherNote, type: "sticky", x: 640, y: 120, w: 120, h: 100, z: 2, text: "Sichtbar" },
+  ]);
+  const { wb, at } = await open(page, board.id);
+  const hidden = wb.locator(".wb-sticky", { hasText: "Versteckt" });
+  await expect(wb.locator(".wb-frame-folded")).toBeVisible();
+  await expect(hidden).toHaveCount(0);
+
+  // Presenting opens it for the presenter; the board keeps it collapsed.
+  await wb.getByRole("button", { name: "Präsentieren", exact: true }).first().click();
+  await expect(hidden).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect((await stored(page, board.id)).find((i) => i.id === frameId)?.collapsed).toEqual([noteId]);
+  // When the presentation ends it is collapsed again.
+  await wb.getByRole("button", { name: "Präsentation beenden" }).click();
+  await expect(hidden).toHaveCount(0);
+  await expect(wb.locator(".wb-frame-folded")).toBeVisible();
+  // (Back to the view at 100 % for the clicks below.)
+  await page.reload();
+  await expect(wb.locator(".wb-frame-folded")).toBeVisible();
+
+  // Its own export (one frame, a page per frame) shows all it holds; the
+  // whole board keeps the bar.
+  await boardView(wb, "Exportieren … (PNG, SVG, PDF)");
+  const exporting = page.getByRole("dialog", { name: "Exportieren" });
+  await exporting.getByLabel("Was exportieren").selectOption({ label: "Rahmen: Zu" });
+  await exporting.getByRole("radio", { name: "1×" }).click();
+  const [png] = await Promise.all([page.waitForEvent("download"), exporting.getByRole("button", { name: "Exportieren" }).click()]);
+  const image = (await import("node:fs")).readFileSync((await png.path())!);
+  expect(image.readUInt32BE(20)).toBe(300 + 48);
+  const red = await page.evaluate(async (data) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${data}`;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const pixels = ctx.getImageData(0, 0, img.width, img.height).data;
+    let count = 0;
+    for (let i = 0; i < pixels.length; i += 4) if (pixels[i] > 190 && pixels[i + 1] < 90 && pixels[i + 2] < 90) count++;
+    return count;
+  }, image.toString("base64"));
+  expect(red).toBeGreaterThan(20_000);
+  // Still collapsed on the board afterwards.
+  await expect(hidden).toHaveCount(0);
+  await boardView(wb, "Exportieren … (PNG, SVG, PDF)");
+  await exporting.getByRole("radio", { name: "PDF" }).click();
+  await exporting.getByLabel("Was exportieren").selectOption("board");
+  await exporting.getByRole("radio", { name: "Eine Seite pro Rahmen" }).click();
+  const [pdf] = await Promise.all([page.waitForEvent("download"), exporting.getByRole("button", { name: "Exportieren" }).click()]);
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load((await import("node:fs")).readFileSync((await pdf.path())!));
+  // The collapsed frame's page has the whole frame (424 × 348 px → 318 × 261 pt).
+  const sizes = doc.getPages().map((p) => [Math.round(p.getWidth()), Math.round(p.getHeight())]);
+  expect(sizes).toContainEqual([318, 261]);
+  await expect(hidden).toHaveCount(0);
+
+  // Deleting the collapsed frame deletes what it hides; one undo brings back all.
+  const bar = await at(240, 98);
+  await page.mouse.click(bar.x, bar.y);
+  await page.keyboard.press("Delete");
+  await expect(wb.locator(".wb-frame-folded")).toHaveCount(0);
+  await expect(hidden).toHaveCount(0);
+  await expect.poll(async () => (await stored(page, board.id)).map((i) => i.id).sort()).toEqual([openId, otherNote].sort());
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(wb.locator(".wb-frame-folded")).toBeVisible();
+  await expect.poll(async () => (await stored(page, board.id)).map((i) => i.id).sort()).toEqual([frameId, noteId, openId, otherNote].sort());
+  // An open frame leaves its content.
+  await wb.locator(".wb-frame-title", { hasText: "Offen" }).click();
+  await page.keyboard.press("Delete");
+
+  await expect.poll(async () => (await stored(page, board.id)).some((i) => i.id === openId)).toBe(false);
+  await expect(wb.locator(".wb-sticky", { hasText: "Sichtbar" })).toBeVisible();
   expect(errors).toEqual([]);
 });

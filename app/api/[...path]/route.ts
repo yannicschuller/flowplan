@@ -98,6 +98,7 @@ import * as transcribePath from "../transcribe/[...path]/handler";
 import * as webhooksSlackId from "../webhooks/slack/[id]/handler";
 import * as whiteboardsIdComments from "../whiteboards/[id]/comments/handler";
 import * as whiteboardsIdFacilitation from "../whiteboards/[id]/facilitation/handler";
+import * as whiteboardsIdLinks from "../whiteboards/[id]/links/handler";
 import * as workflowHooksToken from "../workflow-hooks/[token]/handler";
 
 // Every handler ran as nodejs and dynamic (most said so, the others are
@@ -183,6 +184,7 @@ const routes = apiRoutes([
   ["webhooks/slack/[id]", webhooksSlackId],
   ["whiteboards/[id]/comments", whiteboardsIdComments],
   ["whiteboards/[id]/facilitation", whiteboardsIdFacilitation],
+  ["whiteboards/[id]/links", whiteboardsIdLinks],
   ["workflow-hooks/[token]", workflowHooksToken],
 ] as [string, RouteModule][]);
 

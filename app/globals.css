@@ -14798,6 +14798,39 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   margin: 2px 0 0;
   white-space: pre-wrap;
 }
+/* Own messages (#455): pencil and bin, shown on hover and focus. */
+.wb-comment-message > span > .wb-comment-message-actions {
+  margin-left: auto;
+  gap: 2px;
+  align-self: center;
+  opacity: 0;
+}
+.wb-comment-message:hover .wb-comment-message-actions,
+.wb-comment-message:focus-within .wb-comment-message-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .wb-comment-message > span > .wb-comment-message-actions {
+    opacity: 1;
+  }
+}
+.wb-comment-message-actions button {
+  display: inline-grid;
+  place-items: center;
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.wb-comment-message-actions button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.wb-comment-message.deleted p {
+  font-style: italic;
+}
 /* Formatted comments (#455): the page comments' body and composer. */
 .wb-comment-message .comment-rich-body {
   margin-top: 2px;

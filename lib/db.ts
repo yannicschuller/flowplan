@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 126;
+export const SCHEMA_VERSION = 127;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1677,6 +1677,9 @@ function migrate(d: DatabaseSync) {
   // Schema 126 – page and record comments edited (#450): their version and
   // when they were last edited.
   migrateCommentEdits(d);
+  // Schema 127 – who heard of a whiteboard comment's mention (#455,
+  // lib/whiteboard-comments-server.ts).
+  migrateBoardMentionNotices(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1726,6 +1729,19 @@ function migrateDirectoryGroupMembers(d: DatabaseSync) {
 //   instance ceiling). Kept 400 days like ai_quota_usage. An older version
 //   would neither stop at the limit nor count the continuation, hence the
 //   number.
+// Schema 127 – mentions in comment pins on whiteboards (#455,
+// lib/whiteboard-comments-server.ts notifyBoardMentions): one row per board,
+// message and person told of it, so nobody hears of the same message twice –
+// not after a restart, not on another server process, and not when the
+// message is edited (only people newly mentioned by the edit are told).
+// Rows go with the board's page and the person, and after 400 days
+// (BOARD_MENTION_KEEP_DAYS). An older version would ignore the table and
+// keep its own memory, hence the number.
+function migrateBoardMentionNotices(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_mention_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,message_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,notified_at INTEGER NOT NULL,PRIMARY KEY(page_id,message_id,user_id));
+    CREATE INDEX IF NOT EXISTS whiteboard_mention_notices_at ON whiteboard_mention_notices(notified_at);
+    CREATE INDEX IF NOT EXISTS whiteboard_mention_notices_user ON whiteboard_mention_notices(user_id);`);
+}
 // Schema 126 – page and record comments can be edited and deleted by their
 // author (#450), as text comments: comments.version counts the edits (an
 // edit or deletion names the version it saw, a stale one is refused like

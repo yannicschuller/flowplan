@@ -2400,6 +2400,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/transcribe/[...path]/handler.ts": "Voice notes of the browser app (chunked upload to the transcription service; tokens need “AI and transcription”)",
   "app/api/whiteboards/[id]/comments/handler.ts": "Comment pins on whiteboards (titles of mentioned pages, mention notifications, trash for attachments) of the browser app",
   "app/api/whiteboards/[id]/facilitation/handler.ts": "Workshop facilitation on whiteboards (private mode, planning poker, gathering everyone) of the browser app",
+  "app/api/whiteboards/[id]/links/handler.ts": "Link cards on whiteboards of the browser app (the preview with its pictures stored as files of the board)",
   "app/api/webhooks/slack/[id]/handler.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
 };
 

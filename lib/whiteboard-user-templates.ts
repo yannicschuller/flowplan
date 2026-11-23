@@ -167,7 +167,8 @@ export async function saveBoardTemplate(user: Identity, pageId: unknown, raw: un
 //
 // Only what works on another instance: pictures uploaded here
 // (/api/files/…, /api/share/…) and record cards are left out and
-// counted; links to pages of this workspace are removed from the rest.
+// counted, link cards and table previews keep their text without their
+// pictures; links to pages of this workspace are removed from the rest.
 export const BOARD_TEMPLATE_FORMAT = "flowplan.whiteboard-template";
 export function portableTemplateItems(items: TemplateDraft[]) {
   let dropped = 0;
@@ -184,6 +185,10 @@ export function portableTemplateItems(items: TemplateDraft[]) {
     const copy: TemplateDraft = { ...item };
     delete copy.pageId;
     delete copy.rowId;
+    // Pictures of link cards and table previews are files here (#455).
+    const textOnly = ({ image: _image, icon: _icon, ...rest }: LinkPreview): LinkPreview => (void _image, void _icon, rest);
+    if (copy.preview) copy.preview = textOnly(copy.preview);
+    if (copy.links) copy.links = Object.fromEntries(Object.entries(copy.links).map(([url, preview]) => [url, textOnly(preview)]));
     out.push(copy);
   }
   return { items: out, dropped };

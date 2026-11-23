@@ -3,10 +3,11 @@
 // stored per row (`rowFills`) and per column (`colFills`) as "#rrggbb" or ""
 // for none; a row's colour goes before a column's, and a cell without
 // either keeps the header's grey when it is a header cell. A cell whose text
-// is one web address shows a preview: players of the embed allowlist from
-// the address alone, other pages from what GET /api/embed found, kept on
-// the table (`links`, by address) so every viewer and the exports see it
-// without loading anything.
+// is one web address shows a preview: players of the embed allowlist with
+// their still picture, other pages with what the server found, kept on the
+// table (`links`, by address; pictures as files of the board,
+// lib/link-pictures.ts) so every viewer and the exports see it without
+// loading anything from another site.
 import { safeHref } from "./whiteboard-links";
 import { embedFromUrl } from "./embed-providers";
 import type { WhiteboardItem } from "./whiteboard-model";
@@ -96,27 +97,29 @@ export function soleUrl(text: string): string | null {
 export type CellLink =
   | { kind: "player"; url: string; provider: string; thumbnail?: string }
   | { kind: "page"; url: string; preview?: LinkPreview };
+// A picture that is a file of the board (lib/whiteboard-embeds.ts
+// previewPicture; not imported – that module imports this one).
+const OWN_PICTURE = /^\/api\/(files\/[\w-]+|share\/[\w-]+\/files\/[\w-]+)$/;
+const isPreviewPicture = (value: unknown): value is string => typeof value === "string" && value.length <= 300 && OWN_PICTURE.test(value);
+// The still picture of a player is kept like a page's preview (its
+// `image`), once someone who may edit the board added the address.
 export function cellLink(text: string, links?: Record<string, LinkPreview>): CellLink | null {
   const url = soleUrl(text);
   if (!url) return null;
   const player = embedFromUrl(url);
-  if (player) return { kind: "player", url, provider: player.provider, thumbnail: videoThumbnail(player.src) };
+  if (player) {
+    const still = links?.[url]?.image;
+    return { kind: "player", url, provider: player.provider, ...(isPreviewPicture(still) ? { thumbnail: still } : {}) };
+  }
   return { kind: "page", url, preview: links?.[url] };
 }
-// YouTube's still picture of a video (the only provider whose address
-// alone gives one).
-export function videoThumbnail(player: string) {
-  const id = /^https:\/\/www\.youtube-nocookie\.com\/embed\/([-\w]{6,20})$/.exec(player)?.[1];
-  return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : undefined;
-}
-// The page addresses of a table whose preview is wanted (lone addresses
-// that are not players).
+// The lone addresses of a table whose preview (or still picture) is wanted.
 export function tablePageLinks(item: Pick<WhiteboardItem, "cells">): string[] {
   const out = new Set<string>();
   for (const row of item.cells || [])
     for (const text of row || []) {
-      const link = typeof text === "string" ? cellLink(text) : null;
-      if (link?.kind === "page") out.add(link.url);
+      const url = typeof text === "string" ? soleUrl(text) : null;
+      if (url) out.add(url);
     }
   return [...out].slice(0, MAX_TABLE_LINKS);
 }

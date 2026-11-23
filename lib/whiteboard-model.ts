@@ -168,6 +168,11 @@ export type WhiteboardMessage = {
   // people and pages mentioned, attachments, link previews. Read through
   // boardMessageContent(); never trusted as stored.
   content?: unknown;
+  // Edited by its author (#455): when, last ("bearbeitet").
+  edited?: number;
+  // The first message of a pin with replies, deleted by its author: kept
+  // as "Kommentar gelöscht" without text or content.
+  deleted?: boolean;
 };
 // Board-wide state shared by everyone: voting session and timer.
 export type WhiteboardMeta = {

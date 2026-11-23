@@ -8,16 +8,25 @@ import { presentationSlides } from "./whiteboard-frames";
 import type { WhiteboardItem } from "./whiteboard-model";
 
 export type Box = { x: number; y: number; w: number; h: number };
-export type ExportPage = { box: Box; title: string };
+// `frame`: the page shows that frame (drawn open when it is collapsed).
+export type ExportPage = { box: Box; title: string; frame?: string };
 export const EXPORT_PAD = 40;
 // A frame with its title strip above it.
 export const frameBox = (frame: Box): Box => ({ x: frame.x - 12, y: frame.y - 36, w: frame.w + 24, h: frame.h + 48 });
 
 // The boxes to draw: "board" – everything (one page), "frames" – one page
 // per frame of the presentation (hidden frames left out).
-export function exportPages(items: WhiteboardItem[], mode: "board" | "frames", title = ""): ExportPage[] {
+// `stored` gives frames at their full size where `items` is the board's
+// folded view (collapsed frames as their bar, #455): a frame's own page
+// shows all of it.
+export function exportPages(
+  items: WhiteboardItem[],
+  mode: "board" | "frames",
+  title = "",
+  stored?: (id: string) => WhiteboardItem | undefined,
+): ExportPage[] {
   if (mode === "frames")
-    return presentationSlides(items).map((frame) => ({ box: frameBox(frame), title: frame.text || "" }));
+    return presentationSlides(items).map((frame) => ({ box: frameBox(stored?.(frame.id) ?? frame), title: frame.text || "", frame: frame.id }));
   const shown = items.filter((i) => i.type !== "comment");
   const box = contentBounds(shown, new Map(items.map((i) => [i.id, i])));
   return box

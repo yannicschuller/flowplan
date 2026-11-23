@@ -12102,6 +12102,7 @@
   "The collection's query is empty.": "Запрос коллекции пуст.",
   "The collection's query is too long.": "Запрос коллекции слишком длинный.",
   "The comment is removed with its reactions. Attached files that are not used anywhere else go to the trash.": "Комментарий удаляется вместе с реакциями. Прикреплённые файлы, которые больше нигде не используются, попадают в корзину.",
+  "The comment is removed. Attached files that are not used anywhere else go to the trash.": "Комментарий удаляется. Прикреплённые файлы, которые больше нигде не используются, попадают в корзину.",
   "The comment is removed. Replies stay in the thread.": "Комментарий будет удалён. Ответы останутся в ветке.",
   "The comment refers to a foreign record.": "Комментарий ссылается на чужую запись.",
   "The comment still has its passage.": "Комментарий всё ещё привязан к своему фрагменту текста.",

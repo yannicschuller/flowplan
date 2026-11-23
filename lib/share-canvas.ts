@@ -120,11 +120,41 @@ type BoardContext = {
   // Files the board shows (src/url) and whether the link may serve them.
   files: Map<string, boolean>;
 };
+// The pictures of link cards and table previews (#455): files of the board
+// in `image` and `icon` of `preview` and of each of `links`. `map` gives
+// what to keep instead (undefined: the picture is dropped).
+const PICTURE_KEYS = ["image", "icon"];
+function mapPictures(preview: unknown, map: (value: string) => string | undefined): unknown {
+  if (!preview || typeof preview !== "object" || Array.isArray(preview)) return preview;
+  const out = { ...(preview as Props) };
+  for (const key of PICTURE_KEYS) {
+    if (out[key] === undefined) continue;
+    const kept = typeof out[key] === "string" ? map(out[key] as string) : undefined;
+    if (kept) out[key] = kept;
+    else delete out[key];
+  }
+  return out;
+}
+function mapLinks(links: unknown, map: (value: string) => string | undefined): unknown {
+  if (!links || typeof links !== "object" || Array.isArray(links)) return links;
+  return Object.fromEntries(Object.entries(links as Props).map(([url, preview]) => [url, mapPictures(preview, map)]));
+}
+function previewPictures(raw: Props): string[] {
+  const out: string[] = [];
+  const take = (preview: unknown) =>
+    mapPictures(preview, (value) => {
+      out.push(value);
+      return value;
+    });
+  take(raw.preview);
+  if (raw.links && typeof raw.links === "object") for (const preview of Object.values(raw.links as Props)) take(preview);
+  return out;
+}
 async function boardContext(token: string, page: Page, shared: Set<string>, items: Map<string, Props>): Promise<BoardContext> {
   const files = new Map<string, boolean>();
   for (const raw of items.values())
-    for (const key of ["src", "url"]) {
-      const m = FILE.exec(typeof raw[key] === "string" ? (raw[key] as string) : "");
+    for (const value of [raw.src, raw.url, ...previewPictures(raw)]) {
+      const m = FILE.exec(typeof value === "string" ? value : "");
       if (m) files.set(m[1], false);
     }
   for (const fid of files.keys()) {
@@ -153,6 +183,16 @@ function shownSource(value: unknown, ctx: BoardContext) {
   if (file) return ctx.files.get(file[1]) ? `/api/share/${ctx.token}/files/${file[1]}` : undefined;
   return /^https:\/\//i.test(value) ? value : undefined;
 }
+// A picture of a preview: only files of the board, through the link.
+const shownPicture = (ctx: BoardContext) => (value: string) => {
+  const file = FILE.exec(value);
+  return file && ctx.files.get(file[1]) ? `/api/share/${ctx.token}/files/${file[1]}` : undefined;
+};
+// …and back: what a guest's projection holds becomes the board's address.
+const ownPicture = (ctx: BoardContext) => (value: string) => {
+  const own = new RegExp(`^/api/share/${ctx.token.replace(/[^\w-]/g, "")}/files/([\\w-]+)$`).exec(value);
+  return own && ctx.files.get(own[1]) ? `/api/files/${own[1]}` : undefined;
+};
 // An element as the link shows it (null: not shown at all).
 export function projectItem(raw: Props, ctx: BoardContext): Props {
   const out: Props = {};
@@ -170,6 +210,10 @@ export function projectItem(raw: Props, ctx: BoardContext): Props {
     } else if (key === "link") {
       const link = guestLink(value, ctx.shared);
       if (link) out.link = link;
+    } else if (key === "preview") {
+      out.preview = mapPictures(value, shownPicture(ctx));
+    } else if (key === "links") {
+      out.links = mapLinks(value, shownPicture(ctx));
     } else if (key === "timeline") {
       // Timelines of a database show nothing of it (lib/whiteboard-diagram-model.ts).
       const timeline = parseTimeline(value);
@@ -181,8 +225,11 @@ export function projectItem(raw: Props, ctx: BoardContext): Props {
           id: String(m.id ?? ""),
           author: typeof m.author === "string" && m.author.startsWith("guest:") ? m.author : "",
           name: String(m.name ?? ""),
-          text: String(m.text ?? ""),
+          text: m.deleted ? "" : String(m.text ?? ""),
           at: Number(m.at) || 0,
+          // Edited and deleted by their authors (#455).
+          ...(Number(m.edited) && !m.deleted ? { edited: Number(m.edited) } : {}),
+          ...(m.deleted ? { deleted: true } : {}),
         }));
     } else if (key === "stamps" && value && typeof value === "object") {
       out.stamps = Object.fromEntries(Object.entries(value as Props).map(([who, stamp]) => [who.startsWith("guest:") ? who : pseudonym(ctx.token, who), stamp]));
@@ -232,6 +279,9 @@ function guestValue(key: string, value: unknown, ctx: BoardContext, current?: Pr
     const link = guestLink(value, ctx.shared);
     return link ? { value: link } : { refused: key };
   }
+  // Pictures of previews only as files the board already shows (#455).
+  if (key === "preview") return { value: mapPictures(value, ownPicture(ctx)) };
+  if (key === "links") return { value: mapLinks(value, ownPicture(ctx)) };
   if (key === "timeline") {
     if (current?.timeline && (current.timeline as Props).source) return { skip: true };
     const timeline = parseTimeline(value);

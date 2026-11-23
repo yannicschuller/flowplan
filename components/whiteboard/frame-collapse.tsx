@@ -4,8 +4,12 @@
 // frame's title, the style bar, the frames panel) and unfolding what has to
 // be seen – a search hit, an element link, the slide being presented.
 // People who may change the board fold frames for everyone; the others fold
-// them on their own screen only.
+// them on their own screen only. Unfolding to show something is always on
+// the own screen only: a search hit or a link opens the frame for the
+// person who searched, a presented frame opens for the presenter and folds
+// again when the presentation ends (#455).
 import { useCallback, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { collapseMembers, foldView, foldersOf, isCollapsed, unfoldForCopy, type FoldView } from "@/lib/whiteboard-collapse";
@@ -19,8 +23,14 @@ export type FrameFolding = {
   folded: (id: string) => boolean;
   toggle: (id: string) => void;
   // Unfolds the frames that hide the element (and the element itself when
-  // it is a collapsed frame); true when something was unfolded.
-  reveal: (id: string) => boolean;
+  // it is a collapsed frame) on this screen only; true when something was
+  // unfolded. `until` names a group of such openings that fold again
+  // with refold() (a presentation).
+  reveal: (id: string, until?: string) => boolean;
+  refold: (until: string) => void;
+  // Runs `copy` (synchronously) while the frame and the collapsed frames in
+  // it are drawn open – exports of one frame show its content.
+  withOpen: <T>(id: string, copy: () => T) => T;
   // What moves along with these elements: everything collapsed frames
   // among them hide.
   hiddenWith: (ids: Iterable<string>) => WhiteboardItem[];
@@ -63,14 +73,49 @@ export function useFrameFolding({
       change(() => setProps(id, { collapsed: folded ? undefined : collapseMembers(frame, all) }));
     } else setOwnState(id, isCollapsed(frame) === folded ? !folded : null);
   }, []);
-  const reveal = useCallback((id: string) => {
-    const { byId, view, editable, change, setProps } = latest.current;
+  // Frames opened for a while (reveal's `until`): group → frames.
+  const temporary = useRef(new Map<string, Set<string>>());
+  const reveal = useCallback((id: string, until?: string) => {
+    const { byId, view } = latest.current;
     const frames = foldersOf(id, view, byId);
     if (!frames.length) return false;
-    const shared = editable ? frames.filter((f) => isCollapsed(byId.get(f))) : [];
-    if (shared.length) change(() => shared.forEach((f) => setProps(f, { collapsed: undefined })));
-    for (const f of frames) setOwnState(f, shared.includes(f) ? null : true);
+    if (until) {
+      const group = temporary.current.get(until) ?? new Set<string>();
+      for (const f of frames) group.add(f);
+      temporary.current.set(until, group);
+    }
+    for (const f of frames) setOwnState(f, true);
     return true;
+  }, []);
+  const refold = useCallback((until: string) => {
+    const group = temporary.current.get(until);
+    temporary.current.delete(until);
+    if (!group?.size) return;
+    setOwn((before) => {
+      const next = new Map(before);
+      for (const f of group) if (next.get(f) === true) next.delete(f);
+      return next;
+    });
+  }, []);
+  const withOpen = useCallback(<T,>(id: string, copy: () => T): T => {
+    const { view, byId } = latest.current;
+    // Frames around it that are collapsed too.
+    const inner = [...foldersOf(id, view, byId), ...(view.hidden.get(id) || [])].filter((f) => view.hidden.has(f));
+    if (!inner.length) return copy();
+    let before: ReadonlyMap<string, boolean> = new Map();
+    flushSync(() =>
+      setOwn((current) => {
+        before = current;
+        const next = new Map(current);
+        for (const f of inner) next.set(f, true);
+        return next;
+      }),
+    );
+    try {
+      return copy();
+    } finally {
+      flushSync(() => setOwn(before));
+    }
   }, []);
   const hiddenWith = useCallback((ids: Iterable<string>) => {
     const { byId, view } = latest.current;
@@ -103,6 +148,8 @@ export function useFrameFolding({
     folded: (id) => view.hidden.has(id),
     toggle,
     reveal,
+    refold,
+    withOpen,
     hiddenWith,
     forCopy,
     onPointerDownCapture,

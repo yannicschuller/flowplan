@@ -18,7 +18,8 @@ import type { WhiteboardMessage } from "./whiteboard-model";
 import type { Identity, Page } from "./types";
 
 export const MENTION_KEYS_LIMIT = 100;
-// A message notifies only while it is new (a later call is a replay).
+// A message notifies only while it is new – written or edited this long ago
+// at most (a later call is a replay).
 export const NOTIFY_WINDOW_MS = 15 * 60 * 1000;
 
 async function board(user: Identity, pageId: string): Promise<Page> {
@@ -60,26 +61,44 @@ async function storedMessage(page: Page, itemId: string, messageId: string): Pro
   }
 }
 
-// Notified messages (per process; with the time window a repeated call
-// notifies nobody twice).
-const notified = new Map<string, number>();
-// The people a new message mentions hear of it once – only who may read the
+// Who was told of which message lives in whiteboard_mention_notices (schema
+// 127): one row per board, message and person, kept BOARD_MENTION_KEEP_DAYS.
+export const BOARD_MENTION_KEEP_DAYS = 400;
+const DAY = 86_400_000;
+let lastPrune = 0;
+async function pruneMentionNotices(now: number) {
+  if (now - lastPrune < DAY) return;
+  lastPrune = now;
+  await run("DELETE FROM whiteboard_mention_notices WHERE notified_at<?", now - BOARD_MENTION_KEEP_DAYS * DAY);
+}
+// The people a message mentions hear of it once – only who may read the
 // board, never the author; guests of the workspace mention nobody (as page
-// comments). Returns how many were notified.
+// comments). Called after a message was written or edited: an edit tells
+// only those it newly mentions. A message notifies only while it is new
+// (written or edited within NOTIFY_WINDOW_MS). Returns how many were
+// notified.
 export async function notifyBoardMentions(user: Identity, pageId: string, itemId: string, messageId: string): Promise<number> {
   const page = await board(user, pageId);
-  const key = `${page.id}:${itemId}:${messageId}`;
   const now = Date.now();
-  for (const [k, at] of notified) if (now - at > NOTIFY_WINDOW_MS) notified.delete(k);
-  if (notified.has(key)) return 0;
+  await pruneMentionNotices(now);
   const message = await storedMessage(page, itemId, messageId);
-  if (!message || message.author !== user.id || !(now - Number(message.at) < NOTIFY_WINDOW_MS)) return 0;
-  notified.set(key, now);
+  if (!message || message.author !== user.id || message.deleted) return 0;
+  const changed = Math.max(Number(message.at) || 0, Number(message.edited) || 0);
+  if (!(now - changed < NOTIFY_WINDOW_MS)) return 0;
   if (await isGuest(user, page.workspace_id)) return 0;
   const content = boardMessageContent(message);
   let count = 0;
   for (const recipient of commentMentions(content)) {
     if (recipient === user.id || !(await mayHear(recipient, page, null))) continue;
+    // Told before (this message, before an edit, or a replayed call).
+    const fresh = await run(
+      "INSERT INTO whiteboard_mention_notices(page_id,message_id,user_id,notified_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
+      page.id,
+      messageId,
+      recipient,
+      now,
+    );
+    if (!Number(fresh.changes)) continue;
     await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
       id(),

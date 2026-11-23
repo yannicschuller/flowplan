@@ -76,6 +76,8 @@ export type BoardApi = {
   pageId: string;
   title: string;
   editable: boolean;
+  // A guest of an edit link (no account): the server fetches no previews.
+  guest?: boolean;
   items: WhiteboardItem[];
   byId: Map<string, WhiteboardItem>;
   itemsMap: Y.Map<Y.Map<unknown>>;
@@ -740,6 +742,8 @@ export function useBoardExtras(api: BoardApi) {
           title={api.title}
           svg={() => api.svg.current}
           lightCopy={api.lightCopy}
+          storedFrame={api.folding.stored}
+          openFrame={api.folding.withOpen}
           onClose={() => setExportScope(null)}
           onError={api.onError}
         />

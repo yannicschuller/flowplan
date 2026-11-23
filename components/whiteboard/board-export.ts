@@ -137,12 +137,12 @@ export async function boardSvgSource(node: SVGSVGElement, box: Box, options: { i
   const sheet = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   for (const [k, v] of Object.entries({ x: box.x, y: box.y, width: box.w, height: box.h, fill: "#ffffff" })) sheet.setAttribute(k, String(v));
   style.after(sheet);
-  // Players show their still picture where there is one (YouTube, #455)
-  // instead of the dark card or the frame.
+  // Players show their still picture where there is one (YouTube, Vimeo,
+  // #455: a file of the board) instead of the dark card or the frame.
   clone.querySelectorAll("[data-export-thumb]").forEach((g) => {
     const thumb = g.getAttribute("data-export-thumb") || "";
     const frame = g.querySelector("foreignObject");
-    if (!/^https:/.test(thumb) || !frame) return;
+    if (!/^\/api\/(files|share)\//.test(thumb) || !frame) return;
     const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
     for (const [k, v] of Object.entries({ href: thumb, width: frame.getAttribute("width") || "0", height: frame.getAttribute("height") || "0", preserveAspectRatio: "xMidYMid slice", "data-thumb": "" }))
       image.setAttribute(k, v);

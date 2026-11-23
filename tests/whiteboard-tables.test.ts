@@ -47,17 +47,20 @@ test("web addresses in cells become links, http and https only", () => {
   assert.equal(soleUrl("https://example.org/x and text"), null);
 });
 
-test("a lone address: player with still picture, or a page with its kept preview", () => {
-  assert.deepEqual(cellLink("https://youtu.be/dQw4w9WgXcQ"), {
+test("a lone address: player with its kept still picture, or a page with its kept preview", () => {
+  // The still picture is a file of the board, kept like a preview (never
+  // loaded from YouTube while the board is viewed).
+  assert.deepEqual(cellLink("https://youtu.be/dQw4w9WgXcQ"), { kind: "player", url: "https://youtu.be/dQw4w9WgXcQ", provider: "YouTube" });
+  assert.deepEqual(cellLink("https://youtu.be/dQw4w9WgXcQ", { "https://youtu.be/dQw4w9WgXcQ": { title: "YouTube", site: "YouTube", image: "/api/files/still" } }), {
     kind: "player",
     url: "https://youtu.be/dQw4w9WgXcQ",
     provider: "YouTube",
-    thumbnail: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    thumbnail: "/api/files/still",
   });
   const preview = { title: "Beispiel", site: "example.org" };
   assert.deepEqual(cellLink("https://example.org/", { "https://example.org/": preview }), { kind: "page", url: "https://example.org/", preview });
   const table = { cells: [["https://example.org/", "https://youtu.be/dQw4w9WgXcQ"], ["text https://a.example/", ""]] };
-  assert.deepEqual(tablePageLinks(table), ["https://example.org/"]);
+  assert.deepEqual(tablePageLinks(table), ["https://example.org/", "https://youtu.be/dQw4w9WgXcQ"]);
   assert.deepEqual(keptLinks({ ...table, links: { "https://example.org/": preview, "https://gone.example/": preview } }), { "https://example.org/": preview });
 });
 

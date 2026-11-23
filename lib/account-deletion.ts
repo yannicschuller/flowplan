@@ -70,6 +70,8 @@ const PERSONAL = [
   "telegram_links",
   "notifications",
   "notification_prefs",
+  // Mentions in whiteboard comment pins already told (#455).
+  "whiteboard_mention_notices",
   "user_shortcuts",
   // Own start page layouts (lib/home-layout.ts).
   "home_layouts",

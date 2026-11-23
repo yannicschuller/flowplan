@@ -12102,6 +12102,7 @@
   "The collection's query is empty.": "Die Abfrage der Sammlung ist leer.",
   "The collection's query is too long.": "Die Abfrage der Sammlung ist zu lang.",
   "The comment is removed with its reactions. Attached files that are not used anywhere else go to the trash.": "Der Kommentar wird mit seinen Reaktionen entfernt. Angehängte Dateien, die sonst nirgends verwendet werden, kommen in den Papierkorb.",
+  "The comment is removed. Attached files that are not used anywhere else go to the trash.": "Der Kommentar wird entfernt. Angehängte Dateien, die sonst nirgends verwendet werden, kommen in den Papierkorb.",
   "The comment is removed. Replies stay in the thread.": "Der Kommentar wird entfernt. Antworten bleiben im Thread erhalten.",
   "The comment refers to a foreign record.": "Kommentar verweist auf fremden Datensatz.",
   "The comment still has its passage.": "Der Kommentar hat seine Textstelle noch.",

@@ -212,6 +212,15 @@ export async function copyWhiteboard(
   );
   if (s) await writeWhiteboard(target, s.state, pageIds, rewrite);
 }
+// Properties that hold file addresses inside them: the pictures of link
+// cards and table previews (#455) and the attachments of comment messages.
+const REWRITTEN = new Set(["preview", "links", "messages"]);
+function rewriteJson(value: unknown, rewrite: (value: string) => string): unknown {
+  if (typeof value === "string") return rewrite(value);
+  if (Array.isArray(value)) return value.map((v) => rewriteJson(v, rewrite));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rewriteJson(v, rewrite)]));
+  return value;
+}
 // Stores a board for a new page from another board's state (copies,
 // archives), with page ids on cards and image addresses mapped.
 export async function writeWhiteboard(
@@ -239,7 +248,9 @@ export async function writeWhiteboard(
                 ? rowIds?.get(value) || value
                 : key === "src" && typeof value === "string"
                   ? rewrite(value)
-                  : value,
+                  : REWRITTEN.has(key) && value && typeof value === "object"
+                    ? rewriteJson(value, rewrite)
+                    : value,
           );
       items.set(item.id, map);
     }

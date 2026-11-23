@@ -1,7 +1,9 @@
 "use client";
 // "Exportieren …": the whole board, the selection or one frame as PNG (1×,
 // 2×, 4×), SVG or PDF – the PDF with the whole board on one page or one
-// page per frame in presentation order (lib/whiteboard-pdf.ts).
+// page per frame in presentation order (lib/whiteboard-pdf.ts). A frame's
+// own export (one frame, a page per frame) shows a collapsed frame open with
+// all it holds; the whole board keeps its bar (#455).
 import { useEffect, useState } from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import { useT } from "../i18n";
@@ -24,6 +26,8 @@ export function ExportDialog({
   title,
   svg,
   lightCopy,
+  storedFrame,
+  openFrame,
   onClose,
   onError,
 }: {
@@ -35,6 +39,10 @@ export function ExportDialog({
   svg: () => SVGSVGElement | null;
   // Copies the drawing while the board is drawn light (the dark canvas, #399).
   lightCopy?: <T>(copy: () => T) => T;
+  // A frame as stored (full size when collapsed) and copying while it is
+  // drawn open (frame-collapse.tsx withOpen).
+  storedFrame?: (id: string) => WhiteboardItem | undefined;
+  openFrame?: <T>(id: string, copy: () => T) => T;
   onClose: () => void;
   onError: (message: string) => void;
 }) {
@@ -51,10 +59,15 @@ export function ExportDialog({
     if (initial.kind !== "board") setPdfMode("board");
   }, [open, initial]);
   const map = new Map(items.map((i) => [i.id, i]));
-  const scopeItems = (): { box: Box; name: string } | null => {
+  // The copy for a page: light, and with its frame open.
+  const copyFor = (frame?: string) =>
+    frame && openFrame
+      ? <T,>(copy: () => T): T => openFrame(frame, () => (lightCopy ? lightCopy(copy) : copy()))
+      : lightCopy;
+  const scopeItems = (): { box: Box; name: string; frame?: string } | null => {
     if (scope.startsWith("frame:")) {
       const frame = map.get(scope.slice(6));
-      return frame ? { box: frameBox(frame), name: frame.text || t("Rahmen", "Frame") } : null;
+      return frame ? { box: frameBox(storedFrame?.(frame.id) ?? frame), name: frame.text || t("Rahmen", "Frame"), frame: frame.id } : null;
     }
     const list = scope === "selection" ? items.filter((i) => selection.has(i.id)) : items.filter((i) => i.type !== "comment");
     const box = contentBounds(list, map);
@@ -70,15 +83,15 @@ export function ExportDialog({
       if (format === "pdf") {
         const pages =
           scope === "board"
-            ? exportPages(items, pdfMode, title)
+            ? exportPages(items, pdfMode, title, storedFrame)
             : (() => {
                 const one = scopeItems();
-                return one ? [{ box: one.box, title: one.name }] : [];
+                return one ? [{ box: one.box, title: one.name, frame: one.frame }] : [];
               })();
         if (!pages.length) throw new Error(pdfMode === "frames" ? t("Auf diesem Board gibt es keine Rahmen für die Präsentation.", "This board has no frames for the presentation.") : t("Das Whiteboard ist leer.", "The whiteboard is empty."));
         const pictures: PdfPicture[] = [];
         for (const page of pages) {
-          const { blob } = await rasterize(await boardSvgSource(node, page.box, { copy: lightCopy }), page.box, 2);
+          const { blob } = await rasterize(await boardSvgSource(node, page.box, { copy: copyFor(page.frame) }), page.box, 2);
           pictures.push({ png: new Uint8Array(await blob.arrayBuffer()), width: page.box.w, height: page.box.h, title: page.title });
         }
         const bytes = await boardPdf(pictures, title);
@@ -86,7 +99,7 @@ export function ExportDialog({
       } else {
         const target = scopeItems();
         if (!target) throw new Error(t("Das Whiteboard ist leer.", "The whiteboard is empty."));
-        const source = await boardSvgSource(node, target.box, { inline: format === "png", copy: lightCopy });
+        const source = await boardSvgSource(node, target.box, { inline: format === "png", copy: copyFor(target.frame) });
         if (format === "svg") saveFile(new Blob([source], { type: "image/svg+xml" }), exportFileName(target.name, "svg"));
         else {
           const { blob } = await rasterize(source, target.box, scale);

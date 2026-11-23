@@ -23,11 +23,16 @@ const {
   boardMessageContent,
   boardMessageFiles,
   boardMessageText,
+  editedBoardMessage,
+  mayChangeBoardMessage,
   storedBoardCommentColor,
   storedBoardMessage,
   withMentionTitles,
+  withoutBoardMessage,
 } = await import("../lib/whiteboard-comments");
-const { boardMentionTitles, notifyBoardMentions, trashBoardCommentFiles } = await import("../lib/whiteboard-comments-server");
+const { BOARD_MENTION_KEEP_DAYS, NOTIFY_WINDOW_MS, boardMentionTitles, notifyBoardMentions, trashBoardCommentFiles } = await import(
+  "../lib/whiteboard-comments-server"
+);
 const { boardExtras } = await import("../lib/whiteboard-embeds");
 
 async function user(name: string): Promise<Identity> {
@@ -129,6 +134,81 @@ test("a mentioned person hears of a new message once, if they may read the board
   const body = (await one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND page_id=? AND kind='mention'", owner.id, board))!.body;
   assert.equal(body, "Ed Editor hat dich in einem Kommentar in „Workshop“ erwähnt");
   assert.equal(englishMessage(body), "Ed Editor mentioned you in a comment in “Workshop”");
+  // Who was told is stored (schema 127), not kept in the process's memory.
+  const rows = await all<{ user_id: string; notified_at: number }>("SELECT user_id,notified_at FROM whiteboard_mention_notices WHERE page_id=? AND message_id=?", board, "m-1");
+  assert.deepEqual(rows.map((r) => r.user_id), [owner.id]);
+  assert.ok(Math.abs(rows[0].notified_at - Date.now()) < 60_000);
+});
+
+test("an edited message tells only the people it newly mentions, once", async () => {
+  const third = await user("Tina Third");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, third.id, "viewer");
+  const b = await browser(editor);
+  const pin = new Y.Map<unknown>();
+  for (const [k, v] of Object.entries({ type: "comment", x: 0, y: 0, w: 32, h: 32 })) pin.set(k, v);
+  const messages = new Y.Array<unknown>();
+  pin.set("messages", messages);
+  b.items.set("pin-edit", pin);
+  const mention = (u: Identity) => ({ type: "mention", attrs: { userId: u.id, label: u.name } });
+  const first = storedBoardMessage(doc(mention(owner), { type: "text", text: " bitte prüfen" }) as never);
+  const at = Date.now() - NOTIFY_WINDOW_MS - 1000;
+  const message = { id: "e-1", author: editor.id, name: editor.name, text: first.text, at: Date.now(), content: first.content };
+  messages.push([message]);
+  await b.sync();
+  const count = async (userId: string) => (await all("SELECT id FROM notifications WHERE user_id=? AND kind='mention' AND page_id=?", userId, board)).length;
+  const ownerBefore = await count(owner.id);
+  assert.equal(await notifyBoardMentions(editor, board, "pin-edit", "e-1"), 1);
+  // The author edits it and mentions a third person too: only she hears.
+  const second = storedBoardMessage(doc(mention(owner), mention(third), { type: "text", text: " bitte prüfen" }) as never);
+  const edited = editedBoardMessage(message, second.text, second.content);
+  assert.ok(edited.edited && edited.id === "e-1");
+  messages.delete(0, 1);
+  messages.insert(0, [edited]);
+  await b.sync();
+  assert.equal(await notifyBoardMentions(editor, board, "pin-edit", "e-1"), 1);
+  assert.equal(await count(owner.id), ownerBefore + 1);
+  assert.equal(await count(third.id), 1);
+  assert.equal(await notifyBoardMentions(editor, board, "pin-edit", "e-1"), 0);
+  // An old message (written and edited long ago) tells nobody.
+  messages.delete(0, 1);
+  const late = storedBoardMessage(doc(mention(outsider), mention(await user("Late Lou"))) as never);
+  messages.insert(0, [{ ...edited, at, edited: at, content: late.content, text: late.text }]);
+  await b.sync();
+  assert.equal(await notifyBoardMentions(editor, board, "pin-edit", "e-1"), 0);
+  // A deleted placeholder tells nobody.
+  messages.delete(0, 1);
+  messages.insert(0, [{ id: "e-1", author: editor.id, name: editor.name, text: "", at: Date.now(), deleted: true }]);
+  await b.sync();
+  assert.equal(await notifyBoardMentions(editor, board, "pin-edit", "e-1"), 0);
+  // Rows go with the board's page, and after the retention.
+  assert.equal(BOARD_MENTION_KEEP_DAYS, 400);
+  const other = await create({ action: "page.create", workspaceId: wid, spaceId: space, title: "Weg", kind: "whiteboard" });
+  await run("INSERT INTO whiteboard_mention_notices(page_id,message_id,user_id,notified_at) VALUES(?,?,?,?)", other, "x", owner.id, Date.now());
+  await run("DELETE FROM pages WHERE id=?", other);
+  assert.equal((await all("SELECT 1 FROM whiteboard_mention_notices WHERE page_id=?", other)).length, 0);
+});
+
+test("authors edit and delete their own messages; deleting keeps a placeholder for replies", () => {
+  const m = (id: string, author = editor.id) => ({ id, author, name: "N", text: id, at: 1 });
+  assert.equal(mayChangeBoardMessage(m("a"), editor.id), true);
+  assert.equal(mayChangeBoardMessage(m("a"), owner.id), false);
+  assert.equal(mayChangeBoardMessage(m("a"), ""), false);
+  // Guests of edit links share one identity per link: never.
+  assert.equal(mayChangeBoardMessage(m("a", "guest:abc"), "guest:abc"), false);
+  assert.equal(mayChangeBoardMessage({ ...m("a"), deleted: true }, editor.id), false);
+  const edited = editedBoardMessage({ ...m("a"), content: { type: "doc" } }, "  neu  ", null, 5);
+  assert.deepEqual(edited, { id: "a", author: editor.id, name: "N", text: "neu", at: 1, edited: 5 });
+  // The first of a thread with replies: a placeholder without text.
+  const thread = [m("a"), m("b", owner.id), m("c")];
+  const one = withoutBoardMessage(thread, "a")!;
+  assert.deepEqual(one[0], { id: "a", author: editor.id, name: "N", text: "", at: 1, deleted: true });
+  assert.deepEqual(one.slice(1), thread.slice(1));
+  // A reply goes.
+  assert.deepEqual(withoutBoardMessage(thread, "c")!.map((x) => x.id), ["a", "b"]);
+  // The only message (or the last one besides a placeholder): the pin goes.
+  assert.equal(withoutBoardMessage([m("a")], "a"), null);
+  assert.equal(withoutBoardMessage([{ ...m("a"), deleted: true }, m("b")], "b"), null);
+  assert.equal(withoutBoardMessage(thread, "missing"), thread);
 });
 
 test("attachments of deleted comments go to the file trash once the board no longer has them", async () => {

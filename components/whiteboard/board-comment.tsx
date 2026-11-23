@@ -6,15 +6,20 @@
 // the pin's colour, the hover preview of a pin's badge, and the clean-up of
 // attachments whose comments are gone.
 //
-// Guests of edit links (no account) write plain text, as before.
+// Authors edit and delete their own messages (pencil and bin beside the
+// message, the composer in place, "· bearbeitet", a confirmation before
+// deleting), as page comments do (components/page-comment.tsx).
+//
+// Guests of edit links (no account) write plain text, as before; they
+// share one identity per link, so they edit and delete nothing.
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Check, Trash, X } from "@phosphor-icons/react";
+import { Check, PencilSimple, Trash, X } from "@phosphor-icons/react";
 import { useT } from "../i18n";
-import { Avatar } from "../ui";
+import { Avatar, Modal } from "../ui";
 import { CommentBody } from "../comment-body";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { COMMENT_COLORS, type CommentColor } from "@/lib/comment-colors";
-import { commentMentions, commentReady, type CommentNode } from "@/lib/comment-content";
+import { commentMentions, commentReady, plainCommentContent, type CommentNode } from "@/lib/comment-content";
 import { placeCommentPopover, placeFixed, shortComment, type Box } from "@/lib/comment-popover-layout";
 import {
   boardCommentColor,
@@ -22,6 +27,7 @@ import {
   boardMessageContent,
   boardMessageFiles,
   boardMessageText,
+  mayChangeBoardMessage,
   storedBoardCommentColor,
   storedBoardMessage,
   withMentionTitles,
@@ -135,6 +141,9 @@ function PinColor({ value, onChange }: { value: CommentColor; onChange: (color: 
 export type BoardCommentActions = {
   // Adds a message; its id (null when nothing was added).
   send: (text: string, content: CommentNode | null) => string | null;
+  // The author's own message changed or deleted; false when it was not.
+  edit: (messageId: string, text: string, content: CommentNode | null) => boolean;
+  removeMessage: (messageId: string) => boolean;
   resolve: () => void;
   remove: () => void;
   setColor: (color: CommentColor | undefined) => void;
@@ -146,6 +155,7 @@ export type BoardCommentActions = {
 export function BoardCommentPopover({
   item,
   pageId,
+  userId,
   editable,
   guest,
   anchor,
@@ -154,6 +164,8 @@ export function BoardCommentPopover({
 }: {
   item: WhiteboardItem;
   pageId: string;
+  // The signed-in person: their own messages can be edited and deleted.
+  userId: string;
   editable: boolean;
   guest: boolean;
   // Where the pin is, in the board's box (pixels).
@@ -167,6 +179,9 @@ export function BoardCommentPopover({
   const [content, setContent] = useState<CommentNode | null>(null);
   const [plain, setPlain] = useState("");
   const [error, setError] = useState("");
+  // The own message being edited (its draft) and the one to delete.
+  const [editing, setEditing] = useState<{ id: string; body: string; content: CommentNode | null } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const messages = useMemo(() => item.messages || [], [item.messages]);
   const keys = useMemo(() => boardMentionKeys(messages.map(boardMessageContent)), [messages]);
   const known = useMentionTitles(pageId, keys, !guest);
@@ -210,15 +225,35 @@ export function BoardCommentPopover({
     const id = actions.send(text, stored?.content ?? null);
     setBody("");
     setContent(null);
-    // "@Name": that person hears of it once the board has it.
-    if (id && stored && commentMentions(stored.content).length) {
-      await actions.flush();
-      void fetch(`/api/whiteboards/${pageId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notify: { item: item.id, message: id } }),
-      }).catch(() => {});
+    if (id && stored) await notify(id, stored.content);
+  }
+  // "@Name": that person hears of it once the board has it (after an edit:
+  // only who was not mentioned before).
+  async function notify(messageId: string, stored: CommentNode) {
+    if (!commentMentions(stored).length) return;
+    await actions.flush();
+    void fetch(`/api/whiteboards/${pageId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notify: { item: item.id, message: messageId } }),
+    }).catch(() => {});
+  }
+  async function saveEdit() {
+    if (!editing || !commentReady(editing.body, editing.content)) return;
+    setError("");
+    let stored: { content: CommentNode; text: string };
+    try {
+      stored = storedBoardMessage(editing.content || plainCommentContent(editing.body));
+    } catch (e) {
+      setError((e as Error).message);
+      return;
     }
+    const files = stored.content.attrs?.attachments || [];
+    const text = stored.text || editing.body.trim() || files.map((f) => `📎 ${f.name}`).join(" ");
+    if (!actions.edit(editing.id, text, stored.content)) return;
+    const messageId = editing.id;
+    setEditing(null);
+    await notify(messageId, stored.content);
   }
   return (
     <div
@@ -254,19 +289,99 @@ export function BoardCommentPopover({
         </button>
       </div>
       <div className="wb-comment-thread">
-        {messages.map((m) => (
-          <div key={m.id} className="wb-comment-message">
-            <span>
-              <strong>{m.name}</strong>
-              <small>
-                {new Date(m.at).toLocaleString(LOCALE_TAG, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </small>
-            </span>
-            <CommentBody content={shownContent(m, known)} body={m.text || ""} />
-          </div>
-        ))}
+        {messages.map((m) => {
+          const mine = rich && mayChangeBoardMessage(m, userId);
+          return (
+            <div key={m.id} className={`wb-comment-message${m.deleted ? " deleted" : ""}`}>
+              <span>
+                <strong>{m.name}</strong>
+                <small>
+                  {new Date(m.at).toLocaleString(LOCALE_TAG, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {m.edited && !m.deleted ? t(" · bearbeitet", " · edited") : ""}
+                </small>
+                {mine && editing?.id !== m.id && (
+                  <span className="wb-comment-message-actions">
+                    <button
+                      type="button"
+                      aria-label={t("Kommentar bearbeiten", "Edit comment")}
+                      title={t("Kommentar bearbeiten", "Edit comment")}
+                      onClick={() => {
+                        setError("");
+                        setEditing({ id: m.id, body: m.text || "", content: shownContent(m, known) ?? (m.text ? plainCommentContent(m.text) : null) });
+                      }}
+                    >
+                      <PencilSimple size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t("Kommentar löschen", "Delete comment")}
+                      title={t("Kommentar löschen", "Delete comment")}
+                      onClick={() => setDeleting(m.id)}
+                    >
+                      <Trash size={13} />
+                    </button>
+                  </span>
+                )}
+              </span>
+              {m.deleted ? (
+                <p className="muted">{t("Kommentar gelöscht", "Comment deleted")}</p>
+              ) : editing?.id === m.id ? (
+                <form
+                  className="wb-comment-edit"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void saveEdit();
+                  }}
+                >
+                  <Suspense fallback={<div className="comment-input wb-comment-loading" aria-busy="true" />}>
+                    <CommentComposer
+                      label={t("Kommentartext bearbeiten", "Edit comment text")}
+                      pageId={pageId}
+                      body={editing.body}
+                      content={editing.content}
+                      autoFocus
+                      onChange={(text, next) => setEditing((d) => (d ? { ...d, body: text, content: next ?? null } : d))}
+                    />
+                  </Suspense>
+                  <div className="inline-comment-actions">
+                    <button className="button compact" disabled={!commentReady(editing.body, editing.content)}>
+                      {t("Änderung speichern", "Save change")}
+                    </button>
+                    <button type="button" className="text-button" onClick={() => setEditing(null)}>
+                      {t("Bearbeitung abbrechen", "Cancel editing")}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <CommentBody content={shownContent(m, known)} body={m.text || ""} />
+              )}
+            </div>
+          );
+        })}
       </div>
-      {editable && (
+      {editing && error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <Modal open={!!deleting} onClose={() => setDeleting(null)} title={t("Kommentar löschen", "Delete comment")}>
+        <p>
+          {t(
+            "Der Kommentar wird entfernt. Angehängte Dateien, die sonst nirgends verwendet werden, kommen in den Papierkorb.",
+            "The comment is removed. Attached files that are not used anywhere else go to the trash.",
+          )}
+        </p>
+        <button
+          className="button danger"
+          onClick={() => {
+            if (deleting) actions.removeMessage(deleting);
+            setDeleting(null);
+          }}
+        >
+          {t("Kommentar endgültig löschen", "Delete comment permanently")}
+        </button>
+      </Modal>
+      {editable && !editing && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -385,7 +500,7 @@ function Preview({
           </span>
         )}
       </span>
-      <span className="comment-preview-text">{first ? shortComment(boardMessageText(first, known)) : ""}</span>
+      <span className="comment-preview-text">{first?.deleted ? t("Kommentar gelöscht", "Comment deleted") : first ? shortComment(boardMessageText(first, known)) : ""}</span>
       <small className="comment-preview-replies">
         {replies === 0 ? t("Keine Antworten", "No replies") : replies === 1 ? t("1 Antwort", "1 reply") : t(`${replies} Antworten`, `${replies} replies`)}
       </small>

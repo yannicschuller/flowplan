@@ -7,6 +7,7 @@ import { DARK_PALETTE, LIGHT_PALETTE } from "../lib/whiteboard-display-colors";
 import { whiteboardSvg } from "../lib/whiteboard-svg";
 import { boardExtras } from "../lib/whiteboard-embeds";
 import { cleanTemplateItems } from "../lib/whiteboard-user-templates";
+import { exportPages, frameBox } from "../lib/whiteboard-pdf";
 import type { WhiteboardItem } from "../lib/whiteboard-model";
 
 // #455: pen opacity and highlighter, own colours with the colour wheel,
@@ -125,6 +126,19 @@ test("copies of a collapsed frame take what it hides", () => {
   const copy = unfoldForCopy([view.items.find((i) => i.id === "F")!], view, byId);
   assert.deepEqual(ids(copy), ["F", "G", "in", "note", "pen"]);
   assert.equal(copy.find((i) => i.id === "F")!.h, 300, "at full height");
+});
+
+test("PDF export with a page per frame: a collapsed frame's page is the whole frame", () => {
+  const all = board();
+  const folded = all.map((i) => (i.id === "F" ? { ...i, text: "Eins", collapsed: collapseMembers(i, all) } : i));
+  const view = foldView(folded);
+  const stored = new Map(folded.map((i) => [i.id, i]));
+  const [page] = exportPages(view.items, "frames", "", (id) => stored.get(id));
+  assert.equal(page.frame, "F");
+  assert.deepEqual(page.box, frameBox(stored.get("F")!));
+  assert.equal(page.box.h, 300 + 48);
+  // Without the stored frames: the bar (the whole board keeps it).
+  assert.equal(exportPages(view.items, "frames")[0].box.h, COLLAPSED_HEIGHT + 48);
 });
 
 test("exports: strokes with their opacity and highlighter, collapsed frames as their bar", () => {

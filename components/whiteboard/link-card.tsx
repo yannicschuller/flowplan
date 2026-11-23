@@ -1,35 +1,42 @@
 "use client";
 // Web pages on the board (#455): any address that is no player of the
 // embed allowlist becomes a link card – title, site, description, picture
-// and icon from GET /api/embed (lib/oembed.ts: the server reads the page
-// SSRF-checked, size- and time-limited, without cookies). The preview is
-// stored with the element, so viewers load nothing but the picture and the
-// icon, straight from the site and without a referrer (like the editor's
-// link cards). The title is a link (new tab, the system browser in the
-// apps); a double click opens it too. Table cells with a lone address show
-// the same preview, small (TableCellContent).
+// and icon from POST /api/whiteboards/<id>/links (lib/link-pictures.ts: the
+// server reads the page SSRF-checked, size- and time-limited, without
+// cookies, and stores its picture and icon, drawn anew, as files of the
+// board). The preview is stored with the element, so viewers load nothing
+// from the other site – a picture address of another site, stored by an
+// older version, is not shown. The title is a link (new tab, the system
+// browser in the apps); a double click opens it too. Table cells with a
+// lone address show the same preview, small (TableCellContent).
 import { useState } from "react";
 import { Play } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { useBoardColors } from "./board-colors";
-import { boardEmbed, linkPreviewSchema } from "@/lib/whiteboard-embeds";
+import { boardEmbed, isPreviewPicture, linkPreviewSchema } from "@/lib/whiteboard-embeds";
 import { cellLink, cellParts, type LinkPreview } from "@/lib/whiteboard-tables";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 
-// What GET /api/embed says about an address: a player of the allowlist
-// (announced through oEmbed) or a page's preview; null when it has none.
-export type FoundLink = { kind: "player"; src: string; provider: string } | { kind: "page"; preview: LinkPreview } | null;
-export async function findLink(url: string): Promise<FoundLink> {
+// What the server says about an address: a player of the allowlist (also
+// announced through oEmbed) with its still picture, or a page's preview;
+// null when it has none (or may not be asked: guests, the demo).
+export type FoundLink = { kind: "player"; src: string; provider: string; image?: string } | { kind: "page"; preview: LinkPreview } | null;
+export async function findBoardLink(pageId: string, url: string): Promise<FoundLink> {
   try {
-    const response = await fetch(`/api/embed?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+    const response = await fetch(`/api/whiteboards/${encodeURIComponent(pageId)}/links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+      cache: "no-store",
+    });
     if (!response.ok) return null;
     const data = (await response.json()) as Record<string, unknown>;
     if (data.kind === "player" && typeof data.src === "string" && typeof data.provider === "string")
-      return { kind: "player", src: data.src, provider: data.provider };
+      return { kind: "player", src: data.src, provider: data.provider, ...(isPreviewPicture(data.image) ? { image: data.image } : {}) };
     if (data.kind !== "card") return null;
     const parsed = linkPreviewSchema.safeParse({
       title: data.title,
-      site: data.provider,
+      site: data.site,
       description: data.description || undefined,
       image: data.image || undefined,
       icon: data.icon || undefined,
@@ -44,12 +51,20 @@ export function hostPreview(url: string): LinkPreview {
   const host = new URL(url).hostname.replace(/^www\./, "");
   return { title: host, site: host };
 }
+// A stored preview that still names a picture of another site (older
+// versions): shown without it, fetched anew by someone who may edit.
+export const remotePictures = (preview: unknown) => {
+  if (!preview || typeof preview !== "object") return false;
+  const { image, icon } = preview as { image?: unknown; icon?: unknown };
+  return (!!image && !isPreviewPicture(image)) || (!!icon && !isPreviewPicture(icon));
+};
 
-// A picture from another site: no referrer, gone when it does not load.
+// A picture of the preview – a file of the board, never another site's;
+// gone when it does not load.
 function WebImage({ src, className }: { src?: string; className: string }) {
   const [failed, setFailed] = useState<string | null>(null);
-  if (!src || failed === src) return null;
-  return <img className={className} src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(src)} />;
+  if (!src || !isPreviewPicture(src) || failed === src) return null;
+  return <img className={className} src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} />;
 }
 
 export function LinkCardShape({ item, transform }: { item: WhiteboardItem; transform: string }) {

@@ -1,19 +1,27 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import * as Y from "yjs";
 import { diagramPng } from "../helpers/png";
 
 // #455: colours of rows and columns of a whiteboard table, links and link
 // previews in cells, link cards for any web page, and the board menu's
 // quick PNG export (which failed: the SVG was drawn from a blob: address,
 // and Chromium taints a canvas that drew an SVG with foreignObject from
-// one). No network: GET /api/embed and every picture of another site are
-// answered here.
+// one). Pictures of link cards and video stills are files of the board
+// (POST /api/whiteboards/<id>/links): nothing loads from another site while
+// the board is viewed. No network: that endpoint (demo accounts may not
+// make the server fetch) and the board's picture files are answered here,
+// and any request to another site fails the spec.
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const RED = diagramPng(64, 48, [{ shape: "rect", x: 0, y: 0, w: 1, h: 1, color: [230, 20, 20] }]);
 const BLUE = diagramPng(64, 48, [{ shape: "rect", x: 0, y: 0, w: 1, h: 1, color: [20, 40, 230] }]);
+// The board's files the server stored for the previews (answered here).
+const COVER = "/api/files/test-cover",
+  ICON = "/api/files/test-icon",
+  STILL = "/api/files/test-still";
 
-async function setup(page: Page, title: string) {
+async function setup(page: Page, title: string, items: Record<string, unknown>[] = []) {
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const r = await page.request.post("/api/command", {
@@ -22,42 +30,49 @@ async function setup(page: Page, title: string) {
   });
   expect(r.ok(), await r.text()).toBe(true);
   const board = await r.json();
+  if (items.length) {
+    const data = await (await page.request.get(`/api/pages/${board.id}`)).json();
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, Buffer.from(data.whiteboard.state, "base64"));
+    const before = Y.encodeStateVector(ydoc);
+    for (const props of items) {
+      const map = new Y.Map<unknown>();
+      for (const [k, v] of Object.entries(props)) if (k !== "id") map.set(k, v);
+      ydoc.getMap("items").set(String(props.id), map);
+    }
+    const synced = await page.request.post("/api/command", {
+      headers: { origin },
+      data: { action: "whiteboard.sync", pageId: board.id, generation: data.whiteboard.generation, update: Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString("base64") },
+    });
+    expect(synced.ok(), await synced.text()).toBe(true);
+  }
   const embeds: string[] = [];
-  // Previews as the server would find them (demo accounts may not fetch).
-  await page.route(/\/api\/embed\?/, (route) => {
-    const url = new URL(route.request().url()).searchParams.get("url") || "";
+  // Previews as the server would find them, with their pictures stored.
+  await page.route(new RegExp(`/api/whiteboards/${board.id}/links$`), (route) => {
+    const url = (route.request().postDataJSON() as { url: string }).url;
     embeds.push(url);
+    if (/youtu/.test(url))
+      return route.fulfill({ json: { kind: "player", src: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", provider: "YouTube", image: STILL } });
     if (url.startsWith("https://example.org/"))
       return route.fulfill({
-        json: {
-          kind: "card",
-          url,
-          title: "Beispielseite",
-          provider: "Beispiel",
-          description: "Eine Seite zum Testen",
-          image: "https://img.example.org/cover.png",
-          icon: "https://cors.example.org/icon.png",
-        },
+        json: { kind: "card", url, title: "Beispielseite", site: "Beispiel", description: "Eine Seite zum Testen", image: COVER, icon: ICON },
       });
     return route.fulfill({ status: 422, json: { error: "Für diese Seite gibt es keine Vorschau." } });
   });
-  // Pictures of other sites: YouTube stills and one host allow CORS,
-  // img.example.org does not.
-  await page.route(/^https:\/\/i\.ytimg\.com\//, (route) =>
-    route.fulfill({ body: RED, contentType: "image/png", headers: { "access-control-allow-origin": "*" } }),
+  await page.route(/\/api\/files\/test-(cover|icon|still)$/, (route) =>
+    route.fulfill({ body: route.request().url().endsWith("still") ? RED : BLUE, contentType: "image/png" }),
   );
-  await page.route(/^https:\/\/cors\.example\.org\//, (route) =>
-    route.fulfill({ body: BLUE, contentType: "image/png", headers: { "access-control-allow-origin": "*" } }),
-  );
-  // (Playwright would answer a CORS request successfully: refused here.)
-  await page.route(/^https:\/\/img\.example\.org\//, (route) =>
-    route.request().headers()["origin"] !== undefined ? route.abort() : route.fulfill({ body: BLUE, contentType: "image/png" }),
-  );
+  // Nothing of another site loads while the board is viewed.
+  const foreign: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (/^https?:$/.test(url.protocol) && url.origin !== new URL(origin).origin) foreign.push(request.url());
+  });
   await page.route(/^https:\/\/www\.youtube-nocookie\.com\//, (route) => route.fulfill({ body: "<p>player</p>", contentType: "text/html" }));
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb.locator(".wb-canvas")).toBeVisible();
-  return { wb, embeds };
+  return { wb, embeds, foreign, board };
 }
 async function placeTable(page: Page, wb: Locator, dx = 0, dy = 0) {
   await wb.getByRole("button", { name: "Tabelle", exact: true }).click();
@@ -148,7 +163,7 @@ test("links and previews in table cells, link cards for any web page", async ({ 
   test.skip(info.project.name === "mobile", "Desktop pointer gestures");
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const { wb, embeds } = await setup(page, `Tabellenlinks ${Date.now()}`);
+  const { wb, embeds, foreign } = await setup(page, `Tabellenlinks ${Date.now()}`);
   const table = await placeTable(page, wb);
   await typeInCell(page, table, "1:0", "siehe https://docs.example.net/a?b=1.");
   await typeInCell(page, table, "1:1", "javascript:alert(1)");
@@ -165,24 +180,25 @@ test("links and previews in table cells, link cards for any web page", async ({ 
   expect((await popup).url()).toBe("https://docs.example.net/a?b=1");
   await (await popup).close();
 
-  // A lone page address: its preview, fetched once and kept on the table.
+  // A lone page address: its preview, fetched once and kept on the table,
+  // its picture a file of the board.
   await typeInCell(page, table, "2:0", "https://example.org/seite");
   const card = table.locator("[data-cell='2:0'] .wb-cell-card");
   await expect(card).toContainText("Beispielseite");
   await expect(card).toContainText("Beispiel");
-  await expect(card.locator("img")).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(card.locator("img")).toHaveAttribute("src", COVER);
   expect(embeds.filter((u) => u === "https://example.org/seite")).toHaveLength(1);
-  // A video: its still picture, a click plays it in a frame.
+  // A video: its still picture (a file of the board), a click plays it in a frame.
   await typeInCell(page, table, "2:1", "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
   const video = table.locator("[data-cell='2:1'] .wb-cell-video");
-  await expect(video.locator("img")).toHaveAttribute("src", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+  await expect(video.locator("img")).toHaveAttribute("src", STILL);
   await video.getByRole("button", { name: "YouTube abspielen" }).click();
   const player = page.getByRole("dialog", { name: "YouTube" });
   await expect(player.locator("iframe")).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
   await expect(player.locator("iframe")).toHaveAttribute("sandbox", /allow-scripts/);
   await page.keyboard.press("Escape");
   await expect(player).toHaveCount(0);
-  expect(embeds.some((u) => u.includes("youtube"))).toBe(false);
+  expect(embeds.filter((u) => u.includes("youtube"))).toHaveLength(1);
 
   // Pasting a web page's address: a link card with the page's preview.
   await paste(wb, "https://example.org/artikel");
@@ -191,8 +207,8 @@ test("links and previews in table cells, link cards for any web page", async ({ 
   await expect(linkCard.locator(".wb-linkcard-title")).toHaveAttribute("href", "https://example.org/artikel");
   await expect(linkCard.locator(".wb-linkcard-title")).toHaveAttribute("rel", /noopener noreferrer/);
   await expect(linkCard).toContainText("Eine Seite zum Testen");
-  await expect(linkCard.locator(".wb-linkcard-image")).toHaveAttribute("referrerpolicy", "no-referrer");
-  await expect(linkCard.locator(".wb-linkcard-icon")).toHaveAttribute("src", "https://cors.example.org/icon.png");
+  await expect(linkCard.locator(".wb-linkcard-image")).toHaveAttribute("src", COVER);
+  await expect(linkCard.locator(".wb-linkcard-icon")).toHaveAttribute("src", ICON);
   // A page without a preview still becomes a card, named by its host.
   await paste(wb, "https://keine-vorschau.example.com/x");
   await expect(wb.locator(".wb-linkcard-title", { hasText: "keine-vorschau.example.com" })).toBeVisible();
@@ -211,6 +227,44 @@ test("links and previews in table cells, link cards for any web page", async ({ 
   await wb.locator(".wb-canvas").click({ position: { x: 30, y: 30 } });
   await page.keyboard.press("ControlOrMeta+z");
   await expect(wb.locator(".wb-linkcard-title[href='https://example.org/dialog']")).toHaveCount(0);
+  // (The player's frame loaded only after the click on play.)
+  expect(foreign.filter((u) => !u.startsWith("https://www.youtube-nocookie.com/"))).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("link cards of older versions: no picture of another site is loaded; an editor fetches them anew once", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop pointer gestures");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { wb, embeds, foreign, board } = await setup(page, `Alte Linkkarten ${Date.now()}`, [
+    {
+      id: "old-card",
+      type: "embed",
+      x: 100,
+      y: 100,
+      w: 340,
+      h: 265,
+      z: 1,
+      url: "https://example.org/alt",
+      preview: { title: "Alter Titel", site: "Alt", image: "https://img.example.org/cover.png", icon: "https://cors.example.org/icon.png" },
+    },
+    { id: "old-table", type: "table", x: 500, y: 100, w: 360, h: 120, z: 2, cells: [["https://youtu.be/dQw4w9WgXcQ", "x"]] },
+  ]);
+  const card = wb.locator(".wb-linkcard");
+  await expect(card.locator(".wb-linkcard-title")).toBeVisible();
+  // Fetched anew (as files of the board) by this editor, once.
+  await expect(card.locator(".wb-linkcard-image")).toHaveAttribute("src", COVER, { timeout: 10_000 });
+  await expect(card.locator(".wb-linkcard-title")).toHaveText("Beispielseite");
+  await expect(wb.locator("[data-cell='0:0'] .wb-cell-video img")).toHaveAttribute("src", STILL);
+  expect(embeds.sort()).toEqual(["https://example.org/alt", "https://youtu.be/dQw4w9WgXcQ"]);
+  await expect(wb.getByText("Gespeichert", { exact: true })).toBeVisible({ timeout: 10_000 });
+  const data = await (await page.request.get(`/api/pages/${board.id}`)).json();
+  const ydoc = new Y.Doc();
+  Y.applyUpdate(ydoc, Buffer.from(data.whiteboard.state, "base64"));
+  const items = ydoc.getMap<Y.Map<unknown>>("items");
+  expect(items.get("old-card")!.get("preview")).toMatchObject({ image: COVER, icon: ICON });
+  expect((items.get("old-table")!.get("links") as Record<string, { image?: string }>)["https://youtu.be/dQw4w9WgXcQ"].image).toBe(STILL);
+  expect(foreign).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -218,15 +272,17 @@ test("the board menu's PNG export works with pictures of other sites (#455 bug)"
   test.skip(info.project.name === "mobile", "Desktop pointer gestures");
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const { wb } = await setup(page, `PNG-Export ${Date.now()}`);
-  // Text in foreignObject (a table), a YouTube embed (still picture through
-  // CORS) and a link card whose picture's site allows no reading.
+  const { wb, foreign } = await setup(page, `PNG-Export ${Date.now()}`);
+  // Text in foreignObject (a table), a YouTube embed (its still picture
+  // fetched as a file of the board) and a link card with its picture.
   const table = await placeTable(page, wb, -250, -150);
   await typeInCell(page, table, "0:0", "Kopf");
   await paste(wb, "https://youtu.be/dQw4w9WgXcQ");
   await expect(wb.locator(".wb-embed-preview")).toHaveCount(1);
   await paste(wb, "https://example.org/artikel");
   await expect(wb.locator(".wb-linkcard-title")).toHaveText("Beispielseite");
+  // The player got its still picture (for the exports).
+  await expect(wb.locator(`[data-export-thumb="${STILL}"]`)).toHaveCount(1, { timeout: 10_000 });
 
   const download = page.waitForEvent("download");
   await wb.getByRole("button", { name: "Ansicht und Aktionen", exact: true }).click();
@@ -236,8 +292,8 @@ test("the board menu's PNG export works with pictures of other sites (#455 bug)"
   const png = readFileSync((await file.path())!);
   expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
   await expect(page.getByText("Der Browser erlaubt keinen PNG-Export dieses Boards", { exact: false })).toHaveCount(0);
-  // The YouTube still is in the picture (red), the unreadable picture is
-  // the grey placeholder (no blue anywhere).
+  // The YouTube still (red) and the link card's picture and icon (blue)
+  // are files of the board: all in the picture, nothing from other sites.
   const counts = await page.evaluate(async (data) => {
     const img = new Image();
     img.src = `data:image/png;base64,${data}`;
@@ -258,7 +314,7 @@ test("the board menu's PNG export works with pictures of other sites (#455 bug)"
     return { red, blue };
   }, png.toString("base64"));
   expect(counts.red).toBeGreaterThan(5000);
-  // The site's icon allows CORS (blue, tiny); the big cover does not.
-  expect(counts.blue).toBeLessThan(2000);
+  expect(counts.blue).toBeGreaterThan(5000);
+  expect(foreign).toEqual([]);
   expect(errors).toEqual([]);
 });

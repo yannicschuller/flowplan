@@ -110,6 +110,7 @@ import {
   type ShapeKind,
   type WhiteboardItem,
   type WhiteboardItemType,
+  type WhiteboardMessage,
   type WhiteboardMeta,
   emptyTable,
   sharedArray,
@@ -166,6 +167,7 @@ import { remapLink } from "@/lib/whiteboard-diagram-model";
 import { useBoardExtras } from "./board-extras";
 import { BoardCommentHover, BoardCommentPopover, useCommentFileCleanup } from "./board-comment";
 import type { CommentNode } from "@/lib/comment-content";
+import { editedBoardMessage, mayChangeBoardMessage, withoutBoardMessage } from "@/lib/whiteboard-comments";
 import { presentationSlides } from "@/lib/whiteboard-frames";
 // Workshop facilitation: private mode, planning poker, timer music, gathering.
 import { boardSignal, useFacilitation } from "./facilitation";
@@ -935,9 +937,10 @@ export default function Whiteboard({
   // until someone changes it), without hidden ones, one at a time.
   const slides = presentationSlides(items);
   function showSlide(index: number) {
-    // A collapsed frame opens when it is presented (#455).
+    // A collapsed frame opens when it is presented (#455) – for the
+    // presenter only, and folds again when the presentation ends.
     const shown = slides[index];
-    if (shown) folding.reveal(shown.id);
+    if (shown) folding.reveal(shown.id, "present");
     const frame = shown && (folding.stored(shown.id) ?? shown);
     const rect = container.current?.getBoundingClientRect();
     if (!frame || !rect) return setPresenting(null);
@@ -955,6 +958,10 @@ export default function Whiteboard({
       y: frame.y - 15 + frame.h / 2 - rect.height / zoom / 2,
     });
   }
+  const refold = folding.refold;
+  useEffect(() => {
+    if (presenting === null) refold("present");
+  }, [presenting, refold]);
   // "Alles anzeigen", "Auswahl zeigen" (⇧2), the next frame of a
   // presentation and jumping to a collaborator glide there (eased pan and
   // zoom) instead of cutting; any own pan or zoom stops the glide.
@@ -1296,6 +1303,38 @@ export default function Whiteboard({
     });
     return messageId;
   }
+  // Own messages edited and deleted (#455, lib/whiteboard-comments.ts).
+  function changeMessage(id: string, messageId: string, next: (messages: WhiteboardMessage[]) => WhiteboardMessage[] | null) {
+    const map = itemsMap.get(id);
+    if (!map) return false;
+    const list = sharedArray(map, "messages");
+    const before = list.toArray() as WhiteboardMessage[];
+    const message = before.find((m) => m?.id === messageId);
+    if (!message || guest || !mayChangeBoardMessage(message, userId)) return false;
+    const after = next(before);
+    change(() => {
+      if (!after) {
+        itemsMap.delete(id);
+        return;
+      }
+      // Only the entries that changed are replaced (the others may be
+      // changed by someone else at the same time).
+      for (let i = before.length - 1; i >= 0; i--) {
+        const now = after.find((m) => m.id === before[i]?.id);
+        if (!now) list.delete(i, 1);
+        else if (now !== before[i]) {
+          list.delete(i, 1);
+          list.insert(i, [now]);
+        }
+      }
+    });
+    if (!after && commentOpen === id) setCommentOpen(null);
+    return true;
+  }
+  const editMessage = (id: string, messageId: string, text: string, content: CommentNode | null) =>
+    (!!text.trim() || !!content) &&
+    changeMessage(id, messageId, (list) => list.map((m) => (m.id === messageId ? editedBoardMessage(m, text, content) : m)));
+  const deleteMessage = (id: string, messageId: string) => changeMessage(id, messageId, (list) => withoutBoardMessage(list, messageId));
   // Until the board's changes are on the server.
   async function flushBoard() {
     for (let i = 0; i < 30 && (dirty.current || inflight.current); i++) await (inflight.current ? new Promise((r) => setTimeout(r, 100)) : sync());
@@ -1439,24 +1478,29 @@ export default function Whiteboard({
   );
   const removeSelected = () =>
     change(() => {
+      const stored = folding.all;
       // A rack goes together with the devices in it.
       const gone = new Set(selection);
-      for (const i of items) if (i.type === "device" && i.rackId && selection.has(i.rackId) && !i.locked) gone.add(i.id);
+      for (const i of stored) if (i.type === "device" && i.rackId && selection.has(i.rackId) && !i.locked) gone.add(i.id);
+      // A collapsed frame goes with what it hides (#455) – one undo step
+      // brings all of it back; an open frame leaves its content.
+      for (const i of folding.hiddenWith([...selection].filter((id) => !byId.get(id)?.locked))) if (!i.locked) gone.add(i.id);
       for (const id of gone) {
-        if (byId.get(id)?.locked) continue;
+        const target = byId.get(id) ?? folding.stored(id);
+        if (!target || target.locked) continue;
         itemsMap.delete(id);
         // Connectors attached to removed items keep their last position.
-        for (const c of items)
-          if (c.type === "connector") {
+        for (const c of stored)
+          if (c.type === "connector" && !gone.has(c.id)) {
             const map = itemsMap.get(c.id);
             if (!map) continue;
             for (const end of ["from", "to"] as const) {
               const e = c[end];
               if (e?.id === id) {
-                const target = byId.get(id)!;
+                const real = folding.stored(id) ?? target;
                 map.set(end, {
-                  x: target.x + target.w / 2,
-                  y: target.y + target.h / 2,
+                  x: real.x + real.w / 2,
+                  y: real.y + real.h / 2,
                 });
               }
             }
@@ -2743,6 +2787,7 @@ export default function Whiteboard({
     pageId,
     title: pages.find((p) => p.id === pageId)?.title || t("Whiteboard", "Whiteboard"),
     editable,
+    guest: !!guest,
     items,
     byId,
     itemsMap,
@@ -4229,12 +4274,15 @@ export default function Whiteboard({
               key={item.id}
               item={item}
               pageId={pageId}
+              userId={userId}
               editable={editable}
               guest={!!guest}
               anchor={s}
               bounds={{ width: rect?.width || 400, height: rect?.height || 400 }}
               actions={{
                 send: (text, content) => addMessage(item.id, text, content),
+                edit: (messageId, text, content) => editMessage(item.id, messageId, text, content),
+                removeMessage: (messageId) => deleteMessage(item.id, messageId),
                 resolve: () => change(() => setProps(item.id, { resolved: !item.resolved })),
                 remove: () => {
                   change(() => itemsMap.delete(item.id));

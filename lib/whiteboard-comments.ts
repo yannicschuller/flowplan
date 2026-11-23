@@ -20,6 +20,13 @@
 // - "@Name" notifies that person once, if they may read the board
 //   (POST …/comments {notify}), as page comments do.
 //
+// Authors edit and delete their own messages (#455, as page comments since
+// #450): an edit replaces the message (same id, `edited` set) and tells
+// people it newly mentions; deleting the first message of a pin with
+// replies leaves a "Kommentar gelöscht" placeholder, deleting the last
+// message left removes the pin. Guests of edit links write under one
+// identity per link, not per person, so they cannot edit or delete.
+//
 // The colour is a name of lib/comment-colors.ts' palette (who may edit the
 // board may change it, as editors may for text comment threads); a pin
 // without one keeps the orange pins always had. Client-safe.
@@ -126,4 +133,30 @@ export function boardMessageFiles(messages: Pick<WhiteboardMessage, "content">[]
       if (id) ids.add(id);
     }
   return [...ids];
+}
+
+// ---- editing and deleting own messages ----
+
+// Whether this person may edit and delete the message: its author, signed
+// in (guests of edit links share one identity per link), not a placeholder.
+export const mayChangeBoardMessage = (message: Pick<WhiteboardMessage, "author" | "deleted">, userId: string | undefined) =>
+  !!userId && !userId.startsWith("guest:") && message.author === userId && !message.deleted;
+
+// The message after its author edited it.
+export function editedBoardMessage(message: WhiteboardMessage, text: string, content: CommentNode | null, now = Date.now()): WhiteboardMessage {
+  const { content: _old, ...rest } = message;
+  return { ...rest, text: text.trim().slice(0, 5000), ...(content ? { content } : {}), edited: now };
+}
+
+// What deleting a message leaves: the list without it – the first message
+// of a thread with replies stays as a placeholder – or null when nothing
+// is left and the pin goes.
+export function withoutBoardMessage(messages: WhiteboardMessage[], messageId: string): WhiteboardMessage[] | null {
+  const index = messages.findIndex((m) => m.id === messageId);
+  if (index < 0) return messages;
+  const next = messages.slice();
+  const m = messages[index];
+  if (index === 0 && messages.length > 1) next[0] = { id: m.id, author: m.author, name: m.name, text: "", at: m.at, deleted: true };
+  else next.splice(index, 1);
+  return next.some((x) => !x.deleted) ? next : null;
 }

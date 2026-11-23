@@ -5,8 +5,11 @@
 // The board shows a preview first and loads the player only on a click, in
 // a sandboxed frame. PDFs are files of the workspace, drawn with pdf.js.
 // Every other web page becomes a link card (#455): an embed with the
-// address in `url`, no `src`, and the preview GET /api/embed found – never
-// a frame of the page.
+// address in `url`, no `src`, and the preview the server found – never a
+// frame of the page. Its picture and icon are files of the board
+// (lib/link-pictures.ts): nothing is loaded from the other site while the
+// board is viewed, and a picture address of another site (stored by an
+// older version) is not shown.
 import { z } from "zod";
 import { embedFromUrl, embedProvider } from "./embed-providers";
 import { safeHref } from "./whiteboard-links";
@@ -50,18 +53,18 @@ export function webUrl(raw: unknown) {
   const href = safeHref(raw);
   return href && /^https?:/i.test(href) ? href : null;
 }
-const httpsImage = z
-  .string()
-  .max(2000)
-  .refine((v) => /^https:\/\//i.test(v) && safeHref(v) !== null);
+// A picture of a preview: a file of the board (or, for guests of a share
+// link, its address through the link).
+export const previewPicture = z.string().max(300).regex(PDF_SOURCE);
+export const isPreviewPicture = (value: unknown): value is string => previewPicture.safeParse(value).success;
 // A page's preview as it may be stored (link cards, table cells).
 export const linkPreviewSchema = z
   .object({
     title: z.string().max(300),
     site: z.string().max(100),
     description: z.string().max(300).optional(),
-    image: httpsImage.optional().catch(undefined),
-    icon: httpsImage.optional().catch(undefined),
+    image: previewPicture.optional().catch(undefined),
+    icon: previewPicture.optional().catch(undefined),
   })
   .strip()
   // A dropped picture leaves no key behind.

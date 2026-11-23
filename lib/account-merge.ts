@@ -153,6 +153,9 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "journal_unlocks.user_id": "move",
   "notifications.user_id": "move",
   "notification_prefs.user_id": "move",
+  // Mentions in whiteboard comment pins already told (#455): the target
+  // is not told again.
+  "whiteboard_mention_notices.user_id": "move",
   "weekly_digests.user_id": "move",
   "messenger_settings.user_id": "move",
   "messenger_targets.user_id": "move",

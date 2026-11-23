@@ -1,33 +1,46 @@
 "use client";
 // Web addresses on the board (#455), used by board-extras.tsx: a pasted or
 // embedded address becomes a player of the allowlist or a link card, table
-// cells with a lone page address get its preview (stored on the table, so
-// it is fetched once by someone who may edit, not by every viewer), and the
-// play buttons of video cells open the player.
+// cells with a lone address get its preview or still picture (stored on
+// the table, so it is fetched once by someone who may edit, not by every
+// viewer), and the play buttons of video cells open the player.
+//
+// Pictures are files of the board (POST /api/whiteboards/<id>/links,
+// lib/link-pictures.ts); nothing is loaded from another site while the
+// board is viewed. Previews of older versions that still name a picture of
+// another site, and players and video cells without a still picture, are
+// fetched anew once when someone who may edit opens the board.
 import { useEffect, useRef, useState } from "react";
 import { PlayerDialog } from "./player-dialog";
-import { findLink, hostPreview } from "./link-card";
-import { boardEmbed, embedForUrl, webUrl, type PlayerEmbed } from "@/lib/whiteboard-embeds";
+import { findBoardLink, hostPreview, remotePictures, type FoundLink } from "./link-card";
+import { boardEmbed, embedForUrl, linkPreviewSchema, webUrl, type PlayerEmbed } from "@/lib/whiteboard-embeds";
+import { embedFromUrl } from "@/lib/embed-providers";
 import { keptLinks, soleUrl, tablePageLinks, type LinkPreview } from "@/lib/whiteboard-tables";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import type { BoardApi } from "./board-extras";
 
-// Previews fetched in this tab, by address (failures as null).
-const found = new Map<string, Promise<LinkPreview | null>>();
-const previewOf = (url: string) => {
-  let known = found.get(url);
+// What the server found in this tab, by board and address (failures as null).
+const found = new Map<string, Promise<FoundLink>>();
+const lookup = (pageId: string, url: string) => {
+  const key = `${pageId}\n${url}`;
+  let known = found.get(key);
   if (!known) {
-    known = findLink(url).then((link) => (link?.kind === "page" ? link.preview : null));
-    found.set(url, known);
+    known = findBoardLink(pageId, url);
+    found.set(key, known);
   }
   return known;
 };
+// Players whose provider has still pictures (YouTube, Vimeo).
+const STILLS = /^https:\/\/(www\.youtube-nocookie\.com|player\.vimeo\.com)\//;
+// What a table keeps for an address the server found.
+const kept = (link: FoundLink): LinkPreview | null =>
+  !link ? null : link.kind === "page" ? link.preview : { title: link.provider, site: link.provider, ...(link.image ? { image: link.image } : {}) };
 // Changes nobody undoes (they follow from an edit): synced, not in the
 // undo history (whiteboard.tsx tracks only its own origin).
 const PREVIEW = "link-preview";
 
 export function useBoardLinks(
-  api: Pick<BoardApi, "editable" | "items" | "itemsMap" | "change" | "setProps" | "addItem" | "setSelection" | "center" | "svg" | "view">,
+  api: Pick<BoardApi, "pageId" | "editable" | "guest" | "items" | "itemsMap" | "change" | "setProps" | "addItem" | "setSelection" | "center" | "svg" | "view">,
   addEmbed: (embed: PlayerEmbed, url: string) => void,
 ) {
   const ref = useRef(api);
@@ -53,12 +66,12 @@ export function useBoardLinks(
       id = ref.current.addItem({ type: "embed", url, preview: hostPreview(url), x: at.x - w / 2, y: at.y - h / 2, w, h });
     });
     ref.current.setSelection(new Set([id]));
-    if (!/^https:/.test(url)) return true;
-    void findLink(url).then((link) => {
+    if (!/^https:/.test(url) || ref.current.guest) return true;
+    void lookup(ref.current.pageId, url).then((link) => {
       const item = ref.current.itemsMap.get(id);
       if (!item || !link) return;
       if (link.kind === "player")
-        store(id, { src: link.src, text: link.provider, preview: undefined, h: Math.round((w * 300) / 480) });
+        store(id, { src: link.src, text: link.provider, preview: kept(link)!, h: Math.round((w * 300) / 480) });
       else {
         // Room for the picture above the text.
         const tall = link.preview.image ? Math.round(w * 0.78) : h;
@@ -85,25 +98,53 @@ export function useBoardLinks(
     return true;
   };
 
-  // Previews of lone page addresses in table cells: wanted ones fetched,
-  // those of addresses no cell holds any more removed – a moment after the
-  // last change, by those who may edit.
-  const { items, editable } = api;
+  // A moment after the last change, by those who may edit: previews of
+  // lone addresses in table cells fetched, those of addresses no cell holds
+  // any more removed; stills of players and pictures of older previews
+  // fetched as files of the board.
+  const { items, guest } = api;
+  const editable = api.editable && !guest;
   useEffect(() => {
     if (!editable) return;
     const timer = setTimeout(() => {
-      for (const table of ref.current.items) {
-        if (table.type !== "table" || table.locked) continue;
-        const kept = keptLinks(table);
-        if (Object.keys(kept || {}).length !== Object.keys(table.links || {}).length) store(table.id, { links: kept });
-        for (const url of tablePageLinks(table)) {
-          if (kept?.[url] || !/^https:/.test(url)) continue;
-          void previewOf(url).then((preview) => {
-            const now = ref.current.itemsMap.get(table.id)?.toJSON() as WhiteboardItem | undefined;
-            if (!preview || !now || !tablePageLinks(now).includes(url) || now.links?.[url]) return;
-            store(table.id, { links: { ...(keptLinks(now) || {}), [url]: preview } });
-          });
+      const pageId = ref.current.pageId;
+      const now = (id: string) => ref.current.itemsMap.get(id)?.toJSON() as WhiteboardItem | undefined;
+      for (const item of ref.current.items) {
+        if (item.locked) continue;
+        if (item.type === "table") {
+          const links = keptLinks(item);
+          if (Object.keys(links || {}).length !== Object.keys(item.links || {}).length) store(item.id, { links });
+          for (const url of tablePageLinks(item)) {
+            const entry = links?.[url];
+            if ((entry && !remotePictures(entry)) || !/^https:/.test(url)) continue;
+            void lookup(pageId, url).then((link) => {
+              const table = now(item.id);
+              const value = kept(link);
+              if (!value || !table || !tablePageLinks(table).includes(url)) return;
+              const before = table.links?.[url];
+              if (before && !remotePictures(before)) return;
+              store(item.id, { links: { ...(keptLinks(table) || {}), [url]: value } });
+            });
+          }
+          continue;
         }
+        const embed = boardEmbed(item);
+        // A link card of an older version with pictures of the other site.
+        if (embed?.kind === "link" && remotePictures(item.preview) && /^https:/.test(embed.url))
+          void lookup(pageId, embed.url).then((link) => {
+            const card = now(item.id);
+            if (!card || !remotePictures(card.preview)) return;
+            // Without a new preview the text stays, the pictures go.
+            const text = linkPreviewSchema.safeParse(card.preview);
+            store(item.id, { preview: link?.kind === "page" ? link.preview : text.success ? text.data : hostPreview(embed.url) });
+          });
+        // A player of YouTube or Vimeo without its still picture (exports).
+        if (embed?.kind === "player" && !item.preview && STILLS.test(embed.src) && embedFromUrl(embed.src))
+          void lookup(pageId, embed.src).then((link) => {
+            const player = now(item.id);
+            if (!player || player.preview || player.src !== embed.src || link?.kind !== "player") return;
+            store(item.id, { preview: kept(link)! });
+          });
       }
     }, 1200);
     return () => clearTimeout(timer);
