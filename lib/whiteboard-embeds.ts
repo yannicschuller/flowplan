@@ -4,12 +4,16 @@
 // the same list the Content Security Policy allows as frames (proxy.ts).
 // The board shows a preview first and loads the player only on a click, in
 // a sandboxed frame. PDFs are files of the workspace, drawn with pdf.js.
+// Every other web page becomes a link card (#455): an embed with the
+// address in `url`, no `src`, and the preview GET /api/embed found – never
+// a frame of the page.
 import { z } from "zod";
 import { embedFromUrl, embedProvider } from "./embed-providers";
 import { safeHref } from "./whiteboard-links";
 import { itemTags } from "./whiteboard-tags";
 import { groupPath } from "./whiteboard-groups";
 import type { WhiteboardItem } from "./whiteboard-model";
+import { MAX_TABLE_COLS, MAX_TABLE_LINKS, MAX_TABLE_ROWS, TABLE_FILL } from "./whiteboard-tables";
 
 export const PDF_SOURCE = /^\/api\/(files\/[\w-]+|share\/[\w-]+\/files\/[\w-]+)$/;
 // The same sandbox as embeds in documents (lib/document-schema.ts).
@@ -18,19 +22,50 @@ export const EMBED_ALLOW = "autoplay; fullscreen; picture-in-picture; encrypted-
 
 export type BoardEmbed =
   | { kind: "player"; src: string; provider: string }
-  | { kind: "pdf"; src: string; provider: "PDF" };
+  | { kind: "pdf"; src: string; provider: "PDF" }
+  | { kind: "link"; url: string; provider: string };
+export type PlayerEmbed = Extract<BoardEmbed, { kind: "player" }>;
 // A pasted address as an embed of the allowlist, or null.
-export function embedForUrl(raw: string): BoardEmbed | null {
+export function embedForUrl(raw: string): PlayerEmbed | null {
   const found = embedFromUrl(raw);
   return found ? { kind: "player", src: found.src, provider: found.provider } : null;
 }
 // What a stored embed element may show.
-export function boardEmbed(item: Pick<WhiteboardItem, "type" | "src">): BoardEmbed | null {
-  if (item.type !== "embed" || typeof item.src !== "string") return null;
+export function boardEmbed(item: Pick<WhiteboardItem, "type" | "src"> & Partial<Pick<WhiteboardItem, "url" | "preview">>): BoardEmbed | null {
+  if (item.type !== "embed") return null;
+  if (item.src === undefined || item.src === null) {
+    const url = webUrl(item.url);
+    if (!url) return null;
+    const site = linkPreviewSchema.safeParse(item.preview);
+    return { kind: "link", url, provider: (site.success && site.data.site) || new URL(url).hostname };
+  }
+  if (typeof item.src !== "string") return null;
   if (PDF_SOURCE.test(item.src)) return { kind: "pdf", src: item.src, provider: "PDF" };
   const provider = embedProvider(item.src);
   return provider ? { kind: "player", src: item.src, provider: provider.name } : null;
 }
+// An http(s) address people may open, or null.
+export function webUrl(raw: unknown) {
+  const href = safeHref(raw);
+  return href && /^https?:/i.test(href) ? href : null;
+}
+const httpsImage = z
+  .string()
+  .max(2000)
+  .refine((v) => /^https:\/\//i.test(v) && safeHref(v) !== null);
+// A page's preview as it may be stored (link cards, table cells).
+export const linkPreviewSchema = z
+  .object({
+    title: z.string().max(300),
+    site: z.string().max(100),
+    description: z.string().max(300).optional(),
+    image: httpsImage.optional().catch(undefined),
+    icon: httpsImage.optional().catch(undefined),
+  })
+  .strip()
+  // A dropped picture leaves no key behind.
+  .transform((preview) => Object.fromEntries(Object.entries(preview).filter(([, value]) => value !== undefined)) as typeof preview);
+const tableFill = z.union([z.literal(""), z.string().regex(TABLE_FILL)]);
 
 const fraction = z.number().finite().min(0).max(1);
 export const cropSchema = z
@@ -51,6 +86,15 @@ export const boardExtrasSchema = z.object({
   presentHidden: z.boolean().optional(),
   url: z.string().max(2000).optional(),
   page: z.number().int().min(1).max(100000).optional(),
+  // Link cards and tables (#455, lib/whiteboard-tables.ts).
+  preview: linkPreviewSchema.optional(),
+  headerCol: z.boolean().optional(),
+  rowFills: z.array(tableFill).max(MAX_TABLE_ROWS).optional(),
+  colFills: z.array(tableFill).max(MAX_TABLE_COLS).optional(),
+  links: z
+    .record(z.string().max(2000), linkPreviewSchema)
+    .refine((links) => Object.keys(links).length <= MAX_TABLE_LINKS && Object.keys(links).every((url) => webUrl(url) === url))
+    .optional(),
 });
 export type BoardExtras = z.infer<typeof boardExtrasSchema>;
 export function boardExtras(item: Partial<WhiteboardItem>): BoardExtras {

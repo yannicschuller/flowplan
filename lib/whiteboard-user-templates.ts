@@ -8,6 +8,7 @@ import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage } from "./permissions";
+import type { LinkPreview } from "./whiteboard-tables";
 import { safeImageSource, whiteboardItemTypes, shapeKinds, type WhiteboardItem } from "./whiteboard-model";
 import { boardEmbed, cropSchema, withValidExtras } from "./whiteboard-embeds";
 import { cleanRackFields, type CableData, type DeviceData, type RackData } from "./whiteboard-rack";
@@ -51,6 +52,12 @@ export const templateDraftSchema = z
     emoji: z.string().max(200).optional(),
     cells: z.array(z.array(z.string().max(2000)).max(20)).max(50).optional(),
     header: z.boolean().optional(),
+    // Tables and link cards (#455), checked by withValidExtras.
+    headerCol: z.boolean().optional(),
+    rowFills: z.array(z.string()).optional(),
+    colFills: z.array(z.string()).optional(),
+    links: z.custom<Record<string, LinkPreview>>().optional(),
+    preview: z.custom<LinkPreview>().optional(),
     credit: z.string().max(500).optional(),
     groups: z.array(z.string()).optional(),
     italic: z.boolean().optional(),

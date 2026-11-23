@@ -16,6 +16,8 @@ import { hasRichText } from "@/lib/whiteboard-richtext";
 import { cleanCrop } from "@/lib/whiteboard-embeds";
 import { LinkBadge, RichText, TagChips } from "./rich-text";
 import { EmbedShape } from "./embed-item";
+import { TableCellContent } from "./link-card";
+import { cellFill, isHeadCell, tableShape } from "@/lib/whiteboard-tables";
 import { CardExcerpt } from "./card-preview";
 import { BoardColors, DARK_CANVAS_CLASS, useBoardColors } from "./board-colors";
 import { boardPalette } from "@/lib/whiteboard-display-colors";
@@ -416,8 +418,7 @@ function ShapeBody({
       );
     }
     case "table": {
-      const cells = item.cells?.length ? item.cells : [[""]];
-      const cols = Math.max(1, ...cells.map((r) => r.length));
+      const { cells, cols } = tableShape(item);
       return (
         <g transform={transform}>
           <rect
@@ -448,15 +449,27 @@ function ShapeBody({
               }
             >
               {cells.flatMap((row, r) =>
-                Array.from({ length: cols }, (_, c) => (
-                  <div
-                    key={`${r}:${c}`}
-                    className={`wb-cell${r === 0 && item.header !== false ? " head" : ""}`}
-                    data-cell={`${r}:${c}`}
-                  >
-                    {row[c] || ""}
-                  </div>
-                )),
+                Array.from({ length: cols }, (_, c) => {
+                  // Colours of whole rows and columns (#455).
+                  const fill = cellFill(item, r, c);
+                  return (
+                    <div
+                      key={`${r}:${c}`}
+                      className={`wb-cell${isHeadCell(item, r, c) ? " head" : ""}${fill ? " filled" : ""}`}
+                      data-cell={`${r}:${c}`}
+                      style={
+                        fill
+                          ? ({
+                              "--wb-cell-fill": colors.fill(fill),
+                              "--wb-cell-fill-text": colors.text("#1f2937", colors.fill(fill)),
+                            } as CSSProperties)
+                          : undefined
+                      }
+                    >
+                      <TableCellContent text={row[c] || ""} links={item.links} />
+                    </div>
+                  );
+                }),
               )}
             </div>
           </foreignObject>

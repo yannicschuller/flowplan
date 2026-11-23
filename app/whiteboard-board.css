@@ -969,3 +969,182 @@ p.wb-frame-notes {
   --wb-mini-line: var(--muted);
   background: var(--bg);
 }
+
+/* ---------- Tables: colours and links (#455) ---------- */
+.wb-cell.filled,
+.wb-dark-canvas .wb-cell.filled {
+  background: var(--wb-cell-fill);
+  color: var(--wb-cell-fill-text);
+}
+.wb-cell-text {
+  min-width: 0;
+}
+.wb-cell .wb-link {
+  overflow-wrap: anywhere;
+}
+.wb-cell-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
+.wb-cell-card-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.wb-cell-card-text .wb-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.wb-cell-card-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+.wb-cell-thumb {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.2em;
+  height: 2.2em;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #1f2937;
+}
+.wb-cell-card > .wb-cell-thumb {
+  background: transparent;
+  object-fit: cover;
+}
+.wb-cell-thumb .wb-cell-thumb-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wb-cell-play {
+  position: relative;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: #ffffffe6;
+  color: #1f2937;
+  cursor: pointer;
+}
+.wb-cell-play:hover {
+  background: #ffffff;
+}
+
+/* ---------- Link cards (#455) ---------- */
+.wb-linkcard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  color: #1f2937;
+  font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wb-linkcard-image {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+  background: #f1f3f5;
+}
+.wb-linkcard-body {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  min-height: 0;
+  flex: none;
+}
+.wb-linkcard:not(.with-image) .wb-linkcard-body {
+  flex: 1;
+  align-content: center;
+}
+.wb-linkcard-site {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: #868e96;
+}
+.wb-linkcard-site span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-linkcard-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 3px;
+}
+.wb-linkcard-title {
+  color: inherit;
+  font-weight: 650;
+  font-size: 14px;
+  text-decoration: none;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wb-linkcard-title:hover {
+  text-decoration: underline;
+}
+.wb-linkcard-text {
+  font-size: 12px;
+  color: #495057;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wb-dark-canvas .wb-linkcard {
+  color: var(--text);
+}
+.wb-dark-canvas .wb-linkcard-site {
+  color: var(--muted);
+}
+.wb-dark-canvas .wb-linkcard-text {
+  color: var(--secondary);
+}
+
+/* A player from a table cell. */
+.wb-player {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000000;
+}
+.wb-player iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* The table's colour popover in the style bar. */
+.wb-table-colors {
+  gap: 6px;
+  min-width: 230px;
+}
+.wb-table-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px;
+}

@@ -173,6 +173,9 @@ import { sharedUpdate } from "@/lib/whiteboard-private-mode";
 import { applyRackLayout, cableTypeFor, deviceOf, isCable, portAt, rackOf, remapRack, snapDevice, RACK_HEADER, RACK_U, RACK_FOOTER, RACK_MAX_U } from "@/lib/whiteboard-rack";
 import { DeviceCard, useDeviceCard } from "./rack-card";
 import { fitBarMenu } from "./item-tools";
+import { TableTools } from "./table-tools";
+import { exportWholeBoard } from "./board-export";
+import { trimFills } from "@/lib/whiteboard-tables";
 import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
 import { shortcutLetter } from "@/lib/keymap";
 import { placeStyleBar, type ScreenRect } from "@/lib/whiteboard-style-bar";
@@ -1360,6 +1363,9 @@ export default function Whiteboard({
         cells: next,
         h: Math.round((item.h / cells.length) * nextRows),
         w: Math.round((item.w / oldCols) * nextCols),
+        // Colours of rows and columns that are gone go with them (#455).
+        rowFills: trimFills(item.rowFills, nextRows),
+        colFills: trimFills(item.colFills, nextCols),
       }),
     );
   }
@@ -2640,6 +2646,11 @@ export default function Whiteboard({
       e.preventDefault();
       return;
     }
+    // A lone web address: a player or a link card (#455).
+    if (text && extras.pasteLink(text)) {
+      e.preventDefault();
+      return;
+    }
     if (text) {
       e.preventDefault();
       const at = center();
@@ -2659,61 +2670,20 @@ export default function Whiteboard({
       setSelection(new Set([id]));
     }
   }
+  // The quick exports of the board menu draw like "Exportieren …"
+  // (components/whiteboard/board-export.ts, #455).
   function exportBoard(kind: "svg" | "png") {
     const node = svg.current;
-    const box = contentBounds(items, byId);
-    if (!node || !box) return onError(t("Das Whiteboard ist leer.", "The whiteboard is empty."));
-    // Exports stay light (#399).
-    const clone = lightCopy(() => node.cloneNode(true) as SVGSVGElement);
-    clone.querySelectorAll("[data-ui]").forEach((el) => el.remove());
-    const world = clone.querySelector("[data-world]");
-    world?.removeAttribute("transform");
-    const pad = 40;
-    clone.setAttribute(
-      "viewBox",
-      `${box.x - pad} ${box.y - pad} ${box.w + pad * 2} ${box.h + pad * 2}`,
+    if (!node) return;
+    exportWholeBoard(node, items, kind, lightCopy).catch((e: Error) =>
+      onError(
+        e.message === "empty"
+          ? t("Das Whiteboard ist leer.", "The whiteboard is empty.")
+          : e.message === "render"
+            ? t("Der Browser konnte das Bild nicht erzeugen. Bitte SVG verwenden.", "The browser could not create the picture. Please use SVG.")
+            : e.message,
+      ),
     );
-    clone.setAttribute("width", String(Math.round(box.w + pad * 2)));
-    clone.setAttribute("height", String(Math.round(box.h + pad * 2)));
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    const style = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "style",
-    );
-    style.textContent =
-      ".wb-text{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;white-space:pre-wrap;word-break:break-word;font-family:system-ui,sans-serif;box-sizing:border-box}.wb-frame-title{font:600 14px system-ui;color:#495057}.wb-card-body{display:flex;flex-direction:column;justify-content:center;height:100%;font:14px system-ui}.wb-card-body small{color:#868e96}.wb-emoji-glyph{display:flex;align-items:center;justify-content:center;height:100%}";
-    clone.prepend(style);
-    const source = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([source], { type: "image/svg+xml" });
-    const save = (b: Blob, ext: string) => {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(b);
-      a.download = `whiteboard.${ext}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    };
-    if (kind === "svg") return save(blob, "svg");
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const scale = Math.min(2, 8000 / Math.max(img.width, img.height));
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      try {
-        canvas.toBlob((b) => b && save(b, "png"));
-      } catch {
-        onError(
-          t("Der Browser erlaubt keinen PNG-Export dieses Boards. Bitte SVG verwenden.", "The browser does not allow a PNG export of this board. Please use SVG."),
-        );
-      }
-    };
-    img.onerror = () =>
-      onError(t("PNG-Export fehlgeschlagen. Bitte SVG verwenden.", "PNG export failed. Please use SVG."));
-    img.src = URL.createObjectURL(blob);
   }
 
   const extras = useBoardExtras({
@@ -3042,28 +3012,7 @@ export default function Whiteboard({
             </>
           )}
           {types.has("table") && types.size === 1 && (
-            <>
-              <span className="wb-sep" />
-              <button title={t("Zeile hinzufügen", "Add row")} onClick={() => resizeTable(first, 1, 0)}>
-                {t("+ Zeile", "+ Row")}
-              </button>
-              <button title={t("Letzte Zeile entfernen", "Remove last row")} onClick={() => resizeTable(first, -1, 0)}>
-                {t("− Zeile", "− Row")}
-              </button>
-              <button title={t("Spalte hinzufügen", "Add column")} onClick={() => resizeTable(first, 0, 1)}>
-                {t("+ Spalte", "+ Column")}
-              </button>
-              <button title={t("Letzte Spalte entfernen", "Remove last column")} onClick={() => resizeTable(first, 0, -1)}>
-                {t("− Spalte", "− Column")}
-              </button>
-              <button
-                className={first.header !== false ? "active" : ""}
-                aria-pressed={first.header !== false}
-                onClick={() => set({ header: first.header === false })}
-              >
-                {t("Kopfzeile", "Header row")}
-              </button>
-            </>
+            <TableTools item={first} cell={cellEdit?.id === first.id ? cellEdit : null} set={set} resize={(rows, cols) => resizeTable(first, rows, cols)} />
           )}
           {movable().length >= 2 && (
             <>

@@ -69,7 +69,8 @@ test("link cards come from oEmbed and Open Graph data", () => {
     <meta property="og:title" content="Quartalsbericht &amp; Ausblick">
     <meta property="og:site_name" content="Beispiel AG">
     <meta name="description" content="Zahlen und Ziele">
-    <meta property="og:image" content="/bild.png"></head></html>`;
+    <meta property="og:image" content="/bild.png">
+    <link rel="shortcut icon" href="/favicon.png"></head></html>`;
   assert.deepEqual(previewCard(html, "https://example.org/bericht"), {
     kind: "card",
     url: "https://example.org/bericht",
@@ -77,6 +78,7 @@ test("link cards come from oEmbed and Open Graph data", () => {
     provider: "Beispiel AG",
     description: "Zahlen und Ziele",
     image: "https://example.org/bild.png",
+    icon: "https://example.org/favicon.png",
   });
   const fromOembed = previewCard("", "https://example.org/x", {
     title: "Song",

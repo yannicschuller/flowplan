@@ -15,6 +15,7 @@ import { libraryShapeSvg } from "./whiteboard-shapes-library";
 import { timelineSvg } from "./whiteboard-timeline";
 import { hasRichText, richTextHtml } from "./whiteboard-richtext";
 import { boardEmbed, withValidExtras } from "./whiteboard-embeds";
+import { cellFill, cellParts, isHeadCell, tableShape } from "./whiteboard-tables";
 import { itemTags, tagColor } from "./whiteboard-tags";
 // Racks, devices and cables (#90).
 import { applyRackLayout, cableStyle, cleanRackFields, isCable } from "./whiteboard-rack";
@@ -36,6 +37,11 @@ const text = (value: string) => String(value).replaceAll("&", "&amp;").replaceAl
 // Only plain colours from the board's palette reach an attribute.
 const color = (value: string | undefined, fallback: string) =>
   value && /^(#[0-9a-f]{3,8}|[a-z]{3,20}|rgba?\([\d.,\s%]+\))$/i.test(value) ? value : fallback;
+// Cell text with its web addresses as links (#455).
+const cellHtml = (value: string) =>
+  cellParts(value)
+    .map((part) => (part.href ? `<a href="${attr(part.href)}">${text(part.text)}</a>` : text(part.text)))
+    .join("");
 const num = (value: unknown, fallback = 0) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 
 const STYLE =
@@ -45,7 +51,7 @@ const STYLE =
   ".wb-card-body small{color:#868e96;font-size:12px}" +
   ".wb-connector-label{display:flex;align-items:center;justify-content:center;height:100%;font:13px system-ui,sans-serif;color:#1f2937}.wb-connector-label span{background:#fff;padding:0 4px;border-radius:4px}" +
   ".wb-table-grid{display:grid;width:100%;height:100%;font-family:system-ui,sans-serif;color:#1f2937}" +
-  ".wb-cell{border:1px solid #dee2e6;padding:4px 6px;overflow:hidden;white-space:pre-wrap}.wb-cell.head{font-weight:600;background:#f1f3f5}" +
+  ".wb-cell{border:1px solid #dee2e6;padding:4px 6px;overflow:hidden;white-space:pre-wrap}.wb-cell.head{font-weight:600;background:#f1f3f5}.wb-cell a{color:#1c7ed6}" +
   ".wb-emoji-glyph{display:flex;align-items:center;justify-content:center;height:100%}";
 
 function html(width: number, height: number, inner: string, x = 0, y = 0) {
@@ -156,6 +162,18 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
       // The export never loads players: a card with the provider and link.
       const embed = boardEmbed(item);
       if (!embed) return "";
+      if (embed.kind === "link") {
+        // A link card: title, site and address (its picture stays on the web).
+        const preview = item.preview;
+        return g(
+          `<rect width="${item.w}" height="${item.h}" rx="10" fill="#ffffff" stroke="#dee2e6"/>` +
+            html(
+              item.w,
+              item.h,
+              `<div class="wb-card-body" style="padding:12px;box-sizing:border-box"><small>${text(embed.provider)}</small><strong><a href="${attr(embed.url)}" style="color:#1f2937">${text(preview?.title || embed.url)}</a></strong>${preview?.description ? `<span style="font-size:12px;color:#495057">${text(preview.description)}</span>` : ""}</div>`,
+            ),
+        );
+      }
       const link = embed.kind === "player" ? item.url || embed.src : "";
       const title = item.text || (embed.kind === "pdf" ? "PDF" : embed.provider);
       return g(
@@ -187,10 +205,14 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
       );
     }
     case "table": {
-      const cells = item.cells?.length ? item.cells : [[""]];
-      const cols = Math.max(1, ...cells.map((r) => r.length));
+      const { cells, cols } = tableShape(item);
       const grid = cells
-        .flatMap((row, r) => Array.from({ length: cols }, (_, c) => `<div class="wb-cell${r === 0 && item.header !== false ? " head" : ""}">${text(row[c] || "")}</div>`))
+        .flatMap((row, r) =>
+          Array.from({ length: cols }, (_, c) => {
+            const fill = cellFill(item, r, c);
+            return `<div class="wb-cell${isHeadCell(item, r, c) ? " head" : ""}"${fill ? ` style="background:${attr(fill)}"` : ""}>${cellHtml(row[c] || "")}</div>`;
+          }),
+        )
         .join("");
       return g(
         `<rect width="${item.w}" height="${item.h}" fill="#ffffff" stroke="#adb5bd" rx="4"/>` +
