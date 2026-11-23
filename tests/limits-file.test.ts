@@ -309,3 +309,62 @@ test("members and API tokens are refused", async () => {
   await assert.rejects(command(token, { action: "admin.limitsExport" }), (e: { status?: number }) => e.status === 403);
   await assert.rejects(command(token, { action: "admin.limitsImport", file: sample(), dryRun: true }), (e: { status?: number }) => e.status === 403);
 });
+
+test("aiTokens: tokens per period directly with the unit tokens, aiActions still read; cost needs actions", async () => {
+  // The instance counts in cost: tokens alone are an error, next to actions a note.
+  const costly = sample() as Json;
+  costly.plans[0].aiTokens = 5_000_000;
+  delete costly.plans[0].aiActions;
+  costly.flowplan.aiQuota.defaultTokens = 150_000;
+  delete costly.flowplan.aiQuota.defaultActions;
+  const refused = await importFile(costly, true);
+  assert.equal(refused.ok, false);
+  assert.deepEqual(
+    refused.errors.map((e) => `${e.path} ${e.code} ${e.value}`).sort(),
+    ["flowplan.aiQuota.defaultTokens tokens_need_unit cost", "plans[0].aiTokens tokens_need_unit cost"],
+  );
+  const both = sample() as Json;
+  both.plans[0].aiTokens = 5_000_000;
+  const ignored = await importFile(both, true);
+  assert.equal(ignored.ok, true);
+  assert.deepEqual(ignored.notes.filter((n) => n.code !== "capped"), [{ path: "plans[0].aiTokens", code: "tokens_ignored", value: "cost" }]);
+
+  // With the unit tokens: aiTokens without conversion, and it wins over aiActions.
+  const file = sample() as Json;
+  file.flowplan.aiQuota = { unit: "tokens", defaultTokens: 150_000, defaultAfter: "off", instanceCapTokens: 900_000_000 };
+  file.plans[0].aiTokens = 5_000_000;
+  file.plans[1].aiTokens = 20_000_000;
+  delete file.plans[1].aiActions;
+  file.plans.push({ group: "Flowplan Old", kind: "plan", aiActions: 200, aiAfter: "off" });
+  const dry = await importFile(file, true);
+  assert.equal(dry.ok, true, JSON.stringify(dry.errors));
+  assert.deepEqual(dry.notes.filter((n) => n.code !== "capped"), [{ path: "plans[0].aiActions", code: "tokens_win", value: "aiTokens" }]);
+  const plusChange = dry.changes.find((c) => c.area === "quota" && c.name === "Flowplan Plus");
+  assert.ok(plusChange?.area === "quota" && plusChange.after?.limit === 5_000_000 && plusChange.after.actions === null, JSON.stringify(plusChange));
+  assert.equal((await importFile(file, false)).applied, true);
+  const rules = Object.fromEntries((await quotaRules()).map((r) => [`${r.scope}|${r.target}`, r]));
+  assert.equal((await quotaSettings()).unit, "tokens");
+  assert.deepEqual(rules["group|dir:Flowplan Plus"].limits, { month: 5_000_000 });
+  assert.deepEqual(rules["group|dir:Flowplan Pro"].limits, { month: 20_000_000 });
+  // An older file's actions: converted with tokensPerAction (5,000).
+  assert.deepEqual(rules["group|dir:Flowplan Old"].limits, { month: 1_000_000 });
+  assert.deepEqual(rules["default|"].limits, { month: 150_000 });
+  assert.deepEqual(rules["instance|"].limits, { month: 900_000_000 });
+
+  // The export writes aiTokens (and defaultTokens) in the unit tokens; the round trip has no changes.
+  const exported = (await command(admin, { action: "admin.limitsExport" })) as Json;
+  const plus = exported.plans.find((p: Json) => p.group === "Flowplan Plus");
+  assert.equal(plus.aiTokens, 5_000_000);
+  assert.equal(plus.aiActions, undefined);
+  assert.equal(exported.plans.find((p: Json) => p.group === "Flowplan Old").aiTokens, 1_000_000);
+  assert.equal(exported.flowplan.aiQuota.defaultTokens, 150_000);
+  assert.equal(exported.flowplan.aiQuota.defaultActions, undefined);
+  assert.equal(exported.flowplan.aiQuota.unit, "tokens");
+  const again = await importFile(JSON.stringify(exported), true);
+  assert.deepEqual([again.ok, again.changes, again.notes], [true, [], []]);
+  // aiTokens null removes the rule, as aiActions null does.
+  const remove = JSON.parse(JSON.stringify(exported)) as Json;
+  remove.plans.find((p: Json) => p.group === "Flowplan Old").aiTokens = null;
+  await importFile(remove, false);
+  assert.equal((await quotaRules()).find((q) => q.target === "dir:Flowplan Old"), undefined);
+});
