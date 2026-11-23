@@ -4,6 +4,7 @@ import { withDevice } from "@/lib/mobile-device-route";
 import { limitWidgets, widgetKinds, widgetOptions, widgetsData, type WidgetKind } from "@/lib/mobile-widgets";
 import { SHARE_MAX_FILES, widgetAction, type UploadFile } from "@/lib/mobile-widget-actions";
 import { withIdempotency } from "@/lib/idempotency";
+import { maxUploadMbFor } from "@/lib/user-limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,10 @@ export const dynamic = "force-dynamic";
 //                                    capture.share (fields + up to 10 "file")
 const headers = { "Cache-Control": "no-store" };
 const JSON_LIMIT = 32_000;
+// Photos, voice memos and shared PDFs are read into memory: the whole
+// request stays below this (each file has its own limit as well), even
+// when the upload limit is far higher (up to 10 GB, POST /api/upload).
+const MAX_REQUEST = 100 * 1024 * 1024;
 
 export async function GET(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
@@ -50,6 +55,8 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     limitWidgets(user, "action");
     // Photos and voice memos come as multipart/form-data.
     if ((req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
+      const length = req.headers.get("content-length");
+      if (length && Number(length) > Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * SHARE_MAX_FILES) + 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
       limitWidgets(user, "upload");
       const form = await req.formData();
       // capture.share takes several "file" parts, capture.upload the first.

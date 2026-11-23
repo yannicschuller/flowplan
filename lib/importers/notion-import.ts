@@ -3,6 +3,7 @@
 // reads the chosen ones (lib/importers/notion-api.ts) and writes them like
 // any other import (lib/importers/write.ts), with the import report. The
 // token is an argument here and nothing more: never stored, never logged.
+import { IN_MEMORY_FILE_MB } from "../upload-limit";
 import { all } from "../db";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
@@ -42,7 +43,7 @@ export async function importNotion(
   );
   const member = (person: { name?: string; email?: string }) =>
     members.find((m) => (person.email && m.email.toLowerCase() === person.email.toLowerCase()) || (person.name && foldName(m.name) === foldName(person.name)))?.id;
-  const tree = await parseNotionApi(secret, items, { ...test, member, maxFileBytes: (await maxUploadMbFor(user)) * 1024 * 1024 });
+  const tree = await parseNotionApi(secret, items, { ...test, member, maxFileBytes: Math.min(IN_MEMORY_FILE_MB, await maxUploadMbFor(user)) * 1024 * 1024 });
   try {
     await jobProgress(0.9);
     return await writeImport(user, workspaceId, spaceId, tree, "pages");

@@ -23,7 +23,7 @@
 // - Keys expire after 24 hours (sweepIdempotencyKeys in the operations
 //   worker). Requests without a key behave as before.
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { one, run } from "./db";
 import { cookieName, HttpError } from "./auth";
 import { localeOfRequest } from "./content-locale";
@@ -38,9 +38,14 @@ import {
 
 export const IDEMPOTENCY_TTL = 24 * 3600_000;
 export const MAX_STORED_RESPONSE = 64 * 1024;
-// Bodies are hashed up to this size (the largest archive imports); larger
-// ones are refused before anything else reads them.
-const MAX_HASHED_BODY = 120 * 1024 * 1024;
+// Bodies up to this size (with a Content-Length) are hashed before the
+// handler runs; larger ones – uploads of up to 10 GB – and bodies without a
+// length are hashed while the handler reads them (streamedHash), never held
+// in memory.
+// /api/command reserves the key inside its transaction with the hash, so
+// its bodies are always hashed first, up to the former limit of 120 MB.
+const BUFFERED_HASH_BODY = 8 * 1024 * 1024;
+const MAX_ATOMIC_BODY = 120 * 1024 * 1024;
 const RETRY_AFTER_SECONDS = 2;
 
 // Commands whose answer is a secret shown once (a new token, an address
@@ -103,14 +108,9 @@ export async function idempotencyPrincipal(req: Request): Promise<Principal | nu
 // The request as hashed: method, path with its query (without the display
 // language) and the body. Multipart bodies hash with their boundary
 // replaced – a client builds a new one for every attempt.
-async function requestHash(req: Request): Promise<string> {
-  const url = new URL(req.url);
-  const query = [...url.searchParams.entries()].filter(([name]) => name !== "lang").sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const target = url.pathname + (query.length ? `?${new URLSearchParams(query)}` : "");
+async function requestHash(req: Request, max = BUFFERED_HASH_BODY): Promise<string> {
   let body: Buffer = Buffer.alloc(0);
   if (req.body) {
-    const length = Number(req.headers.get("content-length") || 0);
-    if (length > MAX_HASHED_BODY) throw new HttpError(413, "Anfrage zu groß.");
     const reader = req.clone().body!.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -118,7 +118,7 @@ async function requestHash(req: Request): Promise<string> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_HASHED_BODY) {
+      if (size > max) {
         // Not awaited: a tee's cancel settles only once both branches are done.
         void reader.cancel().catch(() => undefined);
         throw new HttpError(413, "Anfrage zu groß.");
@@ -126,10 +126,71 @@ async function requestHash(req: Request): Promise<string> {
       chunks.push(value);
     }
     body = Buffer.concat(chunks);
-    const boundary = (req.headers.get("content-type") || "").match(/^multipart\/form-data;.*boundary="?([^";]+)"?/i)?.[1];
+    const boundary = multipartBoundaryOf(req);
     if (boundary) body = replaceAll(body, Buffer.from(`--${boundary}`), Buffer.from("--flowplan-boundary"));
   }
-  return sha256(`${req.method.toUpperCase()}\n${target}\n${sha256(body)}`);
+  return sha256(`${req.method.toUpperCase()}\n${hashTarget(req)}\n${sha256(body)}`);
+}
+const multipartBoundaryOf = (req: Request) => (req.headers.get("content-type") || "").match(/^multipart\/form-data;.*boundary="?([^";]+)"?/i)?.[1];
+function hashTarget(req: Request) {
+  const url = new URL(req.url);
+  const query = [...url.searchParams.entries()].filter(([name]) => name !== "lang").sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return url.pathname + (query.length ? `?${new URLSearchParams(query)}` : "");
+}
+// Whether the body is hashed while the handler reads it.
+const streamsBody = (req: Request) => {
+  if (!req.body) return false;
+  const length = req.headers.get("content-length");
+  return !length || !/^\d+$/.test(length) || Number(length) > BUFFERED_HASH_BODY;
+};
+
+// The same hash as requestHash, computed piece by piece as the body flows
+// past: the boundary is replaced across chunk borders (a match may start in
+// one chunk and end in the next), so the result equals the buffered one.
+export function streamedHash(req: Request) {
+  const boundary = multipartBoundaryOf(req);
+  const needle = boundary ? Buffer.from(`--${boundary}`) : null;
+  const replacement = Buffer.from("--flowplan-boundary");
+  const inner = createHash("sha256");
+  let carry: Buffer = Buffer.alloc(0);
+  let complete = false;
+  const update = (chunk: Uint8Array) => {
+    if (!needle) return void inner.update(chunk);
+    const data = carry.length ? Buffer.concat([carry, chunk]) : Buffer.from(chunk);
+    let from = 0;
+    for (let at = data.indexOf(needle, from); at !== -1; at = data.indexOf(needle, from)) {
+      inner.update(data.subarray(from, at));
+      inner.update(replacement);
+      from = at + needle.length;
+    }
+    // Kept back: what could be the start of a boundary in the next chunk.
+    const keep = Math.max(from, data.length - (needle.length - 1));
+    inner.update(data.subarray(from, keep));
+    carry = Buffer.from(data.subarray(keep));
+  };
+  const digest = () => {
+    inner.update(carry);
+    carry = Buffer.alloc(0);
+    return sha256(`${req.method.toUpperCase()}\n${hashTarget(req)}\n${inner.digest("hex")}`);
+  };
+  const through = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      update(chunk);
+      controller.enqueue(chunk);
+    },
+    flush() {
+      complete = true;
+    },
+  });
+  return { through, digest, complete: () => complete };
+}
+// Reads a body to its end only to hash it (a retry of a large request whose
+// answer is stored): nothing is kept.
+async function drainedHash(req: Request) {
+  const hashing = streamedHash(req);
+  const reader = req.body!.pipeThrough(hashing.through).getReader();
+  while (!(await reader.read()).done);
+  return hashing.digest();
 }
 function replaceAll(source: Buffer, search: Buffer, replacement: Buffer) {
   const parts: Buffer[] = [];
@@ -288,6 +349,75 @@ export function withIdempotency<A extends unknown[]>(
   handler: (req: Request, ...rest: A) => Promise<Response> | Response,
   options: Options<A> = {},
 ) {
+  // Large bodies (and those without a length): the key is reserved before
+  // the body is read, and the hash – computed while the handler reads it –
+  // is stored with the answer. A retry while the first still runs gets 409
+  // (whatever its body); one after it reads its body only to compare the
+  // hash, then gets the stored answer (or 422).
+  const streamed = async (req: Request, rest: A, principal: Principal, key: string, extra: Record<string, string>): Promise<Response> => {
+    try {
+      options.check?.(req);
+    } catch (e) {
+      if (e instanceof HttpError) return refusal(req, e.status, e.message, "refused", extra);
+      throw e;
+    }
+    const now = Date.now();
+    const existing = await lookup(principal.scope, key, now);
+    if (existing) return answerFor(req, existing, existing.status === "processing" ? existing.request_hash : await drainedHash(req), extra);
+    const pending = `pending:${randomUUID()}`;
+    const reserved = (await run(
+      "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,stored,created_at) VALUES(?,?,?,?,'processing','body',?) ON CONFLICT(scope,key) DO NOTHING",
+      principal.scope,
+      key,
+      principal.userId,
+      pending,
+      now,
+    )).changes;
+    if (!reserved) {
+      const row = await lookup(principal.scope, key, now);
+      if (row) return answerFor(req, row, row.request_hash, extra);
+    }
+    const hashing = streamedHash(req);
+    const hashed = new Request(req, { body: req.body!.pipeThrough(hashing.through), duplex: "half" } as RequestInit);
+    const ctx: Context = { principal, key, hash: pending, now, atomic: false };
+    const release = async () => await run("DELETE FROM idempotency_keys WHERE scope=? AND key=? AND status='processing'", principal.scope, key);
+    let response: Response;
+    try {
+      response = await context.run(ctx, () => handler(hashed, ...rest));
+    } catch (e) {
+      await release();
+      throw e;
+    }
+    if (response.status < 200 || response.status >= 300) {
+      await release();
+      return response;
+    }
+    const text = await responseText(response);
+    let secret = false;
+    if (text !== null)
+      try {
+        secret = containsSecret(JSON.parse(text));
+      } catch {}
+    const { stored, response: body } = storedForm(response.status, text, secret);
+    // A handler that did not touch the body: read now, only for the hash.
+    if (!hashing.complete() && !hashed.bodyUsed && hashed.body) {
+      const reader = hashed.body.getReader();
+      while (!(await reader.read()).done);
+    }
+    // One that answered after reading part of it: the hash of what it
+    // read, marked, so a retry never matches by accident.
+    const hash = hashing.complete() ? hashing.digest() : `partial:${hashing.digest()}`;
+    await run(
+      "UPDATE idempotency_keys SET status='done',request_hash=?,http_status=?,response=?,stored=? WHERE scope=? AND key=?",
+      hash,
+      response.status,
+      body,
+      stored,
+      principal.scope,
+      key,
+    );
+    return response;
+  };
   return async (req: Request, ...rest: A): Promise<Response> => {
     const key = req.headers.get(IDEMPOTENCY_HEADER);
     if (key === null || options.skip?.(req, ...rest)) return handler(req, ...rest);
@@ -296,10 +426,12 @@ export function withIdempotency<A extends unknown[]>(
       return refusal(req, 400, "Ungültiger Idempotency-Key (8–128 Zeichen: A–Z, a–z, 0–9, _ und -).", IDEMPOTENCY_CODES.invalid, extra);
     const principal = await idempotencyPrincipal(req);
     if (!principal) return handler(req, ...rest);
+    const atomic = !!options.atomic?.(req, ...rest);
+    if (!atomic && streamsBody(req)) return await streamed(req, rest, principal, key, extra);
     let hash: string;
     try {
       options.check?.(req);
-      hash = await requestHash(req);
+      hash = await requestHash(req, atomic ? MAX_ATOMIC_BODY : BUFFERED_HASH_BODY);
     } catch (e) {
       if (e instanceof HttpError) return refusal(req, e.status, e.message, e.status === 413 ? "request_too_large" : "refused", extra);
       throw e;
@@ -307,7 +439,7 @@ export function withIdempotency<A extends unknown[]>(
     const now = Date.now();
     const existing = await lookup(principal.scope, key, now);
     if (existing) return answerFor(req, existing, hash, extra);
-    const ctx: Context = { principal, key, hash, now, atomic: !!options.atomic?.(req, ...rest) };
+    const ctx: Context = { principal, key, hash, now, atomic };
     if (!ctx.atomic) {
       const reserved = (await run(
         "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,stored,created_at) VALUES(?,?,?,?,'processing','body',?) ON CONFLICT(scope,key) DO NOTHING",

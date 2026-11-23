@@ -1,8 +1,9 @@
 // An S3 stand-in for tests: path-style objects in memory, ListObjectsV2
 // (prefix, delimiter, Size, LastModified, max-keys and continuation
 // tokens), HeadObject (Content-Length), CopyObject, DeleteObjects (POST
-// ?delete), and failures on
-// demand. Signed requests only (AWS4-HMAC-SHA256), like the real thing.
+// ?delete), multipart uploads (POST ?uploads, PUT ?partNumber&uploadId,
+// POST ?uploadId to complete, DELETE ?uploadId to abort; parts other than
+// the last must be at least 5 MB, as in S3), and failures on demand. Signed requests only (AWS4-HMAC-SHA256), like the real thing.
 //
 //   const s3 = await startFakeS3();
 //   process.env.S3_ENDPOINT = s3.endpoint; process.env.S3_BUCKET = "bucket";
@@ -19,6 +20,10 @@ export type FakeS3 = {
   down: { value: boolean };
   // DeleteObjects answers 501 while set (a provider without it).
   noBatchDelete: { value: boolean };
+  // Multipart uploads under way (uploadId → parts), and the largest body
+  // of a single request seen.
+  multipart: Map<string, { path: string; parts: Map<number, Buffer> }>;
+  largestBody: { value: number };
   close: () => Promise<void>;
 };
 
@@ -30,6 +35,9 @@ export async function startFakeS3(): Promise<FakeS3> {
   const failing = new Set<string>();
   const down = { value: false };
   const noBatchDelete = { value: false };
+  const multipart = new Map<string, { path: string; parts: Map<number, Buffer> }>();
+  const largestBody = { value: 0 };
+  let uploads = 0;
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c) => chunks.push(c));
@@ -39,8 +47,37 @@ export async function startFakeS3(): Promise<FakeS3> {
       requests.push(`${req.method} ${path}${url.search}`);
       if (!/^AWS4-HMAC-SHA256 /.test(String(req.headers.authorization))) return void res.writeHead(403).end();
       if (down.value) return void res.writeHead(503).end();
-      if ([...failing].some((key) => path.includes(key))) return void res.writeHead(500).end();
+      if ([...failing].some((key) => path.includes(key) || url.search.includes(key))) return void res.writeHead(500).end();
       const bucket = path.split("/")[1];
+      largestBody.value = Math.max(largestBody.value, chunks.reduce((n, c) => n + c.length, 0));
+      if (req.method === "POST" && url.searchParams.has("uploads")) {
+        const id = `upload-${++uploads}`;
+        multipart.set(id, { path, parts: new Map() });
+        return void res.writeHead(200).end(`<InitiateMultipartUploadResult><UploadId>${id}</UploadId></InitiateMultipartUploadResult>`);
+      }
+      const uploadId = url.searchParams.get("uploadId");
+      if (uploadId) {
+        const upload = multipart.get(uploadId);
+        if (!upload || upload.path !== path) return void res.writeHead(404).end("<Error><Code>NoSuchUpload</Code></Error>");
+        if (req.method === "PUT") {
+          const n = Number(url.searchParams.get("partNumber"));
+          upload.parts.set(n, Buffer.concat(chunks));
+          return void res.writeHead(200, { ETag: `"etag-${n}"` }).end();
+        }
+        if (req.method === "DELETE") {
+          multipart.delete(uploadId);
+          return void res.writeHead(204).end();
+        }
+        if (req.method === "POST") {
+          const listed = [...Buffer.concat(chunks).toString().matchAll(/<PartNumber>(\d+)<\/PartNumber><ETag>&quot;etag-(\d+)&quot;<\/ETag>/g)].map((m) => Number(m[1]));
+          const numbers = [...upload.parts.keys()].sort((a, b) => a - b);
+          if (listed.join() !== numbers.join() || numbers.some((n, i) => n !== i + 1)) return void res.writeHead(400).end("<Error><Code>InvalidPart</Code></Error>");
+          if (numbers.slice(0, -1).some((n) => upload.parts.get(n)!.length < 5 * 1024 * 1024)) return void res.writeHead(400).end("<Error><Code>EntityTooSmall</Code></Error>");
+          objects.set(path, { body: Buffer.concat(numbers.map((n) => upload.parts.get(n)!)), at: Date.now() });
+          multipart.delete(uploadId);
+          return void res.writeHead(200).end("<CompleteMultipartUploadResult/>");
+        }
+      }
       if (req.method === "GET" && url.searchParams.get("list-type") === "2") {
         const prefix = url.searchParams.get("prefix") || "";
         const delimiter = url.searchParams.get("delimiter");
@@ -117,6 +154,8 @@ export async function startFakeS3(): Promise<FakeS3> {
     failing,
     down,
     noBatchDelete,
+    multipart,
+    largestBody,
     close: () => new Promise<void>((done) => server.close(() => done())),
   };
 }

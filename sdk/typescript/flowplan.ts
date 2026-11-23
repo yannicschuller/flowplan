@@ -4764,7 +4764,7 @@ export class FlowplanClient {
   }>("GET", `/api/files/${encodeURIComponent(fileId)}/sheet`, { query }, options);
   }
 
-  /** Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
+  /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;
     file: Blob;

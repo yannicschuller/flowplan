@@ -26,6 +26,7 @@
 //   suspended cards stay suspended, new ones as suspended new cards.
 // The databases are written by lib/importers/write.ts like every importer's
 // (rights, quotas, files, the import report), in one transaction.
+import { IN_MEMORY_FILE_MB } from "../upload-limit";
 import { readFileSync, statSync } from "node:fs";
 import sanitize from "sanitize-html";
 import { id } from "../db";
@@ -554,7 +555,7 @@ export async function importAnki(
   if (!pkg.notes.length) throw new HttpError(400, "Im Anki-Paket wurden keine Notizen gefunden.");
   await jobProgress(0.3);
   const title = file.name.replace(/\.(apkg|colpkg|zip)$/i, "").slice(0, 200) || "Anki";
-  const plan = planAnki(pkg, opts, title, { fileBytes: Math.max(1, (await instanceSettings()).maxUploadMb) * 1024 * 1024, files: maxImportFiles() });
+  const plan = planAnki(pkg, opts, title, { fileBytes: Math.max(1, Math.min(IN_MEMORY_FILE_MB, (await instanceSettings()).maxUploadMb)) * 1024 * 1024, files: maxImportFiles() });
   await jobProgress(0.5);
   if (options.dryRun) return { ...(await previewImport(user, workspaceId, spaceId, plan.tree)), anki: plan.preview };
   const result = await writeImport(user, workspaceId, spaceId, plan.tree);

@@ -28,11 +28,12 @@ import type { Identity } from "./types";
 import { mapAsync } from "./each-async";
 import { allGroupKeys, groupChoices, personGroupKeys, validGroupKey } from "./person-groups";
 import { MAX_DIRECTORY_NAME } from "./group-keys";
+import { MAX_UPLOAD_MB } from "./upload-limit";
 
 export const userLimitsSchema = z.object({
   storageMb: z.number().int().min(0).max(10_000_000).nullable().optional(),
   workspaces: z.number().int().min(0).max(10_000).nullable().optional(),
-  uploadMb: z.number().int().min(1).max(1024).nullable().optional(),
+  uploadMb: z.number().int().min(1).max(MAX_UPLOAD_MB).nullable().optional(),
 });
 export type UserLimits = z.infer<typeof userLimitsSchema>;
 // A group's limits: the same fields, plus whether its storage is a limit

@@ -23,7 +23,10 @@ import { hasCalDavAccess } from "@/lib/caldav";
 import { withMeetingNotes } from "@/lib/meeting-notes";
 import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
-import { requireBodySize, sanitizeFileName, stripLocation, uploadMime } from "@/lib/upload-safety";
+import { requireBodySize, sanitizeFileName, stripLocationFile, uploadMime } from "@/lib/upload-safety";
+import { readFileSync, statSync } from "node:fs";
+import { uploadPath, uploadsDir } from "@/lib/storage";
+import { readMultipartStream, sweepIncoming } from "@/lib/multipart-stream";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
 import { storageOverview } from "@/lib/storage-overview";
@@ -75,7 +78,7 @@ import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space
 import { libraryOverview, searchLibrary, spaceLibrary } from "@/lib/library-server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { storeUpload } from "@/lib/page-upload";
+import { storeUpload, storeUploadFile } from "@/lib/page-upload";
 import { claimFileId } from "@/lib/client-ids";
 import { createTemplate, libraryFile } from "@/lib/notebook-library";
 import { FONT_LIMITS, fontResponse, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
@@ -1538,7 +1541,10 @@ async function handlePOST(
     // limit below (lib/importers/upload.ts).
     const rawImport =
       path.length === 2 && path[0] === "import" && path[1] === "source" && !req.headers.get("content-type")?.startsWith("multipart/form-data");
-    const maxBody = rawImport
+    // File uploads (/api/upload) are streamed to disk and checked against
+    // the person's upload limit there (up to 10 GB) – before, the general
+    // 12 MB below cut every larger upload off, whatever the limit said.
+    const maxBody = rawImport || (path.length === 1 && path[0] === "upload")
       ? Number.MAX_SAFE_INTEGER
       : path[0] === "import" || path[1] === "import" || path[2] === "import-markdown" || (path[0] === "marketplace" && path[1] === "check")
         ? ARCHIVE_LIMIT + 1_000_000
@@ -2184,57 +2190,82 @@ async function handlePOST(
       );
     }
     if (path[0] === "upload") {
-      const data = await req.formData();
-      const pageId = z.string().uuid().parse(data.get("pageId"));
-      const p = await requirePage(user, pageId, true);
-      if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
-      const file = data.get("file");
-      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
-      // Pages of encrypted spaces take only files the browser encrypted
-      // (lib/e2ee.ts encryptFile): no name, no type, no content to inspect.
-      const encrypted = await isEncryptedPage(p);
-      if (encrypted && data.get("purpose") !== "e2ee")
-        throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
+      // Streamed (lib/multipart-stream.ts): the file goes to a temporary
+      // file as it arrives, never into memory – uploads of up to 10 GB.
       const maxUpload = await maxUploadMbFor(user);
-      if (file.size > maxUpload * 1024 * 1024)
-        throw new HttpError(413, `Die Datei ist zu groß: Du kannst Dateien bis ${maxUpload} MB hochladen.`);
-      await enforceQuota(p.workspace_id, file.size);
-      await enforceUserStorage(user, file.size);
-      if (
-        data.get("purpose") === "cover" &&
-        !imageMimes.includes(file.type as (typeof imageMimes)[number])
-      )
-        throw new HttpError(
-          400,
-          "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
-        );
-      // Uploaded later of a picture or file added offline (#370): the
-      // document refers to it by the id the device chose; sent again, the
-      // stored file answers (lib/client-ids.ts).
-      const claimed = data.get("fileId") !== null ? await claimFileId(user, p.id, data.get("fileId")) : null;
-      if (claimed?.existing)
-        return NextResponse.json({ id: claimed.id, url: `/api/files/${claimed.id}`, name: claimed.existing.name, mime: claimed.existing.mime });
-      const fid = claimed?.id ?? id();
-      // The type must match the content; photos lose their location.
-      const raw = Buffer.from(await file.arrayBuffer());
-      if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
-      const mime = encrypted ? "application/octet-stream" : uploadMime(file.type, file.name, raw);
-      const content = encrypted ? raw : stripLocation(raw, mime);
-      const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
-      // Checked again with the insert (parallel uploads, lib/page-upload.ts).
-      await storeUpload(user, p, { id: fid, name, mime, content });
-      // The size and blurred picture shown while the image loads; encrypted
-      // files are never looked into.
-      let placeholder = null;
-      if (encrypted) await storePlaceholder(fid, null);
-      else placeholder = await placeholderForUpload(fid, mime, pageId, content);
-      return NextResponse.json({
-        id: fid,
-        url: `/api/files/${fid}`,
-        name,
-        mime,
-        ...(placeholder ? { placeholder } : {}),
+      const tooLarge = () => new HttpError(413, `Die Datei ist zu groß: Du kannst Dateien bis ${maxUpload} MB hochladen.`);
+      // Refused before the body is read (the form's fields add a little);
+      // without a Content-Length the limit applies while it is read.
+      const length = req.headers.get("content-length");
+      if (length && Number(length) > maxUpload * 1024 * 1024 + 1024 * 1024) throw tooLarge();
+      const target = async (fields: Map<string, string>) => {
+        const p = await requirePage(user, z.string().uuid().parse(fields.get("pageId")), true);
+        if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+        // Pages of encrypted spaces take only files the browser encrypted
+        // (lib/e2ee.ts encryptFile): no name, no type, no content to inspect.
+        const encrypted = await isEncryptedPage(p);
+        if (encrypted && fields.get("purpose") !== "e2ee")
+          throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
+        return { p, encrypted };
+      };
+      sweepIncoming(uploadsDir());
+      const data = await readMultipartStream(req.body, req.headers.get("content-type"), {
+        uploads: uploadsDir(),
+        maxFileBytes: maxUpload * 1024 * 1024,
+        tooLarge,
+        // Fields sent before the file (the apps send pageId first): a
+        // page that refuses the upload does so before the file is read.
+        beforeFile: async (fields) => {
+          if (fields.has("pageId")) await target(fields);
+        },
       });
+      try {
+        const { p, encrypted } = await target(data.fields);
+        const pageId = p.id;
+        const file = data.file;
+        if (!file) throw new HttpError(400, "Datei fehlt.");
+        const purpose = data.fields.get("purpose") ?? null;
+        if (file.size > maxUpload * 1024 * 1024) throw tooLarge();
+        await enforceQuota(p.workspace_id, file.size);
+        await enforceUserStorage(user, file.size);
+        if (
+          purpose === "cover" &&
+          !imageMimes.includes(file.type as (typeof imageMimes)[number])
+        )
+          throw new HttpError(
+            400,
+            "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
+          );
+        // Uploaded later of a picture or file added offline (#370): the
+        // document refers to it by the id the device chose; sent again, the
+        // stored file answers (lib/client-ids.ts).
+        const claimed = data.fields.has("fileId") ? await claimFileId(user, p.id, data.fields.get("fileId")) : null;
+        if (claimed?.existing)
+          return NextResponse.json({ id: claimed.id, url: `/api/files/${claimed.id}`, name: claimed.existing.name, mime: claimed.existing.mime });
+        const fid = claimed?.id ?? id();
+        // The type must match the content (its first bytes); photos lose
+        // their location (rewritten on disk only when they have one).
+        if (encrypted && file.head.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
+        const mime = encrypted ? "application/octet-stream" : uploadMime(file.type, file.name, file.head);
+        if (!encrypted && (await stripLocationFile(file.path, mime))) file.size = statSync(file.path).size;
+        const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
+        // Checked again with the insert (parallel uploads, lib/page-upload.ts).
+        await storeUploadFile(user, p, { id: fid, name, mime, size: file.size, path: file.path });
+        // The size and blurred picture shown while the image loads; encrypted
+        // files are never looked into.
+        let placeholder = null;
+        if (encrypted) await storePlaceholder(fid, null);
+        else placeholder = await placeholderForUpload(fid, mime, pageId, { size: file.size, read: () => readFileSync(uploadPath(fid)) });
+        return NextResponse.json({
+          id: fid,
+          url: `/api/files/${fid}`,
+          name,
+          mime,
+          ...(placeholder ? { placeholder } : {}),
+        });
+      } finally {
+        data.discard();
+      }
     }
     throw new HttpError(404, "Nicht gefunden.");
   } catch (e) {

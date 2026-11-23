@@ -1,6 +1,8 @@
 // Checks for everything that is uploaded (members, guests, forms): sizes the
 // server can rely on, file names without path or control characters, a
 // type that matches the content, and photos without their location.
+import { closeSync, createReadStream, createWriteStream, fstatSync, openSync, readSync, renameSync, rmSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { HttpError } from "./auth";
 import { modelUploadMime } from "./model-formats";
 
@@ -78,6 +80,106 @@ export function stripLocation(data: Buffer, mime: string): Buffer {
     // An unusual file stays as it is rather than failing the upload.
   }
   return data;
+}
+
+// The same for a file on disk of any size (large uploads, lib/multipart-
+// stream.ts): only the metadata is read (JPEG segments before the image
+// data, the headers of PNG chunks), and the file is rewritten – copied range
+// by range, never held in memory – only when there is a location to remove.
+// Gives the same bytes as stripLocation; true when the file changed.
+export async function stripLocationFile(path: string, mime: string): Promise<boolean> {
+  let plan: { ranges: ([number, number] | Buffer)[] } | null = null;
+  const fd = openSync(path, "r");
+  try {
+    if (mime === "image/jpeg") plan = jpegPlan(fd);
+    else if (mime === "image/png") plan = pngPlan(fd);
+  } catch {
+    plan = null;
+  } finally {
+    closeSync(fd);
+  }
+  if (!plan) return false;
+  const temporary = `${path}.strip`;
+  try {
+    const out = createWriteStream(temporary, { flags: "wx" });
+    await pipeline(async function* () {
+      for (const range of plan!.ranges) {
+        if (Buffer.isBuffer(range)) yield range;
+        else if (range[1] > range[0]) yield* createReadStream(path, { start: range[0], end: range[1] - 1, highWaterMark: 1024 * 1024 });
+      }
+    }, out);
+    renameSync(temporary, path);
+    return true;
+  } catch {
+    // An unusual file stays as it is rather than failing the upload.
+    rmSync(temporary, { force: true });
+    return false;
+  }
+}
+const readAt = (fd: number, at: number, length: number) => {
+  const buffer = Buffer.alloc(length);
+  return buffer.subarray(0, readSync(fd, buffer, 0, length, at));
+};
+// What stripJpeg keeps, as file ranges and changed segments (null: nothing
+// to change).
+function jpegPlan(fd: number) {
+  const size = fstatSync(fd).size;
+  const start = readAt(fd, 0, 2);
+  if (start[0] !== 0xff || start[1] !== 0xd8) return null;
+  const ranges: ([number, number] | Buffer)[] = [[0, 2]];
+  let changed = false;
+  let pos = 2;
+  for (;;) {
+    const top = readAt(fd, pos, 4);
+    if (pos + 4 > size || top.length < 4 || top[0] !== 0xff) break;
+    const marker = top[1];
+    if (marker === 0xda) break;
+    const length = top.readUInt16BE(2);
+    const end = Math.min(size, pos + 2 + length);
+    if (marker === 0xe1) {
+      const segment = readAt(fd, pos, end - pos);
+      const header = segment.subarray(4, 33).toString("latin1");
+      if (header.startsWith("http://ns.adobe.com/xap/1.0/")) {
+        changed = true;
+        pos += 2 + length;
+        continue;
+      }
+      if (header.startsWith("Exif\0\0")) {
+        const copy = Buffer.from(segment);
+        clearGps(copy, 10);
+        if (!copy.equals(segment)) {
+          changed = true;
+          ranges.push(copy);
+          pos += 2 + length;
+          continue;
+        }
+      }
+    }
+    ranges.push([pos, end]);
+    pos += 2 + length;
+  }
+  ranges.push([Math.min(pos, size), size]);
+  return changed ? { ranges } : null;
+}
+// What stripPng keeps: every chunk but eXIf, up to IEND.
+function pngPlan(fd: number) {
+  const size = fstatSync(fd).size;
+  if (!readAt(fd, 0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) return null;
+  const ranges: ([number, number] | Buffer)[] = [[0, 8]];
+  let changed = false;
+  let pos = 8;
+  while (pos + 12 <= size) {
+    const top = readAt(fd, pos, 8);
+    const length = top.readUInt32BE(0);
+    const type = top.subarray(4, 8).toString("latin1");
+    if (type !== "eXIf") ranges.push([pos, Math.min(size, pos + 12 + length)]);
+    else changed = true;
+    pos += 12 + length;
+    if (type === "IEND") break;
+  }
+  // stripPng drops what follows IEND (or a cut-off chunk): only when it
+  // rewrites anyway, as here.
+  return changed ? { ranges } : null;
 }
 
 function stripJpeg(input: Buffer): Buffer {

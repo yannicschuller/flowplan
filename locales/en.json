@@ -5090,7 +5090,7 @@
   "For code blocks without a setting of their own, when editing and reading. On this device only.": "For code blocks without a setting of their own, when editing and reading. On this device only.",
   "For Cursor, VS Code, Windsurf and other clients with Streamable HTTP and custom headers.": "For Cursor, VS Code, Windsurf and other clients with Streamable HTTP and custom headers.",
   "For each": "For each",
-  "For each single file; can differ per person. Also applies to imports from AFFiNE (at least 100 MB).": "For each single file; can differ per person. Also applies to imports from AFFiNE (at least 100 MB).",
+  "For each single file, up to 10240 MB (10 GB); can differ per person. Also applies to imports from AFFiNE (at least 100 MB, at most 1024 MB). For large files the reverse proxy must let requests that large through too.": "For each single file, up to 10240 MB (10 GB); can differ per person. Also applies to imports from AFFiNE (at least 100 MB, at most 1024 MB). For large files the reverse proxy must let requests that large through too.",
   "For encrypted backups in place of Litestream (FLOWPLAN_LITESTREAM=off). Keep more backups then, e.g. 72 for three days.": "For encrypted backups in place of Litestream (FLOWPLAN_LITESTREAM=off). Keep more backups then, e.g. 72 for three days.",
   "For every member, in {0}; a person gets the highest limit of their groups and roles.": "For every member, in {0}; a person gets the highest limit of their groups and roles.",
   "For everyone in the workspace; owners change them under Workspace → Print presets.": "For everyone in the workspace; owners change them under Workspace → Print presets.",

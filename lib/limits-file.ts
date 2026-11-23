@@ -26,7 +26,7 @@
 // - the group's limits (group_limits, lib/user-limits.ts): storage – for an
 //   add-on (kind "addon") as storage mode "add", else a limit –, the
 //   largest upload (not for add-ons; 0 = not set by the group, above the
-//   server's 1024 MB it is capped with a note) and own workspaces;
+//   server's 10240 MB (10 GB) it is capped with a note) and own workspaces;
 // - the AI quota rule of the group (ai_quota_rules, lib/ai/quota.ts):
 //   aiActions per period (flowplan.aiQuota.period, default month),
 //   converted into the quota's unit – tokensPerAction (default 5,000) or
@@ -62,13 +62,14 @@ import { cleanLimits, instanceModelOptions, quotaRules, quotaSettings } from "./
 import { MODEL_NAME, modelRules, mostCapable } from "./ai/model-policy";
 import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "./ai/quota-shared";
 import { costOf } from "./ai-statistics";
+import { MAX_UPLOAD_MB } from "./upload-limit";
 
 export const LIMITS_FILE_VERSION = 1;
 export const MAX_LIMITS_FILE_CHARS = 512 * 1024;
 const MAX_PLANS = 500;
 const MAX_ERRORS = 200;
 // The largest single upload this server takes (instance-settings.ts).
-export const MAX_UPLOAD_MB = 1024;
+export { MAX_UPLOAD_MB };
 export const DEFAULT_TOKENS_PER_ACTION = 5000;
 export const DEFAULT_COST_PER_ACTION = 0.02;
 // Where the conversion of the last import is kept, for the export.

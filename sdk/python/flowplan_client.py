@@ -3207,7 +3207,7 @@ class FlowplanClient:
         return self._json("GET", "/api/files/" + _p(file_id) + "/sheet", query=dict(query) if query else None, headers=headers)
 
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
-        """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
+        """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def image_placeholders(self, query: "ImagePlaceholdersQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

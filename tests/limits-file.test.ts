@@ -75,7 +75,7 @@ const sample = () => ({
       prices: [{ interval: "month", eur: 5, usd: 5 }],
       _ids: { productId: "pro_1" },
     },
-    { group: "Flowplan Pro", kind: "plan", storageMb: 102400, uploadMb: 5120, workspaces: 50, aiActions: 5000, aiModels: "all", aiAfter: "haiku" },
+    { group: "Flowplan Pro", kind: "plan", storageMb: 102400, uploadMb: 20480, workspaces: 50, aiActions: 5000, aiModels: "all", aiAfter: "haiku" },
     { group: "Flowplan +50 GB", kind: "addon", storageMb: 51200, uploadMb: 0, aiActions: 0, aiModels: "haiku" },
   ],
   flowplan: {
@@ -149,8 +149,8 @@ test("dry run lists every change and writes nothing; applying maps every plan; a
   assert.ok(dry.changes.some((c) => c.area === "limits" && c.name === "Flowplan Plus" && c.field === "storageMb" && c.after === 25600));
   assert.ok(dry.changes.some((c) => c.area === "quota" && c.scope === "group" && c.name === "Flowplan Pro" && c.before === null && c.after?.actions === 5000 && c.after.after === MODELS.haiku));
   assert.ok(dry.changes.some((c) => c.area === "setting" && c.field === "unit" && c.after === "cost"));
-  // Pro's 5,120 MB upload is capped at the server's 1,024 MB, with a note.
-  assert.deepEqual(dry.notes, [{ path: "plans[1].uploadMb", code: "capped", max: 1024 }]);
+  // Pro's 20,480 MB upload is capped at the server's 10,240 MB (10 GB), with a note.
+  assert.deepEqual(dry.notes, [{ path: "plans[1].uploadMb", code: "capped", max: 10240 }]);
 
   const applied = await importFile(sample(), false);
   assert.equal(applied.applied, true);
@@ -159,7 +159,7 @@ test("dry run lists every change and writes nothing; applying maps every plan; a
   const limits = Object.fromEntries((await all<{ target: string; limits: string }>("SELECT target,limits FROM group_limits")).map((r) => [r.target, JSON.parse(r.limits)]));
   assert.deepEqual(limits, {
     "dir:Flowplan Plus": { storageMb: 25600, uploadMb: 1024 },
-    "dir:Flowplan Pro": { storageMb: 102400, workspaces: 50, uploadMb: 1024 },
+    "dir:Flowplan Pro": { storageMb: 102400, workspaces: 50, uploadMb: 10240 },
     "dir:Flowplan +50 GB": { storageMb: 51200, storageMode: "add" },
   });
   // AI quota rules in cost: actions × 0.02 USD per month; the add-on has none.

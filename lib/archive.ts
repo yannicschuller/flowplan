@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { IN_MEMORY_FILE_MB } from "./upload-limit";
 import { exportLook, FONT_LIMITS, importLook, storedTheme } from "./workspace-fonts";
 import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { importPrintPresets, workspacePrintPresets } from "./print-settings";
@@ -130,9 +131,10 @@ const entryHash = (e: ArchiveEntry) =>
   Buffer.isBuffer(e) ? createHash("sha256").update(e).digest("hex") : e.sha256;
 const entryBytes = (e: ArchiveEntry) =>
   Buffer.isBuffer(e) ? e : readFileSync(e.path);
-// Per file inside an archive: at least 10 MB, otherwise the upload limit.
+// Per file inside an archive: at least 10 MB, otherwise the upload limit –
+// at most 1 GB, the entries are read into memory (IN_MEMORY_FILE_MB).
 async function archiveFileLimit() {
-  return Math.max(10, (await instanceSettings()).maxUploadMb) * 1024 * 1024;
+  return Math.max(10, Math.min(IN_MEMORY_FILE_MB, (await instanceSettings()).maxUploadMb)) * 1024 * 1024;
 }
 const str = z.string().max(500),
   // Workspace and space symbols: short text, or an inline image (#251).
