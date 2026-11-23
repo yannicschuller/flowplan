@@ -70,7 +70,14 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await page.keyboard.press("Enter");
   await page.keyboard.type("x² − 9");
   const term = editor.getByText("x² − 9");
-  const box = (await term.boundingBox())!;
+  // The new line is drawn again once it gets its block id (a moment after
+  // typing, lib/block-ids-plugin.ts): measured once it stands.
+  let box!: { x: number; y: number; width: number; height: number };
+  await expect(async () => {
+    const measured = await term.boundingBox();
+    expect(measured).not.toBeNull();
+    box = measured!;
+  }).toPass();
   await page.mouse.move(box.x + 1, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 6 });
