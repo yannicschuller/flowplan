@@ -402,3 +402,72 @@ test("page copies, templates, legacy JSON and ZIP archives remap view row IDs in
   assert.deepEqual(await titles(instance), await titles(page));
   assert.deepEqual(await titles(instance, "list"), await titles(page, "list"));
 });
+
+// #445: a board with swimlanes by a person. A card dropped into an empty
+// cell (its lane has no card in the target column yet) was refused with
+// "Die Gruppenzuordnung wurde geändert" – the lanes were taken from the
+// target column's records only.
+test("board swimlanes: a card moves into an empty cell of its own lane or of another lane", async () => {
+  const page = await makePage("Swimlanes");
+  await schema(
+    page,
+    [
+      { id: "title", name: "Task", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Not started", "In progress", "Done"] },
+      { id: "assignee", name: "Assignee", type: "person" },
+    ],
+    [{ id: "board", name: "Board", type: "board", filters: [], sorts: [], groupBy: "status", subGroupBy: "assignee" }],
+  );
+  const create = async (title: string, status: string, assignee: string) =>
+    (await act({ action: "row.create", pageId: page, cells: { title, status, assignee } })).id as string;
+  const a = await create("A", "Not started", owner.id),
+    b = await create("B", "Not started", editor.id),
+    c = await create("C", "In progress", editor.id);
+  const cells = async (rowId: string) => (await rows(page)).find((r) => r.id === rowId)!.cells;
+  const key = (value: string) => JSON.stringify(value);
+  const boardMove = (rowId: string, extra: Record<string, unknown>) =>
+    move(page, rowId, undefined, "end", { viewId: "board", ...extra });
+  // Exactly the reporter's request: the same lane, into "In progress",
+  // where the owner's lane has no card yet.
+  await boardMove(a, {
+    group: { from: key("Not started"), to: key("In progress") },
+    subgroup: { from: key(owner.id), to: key(owner.id) },
+  });
+  assert.equal((await cells(a)).status, "In progress");
+  assert.equal((await cells(a)).assignee, owner.id);
+  // Into another lane's empty cell ("Done" has no card at all).
+  await boardMove(b, {
+    group: { from: key("Not started"), to: key("Done") },
+    subgroup: { from: key(editor.id), to: key(owner.id) },
+  });
+  assert.deepEqual([(await cells(b)).status, (await cells(b)).assignee], ["Done", owner.id]);
+  const board = (await database(page)).views.find((v) => v.id === "board")!;
+  assert.deepEqual(board.groupRowOrder?.[key("Done")], [b]);
+  // Next to a card of another lane: still refused.
+  await assert.rejects(
+    async () =>
+      await move(page, a, c, "after", {
+        viewId: "board",
+        group: { from: key("In progress"), to: key("In progress") },
+        subgroup: { from: key(owner.id), to: key(owner.id) },
+      }),
+    /Gruppenzuordnung/,
+  );
+  // A lane nobody is in, and a card no longer where the move says: refused.
+  await assert.rejects(
+    async () =>
+      await boardMove(c, {
+        group: { from: key("In progress"), to: key("Done") },
+        subgroup: { from: key(editor.id), to: key(viewer.id) },
+      }),
+    /Gruppenzuordnung/,
+  );
+  await assert.rejects(
+    async () =>
+      await boardMove(a, {
+        group: { from: key("Not started"), to: key("Done") },
+        subgroup: { from: key(owner.id), to: key(owner.id) },
+      }),
+    /Gruppenzuordnung/,
+  );
+});

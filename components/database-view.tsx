@@ -209,7 +209,7 @@ import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { studyViewSchema } from "@/lib/study-schema";
 import { InlineText } from "./inline-text";
-import { Modal, viewIcons, download, Avatar, api, PageIcon, requireConnection } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, ApiError, PageIcon, requireConnection } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -1591,6 +1591,47 @@ export default function DatabaseView({
     setMoveTarget("");
     setMovePlacement("before");
   }
+  // A move is an intent – this record into that group, at that place. When
+  // the server refuses it only because the versions it carried are out of
+  // date (someone else's change not shown yet, e.g. without live updates
+  // behind a proxy, #445), it goes once more with the current ones. The
+  // server still refuses it when the record left its group or the target
+  // moved meanwhile, so nobody's concurrent change is overwritten.
+  async function sendMove(b: Record<string, unknown> & RowMove) {
+    const send = (body: Record<string, unknown>) =>
+      rowChange(body, (sent) => mutate({ pageId: page.id, ...sent }));
+    try {
+      return await send(b);
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 409 || b.clearSorts || !(await caughtUp(b))) {
+        onError((e as Error).message);
+        return null;
+      }
+    }
+    try {
+      const row = rowsNow.current.find((r) => r.id === b.rowId);
+      if (!row) return null;
+      return await send({ ...b, version: versionNow.current, rowVersion: row.version });
+    } catch (e) {
+      onError((e as Error).message);
+      return null;
+    }
+  }
+  // Reloads the data; true once it shows a newer version of the database
+  // or of the record than the move was sent with.
+  async function caughtUp(b: RowMove) {
+    const newer = () =>
+      versionNow.current !== b.version ||
+      (rowsNow.current.find((r) => r.id === b.rowId)?.version ?? b.rowVersion) !== b.rowVersion;
+    try {
+      await onRefresh();
+    } catch {
+      return false;
+    }
+    // The reloaded data reaches the refs with the next render.
+    for (let i = 0; i < 20 && !newer(); i++) await new Promise((done) => setTimeout(done, 25));
+    return newer() && rowsNow.current.some((r) => r.id === b.rowId);
+  }
   async function submitMove(move: RowMove, clearSorts = false) {
     if (orderPending.current) return;
     lastMove.current = Date.now();
@@ -1604,7 +1645,7 @@ export default function DatabaseView({
     setOrderBusy(true);
     setDropHint(null);
     try {
-      const result = await act({ action: "row.move", ...move, clearSorts });
+      const result = await sendMove({ action: "row.move", ...move, clearSorts });
       if (result) {
         setMoveDialog(null);
         setSortMove(null);

@@ -127,7 +127,9 @@ export function describeError({ kind, detail, requestId }: ClassifiedError, t: T
   const said = (s: string) => s.toLowerCase().replace(/[.!]+$/, "").trim();
   if (!informative(detail) || said(title).includes(said(detail))) return { title };
   // An unknown failure with the server's own explanation: that explanation
-  // is the message.
-  if (kind === "unknown") return { title: detail };
+  // is the message. So is a conflict's: the generic "changed elsewhere"
+  // misleads when the server names the actual reason ("The grouping was
+  // changed", "Remove the active sort first", a full WIP column – #445).
+  if (kind === "unknown" || kind === "conflict") return { title: detail };
   return { title, detail };
 }

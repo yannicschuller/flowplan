@@ -244,6 +244,29 @@ test("board: a card dragged into another column changes its group and column ord
   assert.ok(commandOverlay({ action: "row.move", pageId: "db", viewId: "board", rowId: "r1", placement: "end" }, ctx));
 });
 
+// #445: swimlanes run across all columns, so a card may land in an empty
+// cell – its own lane or another one with no card in the target column.
+test("board swimlanes: a card dragged into an empty cell takes the lane's value", () => {
+  const base = pageData();
+  const db = base.database!;
+  const data: PageLike = {
+    ...base,
+    database: {
+      ...db,
+      fields: [...db.fields, { id: "who", name: "Wer", type: "person" }],
+      views: db.views.map((v) => (v.id === "board" ? { ...v, subGroupBy: "who" } : v)),
+    },
+    rows: [row("r1", { title: "Eins", status: "Offen", who: "u1" }, 1), row("r2", { title: "Zwei", status: "Offen", who: "u2" }, 2)],
+  };
+  // Into "Erledigt" (empty), from lane u1 to lane u2.
+  const moved = applyRowMove(data, { viewId: "board", rowId: "r1", placement: "end", group: { from: '"Offen"', to: '"Erledigt"' }, subgroup: { from: '"u1"', to: '"u2"' } });
+  assert.deepEqual(moved.rows!.find((r) => r.id === "r1")!.cells, { title: "Eins", status: "Erledigt", who: "u2" });
+  // The same lane: only the column changes.
+  const same = applyRowMove(data, { viewId: "board", rowId: "r1", placement: "end", group: { from: '"Offen"', to: '"Erledigt"' }, subgroup: { from: '"u1"', to: '"u1"' } });
+  assert.deepEqual(same.rows!.find((r) => r.id === "r1")!.cells, { title: "Eins", status: "Erledigt", who: "u1" });
+  assert.deepEqual(same.database!.views[0].groupRowOrder?.['"Erledigt"'], ["r1"]);
+});
+
 test("comments: posted at once with the author, resolved, reactions toggled", () => {
   const data = pageData();
   const posted = commandOverlay<PageLike>({ action: "comment.create", pageId: "db", body: "  Neu  " }, ctx)!.page!(data);

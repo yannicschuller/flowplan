@@ -139,7 +139,8 @@ export function applyRowMove<D extends PageLike>(data: D, move: RowMoveInput): D
     if (from.key !== to.key) cells = { ...cells, [field.id]: groupCellValue(field, to.value, row.cells[field.id], from.key) };
     const subfield = move.subgroup ? subgroupingField(database.fields, view, field) : undefined;
     if (subfield && move.subgroup && move.subgroup.from !== move.subgroup.to) {
-      const target = databaseGroups(to.rows, subfield, related).find((g) => g.key === move.subgroup!.to);
+      // Lanes run across all columns: the target cell may be empty (#445).
+      const target = databaseGroups(rows, subfield, related).find((g) => g.key === move.subgroup!.to);
       if (target) cells = { ...cells, [subfield.id]: groupCellValue(subfield, target.value, row.cells[subfield.id], move.subgroup.from) };
     }
     if (view.type === "board" && !move.clearSorts) {
