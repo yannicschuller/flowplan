@@ -10,7 +10,7 @@ keepInstanceAi();
 // Export / Import, lib/limits-file.ts): an administrator pastes a file with
 // the plans, checks it (every change in plain words), applies it, and a
 // member of the directory group "Flowplan Plus" (pushed over SCIM) sees the
-// plan's limits under "Deine Grenzen". The same file again: no changes.
+// plan's limits under Settings → Speicher & KI. The same file again: no changes.
 test("limits file: check, apply, the member sees the plan's limits", async ({ browser }, info) => {
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "FLOWPLAN_DATA_DIR of the test server is required.");
   test.setTimeout(150_000);
@@ -105,13 +105,14 @@ test("limits file: check, apply, the member sees the plan's limits", async ({ br
     await expect(result).toContainText("Keine Änderungen – alles ist schon so eingestellt.");
     await expect(section.getByRole("button", { name: "Übernehmen" })).toBeDisabled();
 
-    // The member sees the plan's limits and where they come from.
-    await me.page.goto(`${origin}/#settings/account`);
-    const limits = me.page.locator(".setting-group", { hasText: "Deine Grenzen" });
-    await expect(limits).toContainText("25.600 MB", { timeout: 20_000 });
-    await expect(limits).toContainText(`aus Gruppe ${plus}`);
-    await expect(limits).toContainText("1024 MB");
-    await expect(limits.getByRole("link", { name: "Mehr Speicher oder KI? →" })).toHaveAttribute("href", "https://billing.example.test/preise");
+    // The member sees the plan's limits and where they come from
+    // (Settings → Speicher & KI).
+    await me.page.goto(`${origin}/#settings/usage`);
+    const storage = me.page.locator("#storage");
+    await expect(storage).toContainText("25.600 MB", { timeout: 20_000 });
+    await expect(storage).toContainText(`aus Gruppe ${plus}`);
+    await expect(storage.locator("#upload")).toContainText("1 GB");
+    await expect(me.page.getByRole("link", { name: "Mehr Speicher oder KI?" })).toHaveAttribute("href", "https://billing.example.test/preise");
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-limits-file-member.png`, fullPage: true });
     expect(errors).toEqual([]);
   } finally {
