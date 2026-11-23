@@ -14,6 +14,7 @@ import {
   offlineEntryFor,
   offlineEntryHasText,
   parseOfflineJournal,
+  todayRollFailure,
   withOfflineEntry,
   withoutOfflineEntry,
   type OfflineJournalEntry,
@@ -136,4 +137,21 @@ test("an entry written yesterday goes into yesterday's page; an empty one adds n
   assert.equal(await html(result.dayId), before);
   // Too long for one request.
   await assert.rejects(act(offlineEntryCommand(entry({ journalId: journal, date: yesterday, html: `<p>${"x".repeat(1_000_001)}</p>` }), today)));
+});
+
+// #456: the journal page's request for today's page failed while online
+// and "Du bist offline" stayed – any failure counted as offline, and the
+// only retry waited for an "online" event that never came.
+test("a failed request for today's page is offline only when offline or unreachable, and online it is asked again (#456)", () => {
+  // Refused by the server while online: an error, not the offline notice.
+  assert.deepEqual(todayRollFailure(false, false, 1), { offline: false, retryIn: null });
+  // Offline: the notice; asked again on the "online" event only.
+  assert.deepEqual(todayRollFailure(true, false, 1), { offline: true, retryIn: null });
+  assert.deepEqual(todayRollFailure(true, true, 3), { offline: true, retryIn: null });
+  // Online but no answer (server restart, proxy): asked again after a pause
+  // that grows, at most a minute apart.
+  assert.deepEqual(todayRollFailure(false, true, 1), { offline: true, retryIn: 2_000 });
+  assert.equal(todayRollFailure(false, true, 2).retryIn, 4_000);
+  assert.equal(todayRollFailure(false, true, 3).retryIn, 8_000);
+  assert.equal(todayRollFailure(false, true, 20).retryIn, 60_000);
 });
