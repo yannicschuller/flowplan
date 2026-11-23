@@ -9,6 +9,7 @@ import { embedFromUrl, embedProvider } from "./embed-providers";
 import { safeHref } from "./whiteboard-links";
 import { itemTags } from "./whiteboard-tags";
 import { groupPath } from "./whiteboard-groups";
+import { COMMENT_COLORS } from "./comment-colors";
 import type { WhiteboardItem } from "./whiteboard-model";
 
 export const PDF_SOURCE = /^\/api\/(files\/[\w-]+|share\/[\w-]+\/files\/[\w-]+)$/;
@@ -51,6 +52,11 @@ export const boardExtrasSchema = z.object({
   presentHidden: z.boolean().optional(),
   url: z.string().max(2000).optional(),
   page: z.number().int().min(1).max(100000).optional(),
+  // PDFs (#455): the pages shown, annotations hidden.
+  pages: z.array(z.number().int().min(1).max(100000)).min(1).max(2000).optional(),
+  hideInk: z.boolean().optional(),
+  // Comment pins (#455): a palette name of lib/comment-colors.ts.
+  commentColor: z.enum(COMMENT_COLORS).optional(),
 });
 export type BoardExtras = z.infer<typeof boardExtrasSchema>;
 export function boardExtras(item: Partial<WhiteboardItem>): BoardExtras {

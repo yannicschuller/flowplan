@@ -397,9 +397,9 @@ test("comment pins, tables, voting, timer and full screen", async ({
   const now = (await canvas.boundingBox())!;
   await page.mouse.click(now.x + now.width / 2 + 60, now.y + now.height / 2 + 150);
   const comment = wb.getByRole("dialog", { name: "Kommentar" });
-  await comment.getByLabel("Kommentar schreiben").fill("Bitte prüfen");
+  await comment.getByLabel("Kommentar schreiben", { exact: true }).fill("Bitte prüfen");
   await comment.getByRole("button", { name: "Senden" }).click();
-  await comment.getByLabel("Antworten").fill("Erledige ich");
+  await comment.getByLabel("Antworten", { exact: true }).fill("Erledige ich");
   await comment.getByRole("button", { name: "Senden" }).click();
   await expect(comment.locator(".wb-comment-message")).toHaveCount(2);
   await comment.getByRole("button", { name: "Erledigt" }).click();

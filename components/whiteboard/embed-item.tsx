@@ -3,12 +3,13 @@
 // allowlist and PDFs. A player shows a preview card first – nothing of the
 // provider loads until someone clicks "Laden" – and then a sandboxed frame
 // below a grip bar (the bar moves the element; the frame takes the
-// pointer). PDFs show one page drawn with pdf.js (components/pdf-viewer.tsx)
-// with page buttons; a double click opens the viewer.
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { CaretLeft, CaretRight, FilePdf, Play, X } from "@phosphor-icons/react";
+// pointer). PDFs show one page drawn with pdf.js, sharp at any zoom and
+// with their annotations (pdf-board-page.tsx, #455), with page buttons; a
+// double click opens the viewer.
+import { useSyncExternalStore } from "react";
+import { Play, X } from "@phosphor-icons/react";
 import { useT } from "../i18n";
-import { loadPdf, renderPage } from "../pdf-viewer";
+import { PdfBoardPage } from "./pdf-board-page";
 import { EMBED_ALLOW, EMBED_SANDBOX, boardEmbed } from "@/lib/whiteboard-embeds";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 
@@ -40,8 +41,7 @@ function useLoaded(id: string) {
   return loaded.has(id);
 }
 // Pages of the PDFs shown on the board (for the page buttons).
-const pageCounts = new Map<string, number>();
-export const pdfPageCount = (src: string) => pageCounts.get(src) || 0;
+export { pdfPageCount } from "./pdf-board-page";
 
 export function EmbedShape({ item, transform, interactive = true }: { item: WhiteboardItem; transform: string; interactive?: boolean }) {
   const t = useT();
@@ -60,7 +60,7 @@ export function EmbedShape({ item, transform, interactive = true }: { item: Whit
       <g transform={transform}>
         <rect width={w} height={h} rx={8} fill="#ffffff" stroke="#dee2e6" filter="url(#wb-shadow)" />
         <foreignObject width={w} height={h}>
-          <PdfPage item={item} src={embed.src} interactive={interactive} />
+          <PdfBoardPage item={item} src={embed.src} interactive={interactive} />
         </foreignObject>
       </g>
     );
@@ -102,58 +102,5 @@ export function EmbedShape({ item, transform, interactive = true }: { item: Whit
         )}
       </foreignObject>
     </g>
-  );
-}
-
-function PdfPage({ item, src, interactive }: { item: WhiteboardItem; src: string; interactive: boolean }) {
-  const t = useT();
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [count, setCount] = useState(pageCounts.get(src) || 0);
-  const [failed, setFailed] = useState(false);
-  const page = Math.max(1, Math.min(count || 1, Math.round(item.page || 1)));
-  // Drawn for the size on the board, at most 1200 px wide.
-  const width = Math.round(Math.min(1200, Math.max(120, item.w)));
-  useEffect(() => {
-    let alive = true;
-    const timer = setTimeout(() => {
-      loadPdf(src)
-        .then((doc) => {
-          if (!alive) return;
-          pageCounts.set(src, doc.numPages);
-          setCount(doc.numPages);
-          if (canvas.current) return renderPage(doc, Math.min(page, doc.numPages), canvas.current, width);
-        })
-        .catch(() => alive && setFailed(true));
-    }, 120);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [src, page, width]);
-  return (
-    <div className="wb-pdf">
-      <div className="wb-embed-bar">
-        <FilePdf size={14} />
-        <span title={item.text || "PDF"}>{item.text || "PDF"}</span>
-        {interactive && count > 1 && (
-          <span className="wb-pdf-nav">
-            <button type="button" data-wb-pdf="prev" disabled={page <= 1} aria-label={t("Vorherige Seite", "Previous page")}>
-              <CaretLeft size={12} />
-            </button>
-            <span>
-              {page}/{count}
-            </span>
-            <button type="button" data-wb-pdf="next" disabled={page >= count} aria-label={t("Nächste Seite", "Next page")}>
-              <CaretRight size={12} />
-            </button>
-          </span>
-        )}
-      </div>
-      {failed ? (
-        <p className="wb-pdf-failed">{t("PDF nicht verfügbar", "PDF not available")}</p>
-      ) : (
-        <canvas ref={canvas} className="wb-pdf-page" aria-label={t(`Seite ${page} von ${item.text || "PDF"}`, `Page ${page} of ${item.text || "PDF"}`)} />
-      )}
-    </div>
   );
 }

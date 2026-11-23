@@ -1,7 +1,6 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/server-message";
-import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
 import {
   useCallback,
@@ -165,6 +164,8 @@ import { LIBRARY_DRAG_TYPE, dropLibraryShape, insertLibraryShape } from "./shape
 import { PrototypeBadges } from "./prototype-player";
 import { remapLink } from "@/lib/whiteboard-diagram-model";
 import { useBoardExtras } from "./board-extras";
+import { BoardCommentHover, BoardCommentPopover, useCommentFileCleanup } from "./board-comment";
+import type { CommentNode } from "@/lib/comment-content";
 import { presentationSlides } from "@/lib/whiteboard-frames";
 // Workshop facilitation: private mode, planning poker, timer music, gathering.
 import { boardSignal, useFacilitation } from "./facilitation";
@@ -1252,20 +1253,29 @@ export default function Whiteboard({
     },
     timerRunning: !!meta.timer?.endsAt && meta.timer.endsAt > now,
   });
-  function addMessage(id: string, text: string) {
+  // A message on a comment pin; formatted ones carry their content (#455,
+  // components/whiteboard/board-comment.tsx). Returns its id.
+  function addMessage(id: string, text: string, content: CommentNode | null = null) {
     const map = itemsMap.get(id);
-    if (!map || !text.trim()) return;
+    if (!map || (!text.trim() && !content)) return null;
+    const messageId = crypto.randomUUID();
     change(() => {
       sharedArray(map, "messages").push([
         {
-          id: crypto.randomUUID(),
+          id: messageId,
           author: userId,
           name: userName || "Unbekannt",
           text: text.trim().slice(0, 5000),
           at: Date.now(),
+          ...(content ? { content } : {}),
         },
       ]);
     });
+    return messageId;
+  }
+  // Until the board's changes are on the server.
+  async function flushBoard() {
+    for (let i = 0; i < 30 && (dirty.current || inflight.current); i++) await (inflight.current ? new Promise((r) => setTimeout(r, 100)) : sync());
   }
   function closeComment() {
     const item = commentOpen ? itemsMap.get(commentOpen) : undefined;
@@ -2564,10 +2574,10 @@ export default function Whiteboard({
   const boardAi = useBoardAi({
     pageId, editable: editable && !guest, selection, read, itemsMap, change, addItem, setProps, undo, visibleRect, center, setSelection, onOpenPage,
     fit: (list) => fitToContent(list),
-    flush: async () => {
-      for (let i = 0; i < 30 && (dirty.current || inflight.current); i++) await (inflight.current ? new Promise((r) => setTimeout(r, 100)) : sync());
-    },
+    flush: flushBoard,
   });
+  // Attachments of deleted comment pins and messages (#455).
+  useCommentFileCleanup({ items, pageId, userId, enabled: editable && !guest, flush: flushBoard });
   async function addImage(file: File, at = center()) {
     if (!file.type.startsWith("image/"))
       return onError(t("Nur Bilder können auf das Whiteboard gelegt werden.", "Only images can be placed on the whiteboard."));
@@ -2624,6 +2634,13 @@ export default function Whiteboard({
     ) {
       e.preventDefault();
       duplicate(clipboard, 40);
+      return;
+    }
+    // A pasted PDF: its pages are chosen first (#455, board-extras.tsx).
+    const pdf = [...e.clipboardData.files].find((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    if (pdf) {
+      e.preventDefault();
+      void extras.addPdf(pdf);
       return;
     }
     const file = [...e.clipboardData.files].find((f) =>
@@ -4191,104 +4208,30 @@ export default function Whiteboard({
           if (!item) return null;
           const s = toScreen({ x: item.x + item.w, y: item.y });
           const rect = container.current?.getBoundingClientRect();
-          const left = Math.min(s.x + 8, (rect?.width || 400) - 320);
           return (
-            <div
-              className="wb-comment-popover"
-              role="dialog"
-              aria-label={t("Kommentar", "Comment||noun")}
-              style={{ left: Math.max(8, left), top: Math.max(8, s.y) }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Escape") closeComment();
+            <BoardCommentPopover
+              key={item.id}
+              item={item}
+              pageId={pageId}
+              editable={editable}
+              guest={!!guest}
+              anchor={s}
+              bounds={{ width: rect?.width || 400, height: rect?.height || 400 }}
+              actions={{
+                send: (text, content) => addMessage(item.id, text, content),
+                resolve: () => change(() => setProps(item.id, { resolved: !item.resolved })),
+                remove: () => {
+                  change(() => itemsMap.delete(item.id));
+                  setCommentOpen(null);
+                },
+                setColor: (color) => change(() => setProps(item.id, { commentColor: color })),
+                close: closeComment,
+                flush: flushBoard,
               }}
-            >
-              <div className="wb-comment-head">
-                <strong>
-                  {item.resolved ? t("Erledigter Kommentar", "Resolved comment") : t("Kommentar", "Comment||noun")}
-                </strong>
-                {editable && !!item.messages?.length && (
-                  <button
-                    onClick={() =>
-                      change(() =>
-                        setProps(item.id, { resolved: !item.resolved }),
-                      )
-                    }
-                  >
-                    {item.resolved ? t("Wieder öffnen", "Reopen") : t("Erledigt", "Resolve")}
-                  </button>
-                )}
-                {editable && (
-                  <button
-                    aria-label={t("Kommentar löschen", "Delete comment")}
-                    onClick={() => {
-                      change(() => itemsMap.delete(item.id));
-                      setCommentOpen(null);
-                    }}
-                  >
-                    <Trash size={14} />
-                  </button>
-                )}
-                <button aria-label={t("Kommentar schließen", "Close comment")} onClick={closeComment}>
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="wb-comment-thread">
-                {(item.messages || []).map((m) => (
-                  <div key={m.id} className="wb-comment-message">
-                    <span>
-                      <strong>{m.name}</strong>
-                      <small>
-                        {new Date(m.at).toLocaleString(LOCALE_TAG, {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </small>
-                    </span>
-                    <p>{m.text}</p>
-                  </div>
-                ))}
-              </div>
-              {editable && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const field = e.currentTarget.elements.namedItem(
-                      "message",
-                    ) as HTMLTextAreaElement;
-                    addMessage(item.id, field.value);
-                    field.value = "";
-                  }}
-                >
-                  <textarea
-                    name="message"
-                    aria-label={
-                      item.messages?.length
-                        ? t("Antworten", "Reply")
-                        : t("Kommentar schreiben", "Write a comment")
-                    }
-                    placeholder={
-                      item.messages?.length
-                        ? t("Antworten …", "Reply …")
-                        : t("Kommentar schreiben …", "Write a comment …")
-                    }
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        e.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                  />
-                  <button className="button primary compact">{t("Senden", "Send")}</button>
-                </form>
-              )}
-            </div>
+            />
           );
         })()}
+      <BoardCommentHover svg={svg} byId={byId} pageId={pageId} guest={!!guest} openId={commentOpen} onOpen={setCommentOpen} />
       {(meta.voting?.active ||
         items.some((i) => i.votes && Object.keys(i.votes).length)) &&
         items

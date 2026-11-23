@@ -95,6 +95,7 @@ import * as ticketsToken from "../tickets/[token]/handler";
 import * as timeReports from "../time-reports/handler";
 import * as transcribePath from "../transcribe/[...path]/handler";
 import * as webhooksSlackId from "../webhooks/slack/[id]/handler";
+import * as whiteboardsIdComments from "../whiteboards/[id]/comments/handler";
 import * as whiteboardsIdFacilitation from "../whiteboards/[id]/facilitation/handler";
 import * as workflowHooksToken from "../workflow-hooks/[token]/handler";
 
@@ -179,6 +180,7 @@ const routes = apiRoutes([
   ["time-reports", timeReports],
   ["transcribe/[...path]", transcribePath],
   ["webhooks/slack/[id]", webhooksSlackId],
+  ["whiteboards/[id]/comments", whiteboardsIdComments],
   ["whiteboards/[id]/facilitation", whiteboardsIdFacilitation],
   ["workflow-hooks/[token]", workflowHooksToken],
 ] as [string, RouteModule][]);

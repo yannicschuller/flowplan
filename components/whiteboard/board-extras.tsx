@@ -19,7 +19,9 @@ import {
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { showToast } from "../toast";
-import { openPdf } from "../pdf-viewer";
+import { openPdf, primePdf } from "../pdf-viewer";
+import { PdfPagesDialog, type PdfPagesChoice } from "./pdf-pages-dialog";
+import { currentPage, steppedPage, storedPages } from "@/lib/whiteboard-pdf-pages";
 import { Minimap } from "./minimap";
 import { FramesPanel } from "./frames-panel";
 import { BoardSearch } from "./board-search";
@@ -227,9 +229,12 @@ export function useBoardExtras(api: BoardApi) {
     if (embed && owner) setEmbedLoaded(owner, embed === "load");
     const pdf = el.getAttribute("data-wb-pdf");
     const target = owner ? ref.current.byId.get(owner) : undefined;
-    if (pdf && target && ref.current.editable) {
-      const count = pdfPageCount(target.src || "");
-      const page = Math.max(1, Math.min(count || 1, (target.page || 1) + (pdf === "next" ? 1 : -1)));
+    if (pdf === "ink" && target && ref.current.editable) {
+      // The PDF's annotations on this element, on or off (#455).
+      ref.current.change(() => ref.current.setProps(owner, { hideInk: target.hideInk ? undefined : true }));
+    } else if (pdf && target && ref.current.editable) {
+      // Within the pages the element shows (#455).
+      const page = steppedPage(target, pdfPageCount(target.src || ""), pdf === "next" ? 1 : -1);
       ref.current.change(() => ref.current.setProps(owner, { page }));
     } else if (pdf && target) {
       // Viewers page through on their own: the viewer opens.
@@ -244,7 +249,8 @@ export function useBoardExtras(api: BoardApi) {
     if (item.type === "embed") {
       const embed = boardEmbed(item);
       if (embed?.kind === "pdf") {
-        openPdf(embed.src, item.text || "PDF");
+        // At the page the element shows (#455).
+        openPdf(embed.src, item.text || "PDF", currentPage(item, pdfPageCount(embed.src)));
         return true;
       }
     }
@@ -473,16 +479,52 @@ export function useBoardExtras(api: BoardApi) {
     place({ type: "embed", src: embed.src, url, text: embed.provider, x: at.x - w / 2, y: at.y - h / 2, w, h });
     setEmbedOpen(false);
   };
+  // A PDF: first its pages are chosen (pdf-pages-dialog.tsx, #455), then
+  // it is uploaded – as one element limited to those pages, or one per page.
+  const [pdfPick, setPdfPick] = useState<{ file: File; at: Point } | null>(null);
   const addPdf = async (file: File, at = api.center()) => {
     if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
       api.onError(t("Das ist keine PDF-Datei.", "This is not a PDF file."));
       return;
     }
+    setEmbedOpen(false);
+    setPdfPick({ file, at });
+  };
+  const placePdf = async ({ pages, separate, doc }: PdfPagesChoice) => {
+    const pick = pdfPick;
+    if (!pick) return;
     try {
-      const { url } = await api.upload(file);
-      const { w, h } = fitted(360, 524);
-      place({ type: "embed", src: url, text: file.name.slice(0, 200), page: 1, x: at.x - w / 2, y: at.y - h / 2, w, h });
-      setEmbedOpen(false);
+      const { url } = await api.upload(pick.file);
+      primePdf(url, doc);
+      const count = doc.numPages;
+      const first = await doc.getPage(pages[0] || 1);
+      const view = first.getViewport({ scale: 1 });
+      // The page's own proportions below the bar.
+      const width = 360;
+      const height = Math.round(28 + (width * view.height) / Math.max(1, view.width));
+      const { w, h } = fitted(width, Math.min(900, Math.max(200, height)));
+      const text = pick.file.name.slice(0, 200);
+      const at = pick.at;
+      if (separate && pages.length > 1) {
+        const columns = Math.min(5, pages.length),
+          gap = 24;
+        const rows = Math.ceil(pages.length / columns);
+        const left = at.x - (columns * (w + gap) - gap) / 2,
+          top = at.y - (rows * (h + gap) - gap) / 2;
+        const ids: string[] = [];
+        api.change(() => {
+          pages.forEach((page, i) => {
+            ids.push(
+              api.addItem({ type: "embed", src: url, text, page, pages: [page], x: left + (i % columns) * (w + gap), y: top + Math.floor(i / columns) * (h + gap), w, h }),
+            );
+          });
+        });
+        api.setSelection(new Set(ids));
+      } else {
+        const stored = storedPages(pages, count);
+        place({ type: "embed", src: url, text, page: pages[0] || 1, ...(stored ? { pages: stored } : {}), x: at.x - w / 2, y: at.y - h / 2, w, h });
+      }
+      setPdfPick(null);
     } catch (e) {
       api.onError((e as Error).message);
     }
@@ -652,6 +694,7 @@ export function useBoardExtras(api: BoardApi) {
         </div>
       )}
       {embedOpen && <EmbedDialog open onClose={() => setEmbedOpen(false)} onEmbed={addEmbed} onPdf={(file) => addPdf(file)} />}
+      {pdfPick && <PdfPagesDialog key={`${pdfPick.file.name}-${pdfPick.file.size}`} file={pdfPick.file} onClose={() => setPdfPick(null)} onAdd={placePdf} onError={api.onError} />}
       {cropId && byId.get(cropId)?.src && (
         <CropDialog open src={byId.get(cropId)!.src!} crop={cleanCrop(byId.get(cropId)!.crop)} onClose={() => setCropId(null)} onApply={applyCrop} />
       )}

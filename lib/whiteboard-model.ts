@@ -119,6 +119,13 @@ export type WhiteboardItem = {
   // Embeds: the link as pasted, and the PDF page shown.
   url?: string;
   page?: number;
+  // PDFs (#455, lib/whiteboard-pdf-pages.ts): the pages the element shows
+  // (absent: all), and whether the PDF's annotations stay hidden on it.
+  pages?: number[];
+  hideInk?: boolean;
+  // Comment pins (#455): the badge's colour, a name of lib/comment-colors.ts
+  // (absent: the orange every pin had before).
+  commentColor?: string;
   // Planning poker: the value taken over for this note (a label on it).
   estimate?: string;
   // Rack planning (lib/whiteboard-rack.ts): a rack's units and limits, a
@@ -134,8 +141,13 @@ export type WhiteboardMessage = {
   id: string;
   author: string;
   name: string;
+  // The plain text (search, summaries, guests, older clients).
   text: string;
   at: number;
+  // Formatted like page comments (#455, lib/whiteboard-comments.ts): marks,
+  // people and pages mentioned, attachments, link previews. Read through
+  // boardMessageContent(); never trusted as stored.
+  content?: unknown;
 };
 // Board-wide state shared by everyone: voting session and timer.
 export type WhiteboardMeta = {

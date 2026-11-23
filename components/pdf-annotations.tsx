@@ -15,7 +15,7 @@ import { InkToolbar } from "./ink/ink-toolbar";
 import { useMenuPlacement } from "./ink/menu-placement";
 import { useInkEditor, type InkEditor } from "./ink/use-ink-editor";
 import { convertSelection } from "./ink/convert";
-import { renderPage, type PdfDocument } from "./pdf-viewer";
+import { PDF_INK_EVENT, renderPage, type PdfDocument } from "./pdf-viewer";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import type { PageSize } from "@/lib/ink/coords";
 import { emptyInk, hasInk, parseInk, type InkDoc } from "@/lib/ink/model";
@@ -187,6 +187,8 @@ export function usePdfAnnotations(src: string, title: string, annotating: boolea
       inkRef.current = { ...current, version: result.version };
       setInk((now) => (now ? { ...now, version: result.version } : now));
       editor.markSaved(snapshot);
+      // PDFs on whiteboards show the new ink (#455, components/whiteboard/pdf-board-page.tsx).
+      window.dispatchEvent(new CustomEvent(PDF_INK_EVENT, { detail: { src } }));
       void recognizeSaved(snapshot, result.version);
       setVersions(null);
       if (result.conflict) {

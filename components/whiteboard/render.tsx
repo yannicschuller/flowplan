@@ -16,6 +16,7 @@ import { hasRichText } from "@/lib/whiteboard-richtext";
 import { cleanCrop } from "@/lib/whiteboard-embeds";
 import { LinkBadge, RichText, TagChips } from "./rich-text";
 import { EmbedShape } from "./embed-item";
+import { boardCommentBadge, boardCommentColor } from "@/lib/whiteboard-comments";
 import { CardExcerpt } from "./card-preview";
 import { BoardColors, DARK_CANVAS_CLASS, useBoardColors } from "./board-colors";
 import { boardPalette } from "@/lib/whiteboard-display-colors";
@@ -390,14 +391,17 @@ function ShapeBody({
     }
     case "comment": {
       const count = item.messages?.length || 0;
+      // The pin's colour (#455, lib/whiteboard-comments.ts).
+      const badge = boardCommentBadge(item);
       return (
         <g
           transform={`translate(${item.x} ${item.y})`}
           opacity={item.resolved ? 0.45 : 1}
+          data-comment-color={boardCommentColor(item.commentColor)}
         >
           <path
             d="M 16 0 C 25 0 32 7 32 16 C 32 25 25 32 16 32 L 2 32 L 2 16 C 2 7 7 0 16 0 Z"
-            fill={item.resolved ? "#adb5bd" : "#f08c00"}
+            fill={item.resolved ? "#adb5bd" : badge.fill}
             stroke="#ffffff"
             strokeWidth={2}
             filter="url(#wb-shadow)"
@@ -408,7 +412,7 @@ function ShapeBody({
             textAnchor="middle"
             fontSize={13}
             fontWeight={700}
-            fill="#ffffff"
+            fill={item.resolved ? "#ffffff" : badge.text}
           >
             {count || "+"}
           </text>

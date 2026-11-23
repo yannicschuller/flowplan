@@ -17,6 +17,9 @@ export type PdfDocument = import("pdfjs-dist").PDFDocumentProxy;
 const PdfViewerDialog = lazy(() => loadView(() => import("./pdf-viewer-dialog")));
 const PdfPanel = lazy(() => loadView(() => import("./pdf-panel")));
 const EVENT = "flowplan:pdf";
+// Sent with { src } when the annotations of a PDF were saved
+// (pdf-annotations.tsx): PDFs on whiteboards show them (#455).
+export const PDF_INK_EVENT = "flowplan:pdf-ink";
 const PANEL_EVENT = "flowplan:pdf-panel";
 
 export function openPdf(src: string, title: string, page?: number) {
@@ -91,14 +94,33 @@ export async function pdfPagesText(src: string, from: number, to: number) {
   return { text: pages.filter(Boolean).join("\n\n"), from: first, to: last, total: doc.numPages };
 }
 export const pdfPageCount = async (src: string) => (await loadPdf(src)).numPages;
+// A PDF from this device, before it is uploaded (choosing pages for the
+// whiteboard, #455): read here, never fetched. `primePdf` keeps it for the
+// address it gets once uploaded, so it is not fetched again.
+export async function loadPdfFile(file: Blob): Promise<PdfDocument> {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const lib = await pdfjs();
+  return lib.getDocument({
+    data,
+    cMapUrl: "/pdfjs/cmaps/",
+    cMapPacked: true,
+    standardFontDataUrl: "/pdfjs/standard_fonts/",
+    wasmUrl: "/pdfjs/wasm/",
+  }).promise;
+}
+export function primePdf(src: string, doc: PdfDocument) {
+  if (!documents.has(src)) documents.set(src, Promise.resolve(doc));
+}
 // A canvas draws one page at a time: a new size (zoom) cancels the
 // drawing still in progress.
 const drawing = new WeakMap<HTMLCanvasElement, { cancel: () => void }>();
-export async function renderPage(doc: PdfDocument, number: number, canvas: HTMLCanvasElement, width: number) {
+// `width` in CSS pixels, drawn at the device pixel ratio (at most 2×);
+// `ratio` 1 draws exactly `width` pixels wide (the whiteboard, #455).
+export async function renderPage(doc: PdfDocument, number: number, canvas: HTMLCanvasElement, width: number, ratio?: number) {
   drawing.get(canvas)?.cancel();
   const page = await doc.getPage(number);
   const base = page.getViewport({ scale: 1 });
-  const size = canvasSize(base, width, window.devicePixelRatio || 1);
+  const size = canvasSize(base, width, ratio ?? (window.devicePixelRatio || 1));
   const viewport = page.getViewport({ scale: size.scale });
   drawing.get(canvas)?.cancel();
   canvas.width = size.width;

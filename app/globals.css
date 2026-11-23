@@ -14750,8 +14750,13 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .wb-comment-popover {
   position: absolute;
+  /* Set from script (components/whiteboard/board-comment.tsx). */
+  left: var(--wb-comment-left, 8px);
+  top: var(--wb-comment-top, 8px);
   z-index: 6;
-  width: 300px;
+  width: 340px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -14793,6 +14798,24 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   margin: 2px 0 0;
   white-space: pre-wrap;
 }
+/* Formatted comments (#455): the page comments' body and composer. */
+.wb-comment-message .comment-rich-body {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.wb-comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.wb-comment-actions .comment-color-picker:has(.comment-color-choices) + .button {
+  margin-left: auto;
+}
+.wb-comment-loading {
+  min-height: 60px;
+}
 .wb-comment-popover form {
   display: grid;
   gap: 6px;
@@ -14800,7 +14823,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .wb-comment-popover textarea {
   min-height: 60px;
 }
-.wb-comment-popover form .button {
+.wb-comment-popover form > .button {
   justify-self: end;
 }
 .wb-vote {
@@ -14922,7 +14945,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 @media (max-width: 760px) {
   .wb-comment-popover {
-    width: min(300px, calc(100% - 16px));
+    width: min(340px, calc(100% - 16px));
   }
 }
 /* The tool bar never grows beyond the board: two columns when space is
