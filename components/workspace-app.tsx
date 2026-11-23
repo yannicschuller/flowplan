@@ -224,6 +224,7 @@ import {
   Image as ImageIcon,
   UserCheck,
   Printer,
+  QrCode,
   ClockCounterClockwise,
   Graph,
   Sparkle,
@@ -396,6 +397,8 @@ const DocumentEditor = dynamic(() => loadView(loadEditor), {
 const DatabaseView = dynamic(() => loadView(loadDatabaseView), { ssr: false, loading: () => <ViewSkeleton /> });
 // The collection editor with its filter builder (#86): loaded when opened.
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
+// The page's QR code (#448): loaded when opened.
+const ItemQrDialog = dynamic(() => loadView(() => import("./item-qr")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
@@ -657,6 +660,7 @@ export default function WorkspaceApp({
     [share, setShare] = useState(false),
     [shareMounted, setShareMounted] = useState(false),
     [pageExport, setPageExport] = useState(false),
+    [pageQr, setPageQr] = useState(false),
     // The page shown as Markdown ("Als Markdown bearbeiten").
     [sourcePage, setSourcePage] = useState<string | null>(null),
     [spaceExport, setSpaceExport] = useState<string | null>(null),
@@ -4301,6 +4305,7 @@ export default function WorkspaceApp({
           { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
           { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
           { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => printOpenPage() },
+          { label: t("QR-Code der Seite", "Page QR code"), keywords: "qr code etikett label scan", icon: QrCode, run: () => setPageQr(true) },
           ...(openPageData.page.kind === "document" && !openPageData.locked
             ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
             : []),
@@ -5669,6 +5674,10 @@ export default function WorkspaceApp({
                           {t("Drucken / PDF", "Print / PDF")}
                         </PageMenu.Item>
                       )}
+                      <PageMenu.Item className="dropdown-item" onSelect={() => setPageQr(true)}>
+                        <QrCode />
+                        {t("QR-Code", "QR code")}
+                      </PageMenu.Item>
                       {data.page.kind === "document" && !data.locked && !data.encrypted && (
                         <PageMenu.Item className="dropdown-item" onSelect={startPresentation}>
                           <PresentIcon />
@@ -8293,6 +8302,9 @@ export default function WorkspaceApp({
           return true;
         }}
       />
+      {pageQr && data && (
+        <ItemQrDialog pageId={data.page.id} title={data.page.title || t("Ohne Titel", "Untitled")} onClose={() => setPageQr(false)} />
+      )}
       {pageExport && data && (
         <PageExportDialog
           page={data.page}

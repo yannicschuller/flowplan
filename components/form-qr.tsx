@@ -1,25 +1,26 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DownloadSimple, Printer } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
 import { printPage } from "./print-page";
-import { QR_QUIET_ZONE, qrModules, qrPath, qrSvg } from "@/lib/qr";
+import { QR_MAX_BYTES, QR_QUIET_ZONE, qrBytes, qrFits, qrModules, qrPath, qrSvg } from "@/lib/qr";
 
-// The QR code of a form's link (#415): shown dark on a white tile (so it
-// scans in dark mode too), downloaded as SVG or as a PNG large enough to
-// print, and printed as a sheet with the form's title and the link.
+// The QR code of a link – a form's (#415), a page's or a record's (#448):
+// shown dark on a white tile (so it scans in dark mode too), downloaded as
+// SVG or as a PNG large enough to print, and printed as a sheet with the
+// title and the link.
 const PNG_SIDE = 1024;
 
-// A file name from the form's title ("Einkaufsliste-qr.svg").
-export function qrFileName(title: string, extension: "svg" | "png") {
+// A file name from the title ("Einkaufsliste-qr.svg").
+export function qrFileName(title: string, extension: "svg" | "png", fallback = "form") {
   const base = title
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
-  return `${base || "form"}-qr.${extension}`;
+  return `${base || fallback}-qr.${extension}`;
 }
 
 // The PNG: the SVG drawn on a canvas at whole pixels per module, at least
@@ -52,11 +53,47 @@ async function pngBlob(modules: boolean[][], svg: string) {
   return new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
 }
 
+// The form's link (components/database-form.tsx).
 export function FormQrDialog({ open, onClose, url, title }: { open: boolean; onClose: () => void; url: string; title: string }) {
+  const t = useT();
+  return (
+    <QrDialog
+      open={open}
+      onClose={onClose}
+      url={url}
+      title={title}
+      heading={t("QR-Code des Formulars", "Form QR code")}
+      codeLabel={t("QR-Code mit dem Formularlink", "QR code with the form link")}
+      fallbackName="form"
+    />
+  );
+}
+
+// The dialog itself. `note` explains who the code opens for; an address
+// longer than the code holds (QR_MAX_BYTES) is said so instead of a code.
+export function QrDialog({
+  open,
+  onClose,
+  url,
+  title,
+  heading,
+  codeLabel,
+  note,
+  fallbackName = "qr",
+}: {
+  open: boolean;
+  onClose: () => void;
+  url: string;
+  title: string;
+  heading: string;
+  codeLabel: string;
+  note?: ReactNode;
+  fallbackName?: string;
+}) {
   const t = useT();
   const sheet = useRef<HTMLDivElement>(null);
   const modules = useMemo(() => {
-    if (!open) return null;
+    if (!open || !qrFits(url)) return null;
     try {
       return qrModules(url);
     } catch {
@@ -89,7 +126,7 @@ export function FormQrDialog({ open, onClose, url, title }: { open: boolean; onC
   }, [modules]);
   const side = modules ? modules.length + 2 * QR_QUIET_ZONE : 0;
   return (
-    <Modal open={open} onClose={onClose} title={t("QR-Code des Formulars", "Form QR code")} className="form-qr-dialog">
+    <Modal open={open} onClose={onClose} title={heading} className="form-qr-dialog">
       {modules ? (
         <>
           <div className="form-qr-sheet" ref={sheet}>
@@ -97,7 +134,7 @@ export function FormQrDialog({ open, onClose, url, title }: { open: boolean; onC
             <svg
               className="form-qr-code"
               role="img"
-              aria-label={t("QR-Code mit dem Formularlink", "QR code with the form link")}
+              aria-label={codeLabel}
               viewBox={`${-QR_QUIET_ZONE} ${-QR_QUIET_ZONE} ${side} ${side}`}
               shapeRendering="crispEdges"
             >
@@ -106,14 +143,15 @@ export function FormQrDialog({ open, onClose, url, title }: { open: boolean; onC
             </svg>
             <p className="form-qr-link">{url}</p>
           </div>
+          {note && <p className="muted form-qr-note">{note}</p>}
           <div className="modal-actions form-qr-actions">
             {svgUrl && (
-              <a className="button" href={svgUrl} download={qrFileName(title, "svg")} type="image/svg+xml">
+              <a className="button" href={svgUrl} download={qrFileName(title, "svg", fallbackName)} type="image/svg+xml">
                 <DownloadSimple aria-hidden /> {t("SVG herunterladen", "Download SVG")}
               </a>
             )}
             {pngUrl && (
-              <a className="button" href={pngUrl} download={qrFileName(title, "png")} type="image/png">
+              <a className="button" href={pngUrl} download={qrFileName(title, "png", fallbackName)} type="image/png">
                 <DownloadSimple aria-hidden /> {t("PNG herunterladen", "Download PNG")}
               </a>
             )}
@@ -122,8 +160,15 @@ export function FormQrDialog({ open, onClose, url, title }: { open: boolean; onC
             </button>
           </div>
         </>
-      ) : (
+      ) : qrFits(url) ? (
         <p className="muted">{t("Zu viel Text für den QR-Code.", "Too much text for the QR code.")}</p>
+      ) : (
+        <p className="form-qr-too-long" role="alert">
+          {t(
+            `Diese Adresse ist zu lang für einen QR-Code: ${qrBytes(url)} Zeichen, ein Code fasst höchstens ${QR_MAX_BYTES}. Eine kürzere Adresse der Instanz (APP_URL) hilft.`,
+            `This address is too long for a QR code: ${qrBytes(url)} characters, a code holds at most ${QR_MAX_BYTES}. A shorter address of the instance (APP_URL) helps.`,
+          )}
+        </p>
       )}
     </Modal>
   );

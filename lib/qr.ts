@@ -63,6 +63,12 @@ function alignmentPositions(version: number, size: number) {
   return result;
 }
 
+// The most bytes (UTF-8) a code of this encoder holds: version 10, level M,
+// byte mode – 216 data codewords less mode and length.
+export const QR_MAX_BYTES = 213;
+export const qrBytes = (text: string) => new TextEncoder().encode(text).length;
+export const qrFits = (text: string) => qrBytes(text) <= QR_MAX_BYTES;
+
 export function qrModules(text: string): boolean[][] {
   const bytes = [...new TextEncoder().encode(text)];
   let version = 1;

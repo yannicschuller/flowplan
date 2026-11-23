@@ -4,7 +4,7 @@
 // record also Print / PDF.
 import { safeCollisionPadding } from "./safe-area";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer, SquaresFour } from "@phosphor-icons/react";
+import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer, QrCode, SquaresFour } from "@phosphor-icons/react";
 import { useState } from "react";
 import { serverMessage } from "@/lib/server-message";
 import { flushOpenDocuments } from "@/lib/document-flush";
@@ -32,11 +32,14 @@ export function DatabaseExportMenu({
   title,
   onCsv,
   onError,
+  onQrLabels,
 }: {
   pageId: string;
   title: string;
   onCsv: () => void;
   onError: (message: string) => void;
+  // "QR-Etiketten drucken …" (components/qr-labels.tsx, #448).
+  onQrLabels?: () => void;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
@@ -73,6 +76,15 @@ export function DatabaseExportMenu({
             <FileDoc />
             {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word (DOCX)", "As Word (DOCX)")}
           </Dropdown.Item>
+          {onQrLabels && (
+            <>
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Item className="dropdown-item" onSelect={onQrLabels}>
+                <QrCode />
+                {t("QR-Etiketten drucken …", "Print QR labels …")}
+              </Dropdown.Item>
+            </>
+          )}
         </Dropdown.Content>
       </Dropdown.Portal>
     </Dropdown.Root>
@@ -88,6 +100,7 @@ export function RecordExportMenu({
   onError,
   onToPage,
   onApplyTemplate,
+  onQr,
 }: {
   pageId: string;
   rowId: string;
@@ -97,6 +110,8 @@ export function RecordExportMenu({
   onToPage?: () => void;
   // "Vorlage anwenden …" (components/apply-template.tsx).
   onApplyTemplate?: () => void;
+  // The record's QR code (components/item-qr.tsx, #448).
+  onQr?: () => void;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
@@ -133,6 +148,12 @@ export function RecordExportMenu({
             <Printer />
             {t("Drucken / PDF", "Print / PDF")}
           </Dropdown.Item>
+          {onQr && (
+            <Dropdown.Item className="dropdown-item" onSelect={onQr}>
+              <QrCode />
+              {t("QR-Code", "QR code")}
+            </Dropdown.Item>
+          )}
           {(onToPage || onApplyTemplate) && <Dropdown.Separator className="dropdown-separator" />}
           {onApplyTemplate && (
             <Dropdown.Item className="dropdown-item" onSelect={onApplyTemplate}>

@@ -1,0 +1,127 @@
+/* QR labels of a database (components/qr-labels.tsx, #448): the dialog
+   with its settings beside a preview of the first sheet, and the sheets
+   themselves. Lengths of the sheets come from a generated style sheet in
+   multiples of --u (lib/qr-labels.ts: labelSheetCss): 1mm in print, a few
+   pixels in the preview. Labels are always black on white. */
+.qr-labels-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  margin-top: 12px;
+}
+.qr-labels-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.qr-labels-form .print-fields {
+  padding-bottom: 0;
+}
+.qr-labels-wide {
+  grid-column: 1 / -1;
+}
+.qr-labels-custom {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.qr-labels-custom legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.qr-labels-placement {
+  justify-self: start;
+}
+.qr-labels-preview {
+  position: sticky;
+  top: 0;
+  max-width: 100%;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.qr-labels-preview .qrl-root {
+  --u: 1.6px;
+}
+.qr-labels-preview .qrl-page {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.qr-labels-status {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+.qr-labels-status p {
+  margin: 0;
+}
+.qr-labels-print-source {
+  display: none;
+}
+.qrl-root {
+  --u: 1mm;
+  color: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.qrl-page {
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  color: #000;
+}
+.qrl-label {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+/* Preview only: the places on the sheet, the skipped ones hatched. */
+.qrl-empty {
+  outline: 1px dashed #c4c4c4;
+  outline-offset: -1px;
+}
+.qrl-skipped {
+  background: repeating-linear-gradient(45deg, #e6e6e6 0 3px, #fff 3px 6px);
+}
+.qrl-code {
+  position: absolute;
+  display: block;
+}
+.qrl-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(0.5 * var(--u));
+  overflow: hidden;
+  color: #000;
+  line-height: 1.2;
+}
+.qrl-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.qrl-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (max-width: 760px) {
+  .qr-labels-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qr-labels-preview {
+    position: static;
+    justify-self: center;
+  }
+  .qr-labels-preview .qrl-root {
+    --u: 1.25px;
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, SquaresFour, Trash } from "@phosphor-icons/react";
+import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, QrCode, SquaresFour, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
@@ -8,7 +8,8 @@ import { ContextMenu, type ContextMenuItem } from "./context-menu";
 type Target = { id: string; title: string; icon: string };
 
 // Right-click on a record (or several selected ones): open, duplicate,
-// copy or move into another database, turn into a page, delete.
+// copy or move into another database, turn into a page, its QR code or the
+// QR labels of several (#448), delete.
 export function RecordMenu({
   x,
   y,
@@ -20,6 +21,8 @@ export function RecordMenu({
   onToPage,
   onApplyTemplate,
   onDelete,
+  onQr,
+  onQrLabels,
   onClose,
 }: {
   x: number;
@@ -33,6 +36,8 @@ export function RecordMenu({
   // "Vorlage anwenden …" (components/apply-template.tsx).
   onApplyTemplate?: () => void;
   onDelete: () => void;
+  onQr?: () => void;
+  onQrLabels?: () => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -41,6 +46,8 @@ export function RecordMenu({
   if (onOpen && !many) items.push({ icon: <ArrowSquareOut />, label: t("Öffnen", "Open"), run: onOpen });
   if (editable) items.push({ icon: <CopySimple />, label: many ? t(`${count} duplizieren`, `Duplicate ${count}`) : t("Duplizieren", "Duplicate"), run: onDuplicate });
   items.push({ icon: <Copy />, label: many ? t(`${count} kopieren nach …`, `Copy ${count} to …`) : t("Kopieren nach …", "Copy to …"), run: () => onTransfer("copy") });
+  if (onQr && !many) items.push({ icon: <QrCode />, label: t("QR-Code", "QR code"), run: onQr });
+  if (onQrLabels && many) items.push({ icon: <QrCode />, label: t(`QR-Etiketten für ${count} drucken …`, `Print QR labels for ${count} …`), run: onQrLabels });
   if (editable)
     items.push(
       { icon: <ArrowsLeftRight />, label: many ? t(`${count} verschieben nach …`, `Move ${count} to …`) : t("Verschieben nach …", "Move to …"), run: () => onTransfer("move") },

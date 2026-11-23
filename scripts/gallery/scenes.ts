@@ -775,6 +775,30 @@ const databaseScenes: Scene[] = [
       await waitDialog(page, "Form QR code");
     },
   },
+  // QR codes of pages and records, the label sheet of a database (#448).
+  {
+    id: "page-qr",
+    group: "Documents & editor",
+    title: "Page QR code",
+    covers: ["components/form-qr.tsx"],
+    path: docPath,
+    steps: async (page) => {
+      await pageAction(page, "QR code");
+      await waitDialog(page, "Page QR code");
+    },
+  },
+  {
+    id: "database-qr-labels",
+    group: "Databases",
+    title: "Print QR labels",
+    covers: ["components/qr-labels.tsx"],
+    path: dbPath,
+    steps: async (page) => {
+      await button(page, "Export").click();
+      await menu(page).getByRole("menuitem", { name: "Print QR labels …", exact: true }).click();
+      await waitDialog(page, "Print QR labels");
+    },
+  },
   {
     id: "database-view-settings",
     group: "Databases",

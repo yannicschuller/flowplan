@@ -4272,6 +4272,19 @@ tr:hover .row-open,
 .form-qr-actions {
   flex-wrap: wrap;
 }
+/* Pages and records (#448): who the code opens for; an address too long. */
+.form-qr-note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  text-align: center;
+}
+.form-qr-too-long {
+  margin: 0;
+  color: #a43c3f;
+}
+[data-theme="dark"] .form-qr-too-long {
+  color: #f3b0b0;
+}
 @media print {
   .form-qr-sheet {
     gap: 8mm;

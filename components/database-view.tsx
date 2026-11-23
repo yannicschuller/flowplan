@@ -10,7 +10,7 @@ import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } fro
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
-import { recordsClipboard } from "@/lib/database-clipboard";
+import { recordsClipboard, type ClipboardContext } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -203,6 +203,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ShareNetwork,
+  QrCode,
 } from "@phosphor-icons/react";
 import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
@@ -254,6 +255,9 @@ const DatabaseChart = dynamic(() => loadView(() => import("./database-chart")), 
 // first opening and kept mounted from then on.
 const AiSummaryDialog = dynamic(() => loadView(() => import("./ai-summary").then((m) => ({ default: m.AiSummaryDialog }))), { ssr: false });
 const DatabaseForm = dynamic(() => loadView(() => import("./database-form")), { ssr: false, loading: () => <ViewSkeleton type="form" /> });
+// A record's QR code and the QR label sheets (#448): loaded on first use.
+const ItemQrDialog = dynamic(() => loadView(() => import("./item-qr")), { ssr: false });
+const QrLabelsDialog = dynamic(() => loadView(() => import("./qr-labels")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
   Database,
@@ -602,6 +606,10 @@ export default function DatabaseView({
   const [transfer, setTransfer] = useState<{ rowIds: string[]; mode: "copy" | "move" } | null>(null);
   // "Turn into page": the record whose dialog is open.
   const [toPage, setToPage] = useState<string | null>(null);
+  // A record's QR code, and the label sheet: the given records (a
+  // selection), or the view's when none are given (#448).
+  const [recordQr, setRecordQr] = useState<{ id: string; title: string } | null>(null);
+  const [qrLabels, setQrLabels] = useState<{ rowIds: string[] | null } | null>(null);
   // "Vorlage anwenden" on an existing record (components/apply-template.tsx);
   // a template opened for editing (its draft record and the template).
   const [applyTo, setApplyTo] = useState<string | null>(null);
@@ -1124,6 +1132,7 @@ export default function DatabaseView({
           onError={onError}
           onToPage={editable && row.role !== "viewer" ? () => setToPage(row.id) : undefined}
           onApplyTemplate={editable && row.role !== "viewer" && data.rowTemplates?.length ? () => setApplyTo(row.id) : undefined}
+          onQr={() => setRecordQr({ id: row.id, title: cellText(row.cells[fields[0]?.id || "title"]) || t("Ohne Titel", "Untitled") })}
         />
         {canManageAccess(row) && (
           <button
@@ -1259,7 +1268,9 @@ export default function DatabaseView({
   // The selected records as the clipboard gets them (issue #119): the
   // visible properties in view order, the records in the order the table
   // shows them (groups, subtask tree), with their computed values.
-  function selectionClipboard() {
+  // The records in the order the view shows them (groups, subtask tree),
+  // each once; with `only`, just those.
+  function viewOrder(only?: { has: (id: string) => boolean }) {
     const order = grouped
       ? groups.flatMap((g) =>
           subgroups.has(g.key)
@@ -1270,22 +1281,30 @@ export default function DatabaseView({
         ? treeOrder(shown, treeParent).map((x) => x.row)
         : shown;
     const seen = new Set<string>();
-    const rows = [...order, ...shown].filter(
-      (r) => selection.has(r.id) && !seen.has(r.id) && !!seen.add(r.id),
+    return [...order, ...shown].filter(
+      (r) => (!only || only.has(r.id)) && !seen.has(r.id) && !!seen.add(r.id),
     );
+  }
+  function selectionClipboard() {
+    const rows = viewOrder(selection);
     if (!rows.length) return null;
     return {
       count: rows.length,
-      ...recordsClipboard(visibleFields, rows, {
-        members,
-        related,
-        files: data.files,
-        sprints: data.database.settings?.sprints,
-        yes: t("Ja", "Yes"),
-        no: t("Nein", "No"),
-        untitled: t("Ohne Titel", "Untitled"),
-        unavailable: t("Nicht verfügbar", "Not available"),
-      }),
+      ...recordsClipboard(visibleFields, rows, clipboardContext()),
+    };
+  }
+  // Cells as people read them (names, formatted numbers and dates): the
+  // clipboard and the QR labels (#448).
+  function clipboardContext(): ClipboardContext {
+    return {
+      members,
+      related,
+      files: data.files,
+      sprints: data.database.settings?.sprints,
+      yes: t("Ja", "Yes"),
+      no: t("Nein", "No"),
+      untitled: t("Ohne Titel", "Untitled"),
+      unavailable: t("Nicht verfügbar", "Not available"),
     };
   }
   // Names for the ids in cells, for the CSV export and import.
@@ -3533,6 +3552,7 @@ export default function DatabaseView({
             pageId={page.id}
             title={page.title}
             onError={onError}
+            onQrLabels={() => setQrLabels({ rowIds: selection.size ? [...selection.keys()] : null })}
             onCsv={() =>
               download(
                 `${page.title}.csv`,
@@ -3623,6 +3643,9 @@ export default function DatabaseView({
           )}
           <button className="button compact" disabled={bulkBusy} onClick={() => setTransfer({ rowIds: [...selection.keys()], mode: "move" })}>
             {t("Verschieben / kopieren nach …", "Move / copy to …")}
+          </button>
+          <button className="button compact" onClick={() => setQrLabels({ rowIds: [...selection.keys()] })}>
+            <QrCode size={14} /> {t("QR-Etiketten drucken", "Print QR labels")}
           </button>
           <button
             className="button compact danger"
@@ -6871,7 +6894,31 @@ export default function DatabaseView({
               ? () => setApplyTo(recordMenu.rowIds[0])
               : undefined
           }
+          onQr={() => {
+            const row = data.rows.find((r) => r.id === recordMenu.rowIds[0]);
+            if (row) setRecordQr({ id: row.id, title: cellText(row.cells[fields[0]?.id || "title"]) || t("Ohne Titel", "Untitled") });
+          }}
+          onQrLabels={() => setQrLabels({ rowIds: recordMenu.rowIds })}
           onClose={() => setRecordMenu(null)}
+        />
+      )}
+      {recordQr && (
+        <ItemQrDialog
+          pageId={page.id}
+          rowId={recordQr.id}
+          title={recordQr.title}
+          onClose={() => setRecordQr(null)}
+        />
+      )}
+      {qrLabels && (
+        <QrLabelsDialog
+          pageId={page.id}
+          rows={viewOrder(qrLabels.rowIds ? new Set(qrLabels.rowIds) : undefined)}
+          fields={fields}
+          context={clipboardContext()}
+          selection={!!qrLabels.rowIds}
+          viewName={view.name}
+          onClose={() => setQrLabels(null)}
         />
       )}
       {applyTo && data.rowTemplates?.length > 0 && (
