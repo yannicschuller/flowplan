@@ -1441,7 +1441,7 @@ test("rollup property picker, progress display and relation board groups work on
   await page.getByRole("button", { name: "Board", exact: true }).click();
   await page.getByRole("button", { name: /^Gruppieren/ }).click();
   const grouping = page.getByRole("dialog", { name: "Gruppierung", exact: true });
-  await grouping.getByLabel("Gruppieren nach").selectOption("tasks");
+  await grouping.getByRole("radio", { name: "Aufgaben", exact: true }).check();
   await expect(grouping.locator("fieldset")).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(grouping).toHaveCount(0);
@@ -2761,9 +2761,8 @@ test("grouped tables and lists collapse independently, select visible rows and m
     name: "Gruppierung",
     exact: true,
   });
-  await settings
-    .getByLabel("Gruppieren nach", { exact: true })
-    .selectOption("status");
+  // One tap on the property groups (design review).
+  await settings.getByRole("radio", { name: "Status", exact: true }).check();
   await expect
     .poll(async () => (await read()).database.views[0].groupBy)
     .toBe("status");

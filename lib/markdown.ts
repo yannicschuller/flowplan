@@ -6,7 +6,8 @@ import { calloutColor, calloutIcon } from "./callout-types";
 import { cleanHtml, htmlJson, jsonHtml } from "./document-server";
 import { citedWorks, formatReference, pandocCitation } from "./citations";
 import { ct } from "./content-locale";
-import { URL_PATTERN, footnoteText } from "./footnotes";
+import { footnoteText } from "./footnotes";
+import { noteSpans } from "./footnote-format";
 import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
 import { fenceMeta, type CodeBlockOptions } from "./code-block-options";
@@ -668,11 +669,17 @@ export function htmlToMarkdown(
   // Cited works without a bibliography block: listed at the end.
   const withReferences =
     cited.length && !bibliographies ? `${body}\n\n${bibliography(ct("Literaturverzeichnis", "References"))}` : body;
-  // Web addresses stay as they are, so they remain links.
+  // The note's formatting as Markdown (lib/footnote-format.ts); web
+  // addresses stay as they are, so they remain links.
   const noteText = (note: string) =>
-    note
-      .split(URL_PATTERN)
-      .map((part, index) => (index % 2 ? part : markdownText(part)))
+    noteSpans(note)
+      .map((span) => {
+        if (span.href && span.href === span.text && !span.bold && !span.italic && !span.code) return span.text;
+        let text = span.code ? `\`${span.text}\`` : markdownText(span.text);
+        if (span.italic) text = `*${text}*`;
+        if (span.bold) text = `**${text}**`;
+        return span.href ? `[${text}](${span.href})` : text;
+      })
       .join("");
   const definitions = notes.map((note, index) => `[^${index + 1}]: ${noteText(note) || " "}`).join("\n");
   return (definitions ? `${withReferences}\n\n${definitions}` : withReferences) + "\n";

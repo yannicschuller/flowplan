@@ -3,14 +3,23 @@
 // address is unconfirmed (#436, lib/unconfirmed-deletion.ts): the day, and
 // "Bestätigungslink erneut senden". Signing in does not keep the account –
 // only confirming the address does –, so it stays until then.
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Warning } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { api } from "./ui";
 import { useT } from "./i18n";
 
+// False while the server's HTML shows and React has not taken over yet.
+const noSubscription = () => () => {};
+const useHydrated = () => useSyncExternalStore(noSubscription, () => true, () => false);
+
 export function UnconfirmedDeletionNotice({ due }: { due: number }) {
   const t = useT();
+  // The page arrives rendered on the server, notice included; until the
+  // app's scripts have taken over, a click on the button did nothing at all
+  // (no request, no message – on a slow device for a second or more). It
+  // stays disabled until then.
+  const hydrated = useHydrated();
   const [state, setState] = useState<{ busy: boolean; note: string; error: boolean }>({ busy: false, note: "", error: false });
   const date = new Date(due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric" });
   return (
@@ -31,7 +40,7 @@ export function UnconfirmedDeletionNotice({ due }: { due: number }) {
       <button
         type="button"
         className="button primary"
-        disabled={state.busy}
+        disabled={!hydrated || state.busy}
         onClick={async () => {
           setState({ busy: true, note: "", error: false });
           try {

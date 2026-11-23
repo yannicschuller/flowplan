@@ -594,7 +594,7 @@ export function MyTasks({
           open={rangeOpen}
           onOpenChange={setRangeOpen}
         >
-          <fieldset className="chip-panel my-tasks-ranges">
+          <fieldset className="chip-panel chip-options my-tasks-ranges">
             <legend className="sr-only">{t("Fälligkeit", "Due")}</legend>
             {DUE_RANGES.map((option) => (
               <label key={option} data-active={range === option}>

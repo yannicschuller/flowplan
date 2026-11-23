@@ -108,8 +108,9 @@ test("switched-off flashcards and whiteboards leave new page, slash menu and sid
     await expect(dialog.getByRole("radio", { name: "Journal" })).toBeVisible();
     await expect(dialog.getByRole("radio", { name: "Whiteboard" })).toHaveCount(0);
     await dialog.getByRole("radio", { name: "Datenbank" }).click();
-    await expect(dialog.getByRole("radio", { name: "Aufgaben" })).toBeVisible();
-    await expect(dialog.getByRole("radio", { name: "Lernkarten" })).toHaveCount(0);
+    const kinds = dialog.getByLabel("Art der Datenbank");
+    await expect(kinds.locator("option", { hasText: "Aufgaben" })).toHaveCount(1);
+    await expect(kinds.locator("option", { hasText: "Lernkarten" })).toHaveCount(0);
     await shot(page, `mod378-new-page-${mobile ? 390 : 1440}`);
     await dialog.getByRole("button", { name: "Abbrechen" }).click();
 

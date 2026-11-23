@@ -1,5 +1,5 @@
 // The pinned first column of a database table (components/database-view.tsx).
-// On phones it takes at most --pinned-column-max (about 60 % of the table's
+// On phones it takes at most --pinned-column-max (about 40 % of the table's
 // width, app/globals.css) and the title is cut short with an ellipsis: wider, it
 // covered the whole table, and a swipe sideways scrolled the other columns
 // underneath it where nobody could see them (#98). Elsewhere the variable is

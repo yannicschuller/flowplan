@@ -212,6 +212,17 @@ const store = (key: string, value: boolean) => {
     localStorage.setItem(key, value ? "1" : "0");
   } catch {}
 };
+// The pen's three widths (design review): the same steps as a selected
+// line's width (1, 2, 3, 5, 8 px), remembered on this device.
+const PEN_WIDTHS = [2, 3, 5] as const;
+const storedPenWidth = () => {
+  try {
+    const value = Number(localStorage.getItem("flowplan-board-pen-width"));
+    return PEN_WIDTHS.some((w) => w === value) ? value : 3;
+  } catch {
+    return 3;
+  }
+};
 const to64 = (bytes: Uint8Array) => {
   let text = "";
   for (let i = 0; i < bytes.length; i += 0x8000)
@@ -460,6 +471,7 @@ export default function Whiteboard({
     [showCables, setShowCables] = useState(() => stored("flowplan-board-cables", true)),
     [recognize, setRecognize] = useState(() => stored("flowplan-board-recognize", false)),
     [penColor, setPenColor] = useState(strokeColors[0]),
+    [penWidth, setPenWidth] = useState(storedPenWidth),
     // Pen-only drawing (lib/stylus.ts): fingers move and zoom, the pen draws.
     [penOnly, setPenOnlyState] = useState(() => penOnlySetting() === "on"),
     // Where a hovering pen is (Apple Pencil hover): a preview of the stroke.
@@ -1774,7 +1786,7 @@ export default function Whiteboard({
           h: 1,
           points: [0, 0],
           stroke: penColor,
-          strokeWidth: 3,
+          strokeWidth: penWidth,
         });
       else if (kind === "stamp") {
         // A stamp on an element: one per person, the same one again takes it back.
@@ -3985,7 +3997,7 @@ export default function Whiteboard({
               className={`wb-pen-hover${tool === "eraser" ? " eraser" : ""}`}
               cx={hover.x}
               cy={hover.y}
-              r={tool === "eraser" ? 8 / view.zoom : 2.5}
+              r={tool === "eraser" ? 8 / view.zoom : Math.max(1.5, penWidth * 0.8)}
               fill={tool === "eraser" ? "none" : colors.ink(penColor)}
               strokeWidth={1 / view.zoom}
             />
@@ -4792,17 +4804,44 @@ export default function Whiteboard({
         </div>
       )}
       {editable && tool === "pen" && toolMenu && (
-        <div className="wb-shape-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="wb-shape-menu wb-pen-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
           {drawSwitch}
-          {strokeColors.map((c) => (
-            <button
-              key={c}
-              className={`wb-swatch line${penColor === c ? " active" : ""}`}
-              style={{ borderColor: c }}
-              aria-label={t(`Stiftfarbe ${c}`, `Pen colour ${c}`)}
-              onClick={() => setPenColor(c)}
-            />
-          ))}
+          {/* Colours as a compact grid, then the width, then the switches
+              (design review: two far-apart columns and no width). */}
+          <div className="wb-pen-colors" role="group" aria-label={t("Stiftfarbe", "Pen colour")}>
+            {strokeColors.map((c) => (
+              <button
+                key={c}
+                className={`wb-swatch line${penColor === c ? " active" : ""}`}
+                style={{ borderColor: c }}
+                aria-label={t(`Stiftfarbe ${c}`, `Pen colour ${c}`)}
+                aria-pressed={penColor === c}
+                onClick={() => setPenColor(c)}
+              />
+            ))}
+          </div>
+          <div className="wb-pen-widths" role="group" aria-label={t("Strichstärke", "Line width")}>
+            {PEN_WIDTHS.map((w) => {
+              const name = w === 2 ? t("Fein", "Fine||pen width") : w === 3 ? t("Mittel", "Medium") : t("Breit", "Bold||pen width");
+              return (
+                <button
+                  key={w}
+                  className={penWidth === w ? "active" : ""}
+                  aria-pressed={penWidth === w}
+                  aria-label={name}
+                  title={name}
+                  onClick={() => {
+                    setPenWidth(w);
+                    try {
+                      localStorage.setItem("flowplan-board-pen-width", String(w));
+                    } catch {}
+                  }}
+                >
+                  <span className={`wb-pen-width-line w${w}`} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
           <label className="wb-check">
             <input
               type="checkbox"

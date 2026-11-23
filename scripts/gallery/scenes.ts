@@ -170,9 +170,21 @@ async function sidebarTool(page: Page, ctx: SceneContext, name: string) {
 }
 
 // An entry of the page's ⋯ menu.
+// The appearance entries sit in a submenu of the dropdown (a section of
+// the phone sheet).
+const APPEARANCE = ["Change icon", "Change cover", "Full width", "Number captions", "Change font"];
 async function pageAction(page: Page, item: string) {
   await button(page, "Page actions").click();
-  await menu(page).getByRole("menuitem", { name: item, exact: true }).click();
+  const sub = menu(page).getByRole("menuitem", { name: "Appearance", exact: true });
+  const entry = () => menu(page).getByRole("menuitem", { name: item, exact: true });
+  if (APPEARANCE.includes(item) && (await sub.count())) {
+    await sub.click();
+    // Over to the submenu the way a hand moves (a jump past its edge
+    // closes it, as in every Radix menu).
+    const box = (await entry().boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
+  }
+  await entry().click();
 }
 
 // "Share": in the top bar, inside ⋯ on phones (tests/browser/page-top-bar.ts).
@@ -534,6 +546,27 @@ const editorScenes: Scene[] = [
     },
   },
   {
+    // "Draw" in the cover dialog (design review): the canvas with a stroke.
+    id: "cover-draw",
+    group: "Documents & editor",
+    title: "Cover picker: draw a cover",
+    covers: ["components/cover-draw.tsx"],
+    steps: async (page, ctx) => {
+      await editorWith(page, ctx, RICH_HTML);
+      await pageAction(page, "Change cover");
+      await waitDialog(page, "Choose cover");
+      await button(page, "Draw").click();
+      await waitDialog(page, "Draw a cover");
+      const surface = page.locator(".cover-draw-surface");
+      await surface.waitFor();
+      const box = (await surface.boundingBox())!;
+      await page.mouse.move(box.x + box.width * 0.1, box.y + box.height * 0.7);
+      await page.mouse.down();
+      for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + box.width * (0.1 + i * 0.06), box.y + box.height * (0.7 - Math.sin(i / 3) * 0.4));
+      await page.mouse.up();
+    },
+  },
+  {
     id: "table-cell-menu",
     group: "Documents & editor",
     title: "Table: cell and handles",
@@ -665,6 +698,20 @@ const editorScenes: Scene[] = [
     steps: async (page) => {
       await button(page, "Page actions").click();
       await menu(page).waitFor();
+    },
+  },
+  {
+    // The submenu "Appearance" of the page menu (design review).
+    id: "page-menu-appearance",
+    group: "Documents & editor",
+    title: "Page actions menu: Appearance",
+    path: docPath,
+    devices: ["desktop"],
+    covers: ["components/page-menu.tsx"],
+    steps: async (page) => {
+      await button(page, "Page actions").click();
+      await menu(page).getByRole("menuitem", { name: "Appearance", exact: true }).click();
+      await menu(page).getByRole("menuitem", { name: "Change icon", exact: true }).waitFor();
     },
   },
   {

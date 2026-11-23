@@ -183,7 +183,6 @@ export function FocusSession({
     [phase, setPhase] = useState<"loading" | "card" | "wait" | "done">("loading"),
     [history, setHistory] = useState<FocusDone[]>([]),
     [rated, setRated] = useState<Rated[]>([]),
-    [legend, setLegend] = useState(false),
     [error, setError] = useState(""),
     [announce, setAnnounce] = useState(""),
     [swipe, setSwipe] = useState<StudyRating | null>(null),
@@ -507,27 +506,18 @@ export function FocusSession({
         </button>
         <span className="study-focus-title">{title}</span>
         {deck && (
-          // Numbers only on a phone: a tap shows their words (the legend).
-          <button
-            type="button"
-            className={`study-focus-counts${legend ? " legend" : ""}`}
-            onClick={() => setLegend((l) => !l)}
-            aria-label={countsLabel}
-            aria-expanded={legend}
-            title={`${kinds.new} · ${kinds.learning} · ${kinds.review}`}
-          >
+          // The numbers with their words (on a phone in small type below
+          // each); read as one sentence.
+          <p className="study-focus-counts" title={`${kinds.new} · ${kinds.learning} · ${kinds.review}`}>
+            <span className="sr-only">{countsLabel}</span>
             {(["new", "learning", "review"] as const).map((kind, i) => (
-              <span key={kind} className={`study-focus-count ${kind}${current === kind ? " current" : ""}`}>
-                {i > 0 && (
-                  <span className="study-focus-sep" aria-hidden>
-                    ·
-                  </span>
-                )}
+              <span key={kind} className={`study-focus-count ${kind}${current === kind ? " current" : ""}`} aria-hidden>
+                {i > 0 && <span className="study-focus-sep">·</span>}
                 <b>{deck.counts[kind]}</b>
                 <span className="study-focus-word">{kinds[kind]}</span>
               </span>
             ))}
-          </button>
+          </p>
         )}
         <button className="icon-button" onClick={() => void undo()} disabled={!history.length} title={t("Letzte Wertung rückgängig (Z)", "Undo last rating (Z)")} aria-label={t("Letzte Wertung rückgängig", "Undo last rating")}>
           <ArrowCounterClockwise size={20} />

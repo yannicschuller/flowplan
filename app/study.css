@@ -129,8 +129,8 @@
   min-width: 0;
 }
 .study-focus-counts {
-  /* Quiet numbers, not pills: a button only for the legend on phones. */
-  margin-left: auto;
+  /* Quiet numbers with their words, not pills. */
+  margin: 0 0 0 auto;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -144,7 +144,6 @@
   font: inherit;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  cursor: default;
 }
 .study-focus-count {
   display: inline-flex;
@@ -246,8 +245,12 @@
 .study-card {
   position: relative;
   width: min(720px, 100%);
-  flex: 1 0 auto;
-  min-height: 220px;
+  /* As tall as its content with a sensible least height, centred in the
+     free space above the answer bar – it filled the whole screen, a large
+     empty box around one line (design review). */
+  flex: 0 0 auto;
+  margin-block: auto;
+  min-height: clamp(200px, 36vh, 340px);
   /* The question in the middle row, the answer in the row below: the
      rows around the question share the free space, so revealing does not
      move the question unless the answer needs more than its half. */
@@ -379,6 +382,16 @@
 }
 .study-extra .study-text {
   font-size: 16px;
+}
+/* Wider screens: card and answer bar together in the middle; on phones
+   the bar stays at the bottom, in reach of the thumb. */
+@media (min-width: 601px) {
+  .study-focus-main > .study-card {
+    margin-bottom: 0;
+  }
+  .study-focus-main > .study-card ~ .study-answer-bar {
+    margin-bottom: auto;
+  }
 }
 .study-answer-bar {
   flex: none;
@@ -569,17 +582,28 @@
     flex-wrap: wrap;
     padding: 8px 10px;
   }
+  /* The numbers with their word in small type below each (design review:
+     "1 · 0 · 0" alone said nothing). */
   .study-focus-counts {
     order: 3;
     width: 100%;
     justify-content: center;
+    gap: 0 22px;
     margin-left: 0;
     padding: 2px 6px;
-    cursor: pointer;
   }
-  /* Numbers only; a tap on them shows the words. */
-  .study-focus-counts:not(.legend) .study-focus-word {
+  .study-focus-count {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .study-focus-sep {
     display: none;
+  }
+  .study-focus-word {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.2;
   }
   .study-progress-row {
     padding: 0 12px;

@@ -14,6 +14,9 @@ import { useT } from "./i18n";
 import { typing, useSoftKeyboard } from "./mobile-tab-bar";
 
 const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
+// The strip a dialog keeps free for the button (app/globals.css,
+// html.hide-keyboard-fab-shown .modal).
+const STRIP = 56;
 
 // Whether a docked toolbar's own "Hide keyboard" is on screen and not under
 // a dialog (what lies on top at its centre, this button aside, is it).
@@ -89,15 +92,42 @@ export function HideKeyboardButton() {
       vv?.removeEventListener("scroll", later);
     };
   }, [keyboardOpen, fab]);
-  // While it shows, an open dialog keeps a strip free at its end: its
-  // buttons at the bottom right sat right where this button is.
+  // While it shows, an open dialog that reaches down to it keeps a strip
+  // free at its end: its buttons at the bottom right sat right where this
+  // button is. A dialog well above it keeps its own height (design review:
+  // the footnote dialog had a large empty strip at its end).
   const visible = keyboardOpen && shown;
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !fab) return;
     const root = document.documentElement;
-    root.classList.add("hide-keyboard-fab-shown");
-    return () => root.classList.remove("hide-keyboard-fab-shown");
-  }, [visible]);
+    let frame = 0;
+    const check = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const dialogs = document.querySelectorAll<HTMLElement>(".modal");
+        const dialog = dialogs[dialogs.length - 1];
+        const top = fab.getBoundingClientRect().top;
+        const strip = root.classList.contains("hide-keyboard-fab-shown") ? STRIP / 2 : 0;
+        const reaches = !!dialog && dialog.getBoundingClientRect().bottom - strip > top - 8;
+        root.classList.toggle("hide-keyboard-fab-shown", reaches);
+      });
+    };
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true });
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", check);
+    window.addEventListener("resize", check);
+    const timer = setInterval(check, 500);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(timer);
+      observer.disconnect();
+      vv?.removeEventListener("resize", check);
+      window.removeEventListener("resize", check);
+      root.classList.remove("hide-keyboard-fab-shown");
+    };
+  }, [visible, fab]);
   if (!visible || typeof document === "undefined") return null;
   const label = t("Tastatur ausblenden", "Hide keyboard");
   return createPortal(

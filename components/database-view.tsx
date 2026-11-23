@@ -769,7 +769,7 @@ export default function DatabaseView({
   // the table scrolls sideways.
   // Next to the selection column (wider on touch screens: --selection-column);
   // on phones the selection column scrolls away and the pinned column is at
-  // most about 60 % of the table wide (lib/pinned-column.ts, #98).
+  // most about 40 % of the table wide (lib/pinned-column.ts, #98).
   const stickyOffset = pinnedColumnLeft(editable);
   const stickyCell = (field: Field, index: number) =>
     index === 0

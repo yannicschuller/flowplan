@@ -19,9 +19,10 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   const dialog = page.getByRole("dialog", { name: "Neue Seite" });
   await dialog.getByLabel("Name").fill(`Notizen ${stamp}`);
   await dialog.getByRole("radio", { name: "Datenbank", exact: true }).click();
-  const kinds = dialog.getByRole("group", { name: "Art der Datenbank" });
-  await expect(kinds.getByRole("radio", { name: /Aufgaben/ })).toBeChecked();
-  await kinds.getByText("Dokumente", { exact: true }).click();
+  // The kind is a select (design review).
+  const kinds = dialog.getByLabel("Art der Datenbank");
+  await expect(kinds).toHaveValue("tasks");
+  await kinds.selectOption({ label: "Dokumente" });
   await page.screenshot({ path: `test-results/database-kind-${info.project.name}.png` });
   await dialog.getByRole("button", { name: "Seite erstellen" }).click();
   await expect(page.locator(".page-title")).toHaveValue(`Notizen ${stamp}`, { timeout: 30_000 }); // The first database view of the session.
@@ -31,7 +32,7 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   await page.goto("about:blank");
   await page.goto("/#new");
   await dialog.getByRole("radio", { name: "Datenbank", exact: true }).click();
-  await expect(kinds.getByRole("radio", { name: /Dokumente/ })).toBeChecked();
+  await expect(kinds).toHaveValue("documents");
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
 
   // #27: quick capture into this database, remembered as default.

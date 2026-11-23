@@ -781,6 +781,18 @@ label.hit-check {
 .page-menu-sheet-list > .dropdown-separator {
   margin: 5px 12px;
 }
+.page-menu-sheet-list > .page-menu-section {
+  display: grid;
+  gap: 2px;
+}
+.page-menu-sheet-list > .page-menu-section:not(:first-child) {
+  margin: 5px 0 0;
+  padding-top: 5px;
+}
+.page-menu-sheet-list .page-menu-label {
+  padding: 8px 12px 4px;
+  font-size: 13px;
+}
 
 /* ===== Comments on phones (≤ 767 px, the phone layout of app/globals.css):
    the panel covers the page's whole width – a strip of the page beside it
@@ -806,6 +818,11 @@ label.hit-check {
   }
   .my-tasks-range .toolbar-chip {
     height: 40px;
+  }
+  /* Choices in a chip's panel (date range, grouping): rows to hit. */
+  .chip-options > label {
+    min-height: 44px;
+    padding-block: 10px;
   }
   .record-filters :is(.fp-select, .button.compact),
   .record-search input,

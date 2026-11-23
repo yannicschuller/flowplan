@@ -4663,6 +4663,32 @@ tr:hover .row-open,
   background: var(--hover);
   color: var(--text);
 }
+/* The page's "⋯" menu (components/page-menu.tsx): labelled sections with a
+   line above, appearance as a submenu (design review). */
+.page-menu-section:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.page-menu-label {
+  padding: 6px 10px 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.page-menu-sub-trigger[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.dropdown-item svg.page-menu-sub-caret {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  padding-left: 8px;
+  box-sizing: content-box;
+  color: var(--muted);
+}
 .dropdown-separator {
   height: 1px;
   background: var(--border);
@@ -10042,6 +10068,28 @@ tr.order-drop-after > td {
   right: 12px;
   bottom: 12px;
   background: var(--bg);
+}
+/* "Zeichnen" in the cover dialog (components/cover-draw.tsx): the canvas
+   on the drawing's proportions (lib/cover-drawing.ts, 1200 × 400), white
+   like the picture it becomes. */
+.cover-draw .ink-toolbar {
+  position: static;
+  margin-bottom: 10px;
+}
+.cover-draw-surface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  touch-action: none;
+  line-height: 0;
+}
+.cover-draw-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
 }
 .cover-preview {
   height: 180px;
@@ -15460,6 +15508,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   display: flex;
   gap: 8px;
 }
+/* Administration's "Aktualisieren": an icon button in the header. */
+.settings-refresh {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
 .settings-rail {
   position: sticky;
   top: 16px;
@@ -15748,6 +15802,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   .settings-detail-actions {
     flex-basis: 100%;
     margin-left: 0;
+  }
+  /* Only the refresh button: it stays in the title's row, at its end. */
+  .settings-detail-actions:has(> .settings-refresh:only-child) {
+    flex-basis: auto;
+    margin-left: auto;
+    align-self: flex-start;
   }
   .control-sm,
   .control-md,
@@ -17150,6 +17210,9 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   .settings-detail-actions .button,
   .mon-check {
     min-height: 44px;
+  }
+  .settings-detail-actions .settings-refresh {
+    width: 44px;
   }
   .mon-storage {
     grid-template-columns: minmax(0, 1fr);
@@ -18675,42 +18738,83 @@ label.task-due {
   min-width: 260px;
   padding: 6px;
 }
-.my-tasks-ranges {
+/* A list of choices in a chip's panel (the date range of "Meine Aufgaben",
+   "Gruppieren" of a database): full-width rows, the radio at the left, the
+   title with an optional line below next to it; the chosen row tinted. */
+.chip-panel.chip-options {
   gap: 2px;
 }
-.chip-panel.my-tasks-ranges > label {
+.chip-panel.chip-options > label,
+.chip-options > .chip-option {
   position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 6px 10px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 10px;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 10px;
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.35;
+  color: var(--text);
   cursor: pointer;
 }
-.my-tasks-ranges > label:hover {
+.chip-options > label:hover {
   background: var(--hover);
 }
-.my-tasks-ranges > label[data-active="true"] {
+.chip-options > label[data-active="true"] {
   background: var(--blue-light);
   color: var(--accent-strong);
 }
-.my-tasks-ranges > label:has(input:focus-visible) {
+.chip-options > label:has(input:focus-visible) {
   outline: 2px solid var(--blue);
   outline-offset: -2px;
 }
-.my-tasks-ranges input {
-  margin: 0;
+.chip-options > label > input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
   accent-color: var(--blue);
 }
-.my-tasks-ranges small {
+.chip-options > label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chip-options small {
   display: block;
+  margin-top: 1px;
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 400;
+}
+.chip-options > label[data-active="true"] small {
+  color: color-mix(in srgb, var(--accent-strong) 75%, var(--muted));
+}
+.chip-options-heading {
+  margin: 0;
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+/* "Gruppieren": the properties as choices, the options of a grouping
+   below them (components/database-toolbar.tsx). */
+.group-chip-popover {
+  min-width: 240px;
+  max-height: min(70dvh, 560px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.group-chip-more {
+  padding: 0 6px 6px;
+}
+.chip-options-separator {
+  height: 1px;
+  margin: 6px 2px;
+  background: var(--border);
 }
 /* A task given to me since I last looked (#208). */
 .my-task-new {
@@ -20650,6 +20754,65 @@ h3 .block-reactions {
 .wb-panel .wb-check {
   grid-column: 1 / -1;
 }
+/* The pen's options (design review): colours as a compact 4 × 2 grid,
+   then the three widths, then the switches – one column, no gaps. */
+.wb-shape-menu.wb-pen-menu {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 168px;
+}
+.whiteboard.wb-layout-dock .wb-shape-menu.wb-pen-menu {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wb-pen-colors {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 4px;
+  justify-content: start;
+  padding: 2px;
+}
+.wb-pen-colors .wb-swatch {
+  justify-self: center;
+  align-self: center;
+}
+.wb-pen-widths {
+  display: flex;
+  gap: 4px;
+  padding: 4px 2px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+.wb-shape-menu .wb-pen-widths button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 8px;
+}
+.wb-pen-width-line {
+  display: block;
+  width: 26px;
+  border-radius: 99px;
+  background: currentColor;
+}
+.wb-pen-width-line.w2 {
+  height: 2px;
+}
+.wb-pen-width-line.w3 {
+  height: 3px;
+}
+.wb-pen-width-line.w5 {
+  height: 6px;
+}
+@media (pointer: coarse) {
+  .wb-pen-colors {
+    grid-template-columns: repeat(4, 40px);
+  }
+  .wb-shape-menu .wb-pen-widths button {
+    height: 40px;
+  }
+}
+
 .wb-check {
   flex-direction: row;
   align-items: center;
@@ -28014,6 +28177,21 @@ h3 .block-reactions {
   margin: 3px 0;
   border-radius: 4px;
 }
+/* The footnote dialog's hints (components/editor.tsx). */
+.footnote-format-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+}
+.footnote-format-hint + .footnote-format-hint {
+  margin-top: 2px;
+}
+/* Formatting inside a note (lib/footnote-format.ts). */
+.footnotes .footnote-text code {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--hover);
+  font-size: 0.92em;
+}
 .document-editor .footnotes .footnote-text {
   font: inherit;
   color: inherit;
@@ -30750,8 +30928,10 @@ td.ai-filled {
   margin: 0;
   font-size: 12.5px;
 }
+/* Text fields and selects fill the panel; checkboxes and radios keep
+   their own size (a radio at 100 % stretched into a bar, design review). */
 .chip-panel .fp-select,
-.chip-panel input:not([type="checkbox"]) {
+.chip-panel input:not([type="checkbox"], [type="radio"]) {
   width: 100%;
   min-width: 0;
 }
@@ -30882,22 +31062,23 @@ td.ai-filled {
     box-shadow: none;
   }
 }
-/* Phones (also turned sideways): what stays pinned takes at most about 60 %
+/* Phones (also turned sideways): what stays pinned takes at most about 40 %
    of the table's width (of the screen where container units are missing),
-   so a swipe sideways always shows the other columns moving (#98). The
-   title column is cut short with an ellipsis (its width,
-   lib/pinned-column.ts) and the selection column scrolls away. */
+   so a swipe sideways always shows the other columns moving (#98; 60 % left
+   too little of them in portrait, design review). The title column is cut
+   short with an ellipsis (its width, lib/pinned-column.ts) and the
+   selection column scrolls away. */
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .pinned-table-scroll {
     container-type: inline-size;
   }
   .configurable-table {
-    --pinned-column-max: 60vw;
+    --pinned-column-max: 40vw;
     --pinned-column-left: 0px;
   }
   @supports (width: 1cqw) {
     .configurable-table {
-      --pinned-column-max: 60cqw;
+      --pinned-column-max: 40cqw;
     }
   }
   .configurable-table .selection-cell.sticky-col {
@@ -30911,6 +31092,26 @@ td.ai-filled {
   .configurable-table th.sticky-col-end {
     min-width: 0;
     max-width: var(--pinned-column-max);
+  }
+}
+/* Very narrow screens (below 380 px): nothing stays pinned – even 40 %
+   left too little room for the other columns. The title keeps its capped
+   width and scrolls with the rest; a stuck header stays positioned. */
+@media (max-width: 379.98px) {
+  .configurable-table .sticky-col {
+    position: static;
+  }
+  .configurable-table thead[data-stuck] .sticky-col {
+    position: relative;
+  }
+  .data-table-scroll.scrolled-x .sticky-col-end {
+    box-shadow: none;
+  }
+  .data-table-scroll.scrolled-x .configurable-table thead[data-stuck] th.sticky-col-end {
+    box-shadow:
+      inset 0 -1px 0 var(--border),
+      inset 0 1px 0 var(--border),
+      0 6px 8px -6px #00000030;
   }
 }
 /* Rows take the keyboard: arrows move, Enter opens. */

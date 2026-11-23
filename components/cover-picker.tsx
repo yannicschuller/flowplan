@@ -2,7 +2,8 @@
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { useEffect, useId, useRef, useState } from "react";
-import { Trash, UploadSimple } from "@phosphor-icons/react";
+import { PencilSimple, Trash, UploadSimple } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
 import { Modal, needsConnection } from "./ui";
 import {
   imageAccept,
@@ -16,6 +17,11 @@ import type { MediaItem } from "@/lib/media-library";
 import { compressImage } from "@/lib/image-compress";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { primePlaceholder } from "./image-placeholder";
+import { COVER_DRAWING_NAME, inkFromPng, isCoverDrawing } from "@/lib/cover-drawing";
+import type { InkDoc } from "@/lib/ink/model";
+
+// The drawing canvas, loaded only when "Zeichnen" is chosen.
+const CoverDraw = dynamic(() => import("./cover-draw"), { ssr: false });
 
 // Whether each of the page's images is used, from the media library
 // (GET /api/media?page=…, lib/file-usage.ts): at most this many calls of 60.
@@ -78,7 +84,8 @@ export function CoverPicker({
     [removing, setRemoving] = useState(false),
     [notice, setNotice] = useState(""),
     list = useRef<HTMLUListElement>(null),
-    justRemoved = useRef(false);
+    justRemoved = useRef(false),
+    [drawing, setDrawing] = useState<{ ink: InkDoc | null } | null>(null);
   const canRemove = !!removeImage;
   useEffect(() => {
     if (!canRemove) return;
@@ -130,6 +137,60 @@ export function CoverPicker({
     } finally {
       setRemoving(false);
       setConfirm(null);
+    }
+  }
+  // Uploads a cover image (a file or a drawing) and chooses it. A refusal
+  // shows in this dialog, or – for a drawing – is thrown to the drawing's
+  // own dialog.
+  async function upload(file: File, { rethrow = false } = {}) {
+    if (file.size > 10 * 1024 * 1024) {
+      const message = t("Maximal 10 MB pro Bild.", "At most 10 MB per image.");
+      if (rethrow) throw new Error(message);
+      setError(message);
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.set("pageId", page.id);
+      body.set("file", file);
+      body.set("purpose", "cover");
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body,
+        headers: idempotencyHeaders(),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
+      primePlaceholder(result.url, result.placeholder);
+      setUploads((prior) => [...prior, result]);
+      setCover(result.url);
+      setPosition(50);
+      return true;
+    } catch (error) {
+      if (rethrow) throw error;
+      setError((error as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  // "Zeichnen": a new drawing, or the chosen drawn cover again with its ink
+  // (kept inside its PNG, lib/cover-drawing.ts).
+  const chosenItem = image ? existing.find((item) => item.url === cover) : undefined;
+  const redraw = isCoverDrawing(chosenItem?.name);
+  async function startDrawing() {
+    if (!redraw || !chosenItem) return setDrawing({ ink: null });
+    setBusy(true);
+    try {
+      const response = await fetch(chosenItem.url, { cache: "no-store" });
+      setDrawing({ ink: response.ok ? inkFromPng(new Uint8Array(await response.arrayBuffer())) : null });
+    } catch {
+      setDrawing({ ink: null });
+    } finally {
+      setBusy(false);
     }
   }
   async function save(value = cover) {
@@ -200,41 +261,17 @@ export function CoverPicker({
               event.target.value = "";
               if (!picked || needsConnection()) return;
               setFileName(picked.name);
-              const file = await compressImage(picked);
-              if (file.size > 10 * 1024 * 1024) {
-                setError(t("Maximal 10 MB pro Bild.", "At most 10 MB per image."));
-                return;
-              }
-              setBusy(true);
-              setError("");
-              try {
-                const body = new FormData();
-                body.set("pageId", page.id);
-                body.set("file", file);
-                body.set("purpose", "cover");
-                const response = await fetch("/api/upload", {
-                  method: "POST",
-                  body,
-                  headers: idempotencyHeaders(),
-                });
-                const result = await response.json();
-                if (!response.ok)
-                  throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
-                primePlaceholder(result.url, result.placeholder);
-                setUploads((prior) => [...prior, result]);
-                setCover(result.url);
-                setPosition(50);
-              } catch (error) {
-                setError((error as Error).message);
-              } finally {
-                setBusy(false);
-              }
+              await upload(await compressImage(picked));
             }}
           />
           <label htmlFor={uploadId} className="button">
             <UploadSimple size={16} aria-hidden />
             {t("Coverbild hochladen", "Upload cover image")}
           </label>
+          <button type="button" className="button cover-draw-start" onClick={() => void startDrawing()}>
+            <PencilSimple size={16} aria-hidden />
+            {redraw ? t("Zeichnung bearbeiten", "Edit drawing") : t("Zeichnen", "Draw")}
+          </button>
           <span id={`${uploadId}-name`} className="file-pick-name muted">
             {fileName || t("Keine Datei ausgewählt", "No file chosen")}
           </span>
@@ -339,6 +376,13 @@ export function CoverPicker({
           {busy ? t("Bitte warten …", "Please wait …") : t("Speichern", "Save")}
         </button>
       </div>
+      {drawing && (
+        <CoverDraw
+          initial={drawing.ink}
+          onClose={() => setDrawing(null)}
+          onSave={(png) => upload(new File([png], COVER_DRAWING_NAME, { type: "image/png" }), { rethrow: true })}
+        />
+      )}
       <Modal
         open={!!confirm}
         title={t("Bild entfernen", "Remove image")}

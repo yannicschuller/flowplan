@@ -77,7 +77,9 @@ test("Markdown export writes [^n] references and definitions; import turns them 
   assert.match(markdown, /Erstens\[\^1\] und zweitens\[\^2\]\./);
   assert.match(markdown, /- In einer Liste\[\^3\]/);
   assert.match(markdown, /\| Zelle\[\^4\] \|/);
-  assert.match(markdown, /\n\n\[\^1\]: Siehe \\\[Kapitel 2\\\] \\\*wörtlich\\\* &amp; mehr: https:\/\/example\.test\/a_b\n\[\^2\]: Zweite Notiz\n\[\^3\]: Dritte\n\[\^4\]: Vierte\n$/);
+  // The note's *italic* stays Markdown (lib/footnote-format.ts); the rest
+  // is escaped text.
+  assert.match(markdown, /\n\n\[\^1\]: Siehe \\\[Kapitel 2\\\] \*wörtlich\* &amp; mehr: https:\/\/example\.test\/a_b\n\[\^2\]: Zweite Notiz\n\[\^3\]: Dritte\n\[\^4\]: Vierte\n$/);
   const back = canonical(markdownToHtml(markdown));
   assert.deepEqual(
     footnoteList(pmDoc(back)).map((n) => n.note),
@@ -104,7 +106,8 @@ test("Markdown footnotes from other tools: labels, continuation lines, Obsidian 
     ].join("\n"),
   );
   const notes = footnoteList(pmDoc(html)).map((n) => n.note);
-  assert.deepEqual(notes, ["Erste fett weiter geht's", "Seite (https://example.test/x)", "Inline mit Link (https://example.test)"]);
+  // Bold, italic, code and links keep their Markdown (lib/footnote-format.ts).
+  assert.deepEqual(notes, ["Erste **fett** weiter geht's", "[Seite](https://example.test/x)", "Inline mit [Link](https://example.test)"]);
   assert.match(html, /\[\^quelle\] bleibt Code/);
   assert.match(html, /Unbekannt\[\^nix\] bleibt Text/);
   assert.doesNotMatch(html, /\[\^quelle\]:/);
@@ -119,7 +122,8 @@ test("read-only pages number the markers and list the notes at the end", () => {
   assert.deepEqual(markers.map((m) => m.getAttribute("data-footnote-number")), ["1", "2", "3", "4"]);
   const items = [...root.querySelectorAll("section.footnotes li")];
   assert.equal(items.length, 4);
-  assert.match(items[0].textContent || "", /^Siehe \[Kapitel 2\] \*wörtlich\* & mehr: https:\/\/example\.test\/a_b/);
+  assert.match(items[0].textContent || "", /^Siehe \[Kapitel 2\] wörtlich & mehr: https:\/\/example\.test\/a_b/);
+  assert.equal(items[0].querySelector("em")?.textContent, "wörtlich");
   assert.equal(items[0].querySelector("a")?.getAttribute("href"), "https://example.test/a_b");
   // A second run does not add a second list.
   renderFootnotes(root as unknown as HTMLElement);

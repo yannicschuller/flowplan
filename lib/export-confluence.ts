@@ -13,6 +13,7 @@ import { calloutType } from "./document-schema";
 import { taskStatusOf } from "./task-status";
 import { ct } from "./content-locale";
 import { documentXhtml, xml } from "./export-xhtml";
+import { noteHtml } from "./footnote-format";
 import { CALLOUT_MACROS, calloutLabel, codeLanguage, exportText, taskDone, type TextExportContext } from "./export-jira";
 import type { Identity } from "./types";
 import { offThread } from "./worker-pool";
@@ -114,7 +115,7 @@ export function documentConfluence(html: string, context: TextExportContext): st
     },
     footnotes: (notes) =>
       `<hr /><p><strong>${xml(ct("Fußnoten", "Footnotes"))}</strong></p><ol>${notes
-        .map((note) => `<li>${note.split(/(https?:\/\/[^\s<>"]+)/).map((part, i) => (i % 2 ? `<a href="${xml(part)}">${xml(part)}</a>` : xml(part))).join("")}</li>`)
+        .map((note) => `<li>${noteHtml(note, xml)}</li>`)
         .join("")}</ol>`,
   });
   // Confluence keeps no ids, sections or figures of its own: footnote
