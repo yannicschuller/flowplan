@@ -560,8 +560,17 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
   async function history(path: string, pageId: string, rowId: string | null, title: string) {
     if (!zip || !options.history) return;
     const base = path.replace(/\.md$/, "");
-    const comments = await all<{ name: string | null; body: string; resolved: number; created_at: string }>(
-      `SELECT u.name,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id
+    // Attachments (#450) by name: "📎 plan.pdf, photo.jpg".
+    const files = (rich: string | null) => {
+      try {
+        const names = rich ? ((JSON.parse(rich) as { attrs?: { attachments?: { name?: string }[] } }).attrs?.attachments || []).map((a) => String(a.name || "")) : [];
+        return names.length ? `📎 ${names.join(", ")}` : "";
+      } catch {
+        return "";
+      }
+    };
+    const comments = await all<{ name: string | null; body: string; rich_body: string | null; resolved: number; created_at: string }>(
+      `SELECT u.name,c.body,c.rich_body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id
        WHERE c.page_id=? AND ${rowId ? "c.row_id=?" : "c.row_id IS NULL"} ORDER BY c.created_at`,
       ...(rowId ? [pageId, rowId] : [pageId]),
     );
@@ -572,18 +581,18 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     const when = (at: string) => at.replace("T", " ").slice(0, 16);
     let text = "";
     for (const c of comments)
-      text += `## ${markdownText(c.name || ct("Unbekannt", "Unknown"))} · ${when(c.created_at)}${c.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${markdownText(commentBody(c.body))}\n\n`;
+      text += `## ${markdownText(c.name || ct("Unbekannt", "Unknown"))} · ${when(c.created_at)}${c.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${[markdownText(commentBody(c.body)), markdownText(files(c.rich_body))].filter(Boolean).join("\n\n")}\n\n`;
     for (const thread of threads) {
       let quote = "";
       try {
         quote = String(JSON.parse(thread.anchor).quote || "");
       } catch {}
       text += `## ${ct("Zur Textstelle", "On the passage")}${thread.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${quote ? `> ${markdownText(quote).replace(/\n/g, "\n> ")}\n\n` : ""}`;
-      for (const m of await all<{ author_name: string; body: string; created_at: string }>(
-        "SELECT author_name,body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at,seq",
+      for (const m of await all<{ author_name: string; body: string; rich_body: string | null; created_at: string }>(
+        "SELECT author_name,body,rich_body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at,seq",
         thread.id,
       ))
-        text += `- **${markdownText(m.author_name)}** · ${when(m.created_at)}: ${markdownText(commentBody(m.body)).replace(/\n/g, " ")}\n`;
+        text += `- **${markdownText(m.author_name)}** · ${when(m.created_at)}: ${[markdownText(commentBody(m.body)).replace(/\n/g, " "), markdownText(files(m.rich_body))].filter(Boolean).join(" ")}\n`;
       text += "\n";
     }
     if (text) add(`${base}.comments.md`, Buffer.from(`# ${ct("Kommentare", "Comments")} – ${markdownText(title)}\n\n${text.trimEnd()}\n`), true);

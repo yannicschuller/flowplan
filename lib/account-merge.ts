@@ -246,6 +246,7 @@ const CONTENT_COLUMNS = [
   "row_templates.cells",
   "form_drafts.cells",
   "comments.body",
+  "comments.rich_body",
   "inline_messages.body",
   "inline_messages.rich_body",
   "databases.fields",

@@ -233,6 +233,7 @@ import {
 import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
+import { CommentBody } from "./comment-body";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape, ViewSkeleton } from "./skeleton";
 import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
@@ -240,6 +241,8 @@ import { colorLabel } from "./color-label";
 import { OptionColorList } from "./option-color-list";
 import { FieldTypeIcon } from "./field-type-icon";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
+// A record comment's form with its editor (#450): with the open record.
+const PageCommentForm = dynamic(() => loadView(() => import("./page-comment-form")), { ssr: false });
 // The views besides table, board, gallery and list load when a database
 // shows one; their placeholder has the view's shape.
 const DatabaseSprints = dynamic(() => loadView(() => import("./database-sprints").then((m) => ({ default: m.DatabaseSprints }))), {
@@ -489,7 +492,6 @@ export default function DatabaseView({
     [optionsText, setOptionsText] = useState<string | null>(null),
     [viewName, setViewName] = useState(""),
     [viewType, setViewType] = useState<View["type"]>("table"),
-    [comment, setComment] = useState(""),
     // Occurrence of a repeating record opened from the calendar.
     [occurrence, setOccurrence] = useState<{
       rowId: string;
@@ -6619,7 +6621,7 @@ export default function DatabaseView({
                         <Avatar name={c.name} small />
                         <div>
                           <strong>{c.name}</strong>
-                          <p>{c.body}</p>
+                          <CommentBody content={c.content} body={c.body} />
                           {c.author_id && (
                             <Reactions
                               reactions={c.reactions || []}
@@ -6636,29 +6638,14 @@ export default function DatabaseView({
                         </div>
                       </div>
                     ))}
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      if (comment.trim()) {
-                        // Shows at once; a refusal brings the text back.
-                        const body = comment;
-                        setComment("");
-                        const sent = await act({
-                          action: "comment.create",
-                          rowId: selected.id,
-                          body,
-                        });
-                        if (!sent) setComment((now) => now || body);
-                      }
-                    }}
-                  >
-                    <input
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      placeholder={t("Kommentar schreiben …", "Write a comment …")}
-                    />
-                    <button className="button compact">{t("Senden", "Send")}</button>
-                  </form>
+                  {/* Formatted, with attachments and page mentions (#450). */}
+                  <PageCommentForm
+                    key={`comment-${selected.id}`}
+                    pageId={page.id}
+                    rowId={selected.id}
+                    act={act}
+                    submitLabel={t("Senden", "Send")}
+                  />
                 </div>
               </div>
             </div>

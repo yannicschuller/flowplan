@@ -1,5 +1,5 @@
 "use client";
-import { richCommentSchema, type CommentNode } from "./comment-content";
+import { commentReady, richCommentSchema, type CommentNode } from "./comment-content";
 import { z } from "zod";
 const schema = z.object({
   time: z.number(),
@@ -34,9 +34,9 @@ export function saveCommentDrafts(
 ) {
   try {
     const nonempty = Object.fromEntries(
-      Object.entries(replies).filter(([, v]) => v.body.trim()),
+      Object.entries(replies).filter(([, v]) => commentReady(v.body, v.content)),
     );
-    if (!body.trim() && !Object.keys(nonempty).length)
+    if (!commentReady(body, content) && !Object.keys(nonempty).length)
       sessionStorage.removeItem(key);
     else
       sessionStorage.setItem(

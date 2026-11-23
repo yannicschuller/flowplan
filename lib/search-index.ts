@@ -147,6 +147,16 @@ async function indexRow(pageId: string, rowId: string, fields: Field[]) {
   );
 }
 
+// A comment's text (page mentions as the titles when written) and the
+// names of its attachments (#450).
+function withAttachmentNames(entry: { title: string; body: string; rich_body: string | null } | undefined | null) {
+  if (!entry) return entry;
+  let names: string[] = [];
+  try {
+    names = entry.rich_body ? ((JSON.parse(entry.rich_body) as { attrs?: { attachments?: { name?: string }[] } }).attrs?.attachments || []).map((a) => String(a.name || "")) : [];
+  } catch {}
+  return { title: entry.title, body: [entry.body, ...names].filter(Boolean).join(" · ") };
+}
 // Comments, text comment messages and attachments are indexed under
 // prefixed keys (c:, m:, f:) next to pages and records.
 async function indexExtra(pageId: string, key: string) {
@@ -155,14 +165,14 @@ async function indexExtra(pageId: string, key: string) {
   const [prefix, id] = [key.slice(0, 1), key.slice(2)];
   const entry =
     prefix === "c"
-      ? (await one<{ title: string; body: string }>(
-          "SELECT 'Kommentar von '||COALESCE(u.name,'Unbekannt') title,c.body FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.id=? AND c.page_id=?",
+      ? withAttachmentNames(await one<{ title: string; body: string; rich_body: string | null }>(
+          "SELECT 'Kommentar von '||COALESCE(u.name,'Unbekannt') title,c.body,c.rich_body FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.id=? AND c.page_id=?",
           id,
           pageId,
         ))
       : prefix === "m"
-        ? (await one<{ title: string; body: string }>(
-            "SELECT 'Textkommentar von '||m.author_name title,m.body FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=? AND t.page_id=? AND m.deleted=0",
+        ? withAttachmentNames(await one<{ title: string; body: string; rich_body: string | null }>(
+            "SELECT 'Textkommentar von '||m.author_name title,m.body,m.rich_body FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=? AND t.page_id=? AND m.deleted=0",
             id,
             pageId,
           ))

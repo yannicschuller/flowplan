@@ -399,6 +399,8 @@ const DatabaseView = dynamic(() => loadView(loadDatabaseView), { ssr: false, loa
 const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 // The page's QR code (#448): loaded when opened.
 const ItemQrDialog = dynamic(() => loadView(() => import("./item-qr")), { ssr: false });
+// The page comments' form with its editor (#450): with the comments panel.
+const PageCommentForm = dynamic(() => loadView(() => import("./page-comment-form")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // A space as a library (#329): loaded when a library opens.
 const LibraryView = dynamic(() => loadView(() => import("./library-view")), { ssr: false, loading: () => <ListSkeleton rows={4} /> });
@@ -678,7 +680,6 @@ export default function WorkspaceApp({
     [focusMode, setFocusMode] = useState(false),
     // Documents opened for reading on this device (no editing, no handles).
     [readPages, setReadPages] = useState<string[]>([]),
-    [comment, setComment] = useState(""),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
@@ -6355,36 +6356,8 @@ export default function WorkspaceApp({
                       act={act}
                       time={(value) => relativeTime(value, clock, locale)}
                     />
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        // The comment shows at once and the field empties; a
-                        // refusal brings the text back into the field. A
-                        // double submit of the same draft posts it once.
-                        const body = comment;
-                        const draft = `comment:${pageId}`;
-                        setComment("");
-                        const r = await act(keyed({ action: "comment.create", pageId, body }, draftKey(draft, body)));
-                        if (r) draftSent(draft);
-                        else setComment((now) => now || body);
-                      }}
-                    >
-                      <textarea
-                        required
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        onKeyDown={(e) => {
-                          if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
-                            e.preventDefault();
-                            e.currentTarget.form?.requestSubmit();
-                          }
-                        }}
-                        placeholder={t("Schreibe einen Kommentar …", "Write a comment …")}
-                      />
-                      <button className="button primary compact">
-                        {t("Kommentieren", "Comment")}
-                      </button>
-                    </form>
+                    {/* Formatted, with attachments and page mentions (#450). */}
+                    <PageCommentForm pageId={data.page.id} act={act} />
                   </aside>
                 )}
               </div>

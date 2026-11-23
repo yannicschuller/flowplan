@@ -73,11 +73,22 @@ export async function hiddenRowFileIds(user: Identity, page: Pick<Page, "id" | "
   const hiddenFields = await hiddenFieldsFor(user, page as Page);
   if (!hidden.size && !inHidden.size && !hiddenFields.size) return new Set();
   const hiddenRowsOf = new Map<string, string[]>();
+  // Attachments of a record's comments and text comments (#450) belong to
+  // the record: hidden with it.
+  const commentFiles = new Map<string, string>();
+  for (const c of await all<{ row_id: string; t: string }>(
+    `SELECT c.row_id,c.rich_body t FROM comments c WHERE c.page_id=? AND c.row_id IS NOT NULL AND c.rich_body LIKE '%/api/files/%'
+     UNION ALL SELECT h.row_id,m.rich_body t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id WHERE h.page_id=? AND h.row_id IS NOT NULL AND m.rich_body LIKE '%/api/files/%'`,
+    page.id,
+    page.id,
+  ))
+    commentFiles.set(c.row_id, `${commentFiles.get(c.row_id) || ""} ${c.t}`);
   for (const row of await all<{ id: string; cells: string; text: string; created_by: string | null }>(
     `SELECT r.id,r.cells,r.created_by,COALESCE(r.icon,'')||' '||COALESCE(r.cover,'')||' '||COALESCE(r.content,'')||' '||COALESCE(d.html,'') text
      FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.page_id=?`,
     page.id,
   )) {
+    row.text += commentFiles.get(row.id) || "";
     let cells = row.cells;
     if (hiddenFields.size && cells.includes("/api/files/")) {
       const parsed = JSON.parse(cells) as Record<string, unknown>;

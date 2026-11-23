@@ -6,6 +6,7 @@ import { ChatCircle, Quotes } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
 import { Reactions } from "./reactions";
 import { CommentQuote } from "./comment-quote";
+import { CommentBody } from "./comment-body";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
@@ -133,7 +134,7 @@ export function CommentHub({
             <div>
               <strong>{item.comment.name}</strong>
               <small>{time(item.comment.created_at)}</small>
-              <p>{item.comment.body}</p>
+              <CommentBody content={item.comment.content} body={item.comment.body} />
               {item.comment.author_id && (
                 <Reactions
                   reactions={item.comment.reactions || []}
@@ -182,7 +183,12 @@ export function CommentHub({
                 <Quotes size={12} />{" "}
                 <CommentQuote quote={item.thread.anchor.quote} />
               </blockquote>
-              <p>{item.thread.messages[0]?.body}</p>
+              <p>
+                {item.thread.messages[0]?.body}
+                {!!item.thread.messages[0]?.attachmentCount && (
+                  <span className="comment-file-count"> 📎 {item.thread.messages[0].attachmentCount}</span>
+                )}
+              </p>
               <span className="comment-text-actions">
                 <a
                   className="text-button"
