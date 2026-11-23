@@ -66,9 +66,10 @@ test("typing / opens a small menu at the caret; /h2 and Enter make a heading", a
   await expect(editor).toContainText("und/oder weiter");
   await page.keyboard.type(" /xyz");
   await expect(menu).toHaveCount(0);
-  await page.keyboard.press("Escape");
 
   // The callout entry opens its kinds as a second level; Left goes back.
+  // (No Esc before: with the menu gone it would choose the block, #237, and
+  // Enter would then put the caret back at the block's start.)
   await page.keyboard.press("Enter");
   await page.keyboard.type("/callout");
   await expect(menu.getByRole("option", { selected: true })).toContainText("Callout");
@@ -82,6 +83,7 @@ test("typing / opens a small menu at the caret; /h2 and Enter make a heading", a
   await page.keyboard.press("Enter");
   await expect(editor.locator("aside[data-callout]")).toHaveAttribute("data-callout", "tip");
   await expect(editor).not.toContainText("/callout");
+  await expect(editor.locator("p", { hasText: "und/oder weiter" })).toHaveText("und/oder weiter /xyz");
   await page.keyboard.type("Tipp-Text");
 
   // The toolbar button opens the same menu with a search field.
