@@ -81,3 +81,20 @@ export function offlineEntryCommand(entry: OfflineJournalEntry, today: string): 
   const base = { action: "journal.roll", pageId: entry.journalId, date: today, append: entry.html };
   return entry.date < today ? { ...base, day: entry.date } : { ...base, write: true, recreate: true };
 }
+
+// The journal page asks for today's page when it opens (journal.roll,
+// components/journal-view.tsx). When that fails (#456): only a failure
+// while the device is offline, or one that never reached Flowplan (no
+// answer, a gateway error), is "offline" – "Heute" then opens the entry on
+// this device. It is asked again once the device is back online and, while
+// it is online all along (the server restarted, a proxy dropped the
+// request), after a pause that grows with every attempt. A refusal of the
+// server is an error to show, never the offline notice.
+export function todayRollFailure(
+  offline: boolean,
+  transient: boolean,
+  failures: number,
+): { offline: boolean; retryIn: number | null } {
+  if (!offline && !transient) return { offline: false, retryIn: null };
+  return { offline: true, retryIn: offline ? null : Math.min(60_000, 2_000 * 2 ** Math.max(0, failures - 1)) };
+}
