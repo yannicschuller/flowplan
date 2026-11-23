@@ -2674,9 +2674,19 @@ function noteStatementRead(cached: Cached, sqlText: string) {
 // For the Postgres driver: what it writes outdates memoized reads
 // (lib/read-memo.ts) as SQLite writes do.
 export function noteWriteOf(sql: string, params: readonly Param[] = []) {
-  if (READ_ONLY.test(sql)) return;
+  if (READ_ONLY.test(sql)) return false;
   noteWrite();
   noteNotificationInsert(sql, params);
+  return true;
+}
+// For the Postgres driver: a transaction that wrote is committed. Its writes
+// were noted when they ran, but other connections only see them now – a read
+// on another connection in between (a memoized read, the workspace live
+// signal's version check, lib/workspace-live.ts) saw the old rows under the
+// new write generation and would keep them. Noting the commit as a write
+// again outdates those.
+export function noteCommitted() {
+  noteWrite();
 }
 // A new notification, whoever inserts it (some thirty places): the
 // recipient's open tabs are told to fetch their notifications

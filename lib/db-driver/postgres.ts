@@ -31,7 +31,7 @@ import { currentTx, dbContext, endScope, type TxScope } from "./context";
 import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
 import { configureTypes } from "./pg-types.mjs";
 import type { Db, Param, TxOptions } from "./types";
-import { noteRollback, noteTransaction, noteWriteOf } from "../db";
+import { noteCommitted, noteRollback, noteTransaction, noteWriteOf } from "../db";
 import { afterCommit } from "./sqlite";
 
 configureTypes(pg);
@@ -141,7 +141,8 @@ const MAX_PREPARED = 2000;
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 type QueryConfig = { name?: string; text: string; values?: unknown[]; query_timeout?: number };
 // A transaction's scope as this driver uses it.
-type PgScope = TxScope & { queryTimeout?: number; broken?: boolean };
+// wrote: a statement of the transaction wrote (noteCommitted() after COMMIT).
+type PgScope = TxScope & { queryTimeout?: number; broken?: boolean; wrote?: boolean };
 
 export function createPostgresDb(url: string, options: PostgresOptions = {}): Db & { pool: pg.Pool } {
   const schema = options.schema || "public";
@@ -280,7 +281,10 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
   }
   async function query(sql: string, params: Param[]) {
     const s = statement(sql);
-    noteWriteOf(sql, params);
+    if (noteWriteOf(sql, params)) {
+      const scope = scopeNow();
+      if (scope?.backend === "postgres") (scope.root as PgScope).wrote = true;
+    }
     // A schema change (ALTER/CREATE/DROP) outdates what was prepared before
     // (`SELECT *` keeps its columns): later statements are prepared anew.
     if (SCHEMA_CHANGE.test(sql)) prepared.clear();
@@ -346,6 +350,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
         await dbContext.als.run(root, async () => dbContext.hooks.beforeCommit?.(txOptions.actor));
         await onTx(root, { text: "COMMIT" }, "COMMIT");
         committed = true;
+        if (root.wrote) noteCommitted();
         return result;
       } catch (error) {
         failure = error;
