@@ -2,6 +2,82 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.4 – 2026-11-23
+
+### New
+
+- Comments: text comments open right beside their passage (a bottom sheet on phones), with a colour per thread, the number of posts at the highlight and a preview on hover; you can reply right in the comment panel ([#450](https://github.com/yannicschuller/flowplan/issues/450)).
+- Comments with attachments (up to 10 files and images), @-mentions of pages and records and link previews; page and record comments are formatted and can be edited and deleted ([#450](https://github.com/yannicschuller/flowplan/issues/450)).
+- draw.io ships with Flowplan: the editor runs from your own instance instead of diagrams.net and, with offline use, works without a connection too ([#454](https://github.com/yannicschuller/flowplan/issues/454)).
+- Whiteboard: collapsible frames, highlighter and pen opacity, a colour wheel everywhere, row and column colours for tables, links and previews in tables, link cards for any web page ([#455](https://github.com/yannicschuller/flowplan/issues/455)).
+- Whiteboard: sharp PDFs with annotations, page choice when adding a PDF, and board comments with formatting, attachments, colour and preview ([#455](https://github.com/yannicschuller/flowplan/issues/455)).
+- QR codes for every page and record, plus QR label sheets for databases ([#448](https://github.com/yannicschuller/flowplan/issues/448)).
+- Administration: export and import all instance settings as one file ([#447](https://github.com/yannicschuller/flowplan/issues/447)).
+- Administration: add people to directory groups (SCIM, LDAP, SSO) and remove them by hand ([#451](https://github.com/yannicschuller/flowplan/issues/451)).
+
+### Improved
+
+- Sidebar: the navigation at the top (Search, Home, Inbox …) folds into one row of icons ([#452](https://github.com/yannicschuller/flowplan/issues/452)).
+- Record layout: sub-pages go above or below the document ([#449](https://github.com/yannicschuller/flowplan/issues/449)).
+- The English interface shows no German leftovers any more, error messages included ([#453](https://github.com/yannicschuller/flowplan/issues/453)).
+
+### Bug fixes
+
+- Whiteboard: exporting as PNG works again and includes pictures ([#455](https://github.com/yannicschuller/flowplan/issues/455)).
+- Bold parts of a paragraph stay bold after saving.
+- Inserting, changing or removing a footnote is its own undo step.
+- A calculation hint closed with Esc stays away; keys typed right after Esc and Enter in block selection go into the text.
+- iPhone: emoji icons in the sidebar are no longer cut off.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes 0.11.4: split the whiteboard line (300 characters at most) ([517c42b](https://github.com/yannicschuller/flowplan/commit/517c42bc9448968d59ca3f1adb83456538c08714))
+- Release notes 0.11.4 ([b394ccd](https://github.com/yannicschuller/flowplan/commit/b394ccd4cf91d6ab5472c1a82638e466b29c58f1))
+- Help docs: whiteboard follow-ups (#455) ([19bc9fb](https://github.com/yannicschuller/flowplan/commit/19bc9fb3ac1b35b5b1fed6e68b03229310794cdc))
+- Whiteboard follow-ups to #455: link pictures as board files, collapsed frames, editing board comments ([71c2f42](https://github.com/yannicschuller/flowplan/commit/71c2f420de9d8f01bb390c47eef3241d14516a33))
+- Help docs: whiteboard improvements (#455) ([8c64e7a](https://github.com/yannicschuller/flowplan/commit/8c64e7a0a35335279c0014d4cd544197caf54c89))
+- i18n: French vous form and par ex. in the PDF page picker (#455) ([ffd2f12](https://github.com/yannicschuller/flowplan/commit/ffd2f12b48f2b5fe37b950565fa7edd21551f0fb))
+- Whiteboard: table colours, links in cells, link cards, PNG export fix (#455) ([16f0f1a](https://github.com/yannicschuller/flowplan/commit/16f0f1acabb8a7f001e3064f70d5973247b83944))
+- Whiteboard: sharp PDFs with annotations, page choice on import, rich comment pins (#455) ([38c5b19](https://github.com/yannicschuller/flowplan/commit/38c5b1977b87462966546aeda1cf8351bb2e0ffa))
+- Whiteboard: highlighter and pen opacity, colour wheel, collapsible frames (#455) ([3a7ecc4](https://github.com/yannicschuller/flowplan/commit/3a7ecc4e9e73b2194330c0aee8cf66e6700848c5))
+- Help docs: shipped draw.io (#454) ([00f5106](https://github.com/yannicschuller/flowplan/commit/00f510616926fab0e06d4ddf7ce7766c22180a7c))
+- Ship draw.io with Flowplan, offline like in VS Code (#454) ([3eabec7](https://github.com/yannicschuller/flowplan/commit/3eabec74c2679b9b9b17104b61d0b8ab3b43f2a2))
+- Gallery: list the page comment's delete dialog as uncovered (#450) ([e9a6aca](https://github.com/yannicschuller/flowplan/commit/e9a6acac00f126bbb27c6ab6f3a85e85e0d07ebc))
+- Help docs: edit and delete page comments (#450) ([e5c61ee](https://github.com/yannicschuller/flowplan/commit/e5c61eec6d62ae7a61214bfa24d40d210dd36216))
+- Page and record comments: edit and delete (#450) ([8fdc508](https://github.com/yannicschuller/flowplan/commit/8fdc508b537a497bf9db7fd293352107b686db64))
+- Help docs for #450, #451 ([8382be7](https://github.com/yannicschuller/flowplan/commit/8382be762a7967f74216d4dd5d7cf3b922ff2ffa))
+- Gallery: list the comment popover and the moved image viewer as uncovered (#450) ([f51aa5e](https://github.com/yannicschuller/flowplan/commit/f51aa5e2c11ae3a0a6d9911066729b08e3747bb4))
+- i18n: English for the comment attachment limit (#450) ([37082a0](https://github.com/yannicschuller/flowplan/commit/37082a0eff76f41489d72511e62ffa1157a26da6))
+- Text comments beside their passage everywhere, colours, counts, replies in the side panel, hover preview (#450) ([e2300ef](https://github.com/yannicschuller/flowplan/commit/e2300ef78f5d8656e4f29a6b5c0e952414b7efca))
+- Comments: the comment field opens the editor when used (#450) ([c957431](https://github.com/yannicschuller/flowplan/commit/c9574315bc9c03c4fbf68272efebcd24267ac0b2))
+- i18n: no German left in the English interface (#453) ([d908b74](https://github.com/yannicschuller/flowplan/commit/d908b7400a6b9ba729ba6fe34164520788a31c20))
+- Text comments: a highlight colour per thread (#450) ([0664f1f](https://github.com/yannicschuller/flowplan/commit/0664f1f5a5923aaabe71c050d1dca0c6a9eb43b2))
+- Administration: add people to directory groups and remove them by hand (#451) ([fb16a82](https://github.com/yannicschuller/flowplan/commit/fb16a82d256fb489e447ded129099bcd60a128e4))
+- Comments: attachments, page mentions and link previews (#450) ([98264fd](https://github.com/yannicschuller/flowplan/commit/98264fdc3f96aae00ae7cdd5edcdfa390944e59e))
+- Help docs: fold the sidebar navigation (#452) ([9943d4d](https://github.com/yannicschuller/flowplan/commit/9943d4de0554ed99b41834d92a2487ac3059447f))
+- Sidebar: the navigation at the top folds into a row of icons (#452) ([531ba74](https://github.com/yannicschuller/flowplan/commit/531ba743c5b650da6be839a70051bdf634499842))
+- Help docs: sub-pages above or below a record's document (#449) ([7086430](https://github.com/yannicschuller/flowplan/commit/7086430282a7a51417d293f4107077cc4d25e476))
+- Record layout: sub-pages above or below the document (#449) ([dd714c1](https://github.com/yannicschuller/flowplan/commit/dd714c1d839f80a94106e725da507f1fcf3cab7a))
+- Sidebar: emoji icons keep their sides on the iPhone ([29de924](https://github.com/yannicschuller/flowplan/commit/29de92458964dea3ea1067f1925e71b87750eeb2))
+- Help docs: QR codes and label sheets (#448) ([ccaf823](https://github.com/yannicschuller/flowplan/commit/ccaf8231b8cbf9d08b67b928710fa04a72bfd7b4))
+- QR codes for every page and record, QR label sheets for databases (#448) ([d0690e6](https://github.com/yannicschuller/flowplan/commit/d0690e6559e69dfc6cbb3dd283cf710b83631575))
+- Help docs: export and import the instance settings (#447) ([4374cee](https://github.com/yannicschuller/flowplan/commit/4374cee81f8f7ae04b6af561656a3dba581ab794))
+- Administration: export and import all instance settings as one file (#447) ([8c37456](https://github.com/yannicschuller/flowplan/commit/8c3745678d9ea0e7dafa9f386685cdb6d85751b8))
+- Test: table-mobile-scroll swipes across the screen ([b0d606e](https://github.com/yannicschuller/flowplan/commit/b0d606eef23a509e4e052e41ef83729ba3b18be8))
+- Block ids keep the stored marks: "**fetter** Absatz" stays half bold ([42f5f29](https://github.com/yannicschuller/flowplan/commit/42f5f29fc67021d1d6cb85fe0d034e5c2a500d89))
+- Footnotes: inserting, changing or removing one is its own undo step ([5cf91c2](https://github.com/yannicschuller/flowplan/commit/5cf91c28776da1a507c77e3e26a8e6e4f9773e4f))
+- Test: math-calc measures the new line once it stands ([20a9223](https://github.com/yannicschuller/flowplan/commit/20a9223c390d33afe584d7714cd716f74f7fd1dc))
+- Calculation hint: dismissed with Esc, it stays away ([e222881](https://github.com/yannicschuller/flowplan/commit/e2228810c6f0f49056228ed9e3157dc96ce7de5d))
+- Test: slash-menu goes to a new line without a stray Esc ([65d8542](https://github.com/yannicschuller/flowplan/commit/65d85424ca423d6286722f2f049ebc99ef844b08))
+- Block selection: keys typed right after Esc, Enter go into the text ([9b98754](https://github.com/yannicschuller/flowplan/commit/9b987547930574b05e87c3ba97226bf653ed3978))
+- A page link that leads nowhere keeps its empty state over the refresh ([bd57239](https://github.com/yannicschuller/flowplan/commit/bd57239de44a40135b3da78f573e86d7fafe6c5a))
+- Test: required-field waits until the table knows the note is required ([0de20e7](https://github.com/yannicschuller/flowplan/commit/0de20e72d2764fe3700ee4eeeeb6f252fb76da03))
+- Test: content archive restore reads the current import message ([5bd3c39](https://github.com/yannicschuller/flowplan/commit/5bd3c39d2715abddb2eb4cb34c78347b4506874c))
+- Test: ai-quota starts from no usage of the demo account ([385d57f](https://github.com/yannicschuller/flowplan/commit/385d57f1adfe48d9871c78559f87057aebd2189b))
+
+</details>
+
 ## v0.11.3 – 2026-11-23
 
 ### New
