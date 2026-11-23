@@ -17,6 +17,7 @@ import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from 
 import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import { footnoteText } from "./footnotes";
+import { noteSpans } from "./footnote-format";
 import { exportName } from "./export-name";
 import { CAPTION_KINDS, captionCounter, captionText, type CaptionKind } from "./block-captions";
 import { collectExportContent, withExportLookups, documentNode, imageExtension, type ExportFile } from "./export-content";
@@ -196,6 +197,19 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     const properties = rPr(props);
     return `<w:r>${properties ? `<w:rPr>${properties}</w:rPr>` : ""}${xml ?? ""}${text !== undefined ? textRuns(text) : ""}</w:r>`;
   };
+  // A footnote's formatting as runs (lib/footnote-format.ts), neighbours of
+  // the same look in one; a link's address follows its text (the footnotes
+  // part has no links of its own).
+  const noteRuns = (note: string) => {
+    const parts: { text: string; b?: true; i?: true; code?: true }[] = [{ text: " " }];
+    for (const span of noteSpans(note)) {
+      const part = { text: span.href && span.href !== span.text ? `${span.text} (${span.href})` : span.text, b: span.bold, i: span.italic, code: span.code };
+      const last = parts[parts.length - 1];
+      if (last.b === part.b && last.i === part.i && last.code === part.code) last.text += part.text;
+      else parts.push(part);
+    }
+    return parts.map((part) => run({ text: part.text, props: { b: part.b, i: part.i, rStyle: part.code ? "CodeChar" : undefined } })).join("");
+  };
   const textRuns = (text: string) =>
     text
       .split("\n")
@@ -237,7 +251,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     if (node.type.name === "footnote") {
       const id = footnotes.length + 1;
       footnotes.push(
-        `<w:footnote w:id="${id}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>${run({ text: ` ${footnoteText(node.attrs.note)}` })}</w:p></w:footnote>`,
+        `<w:footnote w:id="${id}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>${noteRuns(footnoteText(node.attrs.note))}</w:p></w:footnote>`,
       );
       return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${id}"/></w:r>`;
     }

@@ -4321,6 +4321,7 @@ export default function DocumentEditor({
             <textarea
               autoFocus
               rows={4}
+              aria-describedby="footnote-format-hint footnote-place-hint"
               maxLength={MAX_FOOTNOTE}
               value={footnote?.note || ""}
               onChange={(e) => footnote && setFootnote({ ...footnote, note: e.target.value })}
@@ -4332,8 +4333,12 @@ export default function DocumentEditor({
               }}
             />
           </label>
-          <p className="muted">
-            {t("Erscheint nummeriert unter „Fußnoten“ am Ende der Seite. Webadressen werden zu Links.", "Appears numbered under “Footnotes” at the end of the page. Web addresses become links.")}
+          {/* The note's own small syntax (lib/footnote-format.ts). */}
+          <p id="footnote-format-hint" className="muted footnote-format-hint">
+            {t("**fett**, *kursiv*, `Code` und Links: [Text](https://…) oder einfach die Webadresse", "**bold**, *italic*, `code` and links: [text](https://…) or just the web address")}
+          </p>
+          <p id="footnote-place-hint" className="muted footnote-format-hint">
+            {t("Erscheint nummeriert unter „Fußnoten“ am Ende der Seite.", "Appears numbered under “Footnotes” at the end of the page.")}
           </p>
           <div className="modal-actions">
             {footnote?.pos !== null && (

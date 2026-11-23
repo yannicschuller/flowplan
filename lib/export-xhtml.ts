@@ -11,7 +11,8 @@ import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from 
 import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import { flowSourceSvg } from "./flow-diagram";
-import { footnoteText, URL_PATTERN } from "./footnotes";
+import { footnoteText } from "./footnotes";
+import { noteHtml } from "./footnote-format";
 import { documentNode } from "./export-content";
 import { captionCounter, captionText } from "./block-captions";
 import { sanitizeDrawioSvg } from "./drawio-svg";
@@ -68,12 +69,8 @@ const calloutTitle = (type: string) =>
     warning: ct("Warnung", "Warning"),
     caution: ct("Achtung", "Caution"),
   })[type] || ct("Hinweis", "Note");
-// Text with web addresses as links (footnotes).
-const linkified = (text: string) =>
-  text
-    .split(URL_PATTERN)
-    .map((part, index) => (index % 2 ? `<a href="${xml(part)}">${xml(part)}</a>` : xml(part)))
-    .join("");
+// A footnote with its formatting and links (lib/footnote-format.ts).
+const linkified = (text: string) => noteHtml(text, xml);
 
 export function documentXhtml(html: string, context: XhtmlContext): string {
   const doc = documentNode(html);

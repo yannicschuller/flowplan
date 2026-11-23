@@ -17,6 +17,7 @@ import { taskStatusOf, type TaskStatus } from "./task-status";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct } from "./content-locale";
 import { footnoteText } from "./footnotes";
+import { noteSpans } from "./footnote-format";
 import { captionCounter, captionText } from "./block-captions";
 import { citeScope } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
@@ -401,7 +402,18 @@ export function documentJira(html: string, context: TextExportContext): string {
       (body ? "\n\n" : "") +
       `----\n*${jiraText(ct("Fußnoten", "Footnotes"))}*\n` +
       notes
-        .map((note) => `# ${note.split(/(https?:\/\/[^\s<>"]+)/).map((part, i) => (i % 2 ? `[${jiraText(part)}|${jiraUrl(part)}]` : jiraText(part))).join("")}`)
+        .map(
+          (note) =>
+            `# ${noteSpans(note)
+              .map((span) => {
+                // Jira wiki marks: *bold*, _italic_, {{code}}, [text|url].
+                let text = span.code ? `{{${jiraText(span.text)}}}` : jiraText(span.text);
+                if (span.italic) text = `_${text}_`;
+                if (span.bold) text = `*${text}*`;
+                return span.href ? `[${text}|${jiraUrl(span.href)}]` : text;
+              })
+              .join("")}`,
+        )
         .join("\n");
   return body.replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }

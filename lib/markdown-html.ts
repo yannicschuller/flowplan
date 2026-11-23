@@ -6,6 +6,7 @@ import { Marked, Renderer, type Token, type Tokens, type TokenizerAndRendererExt
 import type { CalloutType } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
+import { noteFromHtml } from "./footnote-format";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
@@ -96,17 +97,11 @@ const decode = (text: string) =>
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
-// A note's Markdown as plain text; links keep their address in brackets.
+// A note's Markdown in the note's own syntax (lib/footnote-format.ts):
+// bold, italic, code and links stay, other markup goes.
 function plainNote(markdown: string) {
   const html = new Marked({ gfm: true, async: false }).parseInline(markdown) as string;
-  const text = html
-    .replace(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g, (_, href: string, label: string) => {
-      const target = decode(href),
-        shown = decode(label.replace(/<[^>]*>/g, ""));
-      return shown === target || !shown ? target : `${shown} (${target})`;
-    })
-    .replace(/<[^>]*>/g, "");
-  return footnoteText(decode(text));
+  return footnoteText(noteFromHtml(html, decode));
 }
 // Footnote definitions ("[^1]: Text", continued by indented lines) are taken
 // out of the text; code blocks stay untouched.

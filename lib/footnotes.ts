@@ -4,6 +4,7 @@ import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { tr } from "./locale-tag";
 import { reveal } from "./motion";
+import { notePlain, renderNote } from "./footnote-format";
 
 // Footnotes: a marker in the text that carries its note. The note travels
 // with the marker (moving, copying, deleting, undo), and two people editing
@@ -66,7 +67,8 @@ function section(view: EditorView, list: FootnoteEntry[], editable: boolean, edi
     // A span, not a button: printed copies drop buttons.
     const text = document.createElement("span");
     text.className = "footnote-text";
-    linkify(text, entry.note || tr("(leer)", "(empty)"));
+    if (entry.note) renderNote(text, entry.note);
+    else text.textContent = tr("(leer)", "(empty)");
     if (editable && edit) {
       text.setAttribute("role", "button");
       text.tabIndex = 0;
@@ -101,25 +103,8 @@ function section(view: EditorView, list: FootnoteEntry[], editable: boolean, edi
   return root;
 }
 
-// Notes as text with clickable web addresses (no markup is ever read).
+// Web addresses in a note (exports that split text by them).
 export const URL_PATTERN = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g;
-export function linkify(target: HTMLElement, text: string) {
-  const parts = text.split(URL_PATTERN);
-  parts.forEach((part, index) => {
-    if (index % 2 === 0) {
-      if (part) target.append(part);
-      return;
-    }
-    const link = target.ownerDocument.createElement("a");
-    link.href = part;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = part;
-    link.addEventListener("click", (event) => event.stopPropagation());
-    target.append(link);
-  });
-}
-
 export const Footnote = Node.create<FootnoteOptions>({
   name: "footnote",
   group: "inline",
@@ -169,7 +154,7 @@ export const Footnote = Node.create<FootnoteOptions>({
         Decoration.node(entry.pos, entry.pos + 1, {
           "data-footnote-number": String(entry.number),
           "aria-label": tr(`Fußnote ${entry.number}`, `Footnote ${entry.number}`),
-          title: entry.note,
+          title: notePlain(entry.note),
         }),
       );
       if (list.length)
@@ -241,7 +226,7 @@ export function renderFootnotes(root: HTMLElement, { links = false } = {}) {
     if (links) {
       const item = doc.createElement("li");
       item.id = `fn-${number}`;
-      linkify(item, footnoteText(marker.getAttribute("data-footnote")));
+      renderNote(item, footnoteText(marker.getAttribute("data-footnote")));
       const back = doc.createElement("a");
       back.href = `#fnref-${number}`;
       back.textContent = "↩";
@@ -258,13 +243,13 @@ export function renderFootnotes(root: HTMLElement, { links = false } = {}) {
     marker.dataset.footnoteNumber = number;
     marker.setAttribute("role", "doc-noteref");
     marker.setAttribute("aria-label", tr(`Fußnote ${number}`, `Footnote ${number}`));
-    marker.title = marker.getAttribute("data-footnote") || "";
+    marker.title = notePlain(marker.getAttribute("data-footnote") || "");
     marker.tabIndex = 0;
     const item = doc.createElement("li");
     item.dataset.footnoteNumber = number;
     const text = doc.createElement("span");
     text.className = "footnote-text";
-    linkify(text, footnoteText(marker.getAttribute("data-footnote")));
+    renderNote(text, footnoteText(marker.getAttribute("data-footnote")));
     const back = doc.createElement("button");
     back.type = "button";
     back.className = "footnote-back";
@@ -287,7 +272,7 @@ export function renderFootnotes(root: HTMLElement, { links = false } = {}) {
   root.append(section);
 }
 
-// The notes of stored HTML, for the search index.
+// The notes of stored HTML, for the search index (without their marks).
 export function footnoteTexts(html: string) {
   const notes: string[] = [];
   for (const match of html.matchAll(/<sup\b[^>]*\bdata-footnote="([^"]*)"/g))
@@ -299,5 +284,5 @@ export function footnoteTexts(html: string) {
         .replace(/&#39;/g, "'")
         .replace(/&amp;/g, "&"),
     );
-  return notes.filter(Boolean);
+  return notes.map(notePlain).filter(Boolean);
 }
