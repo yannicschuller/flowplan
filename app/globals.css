@@ -32738,16 +32738,57 @@ body:not(.print-view) .presentation-print {
   gap: 2px;
   height: 36px;
   padding: 4px 6px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+/* The tabs scroll; the "+" (#444) stays right after them. */
+.frame-tab-list {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
+}
+.frame-tab-new {
+  display: grid;
+  flex: none;
+  align-self: center;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 0 4px 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.frame-tab-new:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.frame-tab-new:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+/* Pinned tabs (#444): the icon only, at the left. */
+.frame-tab.pinned {
+  flex: none;
+  justify-content: center;
+  min-width: 0;
+  width: 38px;
+  padding: 0;
 }
 .frame-tab {
   position: relative;
   display: flex;
-  flex: 0 1 200px;
+  /* A definite width (not only a flex basis): the list around the tabs
+     takes its size from it, so the "+" stands right after them. */
+  flex: 0 1 auto;
+  width: 200px;
   align-items: center;
   gap: 6px;
   min-width: 96px;

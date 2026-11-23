@@ -13,6 +13,10 @@ export type Tab = {
   // The places this tab went through and where it stands among them.
   stack: string[];
   index: number;
+  // Pinned (#444): kept at the left of its frame, shown as its icon only,
+  // not closed by the close shortcuts, the middle button or "close other
+  // tabs" – only from its menu.
+  pinned?: boolean;
 };
 export type Frame = { tabs: Tab[]; active: string };
 export type Layout = {
@@ -38,6 +42,13 @@ export const activePlace = (layout: Layout, frame = layout.focused) => {
   return f ? placeOf(tabOf(f)) : null;
 };
 export const tabCount = (layout: Layout) => layout.frames.reduce((n, f) => n + f.tabs.length, 0);
+// The pinned tabs lead their frame: how many there are.
+export const pinnedCount = (frame: Frame) => {
+  const at = frame.tabs.findIndex((t) => !t.pinned);
+  return at < 0 ? frame.tabs.length : at;
+};
+// Pinned tabs first, otherwise the order kept.
+const pinnedFirst = (tabs: Tab[]) => [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned)];
 
 export function singleLayout(place: string, id = newTabId()): Layout {
   return { frames: [{ tabs: [{ id, stack: [place], index: 0 }], active: id }], focused: 0 };
@@ -172,8 +183,9 @@ export function open(
   }
   // Full: the active tab goes to the place instead.
   if (f.tabs.length >= MAX_TABS) return focus(follow(layout, frame, place, "push"), frame);
-  const at = f.tabs.findIndex((t) => t.id === tabOf(f).id);
-  const tabs = [...f.tabs.slice(0, at + 1), tab, ...f.tabs.slice(at + 1)];
+  // Beside the active tab, never among the pinned ones.
+  const at = Math.max(f.tabs.findIndex((t) => t.id === tabOf(f).id) + 1, pinnedCount(f));
+  const tabs = [...f.tabs.slice(0, at), tab, ...f.tabs.slice(at)];
   const next = withFrame(layout, frame, { tabs, active: options.background ? f.active : id });
   return options.background ? next : { ...next, focused: frame };
 }
@@ -208,7 +220,22 @@ export function closeOthers(layout: Layout, frame: number, tabId: string): Layou
   const f = layout.frames[frame];
   const tab = f?.tabs.find((t) => t.id === tabId);
   if (!tab) return layout;
-  return { ...withFrame(layout, frame, { tabs: [tab], active: tab.id }), focused: frame };
+  // Pinned tabs stay.
+  return { ...withFrame(layout, frame, { tabs: f.tabs.filter((t) => t.id === tabId || t.pinned), active: tab.id }), focused: frame };
+}
+
+// Pins a tab (to the end of the pinned ones) or unpins it (to the first
+// place after them).
+export function pin(layout: Layout, frame: number, tabId: string, pinned = true): Layout {
+  const f = layout.frames[frame];
+  const tab = f?.tabs.find((t) => t.id === tabId);
+  if (!f || !tab || !!tab.pinned === pinned) return layout;
+  const rest = f.tabs.filter((t) => t.id !== tabId);
+  const at = pinnedCount({ ...f, tabs: rest });
+  const changed: Tab = { ...tab };
+  if (pinned) changed.pinned = true;
+  else delete changed.pinned;
+  return withFrame(layout, frame, { ...f, tabs: [...rest.slice(0, at), changed, ...rest.slice(at)] });
 }
 // Closes a whole frame (the split view's "close"). The only frame stays.
 export function closeFrame(layout: Layout, frame: number): Layout {
@@ -228,7 +255,7 @@ export function move(layout: Layout, from: number, tabId: string, to: number, in
     const tabs = source.tabs.filter((t) => t.id !== tabId);
     const place = Math.max(0, Math.min(index > at ? index - 1 : index, tabs.length));
     tabs.splice(place, 0, tab);
-    return { ...withFrame(layout, from, { tabs, active: tabId }), focused: from };
+    return { ...withFrame(layout, from, { tabs: pinnedFirst(tabs), active: tabId }), focused: from };
   }
   const target = Math.min(to, layout.frames.length, MAX_FRAMES - 1);
   if (target === from) return layout;
@@ -241,7 +268,7 @@ export function move(layout: Layout, from: number, tabId: string, to: number, in
   else {
     const tabs = dest.tabs.slice();
     tabs.splice(Math.max(0, Math.min(index, tabs.length)), 0, tab);
-    next = withFrame(next, target, { tabs, active: tab.id });
+    next = withFrame(next, target, { tabs: pinnedFirst(tabs), active: tab.id });
   }
   next = { ...next, focused: target };
   return rest ? next : dropFrame(next, from);
@@ -260,7 +287,9 @@ export function moveBy(layout: Layout, frame: number, tabId: string, delta: numb
 // Kept per device (components/frame-tabs.tsx: localStorage and the
 // browser tab's sessionStorage).
 
-export type StoredLayout = { v: 1; focused: number; frames: { active: number; tabs: { stack: string[]; index: number }[] }[] };
+// `pinned` (#444) is only written when set: layouts from before stay valid
+// and older versions of the app read the new ones (without the pins).
+export type StoredLayout = { v: 1; focused: number; frames: { active: number; tabs: { stack: string[]; index: number; pinned?: true }[] }[] };
 
 export function serialize(layout: Layout): StoredLayout {
   return {
@@ -268,7 +297,7 @@ export function serialize(layout: Layout): StoredLayout {
     focused: layout.focused,
     frames: layout.frames.map((f) => ({
       active: Math.max(0, f.tabs.findIndex((t) => t.id === f.active)),
-      tabs: f.tabs.map((t) => ({ stack: t.stack, index: t.index })),
+      tabs: f.tabs.map((t) => ({ stack: t.stack, index: t.index, ...(t.pinned ? { pinned: true as const } : {}) })),
     })),
   };
 }
@@ -305,13 +334,13 @@ export function restore(value: unknown, valid: (place: string) => boolean): Layo
         if (position <= at) index = stack.length - 1;
       }
       if (!stack.length) continue;
-      const tab = { id: newTabId(), stack, index: Math.max(0, index) };
+      const tab: Tab = { id: newTabId(), stack, index: Math.max(0, index), ...((t as { pinned?: unknown }).pinned === true ? { pinned: true } : {}) };
       tabs.push(tab);
       if (j === raw.active) active = tab.id;
       else if (active === null && j > (raw.active ?? 0)) active = tab.id;
     }
     if (!tabs.length) continue;
-    frames.push({ tabs, active: active ?? tabs[tabs.length - 1].id });
+    frames.push({ tabs: pinnedFirst(tabs), active: active ?? tabs[tabs.length - 1].id });
     kept.push(i);
   }
   if (!frames.length) return null;

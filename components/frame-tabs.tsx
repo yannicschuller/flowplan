@@ -12,7 +12,7 @@
 // right frame shows its active tab's page (components/split-pane.tsx).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { ArrowLineLeft, ArrowLineRight, Copy, SquareSplitHorizontal, X, XSquare } from "@phosphor-icons/react";
+import { ArrowLineLeft, ArrowLineRight, Copy, Plus, PushPin, PushPinSlash, SquareSplitHorizontal, X, XSquare } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { safeCollisionPadding } from "./safe-area";
 import {
@@ -29,6 +29,7 @@ import {
   moveBy,
   nth,
   open,
+  pin,
   placeOf,
   restore,
   serialize,
@@ -97,7 +98,13 @@ export function useFrameTabs({
   userId,
   workspaceId,
   valid,
+  onNewTab,
 }: {
+  // A new tab (#444: ⌘/Ctrl+T in the desktop app, Alt+T everywhere, the
+  // "+" of the tab bar): the workspace opens the quick search, and the
+  // page picked there opens in a new tab of `frame`. No empty tab is made
+  // before – Esc leaves the tabs as they were.
+  onNewTab?: (frame: number) => void;
   // Tablets and computers (not phones).
   enabled: boolean;
   // Wide enough for two frames (the split view, > 1024 px).
@@ -115,6 +122,8 @@ export function useFrameTabs({
   wideRef.current = wide;
   const validRef = useRef(valid);
   validRef.current = valid;
+  const newTabRef = useRef(onNewTab);
+  newTabRef.current = onNewTab;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Steps of a tab taken through the browser's history (browserGo): the
   // tab has moved already; when the browser arrives, only the address is
@@ -363,26 +372,42 @@ export function useFrameTabs({
   }, [enabled, openPlace]);
 
   // The tab shortcuts (fixed; listed in the shortcut overview). In the
-  // browser ⌘/Ctrl+W, Ctrl+Tab and ⌘/Ctrl+1…9 belong to the browser's own
-  // tabs: only the desktop app takes them, everywhere Alt+W and
-  // ⌘/Ctrl+Alt+PageDown/PageUp work.
+  // browser ⌘/Ctrl+W, ⌘/Ctrl+T, Ctrl+Tab and ⌘/Ctrl+1…9 belong to the
+  // browser's own tabs: only the desktop app takes them, everywhere Alt+W,
+  // Alt+T and ⌘/Ctrl+Alt+PageDown/PageUp work.
   useEffect(() => {
     if (!enabled) return;
     const desktop = !!desktopApp();
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing) return;
       const l = ref.current;
-      if (!l || tabCount(l) < 2) return;
+      if (!l) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"], .presentation')) return;
       const mac = isMacPlatform();
       const mod = mac ? e.metaKey : e.ctrlKey,
         ctrl = e.ctrlKey,
         k = eventKey(e);
+      const plainMod = mod && !e.altKey && !e.shiftKey && (mac ? !e.ctrlKey : !e.metaKey);
+      const plainAlt = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
       const frame = frameNow(l);
+      if ((plainAlt && k === "T") || (desktop && plainMod && k === "T")) {
+        if (!newTabRef.current) return;
+        e.preventDefault();
+        newTabRef.current(frame);
+        return;
+      }
+      if (tabCount(l) < 2) return;
       const tab = tabOf(l.frames[frame]);
       let next: Layout | null = null;
-      const plainMod = mod && !e.altKey && !e.shiftKey && (mac ? !e.ctrlKey : !e.metaKey);
-      if ((e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && k === "W") || (desktop && plainMod && k === "W")) next = close(l, frame, tab.id);
+      if ((plainAlt && k === "W") || (desktop && plainMod && k === "W")) {
+        // A pinned tab is closed from its menu only (#444); the shortcut
+        // does nothing else either (in the desktop app: no closed window).
+        if (tab.pinned) {
+          e.preventDefault();
+          return;
+        }
+        next = close(l, frame, tab.id);
+      }
       else if (mod && e.altKey && !e.shiftKey && (e.key === "PageDown" || e.key === "PageUp")) next = cycle(l, frame, e.key === "PageDown" ? 1 : -1);
       else if (mod && e.altKey && e.shiftKey && (e.key === "PageDown" || e.key === "PageUp")) next = moveBy(l, frame, tab.id, e.key === "PageDown" ? 1 : -1);
       else if (desktop && ctrl && !e.altKey && !e.metaKey && e.key === "Tab") next = cycle(l, frame, e.shiftKey ? -1 : 1);
@@ -463,6 +488,9 @@ export function useFrameTabs({
     activate: (frame: number, id: string) => run((l) => activate(l, frame, id)),
     close: (frame: number, id: string) => run((l) => close(l, frame, id)),
     closeOthers: (frame: number, id: string) => run((l) => closeOthers(l, frame, id)),
+    pin: (frame: number, id: string, pinned: boolean) => run((l) => pin(l, frame, id, pinned)),
+    // The "+" of the tab bar.
+    newTab: onNewTab ? (frame: number) => newTabRef.current?.(frame) : null,
     closeFrame: (frame: number) => run((l) => closeFrame(l, frame)),
     move: (from: number, id: string, to: number, index: number) => run((l) => move(l, from, id, to, index)),
     moveBy: (frame: number, id: string, delta: number) => run((l) => moveBy(l, frame, id, delta)),
@@ -535,10 +563,13 @@ export function TabBar({
 
   return (
     <div
-      ref={list}
       className={`frame-tabs${focused && frames > 1 ? " focused" : ""}${dropIndex !== null ? " dropping" : ""}`}
-      role="tablist"
       data-tab-frame={index}
+    >
+    <div
+      ref={list}
+      className="frame-tab-list"
+      role="tablist"
       aria-label={frames > 1 ? (index === 0 ? t("Tabs links", "Tabs on the left") : t("Tabs rechts", "Tabs on the right")) : t("Tabs", "Tabs")}
       aria-orientation="horizontal"
     >
@@ -556,7 +587,7 @@ export function TabBar({
             tabIndex={selected ? 0 : -1}
             title={look.title}
             data-open-place=""
-            className={`frame-tab${selected ? " active" : ""}${drop?.tab === tab.id ? " dragged" : ""}${dropIndex === i ? " drop-before" : ""}${dropIndex === frame.tabs.length && i === frame.tabs.length - 1 ? " drop-after" : ""}`}
+            className={`frame-tab${selected ? " active" : ""}${tab.pinned ? " pinned" : ""}${drop?.tab === tab.id ? " dragged" : ""}${dropIndex === i ? " drop-before" : ""}${dropIndex === frame.tabs.length && i === frame.tabs.length - 1 ? " drop-after" : ""}`}
             onClick={() => {
               if (dragged.current) {
                 dragged.current = false;
@@ -567,7 +598,7 @@ export function TabBar({
             onAuxClick={(e) => {
               if (e.button !== 1 || only) return;
               e.preventDefault();
-              tabs.close(index, tab.id);
+              if (!tab.pinned) tabs.close(index, tab.id);
             }}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -589,7 +620,7 @@ export function TabBar({
               } else if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 tabs.activate(index, tab.id);
-              } else if ((e.key === "Delete" || e.key === "Backspace") && !only) {
+              } else if ((e.key === "Delete" || e.key === "Backspace") && !only && !tab.pinned) {
                 e.preventDefault();
                 const neighbour = frame.tabs[at + 1] ?? frame.tabs[at - 1];
                 tabs.close(index, tab.id);
@@ -638,8 +669,10 @@ export function TabBar({
             <span className="frame-tab-icon" aria-hidden="true">
               {look.icon}
             </span>
-            <span className="frame-tab-title">{look.title}</span>
-            {!only && (
+            {/* Pinned: the icon only; the title stays the tab's name. */}
+            <span className={`frame-tab-title${tab.pinned ? " sr-only" : ""}`}>{look.title}</span>
+            {tab.pinned && <span className="sr-only">{t(" (angeheftet)", " (pinned)")}</span>}
+            {!only && !tab.pinned && (
               <button
                 type="button"
                 className="frame-tab-close"
@@ -657,6 +690,18 @@ export function TabBar({
           </div>
         );
       })}
+    </div>
+      {tabs.newTab && (
+        <button
+          type="button"
+          className="frame-tab-new"
+          aria-label={t("Neuer Tab", "New tab")}
+          title={t("Neuer Tab", "New tab")}
+          onClick={() => tabs.newTab?.(index)}
+        >
+          <Plus size={14} weight="bold" />
+        </button>
+      )}
       {menu && (() => {
         const tab = frame.tabs.find((x) => x.id === menu.id);
         if (!tab) return null;
@@ -691,13 +736,17 @@ export function TabBar({
                     {index === 0 ? t("Rechts daneben noch einmal öffnen", "Open again on the right") : t("Links daneben noch einmal öffnen", "Open again on the left")}
                   </Dropdown.Item>
                 )}
+                <Dropdown.Item className="dropdown-item" onSelect={() => tabs.pin(index, tab.id, !tab.pinned)}>
+                  {tab.pinned ? <PushPinSlash /> : <PushPin />}
+                  {tab.pinned ? t("Lösen", "Unpin tab") : t("Anheften", "Pin tab")}
+                </Dropdown.Item>
                 {!only && (
                   <Dropdown.Item className="dropdown-item" onSelect={() => tabs.close(index, tab.id)}>
                     <X />
                     {t("Tab schließen", "Close tab")}
                   </Dropdown.Item>
                 )}
-                {frame.tabs.length > 1 && (
+                {frame.tabs.some((x) => x.id !== tab.id && !x.pinned) && (
                   <Dropdown.Item className="dropdown-item" onSelect={() => tabs.closeOthers(index, tab.id)}>
                     <XSquare />
                     {t("Andere Tabs schließen", "Close other tabs")}

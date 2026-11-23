@@ -13,6 +13,8 @@ import {
   moveBy,
   nth,
   open,
+  pin,
+  pinnedCount,
   placeOf,
   restore,
   serialize,
@@ -264,4 +266,76 @@ test("serialize and restore: pages no longer there are dropped silently", () => 
   assert.deepEqual(tabOf(normal.frames[0]).stack, [A, B]);
   assert.equal(tabOf(normal.frames[0]).index, 1);
   assert.equal(normal.focused, 0);
+});
+
+test("pinned tabs (#444): lead their frame, new tabs and moves stay behind them", () => {
+  let l = singleLayout(A, "a");
+  l = open(l, B, { id: "b" });
+  l = open(l, C, { id: "c" });
+  l = pin(l, 0, "c");
+  assert.deepEqual(ids(l), ["c", "a", "b"]);
+  assert.equal(l.frames[0].tabs[0].pinned, true);
+  l = pin(l, 0, "b");
+  // To the end of the pinned ones.
+  assert.deepEqual(ids(l), ["c", "b", "a"]);
+  assert.equal(pinnedCount(l.frames[0]), 2);
+  assert.equal(pin(l, 0, "b"), l);
+  // A new tab beside a pinned active one: after the pinned ones.
+  l = activate(l, 0, "c");
+  l = open(l, D, { id: "d" });
+  assert.deepEqual(ids(l), ["c", "b", "d", "a"]);
+  // Moving an unpinned tab to the front, or a pinned one to the end, keeps
+  // the pinned ones first.
+  l = move(l, 0, "a", 0, 0);
+  assert.deepEqual(ids(l), ["c", "b", "a", "d"]);
+  l = move(l, 0, "c", 0, 4);
+  assert.deepEqual(ids(l), ["b", "c", "a", "d"]);
+  l = moveBy(l, 0, "c", 1);
+  assert.deepEqual(ids(l), ["b", "c", "a", "d"]);
+  // Unpinned: the first place after the pinned ones.
+  l = pin(l, 0, "b", false);
+  assert.deepEqual(ids(l), ["c", "b", "a", "d"]);
+  assert.equal(l.frames[0].tabs[1].pinned, undefined);
+  // Into the other frame: pinned stays pinned, at the front there.
+  l = open(l, A, { frame: 1, id: "r", reuse: false });
+  l = move(l, 0, "c", 1, 5);
+  assert.deepEqual(ids(l, 1), ["c", "r"]);
+});
+
+test("close other tabs keeps the pinned ones", () => {
+  let l = singleLayout(A, "a");
+  l = open(l, B, { id: "b" });
+  l = open(l, C, { id: "c" });
+  l = open(l, D, { id: "d" });
+  l = pin(l, 0, "b");
+  l = closeOthers(l, 0, "d");
+  assert.deepEqual(ids(l), ["b", "d"]);
+  assert.equal(l.frames[0].active, "d");
+  // A pinned tab closes when asked to directly (its menu).
+  l = close(l, 0, "b");
+  assert.deepEqual(ids(l), ["d"]);
+});
+
+test("pins are kept and read back; layouts from before (no pins) still load", () => {
+  let l = singleLayout(A, "a");
+  l = open(l, B, { id: "b" });
+  l = open(l, C, { id: "c" });
+  l = pin(l, 0, "c");
+  const stored = JSON.parse(JSON.stringify(serialize(l)));
+  assert.deepEqual(stored.frames[0].tabs.map((t: { pinned?: boolean }) => t.pinned ?? false), [true, false, false]);
+  assert.equal("pinned" in stored.frames[0].tabs[1], false);
+  const back = restore(stored, () => true)!;
+  assert.deepEqual(places(back), [C, A, B]);
+  assert.deepEqual(back.frames[0].tabs.map((t) => !!t.pinned), [true, false, false]);
+  assert.equal(placeOf(tabOf(back.frames[0])), C);
+  // Old layout: no pins at all.
+  const old = restore({ v: 1, focused: 0, frames: [{ active: 1, tabs: [{ stack: [A], index: 0 }, { stack: [B], index: 0 }] }] }, () => true)!;
+  assert.deepEqual(places(old), [A, B]);
+  assert.equal(old.frames[0].tabs.some((t) => "pinned" in t), false);
+  assert.equal(placeOf(tabOf(old.frames[0])), B);
+  // A pin stored out of order (edited by hand) leads again; junk is no pin.
+  const odd = restore({ v: 1, focused: 0, frames: [{ active: 0, tabs: [{ stack: [A], index: 0 }, { stack: [B], index: 0, pinned: true }, { stack: [C], index: 0, pinned: "yes" }] }] }, () => true)!;
+  assert.deepEqual(places(odd), [B, A, C]);
+  assert.deepEqual(odd.frames[0].tabs.map((t) => !!t.pinned), [true, false, false]);
+  assert.equal(placeOf(tabOf(odd.frames[0])), A);
 });
