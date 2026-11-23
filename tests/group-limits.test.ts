@@ -16,6 +16,7 @@ const { run, one, id } = await import("../lib/db");
 const { saveInstanceSettings, instanceSettings } = await import("../lib/instance-settings");
 const { command, bootstrap } = await import("../lib/api");
 const limits = await import("../lib/user-limits");
+const { explainStorage, storageSizeText } = await import("../lib/limit-explain");
 const { handleScim, createScimToken, claimProvisionedAccount } = await import("../lib/scim");
 const { hashPassword, passwordLogin } = await import("../lib/local-auth");
 import type { Identity } from "../lib/types";
@@ -62,6 +63,98 @@ test("resolution: own value, else the most generous group value (0 = unlimited),
   assert.deepEqual(own.sources.storageMb, { from: "user", group: null });
   // Groups the person is not in do not count.
   assert.deepEqual(resolve({}, ["other"]).values, { storageMb: 500, workspaces: 3, uploadMb: 10 });
+});
+
+test("add-ons: storage marked “additional” is added on top of the base instead of competing", () => {
+  const rules = [
+    { target: "dir:Flowplan Plus", limits: { storageMb: 25600, uploadMb: 100 } },
+    { target: "dir:Flowplan +50 GB", limits: { storageMb: 51200, storageMode: "add" as const, uploadMb: 20 } },
+    { target: "dir:Flowplan +10 GB", limits: { storageMb: 10240, storageMode: "add" as const } },
+    { target: "g-free", limits: { storageMb: 0 } },
+    { target: "g-empty-addon", limits: { storageMode: "add" as const, workspaces: 7 } },
+  ];
+  const resolve = (own: UserLimits, groups: string[]) => limits.resolveUserLimits(own, rules, groups, settings());
+  // Plus (25 GB) + the add-on (50 GB) = 75 GB, not the more generous 50 GB.
+  const plus = resolve({}, ["dir:Flowplan Plus", "dir:Flowplan +50 GB"]);
+  assert.equal(plus.values.storageMb, 76800);
+  assert.deepEqual(plus.sources.storageMb, { from: "group", group: "dir:Flowplan Plus", base: 25600, addons: [{ group: "dir:Flowplan +50 GB", mb: 51200 }] });
+  // Uploads keep "most generous" (the add-on group's 20 MB is a normal value).
+  assert.equal(plus.values.uploadMb, 100);
+  assert.deepEqual(plus.sources.uploadMb, { from: "group", group: "dir:Flowplan Plus" });
+  // The add-on alone: the default (500 MB) + 50 GB.
+  const only = resolve({}, ["dir:Flowplan +50 GB"]);
+  assert.equal(only.values.storageMb, 500 + 51200);
+  assert.deepEqual(only.sources.storageMb, { from: "default", group: null, base: 500, addons: [{ group: "dir:Flowplan +50 GB", mb: 51200 }] });
+  assert.equal(only.values.uploadMb, 20);
+  // Two add-ons sum up.
+  assert.equal(resolve({}, ["dir:Flowplan Plus", "dir:Flowplan +50 GB", "dir:Flowplan +10 GB"]).values.storageMb, 25600 + 51200 + 10240);
+  // An own value is explicit: add-ons are not added (and reported as such).
+  const own = resolve({ storageMb: 1000 }, ["dir:Flowplan Plus", "dir:Flowplan +50 GB"]);
+  assert.equal(own.values.storageMb, 1000);
+  assert.deepEqual(own.sources.storageMb, { from: "user", group: null, ignoredAddons: [{ group: "dir:Flowplan +50 GB", mb: 51200 }] });
+  // Unlimited stays unlimited: from a group or from the default.
+  const free = resolve({}, ["g-free", "dir:Flowplan +50 GB"]);
+  assert.equal(free.values.storageMb, 0);
+  assert.deepEqual(free.sources.storageMb, { from: "group", group: "g-free" });
+  assert.equal(limits.resolveUserLimits({}, rules, ["dir:Flowplan +50 GB"], { ...settings(), defaultUserStorageMb: 0 }).values.storageMb, 0);
+  // An add-on group without storage adds nothing; its other values still count.
+  const empty = resolve({}, ["g-empty-addon"]);
+  assert.deepEqual(empty.values, { storageMb: 500, workspaces: 7, uploadMb: 10 });
+  assert.deepEqual(empty.sources.storageMb, { from: "default", group: null });
+});
+
+test("add-ons: the explanation names the base and every add-on", () => {
+  const de = (d: string) => d;
+  const en = (_: string, e: string) => e;
+  const names: Record<string, string> = { "dir:Flowplan Plus": "Flowplan Plus", "dir:Flowplan +50 GB": "Flowplan +50 GB" };
+  const name = (g: string | null) => names[g || ""] || "?";
+  const source = { from: "group" as const, group: "dir:Flowplan Plus", base: 25600, addons: [{ group: "dir:Flowplan +50 GB", mb: 51200 }] };
+  assert.equal(explainStorage(source, de, name, "de-DE"), "25 GB aus Gruppe Flowplan Plus + 50 GB aus Gruppe Flowplan +50 GB");
+  assert.equal(explainStorage(source, en, name, "en-US"), "25 GB from group Flowplan Plus + 50 GB from group Flowplan +50 GB");
+  const fromDefault = { from: "default" as const, group: null, base: 500, addons: [{ group: "dir:Flowplan +50 GB", mb: 51200 }] };
+  assert.equal(explainStorage(fromDefault, de, name, "de-DE"), "500 MB Standard + 50 GB aus Gruppe Flowplan +50 GB");
+  assert.equal(explainStorage(fromDefault, en, name, "en-US"), "500 MB default + 50 GB from group Flowplan +50 GB");
+  // Without add-ons the usual text applies.
+  assert.equal(explainStorage({ from: "group", group: "dir:Flowplan Plus" }, de, name, "de-DE"), null);
+  assert.equal(storageSizeText(2000, "de-DE"), "2.000 MB");
+});
+
+test("add-ons: saved by the administration, read from old rows, shown to the member", async () => {
+  await saveInstanceSettings({ ...(await instanceSettings()), ...settings() });
+  const member = await person();
+  const plus = randomUUID();
+  const addon = randomUUID();
+  await run("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)", plus, "Flowplan Plus", Date.now(), Date.now());
+  await run("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)", addon, "Flowplan +50 GB", Date.now(), Date.now());
+  await run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", plus, member.id);
+  await run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", addon, member.id);
+  // A 0.11.1 row (no storageMode) still reads as a normal limit.
+  await run("INSERT INTO group_limits(target,limits,updated_at) VALUES(?,?,?)", "dir:Flowplan Plus", JSON.stringify({ storageMb: 25600 }), Date.now());
+  await run("INSERT INTO group_limits(target,limits,updated_at) VALUES(?,?,?)", "dir:Flowplan +50 GB", JSON.stringify({ storageMb: 51200 }), Date.now());
+  assert.equal((await limits.effectiveUserLimits(member.id)).storageMb, 51200);
+  // Marked as an add-on: 75 GB.
+  const view = (await command(admin, { action: "admin.groupLimits", target: "dir:Flowplan +50 GB", limits: { storageMb: 51200, storageMode: "add" } })) as GroupLimitsView;
+  assert.deepEqual(view.rules.find((r) => r.target === "dir:Flowplan +50 GB")!.limits, { storageMb: 51200, storageMode: "add" });
+  assert.equal(JSON.parse((await one<{ limits: string }>("SELECT limits FROM group_limits WHERE target=?", "dir:Flowplan +50 GB"))!.limits).storageMode, "add");
+  assert.equal((await limits.effectiveUserLimits(member.id)).storageMb, 76800);
+  await command(member, { action: "workspace.create", name: "Meins" });
+  const boot = (await bootstrap(member)) as unknown as { myLimits: Json };
+  assert.equal(boot.myLimits.storageMb, 76800);
+  assert.deepEqual(boot.myLimits.sources.storageMb.addons, [{ group: "dir:Flowplan +50 GB", mb: 51200 }]);
+  assert.equal(boot.myLimits.groupNames["dir:Flowplan +50 GB"], "Flowplan +50 GB");
+  assert.equal(boot.myLimits.groupNames["dir:Flowplan Plus"], "Flowplan Plus");
+  // The storage check uses the sum.
+  await assert.doesNotReject(async () => await limits.enforceUserStorage(member, 60_000 * 1024 * 1024));
+  // "limit" is the default and is not stored.
+  await command(admin, { action: "admin.groupLimits", target: "dir:Flowplan +50 GB", limits: { storageMb: 51200, storageMode: "limit" } });
+  assert.deepEqual(JSON.parse((await one<{ limits: string }>("SELECT limits FROM group_limits WHERE target=?", "dir:Flowplan +50 GB"))!.limits), { storageMb: 51200 });
+  // 0 means nothing as an add-on; an unknown mode is refused.
+  await assert.rejects(command(admin, { action: "admin.groupLimits", target: "dir:Flowplan +50 GB", limits: { storageMb: 0, storageMode: "add" } }), /Add-on braucht/);
+  await assert.rejects(command(admin, { action: "admin.groupLimits", target: "dir:Flowplan +50 GB", limits: { storageMb: 1, storageMode: "plus" } }));
+  // A row with a mode a newer version might write still keeps its values.
+  await run("UPDATE group_limits SET limits=? WHERE target=?", JSON.stringify({ storageMb: 51200, storageMode: "future" }), "dir:Flowplan +50 GB");
+  assert.equal((await limits.effectiveUserLimits(member.id)).storageMb, 51200);
+  await run("DELETE FROM group_limits WHERE target IN (?,?)", "dir:Flowplan Plus", "dir:Flowplan +50 GB");
 });
 
 test("workspace groups count in every workspace; admins stay unlimited; uploads per group", async () => {

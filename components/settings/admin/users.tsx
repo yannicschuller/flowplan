@@ -52,6 +52,7 @@ import { AdminStatus, FixLink, type StatusItem } from "./parts";
 import { ago, duration, mbText } from "./format";
 import { activityState, type UserActivity } from "@/lib/user-activity-state";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { explainStorage } from "@/lib/limit-explain";
 
 type Local = {
   admin: boolean;
@@ -1199,6 +1200,10 @@ function UserDrawer({
     field === "uploadMb" ? `${value} MB` : value === 0 ? t("unbegrenzt", "unlimited") : field === "storageMb" ? `${value} MB` : String(value);
   const inheritedHint = (field: "storageMb" | "workspaces" | "uploadMb", fallback: string) => {
     const source = usage?.sources?.[field];
+    const sum = explainStorage(source, t, groupName, LOCALE_TAG);
+    if (sum) return t(`${sum} (Standard: ${fallback})`, `${sum} (default: ${fallback})`);
+    if (source?.from === "user" && source.ignoredAddons?.length)
+      return t(`Eigener Wert – Add-ons der Gruppen werden nicht dazugezählt (Standard: ${fallback})`, `Own value – group add-ons are not added (default: ${fallback})`);
     if (source?.from === "group" && usage) {
       const text = fieldText(field, usage.effective[field]);
       return t(`Aus Gruppe ${groupName(source.group)}: ${text} (Standard: ${fallback})`, `From group ${groupName(source.group)}: ${text} (default: ${fallback})`);
@@ -1305,8 +1310,11 @@ function UserDrawer({
             </strong>
           </div>
           <StorageBar usage={usage} wide />
-          {storageSource && storageSource.from !== "default" && (
-            <small className="limit-source">{storageSource.from === "group" ? t(`aus Gruppe ${groupName(storageSource.group)}`, `from group ${groupName(storageSource.group)}`) : t("eigene Grenze", "own limit")}</small>
+          {storageSource && (storageSource.from !== "default" || storageSource.addons?.length) && (
+            <small className="limit-source">
+              {explainStorage(storageSource, t, groupName, LOCALE_TAG) ??
+                (storageSource.from === "group" ? t(`aus Gruppe ${groupName(storageSource.group)}`, `from group ${groupName(storageSource.group)}`) : t("eigene Grenze", "own limit"))}
+            </small>
           )}
         </section>
       )}

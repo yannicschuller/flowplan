@@ -300,6 +300,21 @@
   min-width: 72px;
   max-width: 120px;
 }
+/* Storage and its kind (limit or add-on) side by side, wrapping when narrow. */
+.group-limits-storage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.group-limits-note {
+  margin: 0;
+  padding: 10px 22px 14px;
+}
+.group-limits-mode {
+  min-width: 120px;
+  max-width: 200px;
+}
 .ai-quota-after {
   min-width: 120px;
   max-width: 200px;

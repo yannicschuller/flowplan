@@ -11,7 +11,8 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, InstanceNumber, InstanceText, NumberInput } from "./parts";
 import { WorkflowLimits } from "./workflow-limits";
 import { GroupPicker, groupLabel } from "./group-picker";
-import type { GroupLimitRule, UserLimits } from "@/lib/user-limits";
+import { Select } from "../../select";
+import type { GroupLimitRule, GroupLimits, StorageMode, UserLimits } from "@/lib/user-limits";
 
 export default function LimitsSection() {
   const t = useT();
@@ -144,7 +145,7 @@ function GroupLimits() {
   const [status, run] = useSaveState();
   const view = data?.groupLimits;
   if (!view) return null;
-  const save = (target: string, limits: UserLimits | null) =>
+  const save = (target: string, limits: GroupLimits | null) =>
     void run(async () => {
       await mutate({ action: "admin.groupLimits", target, limits });
       await load();
@@ -158,8 +159,16 @@ function GroupLimits() {
   const unlimited = t("unbegrenzt", "unlimited");
   const s = data.settings;
   const set = (rule: GroupLimitRule, field: keyof UserLimits, value: number | null) => {
-    const next: UserLimits = { ...rule.limits, [field]: value };
+    const next: GroupLimits = { ...rule.limits, [field]: value };
     if (value === null) delete next[field];
+    save(rule.target, next);
+  };
+  // "Zusätzlich (Add-on)": the storage is added on top instead of competing.
+  const setMode = (rule: GroupLimitRule, mode: StorageMode) => {
+    const next: GroupLimits = { ...rule.limits, storageMode: mode };
+    if (mode === "limit") delete next.storageMode;
+    // 0 (unlimited) means nothing as an add-on.
+    else if (next.storageMb === 0) delete next.storageMb;
     save(rule.target, next);
   };
   const members = (target: string) => view.groups.find((g) => g.id === target)?.members;
@@ -168,8 +177,8 @@ function GroupLimits() {
       id="group-limits"
       title={t("Grenzen pro Gruppe", "Limits per group")}
       description={t(
-        "Mehr (oder weniger) für die Mitglieder einer Gruppe. Für eine Person gilt ihr eigener Wert, sonst der großzügigste ihrer Gruppen (0 = unbegrenzt), sonst der Standard. Leer = von der Gruppe nicht festgelegt. Für Admins gelten keine Grenzen.",
-        "More (or less) for the members of a group. A person gets their own value, else the most generous of their groups (0 = unlimited), else the default. Empty = not set by the group. Admins are not limited.",
+        "Mehr (oder weniger) für die Mitglieder einer Gruppe. Für eine Person gilt ihr eigener Wert, sonst der großzügigste ihrer Gruppen (0 = unbegrenzt), sonst der Standard; Speicher-Add-ons kommen dazu. Leer = von der Gruppe nicht festgelegt. Für Admins gelten keine Grenzen.",
+        "More (or less) for the members of a group. A person gets their own value, else the most generous of their groups (0 = unlimited), else the default; storage add-ons come on top. Empty = not set by the group. Admins are not limited.",
       )}
       actions={<SaveState status={status} />}
     >
@@ -194,7 +203,30 @@ function GroupLimits() {
               {
                 key: "storage",
                 header: t("Speicher (MB)", "Storage (MB)"),
-                render: (r) => <NumberInput value={r.limits.storageMb ?? null} max={10_000_000} label={t(`${name(r.target)}: Speicher`, `${name(r.target)}: storage`)} placeholder={s.defaultUserStorageMb ? String(s.defaultUserStorageMb) : unlimited} onCommit={(v) => set(r, "storageMb", v)} />,
+                render: (r) => {
+                  const addon = r.limits.storageMode === "add";
+                  return (
+                    <span className="group-limits-storage">
+                      <NumberInput
+                        value={r.limits.storageMb ?? null}
+                        min={addon ? 1 : 0}
+                        max={10_000_000}
+                        label={t(`${name(r.target)}: Speicher`, `${name(r.target)}: storage`)}
+                        placeholder={addon ? "+ MB" : s.defaultUserStorageMb ? String(s.defaultUserStorageMb) : unlimited}
+                        onCommit={(v) => set(r, "storageMb", v)}
+                      />
+                      <Select
+                        className="group-limits-mode"
+                        aria-label={t(`${name(r.target)}: Art des Speichers`, `${name(r.target)}: kind of storage`)}
+                        value={addon ? "add" : "limit"}
+                        onChange={(e) => setMode(r, e.target.value === "add" ? "add" : "limit")}
+                      >
+                        <option value="limit">{t("Grenze", "Limit")}</option>
+                        <option value="add">{t("Zusätzlich (Add-on)", "Additional (add-on)")}</option>
+                      </Select>
+                    </span>
+                  );
+                },
               },
               {
                 key: "workspaces",
@@ -217,6 +249,12 @@ function GroupLimits() {
               },
             ]}
           />
+          <p className="limit-source group-limits-note">
+            {t(
+              "Zusätzlich (Add-on): der Speicher der Gruppe kommt zur Grenze der Person dazu (Gruppe oder Standard), statt mit ihren anderen Gruppen verglichen zu werden – nicht bei einem eigenen Wert der Person.",
+              "Additional (add-on): the group’s storage is added to the person’s limit (a group or the default) instead of being compared with their other groups – not when the person has their own value.",
+            )}
+          </p>
         </div>
       )}
       <GroupPicker

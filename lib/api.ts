@@ -358,7 +358,7 @@ export async function publicRows(pid: string): Promise<Row[]> {
 // (the names of the person's own groups only) and the instance's link for more.
 async function myLimits(userId: string) {
   const { values, sources } = await userLimitDetails(userId);
-  const groups = Object.values(sources).flatMap((s) => (s.group ? [s.group] : []));
+  const groups = Object.values(sources).flatMap((s) => [...(s.group ? [s.group] : []), ...(s.addons || []).map((a) => a.group)]);
   return {
     ...values,
     sources,

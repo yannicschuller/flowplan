@@ -7,7 +7,8 @@ import { join } from "node:path";
 // administrator gives a directory group more storage; a member of that
 // group (pushed over SCIM, no workspace or mapping needed) sees it under
 // "Deine Grenzen" with the group named, and the administration's account
-// panel says where it comes from.
+// panel says where it comes from. A second group is an add-on
+// ("Zusätzlich (Add-on)"): its storage comes on top, and both are named.
 test("limits per group: set by an administrator, shown to a member", async ({ browser }, info) => {
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "FLOWPLAN_DATA_DIR of the test server is required.");
   test.setTimeout(150_000);
@@ -32,12 +33,16 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
   };
   const stamp = Date.now();
   const group = `Plus ${stamp}`;
+  const addon = `+50 GB ${stamp}`;
   const name = `Mara ${stamp}`;
   const member = session([], name);
   // The directory pushed the group with Mara as a member (lib/scim.ts).
   const scimGroup = randomUUID();
   db.prepare("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)").run(scimGroup, group, Date.now(), Date.now());
   db.prepare("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)").run(scimGroup, member.uid);
+  const scimAddon = randomUUID();
+  db.prepare("INSERT INTO scim_groups(id,display_name,version,created_at,updated_at) VALUES(?,?,1,?,?)").run(scimAddon, addon, Date.now(), Date.now());
+  db.prepare("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)").run(scimAddon, member.uid);
   const adminSession = session(["flowplan-admins"], `Admin ${stamp}`);
   const admin = await open(adminSession.token);
   const me = await open(member.token);
@@ -48,20 +53,33 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     // The group is offered by the picker; here it is added by its name.
     await section.getByLabel("Verzeichnisgruppe nach Name").fill(group);
     await section.getByRole("button", { name: "Hinzufügen" }).click();
-    const storage = section.getByLabel(`Verzeichnis · ${group}: Speicher`);
+    const storage = section.getByLabel(`Verzeichnis · ${group}: Speicher`, { exact: true });
     await expect(storage).toBeVisible();
     await storage.fill("2000");
     await storage.press("Enter");
     await expect
       .poll(() => (db.prepare("SELECT limits FROM group_limits WHERE target=?").get(`dir:${group}`) as { limits: string } | undefined)?.limits)
       .toBe(JSON.stringify({ storageMb: 2000 }));
+    // The add-on group: marked "Zusätzlich (Add-on)", then its 50 GB.
+    await section.getByLabel("Verzeichnisgruppe nach Name").fill(addon);
+    await section.getByRole("button", { name: "Hinzufügen" }).click();
+    const mode = section.getByRole("combobox", { name: `Verzeichnis · ${addon}: Art des Speichers` });
+    await expect(mode).toBeVisible();
+    await mode.selectOption("add");
+    const stored = () => JSON.parse((db.prepare("SELECT limits FROM group_limits WHERE target=?").get(`dir:${addon}`) as { limits: string } | undefined)?.limits || "null");
+    await expect.poll(stored).toEqual({ storageMode: "add" });
+    await expect(section).toContainText("Zusätzlich (Add-on): der Speicher der Gruppe kommt zur Grenze der Person dazu");
+    const extra = section.getByLabel(`Verzeichnis · ${addon}: Speicher`, { exact: true });
+    await extra.fill("51200");
+    await extra.press("Enter");
+    await expect.poll(stored).toEqual({ storageMode: "add", storageMb: 51200 });
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-group-limits.png`, fullPage: true });
 
-    // The member sees the group's storage and where it comes from.
+    // The member sees the sum and where it comes from: 2,000 MB + 50 GB.
     await me.page.goto(`${origin}/#settings/account`);
     const limits = me.page.locator(".setting-group", { hasText: "Deine Grenzen" });
-    await expect(limits).toContainText("2.000 MB", { timeout: 20_000 });
-    await expect(limits).toContainText(`aus Gruppe ${group}`);
+    await expect(limits).toContainText("53.200 MB", { timeout: 20_000 });
+    await expect(limits).toContainText(`2.000 MB aus Gruppe ${group} + 50 GB aus Gruppe ${addon}`);
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-group-limits.png`, fullPage: true });
 
     // The administration's account panel names the group as the source.
@@ -70,11 +88,11 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     const row = admin.page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name, exact: true }).click();
     const sheet = admin.page.getByRole("dialog", { name, exact: true });
-    await expect(sheet).toContainText(`aus Gruppe Verzeichnis · ${group}`);
+    await expect(sheet).toContainText(`2.000 MB aus Gruppe Verzeichnis · ${group} + 50 GB aus Gruppe Verzeichnis · ${addon}`);
     expect(errors).toEqual([]);
   } finally {
-    db.prepare("DELETE FROM group_limits WHERE target=?").run(`dir:${group}`);
-    db.prepare("DELETE FROM scim_groups WHERE id=?").run(scimGroup);
+    db.prepare("DELETE FROM group_limits WHERE target IN (?,?)").run(`dir:${group}`, `dir:${addon}`);
+    db.prepare("DELETE FROM scim_groups WHERE id IN (?,?)").run(scimGroup, scimAddon);
     await me.context.close();
     await admin.context.close();
     db.close();

@@ -5,6 +5,7 @@
 // Inaktivität (#282), one's limits on this instance and – at the end – the
 // danger zone (reset encryption keys, delete the account).
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { explainStorage } from "@/lib/limit-explain";
 import { useT } from "../../i18n";
 import { Avatar } from "../../ui";
 import { DangerZone, SettingGroup, SettingRow, StatusBadge, UsageMeter } from "../../settings-ui";
@@ -92,9 +93,13 @@ function MyLimits({ limits }: { limits: Limits }) {
   const t = useT();
   const from = (field: "storageMb" | "workspaces" | "uploadMb") => {
     const source = limits.sources?.[field];
+    const groupName = (group: string | null) => (group && limits.groupNames?.[group]) || t("einer deiner Gruppen", "one of your groups");
+    // Storage with add-ons: the base plus each add-on group.
+    const sum = explainStorage(source, t, groupName, LOCALE_TAG);
+    if (sum) return sum;
     if (!source || source.from === "default") return null;
     if (source.from === "user") return t("für dich festgelegt", "set for you");
-    const name = (source.group && limits.groupNames?.[source.group]) || t("einer deiner Gruppen", "one of your groups");
+    const name = groupName(source.group);
     return t(`aus Gruppe ${name}`, `from group ${name}`);
   };
   const note = (field: "storageMb" | "workspaces" | "uploadMb") => {

@@ -10,6 +10,16 @@
 // else the instance's default. The groups of a person: their workspace
 // groups in every workspace and their directory groups
 // (lib/person-groups.ts).
+//
+// Add-ons (storage only): a group's storage can be marked "additional"
+// (`storageMode: "add"` in group_limits.limits, e.g. the billing service's
+// "Flowplan +50 GB"). Such values do not compete for "most generous"; they
+// are added on top of the base – the most generous normal group value,
+// else the default. Several add-ons sum up. An unlimited base (0) stays
+// unlimited. With an own value the administrator set an explicit number
+// for that person: add-ons are not added. Workspaces and uploads have no
+// add-on mode. Rows without `storageMode` (0.11.1) are normal limits; no
+// migration – the mode lives in the existing JSON.
 import { z } from "zod";
 import { all, audit, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -25,6 +35,12 @@ export const userLimitsSchema = z.object({
   uploadMb: z.number().int().min(1).max(1024).nullable().optional(),
 });
 export type UserLimits = z.infer<typeof userLimitsSchema>;
+// A group's limits: the same fields, plus whether its storage is a limit
+// (default) or an add-on on top of the person's base.
+export const STORAGE_MODES = ["limit", "add"] as const;
+export type StorageMode = (typeof STORAGE_MODES)[number];
+export const groupLimitsSchema = userLimitsSchema.extend({ storageMode: z.enum(STORAGE_MODES).nullable().optional() });
+export type GroupLimits = z.infer<typeof groupLimitsSchema>;
 
 export async function storedUserLimits(userId: string): Promise<UserLimits> {
   const raw = (await one<{ limits: string | null }>("SELECT limits FROM users WHERE id=?", userId))?.limits;
@@ -39,20 +55,38 @@ export const USER_LIMIT_FIELDS = ["storageMb", "workspaces", "uploadMb"] as cons
 export type UserLimitField = (typeof USER_LIMIT_FIELDS)[number];
 export type EffectiveLimits = Record<UserLimitField, number>;
 // Where a value comes from: the account, a group (its key) or the default.
-export type LimitSource = { from: "user" | "group" | "default"; group: string | null };
-export type GroupLimitRule = { target: string; limits: UserLimits };
+// For storage also the add-on groups added on top (`addons`, only when
+// there are any; `base` is then the value before them) and, with an own
+// value, the add-ons that were not added (`ignoredAddons`).
+export type LimitAddon = { group: string; mb: number };
+export type LimitSource = { from: "user" | "group" | "default"; group: string | null; base?: number; addons?: LimitAddon[]; ignoredAddons?: LimitAddon[] };
+export type GroupLimitRule = { target: string; limits: GroupLimits };
 
+const clean = <T extends object>(limits: T) => Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== null && v !== undefined)) as T;
 const parseLimits = (raw: string | null | undefined): UserLimits => {
   try {
     const parsed = userLimitsSchema.safeParse(JSON.parse(raw || "{}"));
-    return parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== null && v !== undefined)) : {};
+    return parsed.success ? clean(parsed.data) : {};
   } catch {
     return {};
   }
 };
+// A group's row; "limit" is the default and not stored.
+const parseGroupLimits = (raw: string | null | undefined): GroupLimits => {
+  try {
+    const parsed = groupLimitsSchema.safeParse(JSON.parse(raw || "{}"));
+    if (!parsed.success) return parseLimits(raw);
+    const out = clean(parsed.data);
+    if (out.storageMode !== "add") delete out.storageMode;
+    return out;
+  } catch {
+    return {};
+  }
+};
+const isAddon = (l: GroupLimits) => l.storageMode === "add" && typeof l.storageMb === "number" && l.storageMb > 0;
 export async function groupLimitRules(): Promise<GroupLimitRule[]> {
   try {
-    return (await all<{ target: string; limits: string }>("SELECT target,limits FROM group_limits ORDER BY target")).map((r) => ({ target: r.target, limits: parseLimits(r.limits) }));
+    return (await all<{ target: string; limits: string }>("SELECT target,limits FROM group_limits ORDER BY target")).map((r) => ({ target: r.target, limits: parseGroupLimits(r.limits) }));
   } catch {
     return [];
   }
@@ -62,7 +96,9 @@ const generous = (a: number, b: number) => (a === 0 || b === 0 ? 0 : Math.max(a,
 // Pure: what applies, with where each value comes from.
 export function resolveUserLimits(own: UserLimits, rules: GroupLimitRule[], groups: string[], settings: Pick<InstanceSettings, "defaultUserStorageMb" | "defaultUserWorkspaces" | "maxUploadMb">) {
   const fallback: EffectiveLimits = { storageMb: settings.defaultUserStorageMb ?? 0, workspaces: settings.defaultUserWorkspaces ?? 0, uploadMb: settings.maxUploadMb };
-  const mine = rules.filter((r) => groups.includes(r.target));
+  // In a fixed order: among equal values the first key decides.
+  const mine = rules.filter((r) => groups.includes(r.target)).sort((a, b) => a.target.localeCompare(b.target));
+  const addons: LimitAddon[] = mine.filter((r) => isAddon(r.limits)).map((r) => ({ group: r.target, mb: r.limits.storageMb! }));
   const values = {} as EffectiveLimits;
   const sources = {} as Record<UserLimitField, LimitSource>;
   for (const field of USER_LIMIT_FIELDS) {
@@ -70,17 +106,25 @@ export function resolveUserLimits(own: UserLimits, rules: GroupLimitRule[], grou
     if (typeof value === "number") {
       values[field] = value;
       sources[field] = { from: "user", group: null };
+      // An explicit value for the person: add-ons are not added.
+      if (field === "storageMb" && addons.length) sources[field].ignoredAddons = addons;
       continue;
     }
     let best: { value: number; group: string } | null = null;
-    // In a fixed order: among equal values the first key decides.
-    for (const r of [...mine].sort((a, b) => a.target.localeCompare(b.target))) {
+    for (const r of mine) {
+      // Add-on storage (and an add-on without a value) is no limit.
+      if (field === "storageMb" && r.limits.storageMode === "add") continue;
       const v = r.limits[field];
       if (typeof v !== "number") continue;
       if (!best || (generous(best.value, v) === v && v !== best.value)) best = { value: v, group: r.target };
     }
     values[field] = best ? best.value : fallback[field];
     sources[field] = best ? { from: "group", group: best.group } : { from: "default", group: null };
+    // Add-ons on top of a limited base; unlimited stays unlimited.
+    if (field === "storageMb" && addons.length && values[field] !== 0) {
+      sources[field] = { ...sources[field], base: values[field], addons };
+      values[field] += addons.reduce((sum, a) => sum + a.mb, 0);
+    }
   }
   return { values, sources };
 }
@@ -187,12 +231,15 @@ export async function usersUsage() {
 /* ---------- Limits per group (Administration → Grenzen & Aufbewahrung) ---------- */
 
 const groupTarget = z.string().min(1).max(MAX_DIRECTORY_NAME + 10);
-const groupLimitInput = z.object({ target: groupTarget, limits: userLimitsSchema.nullable() });
+const groupLimitInput = z.object({ target: groupTarget, limits: groupLimitsSchema.nullable() });
 // admin.groupLimits: the limits of one group; null removes the row ({}: a
 // row without values yet – the group's members get what they would anyway).
 export async function setGroupLimits(actorId: string, raw: unknown) {
   const b = groupLimitInput.parse(raw);
-  const clean = Object.fromEntries(Object.entries(b.limits || {}).filter(([, v]) => v !== null && v !== undefined));
+  // 0 means unlimited for a limit; as an add-on it would mean nothing.
+  if (b.limits?.storageMode === "add" && b.limits.storageMb === 0) throw new HttpError(400, "Ein Add-on braucht mindestens 1 MB.");
+  // "limit" is the default: stored rows only carry storageMode "add".
+  const clean: GroupLimits = Object.fromEntries(Object.entries(b.limits || {}).filter(([k, v]) => v !== null && v !== undefined && !(k === "storageMode" && v !== "add")));
   if (b.limits === null) await run("DELETE FROM group_limits WHERE target=?", b.target);
   else {
     if (!(await validGroupKey(b.target))) throw new HttpError(404, "Gruppe nicht gefunden.");

@@ -28,6 +28,7 @@ const exact: Record<string, string> = {
   "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.": "Groups and roles have no “instance default” of their own – remove the model instead.",
   "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).": "Please set up an AI provider for the instance first (Administration → AI).",
   "Gruppe nicht gefunden.": "Group not found.",
+  "Ein Add-on braucht mindestens 1 MB.": "An add-on needs at least 1 MB.",
   "Bitte eine Adresse mit http:// oder https:// angeben.": "Please enter an address with http:// or https://.",
   "Eine Grenze ist doppelt eingetragen.": "A limit is entered twice.",
   "Dieses Modell ist für die Instanz nicht vorgesehen.": "This model is not one of the instance's models.",
