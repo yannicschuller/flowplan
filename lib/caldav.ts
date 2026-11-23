@@ -110,9 +110,10 @@ const ctag = (rows: Row[]) => hash(rows.map((r) => etag(r)).join(",")).slice(0, 
 
 /* ---------- iCalendar ---------- */
 
-const icsText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+// Shared with the CalDAV client of the calendar sync (lib/caldav-client.ts).
+export const icsText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 // One pass: "\\n" is a backslash and an n, not a line break.
-const unText = (s: string) => s.replace(/\\([nN,;\\])/g, (_, c: string) => (c === "n" || c === "N" ? "\n" : c));
+export const unText = (s: string) => s.replace(/\\([nN,;\\])/g, (_, c: string) => (c === "n" || c === "N" ? "\n" : c));
 const utc = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 const compact = (date: string) => date.slice(0, 10).replace(/-/g, "");
 const addDays = (date: string, days: number) => {
@@ -120,7 +121,7 @@ const addDays = (date: string, days: number) => {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
-function fold(line: string) {
+export function fold(line: string) {
   if (Buffer.byteLength(line) <= 75) return line;
   const parts: string[] = [];
   let current = "";

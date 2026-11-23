@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 127;
+export const SCHEMA_VERSION = 128;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1680,6 +1680,8 @@ function migrate(d: DatabaseSync) {
   // Schema 127 – who heard of a whiteboard comment's mention (#455,
   // lib/whiteboard-comments-server.ts).
   migrateBoardMentionNotices(d);
+  // Schema 128 – the CalDAV version of a synced event (#460, lib/calendar-sync.ts).
+  migrateCalendarSyncEtags(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1737,6 +1739,16 @@ function migrateDirectoryGroupMembers(d: DatabaseSync) {
 // Rows go with the board's page and the person, and after 400 days
 // (BOARD_MENTION_KEEP_DAYS). An older version would ignore the table and
 // keep its own memory, hence the number.
+// Schema 128 – calendar sync with CalDAV servers (#460, lib/calendar-sync.ts):
+// calendar_sync_items.etag is the version of the event last read or written,
+// sent as If-Match when Flowplan changes or deletes it, so a change made in
+// the calendar meanwhile is not overwritten. NULL for Google and Microsoft
+// (their APIs need none) and for every item synced before. An older version
+// would leave it stale, hence the number.
+function migrateCalendarSyncEtags(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(calendar_sync_items)").all() as { name: string }[]).some((c) => c.name === "etag"))
+    d.exec("ALTER TABLE calendar_sync_items ADD COLUMN etag TEXT");
+}
 function migrateBoardMentionNotices(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_mention_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,message_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,notified_at INTEGER NOT NULL,PRIMARY KEY(page_id,message_id,user_id));
     CREATE INDEX IF NOT EXISTS whiteboard_mention_notices_at ON whiteboard_mention_notices(notified_at);

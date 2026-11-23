@@ -27504,12 +27504,14 @@ h3 .block-reactions {
   display: grid;
   gap: 4px;
 }
-.issue-sync-form {
+.issue-sync-form,
+.calendar-caldav-form {
   display: grid;
   gap: 12px;
   background: var(--surface);
 }
-.issue-sync-form label {
+.issue-sync-form label,
+.calendar-caldav-form label {
   display: grid;
   gap: 5px;
   margin: 0;

@@ -1,9 +1,11 @@
-// Two-way sync between a database view and a Google or Microsoft 365
+// Two-way sync between a database view and a Google, Microsoft 365 or CalDAV
 // calendar. Each person connects their own account (OAuth 2.0 authorization
-// code with PKCE, refresh token sealed at rest) and maps a view with a date
+// code with PKCE, refresh token sealed at rest; for CalDAV server address,
+// username and app password, sealed the same way) and maps a view with a date
 // property to one of their calendars. Every ten minutes – or on "Jetzt
 // synchronisieren" – the engine pulls what changed in the calendar
-// (Google syncToken, Microsoft Graph deltaLink) and pushes what changed in
+// (Google syncToken, Microsoft Graph deltaLink, CalDAV sync-collection or
+// ctag/etag comparison) and pushes what changed in
 // the database: title ↔ title, date range ↔ start/end (all-day or timed,
 // with time zones), record document (plain text) ↔ description with a link
 // back to the record. When both sides changed, the later change wins and an
@@ -17,7 +19,7 @@
 //
 // Every request goes through safeSend (lib/safe-fetch.ts); tests swap the
 // transport with calendarSyncTesting().
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
 import { all, audit, id, one, run, transaction, nowText } from "./db";
@@ -36,16 +38,23 @@ import { maintainRowOrders } from "./row-order-server";
 import { escaped } from "./document-server";
 import { replaceRowDocument } from "./row-documents";
 import { openSecret, sealSecret } from "./secret-box";
-import { safeSend } from "./safe-fetch";
+import { privateAddress, safeSend } from "./safe-fetch";
+import { CalDavClient, DavAuthError, DavChanged, DavFailed, DavTokenInvalid, canonicalUrl, newIcsEvent, parseIcsEvent, patchIcsEvent, type DavRequest } from "./caldav-client";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { ct } from "./content-locale";
 import { validZone } from "./date-values";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { flatMapAsync } from "./each-async";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { allow } from "./action-limits";
 
-export const calendarProviders = ["google", "microsoft"] as const;
+// Google and Microsoft sign in with OAuth; CalDAV with an app password.
+export const oauthProviders = ["google", "microsoft"] as const;
+export const calendarProviders = [...oauthProviders, "caldav"] as const;
 export type CalendarProvider = (typeof calendarProviders)[number];
+type OAuthProvider = (typeof oauthProviders)[number];
 export const SYNC_INTERVAL_MS = 10 * 60_000;
 const DAY_MS = 86_400_000;
 // Events further back or ahead are not imported; records outside are not
@@ -61,11 +70,26 @@ const MAX_RETRIES = 4;
 
 /* ---------- Transport ---------- */
 
-export type CalendarRequest = { method: "GET" | "POST" | "PATCH" | "DELETE"; url: string; headers: Record<string, string>; body?: string };
-export type CalendarResponse = { status: number; body: string };
+export type CalendarRequest = {
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE" | "PROPFIND" | "REPORT";
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+  // CalDAV servers in the own network, when the instance allows it (FLOWPLAN_CALDAV_ALLOW_PRIVATE).
+  allowPrivate?: boolean;
+};
+export type CalendarResponse = { status: number; body: string; headers?: Record<string, string> };
 export type CalendarTransport = (request: CalendarRequest) => Promise<CalendarResponse>;
+// Answers are read up to 8 MB; a longer one is refused, not cut off.
+const MAX_ANSWER = 8_000_000;
 const defaultTransport: CalendarTransport = (r) =>
-  safeSend(r.url, r.body || "", r.headers, { method: r.method, timeout: 20_000, maxBytes: 8_000_000 });
+  safeSend(r.url, r.body || "", r.headers, {
+    method: r.method,
+    allowPrivate: !!r.allowPrivate,
+    timeout: 20_000,
+    totalTimeout: 120_000,
+    maxBytes: MAX_ANSWER + 1,
+  });
 let transport: CalendarTransport = defaultTransport;
 let sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 // Tests replace the network and the waiting between retries.
@@ -90,6 +114,7 @@ function tenant() {
   return /^[A-Za-z0-9.-]{1,100}$/.test(value) ? value : "common";
 }
 function providerConfig(provider: CalendarProvider): ProviderConfig | null {
+  if (provider === "caldav") return null;
   if (provider === "google") {
     const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || "",
       clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || "";
@@ -119,13 +144,16 @@ function providerConfig(provider: CalendarProvider): ProviderConfig | null {
     issuer: (iss) => /^https:\/\/login\.microsoftonline\.com\/[0-9a-f-]{36}\/v2\.0$/i.test(iss),
   };
 }
-export const providerSchema = z.enum(calendarProviders);
+// The providers that connect through an OAuth redirect (the route's /connect/:provider).
+export const providerSchema = z.enum(oauthProviders);
 function requireProvider(provider: CalendarProvider) {
   const config = providerConfig(provider);
   if (!config) throw new HttpError(503, "Diese Kalenderverbindung ist auf dieser Instanz nicht eingerichtet.");
   return config;
 }
-export const providerConfigured = (provider: CalendarProvider) => !!providerConfig(provider);
+// CalDAV needs no app registration: on unless FLOWPLAN_CALDAV_SYNC=off.
+export const caldavEnabled = () => (process.env.FLOWPLAN_CALDAV_SYNC || "").trim().toLowerCase() !== "off";
+export const providerConfigured = (provider: CalendarProvider) => (provider === "caldav" ? caldavEnabled() : !!providerConfig(provider));
 const redirectUri = (provider: CalendarProvider) => `${appUrl()}/api/calendar-sync/callback/${provider}`;
 
 /* ---------- OAuth connection ---------- */
@@ -147,7 +175,7 @@ const FLOW_MS = 10 * 60_000;
 
 // The provider's sign-in page for this person, and the value of the cookie
 // that ties the answer to this browser.
-export async function startCalendarConnection(user: Identity, provider: CalendarProvider) {
+export async function startCalendarConnection(user: Identity, provider: OAuthProvider) {
   if (user.demo || user.apiScope) throw new HttpError(403, "Kalender lassen sich nur im Browser verbinden.");
   const config = requireProvider(provider);
   const verifier = randomBytes(32).toString("base64url"),
@@ -211,7 +239,7 @@ async function tokenRequest(config: ProviderConfig, form: Record<string, string>
 // The answer of the provider: the flow of this browser and person, the
 // state and (in the ID token) the nonce must match; the code is exchanged
 // with the PKCE verifier. Returns the connection's id.
-export async function finishCalendarConnection(user: Identity, provider: CalendarProvider, flow: string | undefined, params: URLSearchParams) {
+export async function finishCalendarConnection(user: Identity, provider: OAuthProvider, flow: string | undefined, params: URLSearchParams) {
   const config = requireProvider(provider);
   if (!flow) throw new HttpError(400, "Die Kalenderverbindung ist abgelaufen. Bitte erneut verbinden.");
   const stored = await one<{ user_id: string; provider: string; state: string; verifier: string; nonce: string; expires: number }>(
@@ -372,8 +400,9 @@ export type EventContent = { title: string; allDay: boolean; start: string; end:
 export type Attendee = { email: string; name: string };
 // `plain`: the description read as plain text, when it was read as HTML. Our
 // own text can look like HTML ("<b>"), so its echo is matched against both.
-export type RemoteEvent = EventContent & { id: string; deleted: boolean; updated: string; attendees: Attendee[]; plain?: string };
-type CalendarInfo = { id: string; name: string; primary: boolean };
+// `etag`: the version of a CalDAV event, for If-Match on the next change.
+export type RemoteEvent = EventContent & { id: string; deleted: boolean; updated: string; attendees: Attendee[]; plain?: string; etag?: string };
+type CalendarInfo = { id: string; name: string; primary: boolean; color?: string };
 
 const addDays = (date: string, days: number) => Temporal.PlainDate.from(date.slice(0, 10)).add({ days }).toString();
 const minute = (instant: Temporal.Instant) => `${instant.round({ smallestUnit: "minute", roundingMode: "floor" }).toString().slice(0, 16)}Z`;
@@ -415,13 +444,19 @@ export function contentHash(c: EventContent) {
     .slice(0, 32);
 }
 
+// `known`: the linked events of the mapping with their etag (CalDAV compares
+// them; the APIs with change tokens do not need them). `etag` on update and
+// remove: the version last seen (CalDAV's If-Match).
 type Adapter = {
   calendars(conn: ConnectionRow): Promise<CalendarInfo[]>;
-  changes(conn: ConnectionRow, calendarId: string, token: string | null): Promise<{ events: RemoteEvent[]; token: string }>;
+  changes(conn: ConnectionRow, calendarId: string, token: string | null, known: Map<string, string | null>, zone: string): Promise<{ events: RemoteEvent[]; token: string }>;
   create(conn: ConnectionRow, calendarId: string, event: EventContent, zone: string, rowId: string, link: string): Promise<RemoteEvent>;
-  update(conn: ConnectionRow, calendarId: string, eventId: string, event: EventContent, zone: string, rowId: string, link: string): Promise<RemoteEvent | null>;
-  remove(conn: ConnectionRow, calendarId: string, eventId: string): Promise<void>;
+  update(conn: ConnectionRow, calendarId: string, eventId: string, event: EventContent, zone: string, rowId: string, link: string, etag: string | null): Promise<RemoteEvent | null>;
+  remove(conn: ConnectionRow, calendarId: string, eventId: string, etag: string | null): Promise<void>;
 };
+// The event changed in the calendar while it was being written (CalDAV 412):
+// left as it is; the next run reads the change and applies the conflict rule.
+class ChangedMeanwhile extends Error {}
 // The token was refused (410 Gone): start again with a full listing.
 class TokenExpired extends Error {}
 const windowStart = (now: number) => new Date(now - WINDOW_PAST_DAYS * DAY_MS).toISOString();
@@ -660,7 +695,285 @@ const microsoft: Adapter = {
     if (![200, 204, 404, 410].includes(answer.status)) failed(answer, "delete");
   },
 };
-const adapters: Record<CalendarProvider, Adapter> = { google, microsoft };
+/* CalDAV (Nextcloud, iCloud, Fastmail, mailbox.org, Radicale …) */
+
+// What a CalDAV connection keeps, sealed as one value in refresh_token: the
+// address the person typed, the calendar home found from it, and the
+// credentials. Requests go only to the home's origin.
+type CalDavSecret = { server: string; home: string; username: string; password: string };
+const caldavAad = (connectionId: string) => `calendar-sync-caldav:${connectionId}`;
+const CALDAV_REJECTED = "Der CalDAV-Server hat Benutzername oder App-Passwort abgelehnt. Bitte neu verbinden.";
+// Plain http and addresses in the own network only when the instance allows
+// it, as for chat apps and webhooks.
+export function caldavAllowPrivate() {
+  const own = process.env.FLOWPLAN_CALDAV_ALLOW_PRIVATE?.trim();
+  return (own || process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE) === "true";
+}
+// https everywhere; http (and with it Basic auth in the clear) only to a
+// server in the own network and only when allowed. safeSend checks the
+// addresses of https requests itself.
+async function checkDavUrl(url: URL) {
+  if (url.username || url.password || url.hash) throw new HttpError(400, "Zugangsdaten gehören nicht in die Server-Adresse.");
+  if (url.protocol === "https:") return;
+  if (url.protocol !== "http:" || !caldavAllowPrivate()) throw new HttpError(400, "Die Server-Adresse muss mit https:// beginnen.");
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const addresses = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
+  if (!addresses.length || !addresses.every(privateAddress))
+    throw new HttpError(400, "Unverschlüsselt (http://) nur zu einem Server im eigenen Netz – sonst bitte https:// verwenden.");
+}
+// The requests of one connection: Basic auth, only to `origins` (null while
+// discovering), 429 and 5xx retried like the APIs, answers at most 8 MB.
+function davSend(credentials: { username: string; password: string }, origins: string[] | null) {
+  const authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`, "utf8").toString("base64")}`;
+  return async (r: DavRequest) => {
+    const url = new URL(r.url);
+    if (origins && !origins.includes(url.origin)) throw new HttpError(400, "Unbekannter Kalender.");
+    await checkDavUrl(url);
+    for (let attempt = 0; ; attempt++) {
+      let response: CalendarResponse;
+      try {
+        response = await transport({
+          method: r.method,
+          url: url.toString(),
+          headers: { ...r.headers, authorization, "user-agent": "Flowplan-CalendarSync/1.0" },
+          body: r.body || "",
+          allowPrivate: caldavAllowPrivate(),
+        });
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        // The message names no credentials; it is not logged all the same.
+        if (/Interne Adressen/.test((error as Error).message)) throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
+        throw new HttpError(502, "Der Kalenderserver ist nicht erreichbar.");
+      }
+      if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
+        await sleep(Math.min(30_000, 1000 * 2 ** attempt));
+        continue;
+      }
+      if (Buffer.byteLength(response.body || "") >= MAX_ANSWER) throw new HttpError(502, "Die Antwort des Kalenderservers ist zu groß.");
+      const headers = Object.fromEntries(Object.entries(response.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+      return { status: response.status, body: response.body || "", headers };
+    }
+  };
+}
+function caldavSecret(conn: ConnectionRow): CalDavSecret {
+  try {
+    const secret = JSON.parse(openSecret(conn.refresh_token, caldavAad(conn.id))) as CalDavSecret;
+    if (secret.home && secret.username && typeof secret.password === "string") return secret;
+  } catch {}
+  throw new HttpError(409, CALDAV_REJECTED);
+}
+// Errors of the CalDAV client as the engine knows them.
+async function withDav<T>(conn: ConnectionRow, fn: (client: CalDavClient, secret: CalDavSecret) => Promise<T>): Promise<T> {
+  const secret = caldavSecret(conn);
+  const client = new CalDavClient(davSend(secret, [new URL(secret.home).origin]));
+  try {
+    const result = await fn(client, secret);
+    if (conn.last_error) {
+      await run("UPDATE calendar_connections SET last_error=NULL WHERE id=?", conn.id);
+      conn.last_error = null;
+    }
+    return result;
+  } catch (error) {
+    throw await davError(error, conn.id);
+  }
+}
+async function davError(error: unknown, connectionId: string | null) {
+  if (error instanceof DavAuthError) {
+    if (connectionId) await run("UPDATE calendar_connections SET last_error=? WHERE id=?", CALDAV_REJECTED, connectionId);
+    return new HttpError(409, CALDAV_REJECTED);
+  }
+  if (error instanceof DavChanged) return new ChangedMeanwhile();
+  if (error instanceof DavTokenInvalid) return new TokenExpired();
+  if (error instanceof DavFailed) {
+    console.error(`Calendar sync: CalDAV ${error.what} failed with HTTP ${error.status}`);
+    if (error.status === 429) return new HttpError(429, "Der Kalenderanbieter begrenzt gerade die Anfragen. Die Synchronisierung versucht es später erneut.");
+    if (error.status === 403) return new HttpError(403, "Der Kalenderserver erlaubt diese Änderung nicht.");
+    if (error.what === "discovery") return new HttpError(400, "Unter dieser Adresse wurde kein CalDAV-Kalender gefunden.");
+    return new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.");
+  }
+  return error;
+}
+// The calendar of a mapping, on the connection's server.
+function davCalendar(secret: CalDavSecret, calendarId: string) {
+  const url = canonicalUrl(calendarId, secret.home);
+  if (!url) throw new HttpError(400, "Unbekannter Kalender.");
+  return url.endsWith("/") ? url : `${url}/`;
+}
+const davTime = (iso: string) => `${iso.slice(0, 19).replace(/[-:]/g, "")}Z`;
+const goneEvent = (id: string): RemoteEvent => ({ id, deleted: true, title: "", allDay: false, start: "", end: "", description: "", attendees: [], updated: new Date(0).toISOString() });
+function davEvent(url: string, ics: string, etag: string, zone: string): RemoteEvent | null {
+  const id = new URL(url).pathname;
+  const parsed = parseIcsEvent(ics, zone);
+  // Series are not synced (as Google's and Microsoft's are, occurrence by
+  // occurrence): an occurrence of a CalDAV series is no resource of its own.
+  if (!parsed || parsed.recurring) return null;
+  if (parsed.cancelled) return goneEvent(id);
+  return {
+    id,
+    deleted: false,
+    title: parsed.title,
+    allDay: parsed.allDay,
+    start: parsed.start,
+    end: parsed.end,
+    description: stripFooter(parsed.description),
+    updated: parsed.updated,
+    attendees: parsed.attendees,
+    etag,
+  };
+}
+const caldav: Adapter = {
+  async calendars(conn) {
+    return withDav(conn, async (client, secret) =>
+      (await client.calendars(secret.home))
+        .filter((c) => c.writable)
+        .map((c, i) => ({ id: c.url, name: c.name, primary: i === 0, ...(c.color ? { color: c.color } : {}) })),
+    );
+  },
+  async changes(conn, calendarId, token, known, zone) {
+    return withDav(conn, async (client, secret) => {
+      const calendar = davCalendar(secret, calendarId);
+      const knownUrls = new Map<string, string | null>();
+      for (const [eventId, etag] of known) {
+        const url = canonicalUrl(eventId, calendar);
+        if (url) knownUrls.set(url, etag);
+      }
+      const events: RemoteEvent[] = [];
+      const read = (url: string, value: { etag: string; ics: string }) => {
+        if (!value.etag) return void events.push(goneEvent(new URL(url).pathname));
+        const event = davEvent(url, value.ics, value.etag, zone);
+        if (event) events.push(event);
+      };
+      // RFC 6578: only what changed since the token.
+      if (token?.startsWith("s:")) {
+        let changes: Awaited<ReturnType<CalDavClient["changes"]>> | null = null;
+        try {
+          changes = await client.changes(calendar, token.slice(2));
+        } catch (error) {
+          // Announced but not answered: compare etags instead.
+          if (!(error instanceof DavFailed && [405, 501].includes(error.status))) throw error;
+        }
+        if (changes) {
+          const wanted: string[] = [];
+          for (const [url, etag] of changes.changed) {
+            if (!etag) read(url, { etag: "", ics: "" });
+            else if (etag === "?" || knownUrls.get(url) !== etag) wanted.push(url);
+          }
+          for (const [url, value] of await client.multiget(calendar, wanted.slice(0, MAX_EVENTS), true)) read(url, value);
+          return { events, token: `s:${changes.token}` };
+        }
+        token = null;
+      }
+      // Otherwise the ctag says whether anything changed, the etags what.
+      const state = await client.state(calendar);
+      if (token?.startsWith("c:") && state.ctag && token.slice(2) === state.ctag) return { events, token };
+      const full = !token;
+      const now = Date.now();
+      const listing = await client.query(calendar, davTime(windowStart(now)), davTime(windowEnd(now)), full);
+      // Linked events outside the listing: deleted, or moved out of the window.
+      const missing = [...knownUrls.keys()].filter((url) => !listing.has(url));
+      const checked = missing.length ? await client.multiget(calendar, missing, false) : new Map<string, { etag: string; ics: string }>();
+      const wanted: string[] = [];
+      for (const [url, value] of [...listing, ...checked]) {
+        if (!value.etag || value.ics) read(url, value);
+        else if (knownUrls.get(url) !== value.etag) wanted.push(url);
+        if (events.length + wanted.length >= MAX_EVENTS) break;
+      }
+      for (const [url, value] of await client.multiget(calendar, wanted, true)) read(url, value);
+      return { events, token: state.syncToken ? `s:${state.syncToken}` : `c:${state.ctag}` };
+    });
+  },
+  async create(conn, calendarId, event, _zone, rowId, link) {
+    return withDav(conn, async (client, secret) => {
+      const uid = randomUUID();
+      const url = `${davCalendar(secret, calendarId)}${uid}.ics`;
+      const saved = await client.put(url, newIcsEvent({ ...event, description: describe(event.description, link) }, { uid, link, rowId }), { create: true });
+      if (!saved) throw new DavFailed("event write", 404);
+      return { ...event, id: new URL(saved.url).pathname, deleted: false, updated: new Date().toISOString(), attendees: [], etag: saved.etag };
+    });
+  },
+  async update(conn, calendarId, eventId, event, _zone, _rowId, link, etag) {
+    return withDav(conn, async (client, secret) => {
+      const url = canonicalUrl(eventId, davCalendar(secret, calendarId));
+      if (!url) return null;
+      const current = await client.get(url);
+      if (!current) return null;
+      // Changed there since it was last read: the next run applies the conflict rule.
+      if (etag && current.etag && current.etag !== etag) throw new DavChanged();
+      let ics: string;
+      try {
+        ics = patchIcsEvent(current.ics, { ...event, description: describe(event.description, link) });
+      } catch {
+        return null;
+      }
+      const saved = await client.put(url, ics, { etag: current.etag || etag || undefined });
+      if (!saved) return null;
+      return { ...event, id: new URL(saved.url).pathname, deleted: false, updated: new Date().toISOString(), attendees: [], etag: saved.etag };
+    });
+  },
+  async remove(conn, calendarId, eventId, etag) {
+    await withDav(conn, async (client, secret) => {
+      const url = canonicalUrl(eventId, davCalendar(secret, calendarId));
+      if (url) await client.remove(url, etag || undefined);
+    });
+  },
+};
+
+const connectInput = z.object({
+  url: z.string().trim().min(1).max(2000),
+  username: z.string().trim().min(1).max(300),
+  password: z.string().min(1).max(1000),
+});
+// Connects a CalDAV account: finds the calendar home from the address
+// (/.well-known/caldav, principal, home), checks that it holds a calendar
+// the account may write, and stores everything sealed. The same account
+// again (username and server) replaces the stored password.
+export async function connectCalDav(user: Identity, input: unknown) {
+  if (user.demo || user.apiScope) throw new HttpError(403, "Kalender lassen sich nur im Browser verbinden.");
+  if (!caldavEnabled()) throw new HttpError(503, "Diese Kalenderverbindung ist auf dieser Instanz nicht eingerichtet.");
+  const b = connectInput.parse(input);
+  // Each attempt asks a server of the person's choice: not a password guesser.
+  if (!allow(`caldav-connect:${user.id}`, 20, 60 * 60_000)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+  let start: URL;
+  try {
+    start = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(b.url) ? b.url : `https://${b.url}`);
+  } catch {
+    throw new HttpError(400, "Ungültige Server-Adresse.");
+  }
+  if (start.search) throw new HttpError(400, "Ungültige Server-Adresse.");
+  await checkDavUrl(start);
+  const credentials = { username: b.username, password: b.password };
+  // Discovery may be redirected (/.well-known/caldav, iCloud's partitions);
+  // every target is checked like the address itself.
+  const client = new CalDavClient(davSend(credentials, null), checkDavUrl);
+  let home: string, calendars;
+  try {
+    home = (await client.discover(start)).home;
+    calendars = (await client.calendars(home)).filter((c) => c.writable);
+  } catch (error) {
+    throw await davError(error, null);
+  }
+  if (!calendars.length) throw new HttpError(400, "Dieses Konto hat keinen Kalender, in den Flowplan schreiben darf.");
+  // "anna@cloud.example.org", or "anna@icloud.com (caldav.icloud.com)".
+  const account = (b.username.includes("@") ? `${b.username} (${start.host})` : `${b.username}@${start.host}`).slice(0, 300);
+  const existing = await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='caldav' AND account=?", user.id, account);
+  const cid = existing?.id || id();
+  const sealed = sealSecret(JSON.stringify({ server: start.toString(), home, ...credentials } satisfies CalDavSecret), caldavAad(cid));
+  if (existing) await run("UPDATE calendar_connections SET refresh_token=?,access_token=NULL,access_expires=0,last_error=NULL WHERE id=?", sealed, cid);
+  else
+    await run(
+      "INSERT INTO calendar_connections(id,user_id,provider,account,refresh_token,access_token,access_expires,created_at) VALUES(?,?,?,?,?,NULL,0,?)",
+      cid,
+      user.id,
+      "caldav",
+      account,
+      sealed,
+      Date.now(),
+    );
+  await audit(user.id, "calendar.connect", cid, "caldav");
+  return { id: cid, account, calendars: calendars.map((c, i) => ({ id: c.url, name: c.name, primary: i === 0 })) };
+}
+
+const adapters: Record<CalendarProvider, Adapter> = { google, microsoft, caldav };
 
 /* ---------- Connections and mappings ---------- */
 
@@ -689,6 +1002,8 @@ const mappingInput = z.object({
 export async function saveCalendarMapping(user: Identity, input: unknown) {
   const b = mappingInput.parse(input);
   const conn = await ownConnection(user, b.connectionId);
+  // A CalDAV calendar is an address on the connection's server.
+  if (conn.provider === "caldav") b.calendarId = davCalendar(caldavSecret(conn), b.calendarId);
   const page = await requirePage(user, b.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   await requireUnlocked(user, page);
@@ -800,7 +1115,7 @@ type MappingRow = {
   sync_token: string | null;
   failures: number;
 };
-type Item = { row_id: string; event_id: string; hash: string };
+type Item = { row_id: string; event_id: string; hash: string; etag: string | null };
 type Context = {
   mapping: MappingRow;
   conn: ConnectionRow;
@@ -890,16 +1205,17 @@ function patchOf(ctx: Context, event: EventContent) {
   return patch;
 }
 const stamp = (sqlTime: string) => Date.parse(`${sqlTime.replace(" ", "T")}${/Z|[+-]\d\d:\d\d$/.test(sqlTime) ? "" : "Z"}`) || 0;
-async function saveItem(ctx: Context, rowId: string, eventId: string, hashValue: string, attendees?: Attendee[]) {
+async function saveItem(ctx: Context, rowId: string, eventId: string, hashValue: string, attendees?: Attendee[], etag?: string) {
   await run(
-    `INSERT INTO calendar_sync_items(mapping_id,row_id,event_id,hash,attendees,synced_at) VALUES(?,?,?,?,?,?)
-     ON CONFLICT(mapping_id,row_id) DO UPDATE SET event_id=excluded.event_id,hash=excluded.hash,synced_at=excluded.synced_at${attendees ? ",attendees=excluded.attendees" : ""}`,
+    `INSERT INTO calendar_sync_items(mapping_id,row_id,event_id,hash,attendees,synced_at,etag) VALUES(?,?,?,?,?,?,?)
+     ON CONFLICT(mapping_id,row_id) DO UPDATE SET event_id=excluded.event_id,hash=excluded.hash,synced_at=excluded.synced_at,etag=excluded.etag${attendees ? ",attendees=excluded.attendees" : ""}`,
     ctx.mapping.id,
     rowId,
     eventId,
     hashValue,
     JSON.stringify(attendees || []),
     Date.now(),
+    etag || null,
   );
 }
 const dropItem = async (ctx: Context, rowId: string) => await run("DELETE FROM calendar_sync_items WHERE mapping_id=? AND row_id=?", ctx.mapping.id, rowId);
@@ -962,13 +1278,17 @@ async function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, 
       );
       await rowCreated(ctx.user, ctx.page, rid);
       if (event.description) await replaceRowDocument(rid, textToHtml(event.description), ctx.user.id);
-      await saveItem(ctx, rid, event.id, remoteHash, event.attendees);
+      await saveItem(ctx, rid, event.id, remoteHash, event.attendees, event.etag);
     }, ctx.user);
-    items.set(event.id, { row_id: rid, event_id: event.id, hash: remoteHash });
+    items.set(event.id, { row_id: rid, event_id: event.id, hash: remoteHash, etag: event.etag || null });
     result.created++;
     return;
   }
-  await run("UPDATE calendar_sync_items SET attendees=? WHERE mapping_id=? AND row_id=?", JSON.stringify(event.attendees), ctx.mapping.id, item.row_id);
+  // The version seen now (CalDAV): what a push of the record names in If-Match.
+  if (event.etag) {
+    await run("UPDATE calendar_sync_items SET attendees=?,etag=? WHERE mapping_id=? AND row_id=?", JSON.stringify(event.attendees), event.etag, ctx.mapping.id, item.row_id);
+    item.etag = event.etag;
+  } else await run("UPDATE calendar_sync_items SET attendees=? WHERE mapping_id=? AND row_id=?", JSON.stringify(event.attendees), ctx.mapping.id, item.row_id);
   // Unchanged in the calendar (also our own change coming back).
   if (remoteHash === item.hash) return;
   const [row] = await rowsOf(ctx, [item.row_id]);
@@ -976,7 +1296,7 @@ async function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, 
   const local = localContent(row, ctx.fields, ctx.view, ctx.zone);
   const localHash = local ? contentHash(local) : null;
   if (localHash === remoteHash) {
-    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
+    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees, event.etag || item.etag || undefined);
     item.hash = remoteHash;
     return;
   }
@@ -1003,7 +1323,7 @@ async function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, 
     await rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
     if (normalizeText(event.description) !== (local ? normalizeText(local.description) : ""))
       await replaceRowDocument(row.id, textToHtml(event.description), ctx.user.id);
-    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
+    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees, event.etag || item.etag || undefined);
   }, ctx.user);
   item.hash = remoteHash;
   result.updated++;
@@ -1031,7 +1351,7 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
       // The date was removed: the event goes.
       if (item) {
         budget--;
-        await ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id);
+        if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag)))) continue;
         await dropItem(ctx, row.id);
         result.removed++;
       }
@@ -1046,10 +1366,18 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
     }
     budget--;
     const link = `${appUrl()}/#page=${ctx.page.id}&row=${row.id}`;
-    let saved = item ? await ctx.adapter.update(ctx.conn, ctx.mapping.calendar_id, item.event_id, local, ctx.zone, row.id, link) : null;
+    let saved: RemoteEvent | null = null;
+    if (item)
+      try {
+        saved = await ctx.adapter.update(ctx.conn, ctx.mapping.calendar_id, item.event_id, local, ctx.zone, row.id, link, item.etag);
+      } catch (error) {
+        if (!(error instanceof ChangedMeanwhile)) throw error;
+        result.conflicts++;
+        continue;
+      }
     // Gone in the calendar without us noticing: created again.
     if (!saved) saved = await ctx.adapter.create(ctx.conn, ctx.mapping.calendar_id, local, ctx.zone, row.id, link);
-    await saveItem(ctx, row.id, saved.id, localHash);
+    await saveItem(ctx, row.id, saved.id, localHash, undefined, saved.etag);
     result.pushed++;
   }
   // Linked records that are gone (deleted here) or hidden from the person now.
@@ -1060,9 +1388,22 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
       continue;
     }
     budget--;
-    await ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id);
+    if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag)))) continue;
     await dropItem(ctx, item.row_id);
     result.removed++;
+  }
+}
+// A write the calendar refused because the event changed there meanwhile
+// (CalDAV 412): counted as a conflict and left for the next run, which reads
+// the change first. False when that happened.
+async function meanwhile(result: SyncResult, write: () => Promise<void>) {
+  try {
+    await write();
+    return true;
+  } catch (error) {
+    if (!(error instanceof ChangedMeanwhile)) throw error;
+    result.conflicts++;
+    return false;
   }
 }
 
@@ -1084,19 +1425,20 @@ export async function syncCalendarMapping(mappingId: string): Promise<SyncResult
   try {
     const ctx = await contextOf(mapping);
     const stored = readToken(mapping.sync_token);
+    const items = new Map(
+      (await all<Item>("SELECT row_id,event_id,hash,etag FROM calendar_sync_items WHERE mapping_id=?", mapping.id)).map((i) => [i.event_id, i]),
+    );
+    const known = new Map([...items.values()].map((i) => [i.event_id, i.etag]));
     let changes: { events: RemoteEvent[]; token: string };
     let since = stored?.since || Date.now();
     try {
-      changes = await ctx.adapter.changes(ctx.conn, mapping.calendar_id, stored?.token || null);
+      changes = await ctx.adapter.changes(ctx.conn, mapping.calendar_id, stored?.token || null, known, ctx.zone);
     } catch (error) {
       if (!(error instanceof TokenExpired)) throw error;
       since = Date.now();
-      changes = await ctx.adapter.changes(ctx.conn, mapping.calendar_id, null);
+      changes = await ctx.adapter.changes(ctx.conn, mapping.calendar_id, null, known, ctx.zone);
     }
     if (!stored) since = Date.now();
-    const items = new Map(
-      (await all<Item>("SELECT row_id,event_id,hash FROM calendar_sync_items WHERE mapping_id=?", mapping.id)).map((i) => [i.event_id, i]),
-    );
     result.pulled = changes.events.length;
     for (const event of changes.events) {
       try {

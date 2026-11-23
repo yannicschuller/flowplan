@@ -1,5 +1,6 @@
-// Google Calendar and Microsoft 365 sync (lib/calendar-sync.ts), browser
-// only: connecting an account (OAuth redirect and callback), the person's
+// Google Calendar, Microsoft 365 and CalDAV sync (lib/calendar-sync.ts),
+// browser only: connecting an account (OAuth redirect and callback; CalDAV
+// with server address, username and app password), the person's
 // connections and mappings, the calendars of a connection, and "Jetzt
 // synchronisieren". Changing mappings goes through /api/command.
 import { serverError } from "@/lib/request-context";
@@ -14,6 +15,7 @@ import { localizedMessage } from "@/lib/i18n-errors";
 import { desktopPage } from "@/lib/desktop-sign-in";
 import {
   calendarSyncStatus,
+  connectCalDav,
   finishCalendarConnection,
   listExternalCalendars,
   providerSchema,
@@ -92,6 +94,8 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     await checkOrigin(req);
     const user = await browserUser();
     if (path.length === 1 && path[0] === "run") return NextResponse.json(await syncOwnMapping(user, await req.json()));
+    // The password goes no further than the sealed connection (never into logs or answers).
+    if (path.length === 1 && path[0] === "caldav") return NextResponse.json(await connectCalDav(user, await req.json()));
     throw new HttpError(404, "Nicht gefunden.");
   } catch (error) {
     return failure(error);

@@ -111,8 +111,9 @@ export function pinnedLookup(allowPrivate: boolean) {
 }
 // A request to an outside address with the same pinned lookup and no
 // redirects, with any method (PUT for Matrix; GET, PATCH and DELETE for
-// calendar APIs) and the start of the answer (Slack's message ID), at most
-// `maxBytes` of it, with the answer's headers (Retry-After of chat apps).
+// calendar APIs; PROPFIND, REPORT and PUT for CalDAV) and the start of
+// the answer (Slack's message ID), at most `maxBytes` of it, with the
+// answer's headers (Retry-After of chat apps; ETag of CalDAV).
 export function safeSend(
   raw: string,
   body: string,
@@ -124,7 +125,8 @@ export function safeSend(
     maxBytes = 0,
     totalTimeout = 0,
   }: {
-    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    // PROPFIND and REPORT: the CalDAV client of the calendar sync.
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "PROPFIND" | "REPORT";
     allowPrivate?: boolean;
     timeout?: number;
     maxBytes?: number;

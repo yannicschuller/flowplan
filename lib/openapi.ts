@@ -2372,7 +2372,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/scim/v2/[...path]/handler.ts": "SCIM 2.0 (RFC 7643/7644) is its own standard with its own bearer tokens; discovery at /api/scim/v2/ServiceProviderConfig",
   "app/api/ai/[...path]/handler.ts": "AI features of the browser app (settings and actions refuse API tokens; run, ask, write and summarize accept tokens with the permission “AI and transcription”); GET /api/ai/quota is described",
   "app/api/auth/[action]/handler.ts": "Browser sign-in and account settings",
-  "app/api/calendar-sync/[...path]/handler.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
+  "app/api/calendar-sync/[...path]/handler.ts": "Browser connection to Google, Microsoft 365 and CalDAV calendars (OAuth, app password)",
   "app/api/forms/[token]/handler.ts": "Public forms with their own link token",
   "app/api/forms/[token]/fonts/[fontId]/handler.ts": "Public forms with their own link token",
   "app/api/forms/[token]/suggestions/handler.ts": "Earlier answers while typing in a members-only form; internal to the form page",

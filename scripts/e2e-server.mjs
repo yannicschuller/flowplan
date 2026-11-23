@@ -41,6 +41,8 @@ const child = spawn(process.execPath, several ? [join(root, "scripts/processes.m
     FLOWPLAN_E2E_DEMO: "1",
     // The BookStack import's spec asks a mock on 127.0.0.1 (#329).
     FLOWPLAN_IMPORT_ALLOW_PRIVATE: "true",
+    // The CalDAV calendar sync's spec connects to a mock on 127.0.0.1 (#460).
+    FLOWPLAN_CALDAV_ALLOW_PRIVATE: "true",
   },
   stdio: ["ignore", log, log],
 });
