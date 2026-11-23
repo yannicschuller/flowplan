@@ -433,11 +433,19 @@ function ShapeBody({
           >
             <div
               className="wb-table-grid"
-              style={{
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${cells.length}, minmax(0, 1fr))`,
-                fontSize: item.fontSize || 14,
-              }}
+              style={
+                {
+                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${cells.length}, minmax(0, 1fr))`,
+                  fontSize: item.fontSize || 14,
+                  // Cell text, header and grid lines follow the board's
+                  // display colours like every other item (dark mode).
+                  "--wb-cell-text": colors.text("#1f2937", colors.fill("#ffffff")),
+                  "--wb-cell-head": colors.fill("#f1f3f5"),
+                  "--wb-cell-head-text": colors.text("#1f2937", colors.fill("#f1f3f5")),
+                  "--wb-cell-line": colors.line("#dee2e6"),
+                } as CSSProperties
+              }
             >
               {cells.flatMap((row, r) =>
                 Array.from({ length: cols }, (_, c) => (
