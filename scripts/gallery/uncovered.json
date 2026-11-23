@@ -43,6 +43,7 @@
     "components/notebook/sticker-panel.tsx",
     "components/offline-queue.tsx",
     "components/page-activity.tsx",
+    "components/page-comment.tsx",
     "components/pdf-annotations.tsx",
     "components/pdf-viewer-dialog.tsx",
     "components/presentation.tsx",
