@@ -34,6 +34,7 @@ import type { WhiteboardItem } from "@/lib/whiteboard-model";
 import type { Field, Row } from "@/lib/types";
 import { useBoard } from "./board-context";
 import { useBoardColors } from "./board-colors";
+import { serverMessage } from "@/lib/server-message";
 
 type Bound = { fields: Field[]; rows: Row[]; readOnly: Set<string>; canEdit: boolean };
 // The records of a bound timeline, refreshed while the board is visible.
@@ -55,7 +56,7 @@ function useBoundRecords(pageId: string | undefined) {
         setData({ fields: page.database.fields, rows: page.rows || [], readOnly: new Set(page.readOnlyFields || []), canEdit: page.role !== "viewer" && page.role !== "commenter" });
         setError("");
       } catch (e) {
-        if (alive) setError((e as Error).message);
+        if (alive) setError(serverMessage((e as Error).message));
       }
     };
     void load();
