@@ -3,11 +3,15 @@
 // screens, a bottom sheet on phones (Modal `sheet`, components/ui.tsx), so
 // its many entries scroll to the last one instead of running behind the
 // editor's toolbar. The entries are written once with Item, CheckboxItem,
-// Group and Separator from here; they render as Radix menu items in the
-// dropdown and as buttons in the sheet – there still a menu of menu items
-// (roles, checked state, arrow keys), so it reads and is found alike.
+// Group, Section, Sub and Separator from here; they render as Radix menu
+// items in the dropdown and as buttons in the sheet – there still a menu of
+// menu items (roles, checked state, arrow keys), so it reads and is found
+// alike. Sections carry a label and a line above (design review: some 25
+// entries in one list); a Sub is a submenu in the dropdown and a section of
+// its own in the sheet.
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { createContext, useContext, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Children, createContext, useContext, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { CaretRight } from "@phosphor-icons/react";
 import { safeCollisionPadding } from "./safe-area";
 import { Modal } from "./ui";
 
@@ -182,4 +186,52 @@ export function Separator({ className }: { className?: string }) {
   const close = useContext(SheetMenu);
   if (!close) return <Dropdown.Separator className={className} />;
   return <div role="separator" className={className} />;
+}
+
+// A labelled part of the menu ("Bearbeiten", "Teilen & Export" …): a group
+// named by its label, with a line above unless it comes first. Left out
+// when none of its entries applies.
+export function Section({ label, children }: { label: string; children: ReactNode }) {
+  const close = useContext(SheetMenu);
+  if (!Children.toArray(children).length) return null;
+  if (!close)
+    return (
+      <Dropdown.Group className="page-menu-section" aria-label={label}>
+        <Dropdown.Label className="page-menu-label" aria-hidden="true">
+          {label}
+        </Dropdown.Label>
+        {children}
+      </Dropdown.Group>
+    );
+  return (
+    <div role="group" className="page-menu-section" aria-label={label}>
+      <div className="page-menu-label" aria-hidden="true">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// A submenu ("Darstellung"): opens beside the dropdown (hover, click or
+// the right arrow); in the sheet a section of its own, so a phone needs no
+// second level.
+export function Sub({ label, icon, children }: { label: string; icon: ReactNode; children: ReactNode }) {
+  const close = useContext(SheetMenu);
+  if (close) return <Section label={label}>{children}</Section>;
+  if (!Children.toArray(children).length) return null;
+  return (
+    <Dropdown.Sub>
+      <Dropdown.SubTrigger className="dropdown-item page-menu-sub-trigger">
+        {icon}
+        {label}
+        <CaretRight className="page-menu-sub-caret" aria-hidden="true" />
+      </Dropdown.SubTrigger>
+      <Dropdown.Portal>
+        <Dropdown.SubContent className="dropdown page-menu-sub" sideOffset={4} alignOffset={-4} collisionPadding={safeCollisionPadding()}>
+          {children}
+        </Dropdown.SubContent>
+      </Dropdown.Portal>
+    </Dropdown.Sub>
+  );
 }

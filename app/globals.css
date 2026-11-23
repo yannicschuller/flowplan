@@ -4663,6 +4663,32 @@ tr:hover .row-open,
   background: var(--hover);
   color: var(--text);
 }
+/* The page's "⋯" menu (components/page-menu.tsx): labelled sections with a
+   line above, appearance as a submenu (design review). */
+.page-menu-section:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.page-menu-label {
+  padding: 6px 10px 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.page-menu-sub-trigger[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.dropdown-item svg.page-menu-sub-caret {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  padding-left: 8px;
+  box-sizing: content-box;
+  color: var(--muted);
+}
 .dropdown-separator {
   height: 1px;
   background: var(--border);

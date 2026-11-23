@@ -73,6 +73,9 @@ test("all pages at full width for this person, without a jump; the page's switch
 
   // The page's own switch: shown as on, locked, with the reason.
   await page.getByRole("button", { name: "Seitenaktionen" }).first().click();
+  // In the submenu "Darstellung" (a section of the sheet on phones).
+  const appearance = page.getByRole("menuitem", { name: "Darstellung", exact: true });
+  if (await appearance.count()) await appearance.click();
   const item = page.getByRole("menuitem", { name: /Volle Breite/ });
   await expect(item).toContainText("✓");
   await expect(item).toContainText("Deine Einstellung");

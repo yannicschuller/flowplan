@@ -170,8 +170,13 @@ async function sidebarTool(page: Page, ctx: SceneContext, name: string) {
 }
 
 // An entry of the page's ⋯ menu.
+// The appearance entries sit in a submenu of the dropdown (a section of
+// the phone sheet).
+const APPEARANCE = ["Change icon", "Change cover", "Full width", "Number captions", "Change font"];
 async function pageAction(page: Page, item: string) {
   await button(page, "Page actions").click();
+  const sub = menu(page).getByRole("menuitem", { name: "Appearance", exact: true });
+  if (APPEARANCE.includes(item) && (await sub.count())) await sub.click();
   await menu(page).getByRole("menuitem", { name: item, exact: true }).click();
 }
 
@@ -665,6 +670,20 @@ const editorScenes: Scene[] = [
     steps: async (page) => {
       await button(page, "Page actions").click();
       await menu(page).waitFor();
+    },
+  },
+  {
+    // The submenu "Appearance" of the page menu (design review).
+    id: "page-menu-appearance",
+    group: "Documents & editor",
+    title: "Page actions menu: Appearance",
+    path: docPath,
+    devices: ["desktop"],
+    covers: ["components/page-menu.tsx"],
+    steps: async (page) => {
+      await button(page, "Page actions").click();
+      await menu(page).getByRole("menuitem", { name: "Appearance", exact: true }).click();
+      await menu(page).getByRole("menuitem", { name: "Change icon", exact: true }).waitFor();
     },
   },
   {
