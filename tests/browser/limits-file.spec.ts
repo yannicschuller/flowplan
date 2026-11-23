@@ -109,7 +109,7 @@ test("limits file: check, apply, the member sees the plan's limits", async ({ br
     // (Settings → Speicher & KI).
     await me.page.goto(`${origin}/#settings/usage`);
     const storage = me.page.locator("#storage");
-    await expect(storage).toContainText("25.600 MB", { timeout: 20_000 });
+    await expect(storage).toContainText("von 25 GB", { timeout: 20_000 });
     await expect(storage).toContainText(`aus Gruppe ${plus}`);
     await expect(storage.locator("#upload")).toContainText("1 GB");
     await expect(me.page.getByRole("link", { name: "Mehr Speicher oder KI?" })).toHaveAttribute("href", "https://billing.example.test/preise");
