@@ -65,3 +65,13 @@ test("a message handed on alone keeps the kind of its request", () => {
   });
   assert.deepEqual(classifyError("A message nobody threw"), { kind: "unknown", detail: "A message nobody threw" });
 });
+
+// #445: a conflict the server explains says that, not the generic copy.
+test("a conflict with the server's own reason shows that reason", () => {
+  assert.deepEqual(describeError(classifyError(apiError("Remove the active sort first.", 409)), en), {
+    title: "Remove the active sort first.",
+  });
+  assert.deepEqual(describeError(classifyError(apiError("Conflict", 409)), en), {
+    title: "This was just changed elsewhere. Reload and try again.",
+  });
+});

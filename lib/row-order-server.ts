@@ -95,6 +95,19 @@ export async function maintainRowOrders(
   });
   if (JSON.stringify(views) !== JSON.stringify(d.views)) await save(pageId, views);
 }
+// A swimlane (subgroup) of a grouped view by its key. The lanes run across
+// all columns, so they come from all of the view's records (and the
+// property's options) – not only from those in the target column: a card
+// dropped into an empty cell of its lane (#445), or into another lane's
+// empty cell, goes to a lane the target column has no record of yet.
+export function swimlane(
+  viewRows: Row[],
+  subfield: Field,
+  related: Record<string, Row[]>,
+  key: string,
+) {
+  return databaseGroups(viewRows, subfield, related).find((g) => g.key === key);
+}
 export async function moveRow(
   user: Identity,
   pageId: string,
@@ -204,18 +217,15 @@ export async function moveRow(
       ].includes(f.type);
     if (locked(field) || (b.subgroup && locked(subfield)))
       throw new HttpError(400, "Gruppe kann nicht bearbeitet werden.");
-    const groups = databaseGroups(
-        queryRows(
-          rows,
-          d.fields,
-          { ...view, filters: [], filterGroup: undefined },
-          "",
-          related.related,
-          related.relatedSchemas,
-        ),
-        field,
+    const viewRows = queryRows(
+        rows,
+        d.fields,
+        { ...view, filters: [], filterGroup: undefined },
+        "",
         related.related,
+        related.relatedSchemas,
       ),
+      groups = databaseGroups(viewRows, field, related.related),
       from = groups.find((g) => g.key === b.group!.from),
       to = groups.find((g) => g.key === b.group!.to);
     const subFrom =
@@ -224,11 +234,13 @@ export async function moveRow(
               (g) => g.key === b.subgroup!.from,
             )
           : undefined,
-      subTargets =
-        to && subfield && b.subgroup
-          ? databaseGroups(to.rows, subfield, related.related)
-          : [],
-      subTo = subTargets.find((g) => g.key === b.subgroup?.to);
+      subTo =
+        subfield && b.subgroup ? swimlane(viewRows, subfield, related.related, b.subgroup.to) : undefined,
+      // The records of the target cell (column × lane) – none in an empty one.
+      cell =
+        to && subfield && subTo
+          ? databaseGroups(to.rows, subfield, related.related).find((g) => g.key === subTo.key)?.rows || []
+          : [];
     if (
       !from?.rows.some((r) => r.id === row.id) ||
       !to ||
@@ -236,7 +248,7 @@ export async function moveRow(
       (b.subgroup &&
         (!subFrom?.rows.some((r) => r.id === row.id) ||
           !subTo ||
-          (b.targetId && !subTo.rows.some((r) => r.id === b.targetId))))
+          (b.targetId && !cell.some((r) => r.id === b.targetId))))
     )
       throw new HttpError(
         409,
