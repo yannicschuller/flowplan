@@ -5,7 +5,7 @@ description: Add a UI language to Flowplan or complete one across every reposito
 
 # /language – one language everywhere
 
-The maintainer is Yannic Schuller. Talk to him in **German**. Argument: the language (`es`, `it`, `zh` …) and optionally which parts. Languages today: German (source), English, French, Simplified Chinese (web app, apps, desktop, store); OCR deu/eng/fra/chi_sim.
+The maintainer is Yannic Schuller. Talk to him in **German**. Argument: the language (`es`, `it`, `zh` …) and optionally which parts. Languages today: German (source), English, French, Simplified Chinese (web app, apps, desktop, store) and Russian (web app only; flowplan-translate's `components.json` lists ru only for flowplan-web); OCR deu/eng/fra/chi_sim.
 
 ## 1. Decide first (one question round)
 
