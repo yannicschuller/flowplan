@@ -43,7 +43,7 @@ const each = <T,>(schema: z.ZodType<T>, list: unknown[]) =>
 // Results in the shape of the image search (lib/image-search.ts).
 export function parseGifResults(provider: GifProvider, body: unknown): ImageResult[] {
   const list = z.object({ [provider === "giphy" ? "data" : "results"]: z.array(z.unknown()) }).safeParse(body);
-  if (!list.success) throw new HttpError(502, "Die GIF-Suche hat nicht geantwortet.");
+  if (!list.success) throw new HttpError(502, "Die GIF-Suche hat nicht geantwortet.", { service: "gif-search", host: provider === "giphy" ? "api.giphy.com" : "tenor.googleapis.com" });
   const entries = Object.values(list.data)[0] as unknown[];
   if (provider === "giphy") {
     return each(giphyItem, entries).flatMap((gif) => {
@@ -96,7 +96,7 @@ export async function searchGifs(query: string): Promise<ImageResult[]> {
   try {
     body = JSON.parse(response.data.toString("utf8"));
   } catch {
-    throw new HttpError(502, "Die GIF-Suche hat nicht geantwortet.");
+    throw new HttpError(502, "Die GIF-Suche hat nicht geantwortet.", { service: "gif-search", host: provider === "giphy" ? "api.giphy.com" : "tenor.googleapis.com" });
   }
   return parseGifResults(provider, body);
 }

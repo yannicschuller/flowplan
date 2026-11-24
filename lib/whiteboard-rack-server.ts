@@ -144,18 +144,18 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
         // Refused addresses (internal, not https) say so; anything else is
         // NetBox not answering.
         if (error instanceof HttpError && error.status === 400) throw error;
-        throw new HttpError(502, "NetBox ist nicht erreichbar.");
+        throw new HttpError(502, "NetBox ist nicht erreichbar.", { service: "netbox", host: next });
       }
       if (answer.status === 401 || answer.status === 403) throw new HttpError(400, "NetBox hat den Token abgelehnt.");
       if (answer.status === 404) throw new HttpError(400, "Unter dieser Adresse antwortet keine NetBox-API.");
-      if (answer.status < 200 || answer.status >= 300) throw new HttpError(502, `NetBox antwortet mit Fehler ${answer.status}.`);
+      if (answer.status < 200 || answer.status >= 300) throw new HttpError(502, `NetBox antwortet mit Fehler ${answer.status}.`, { service: "netbox", host: next });
       bytes += answer.body.length;
       if (bytes > MAX_TOTAL_BYTES) throw new HttpError(400, TOO_LARGE);
       let data: Page<T>;
       try {
         data = JSON.parse(answer.body);
       } catch {
-        throw new HttpError(502, "Die Antwort von NetBox ist kein JSON.");
+        throw new HttpError(502, "Die Antwort von NetBox ist kein JSON.", { service: "netbox", host: next });
       }
       out.push(...(Array.isArray(data.results) ? data.results : []));
       next = typeof data.next === "string" ? data.next : null;

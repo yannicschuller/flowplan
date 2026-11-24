@@ -19,8 +19,8 @@ import { enterArea, noteStream, type CpuArea } from "./server-metrics";
 import { clientAddress } from "./client-address";
 import { noteRefusal } from "./security-detect";
 import { securityEvent } from "./security-events";
-import { enterRequest, newRequestId, roleOf, REQUEST_ID_HEADER, type RequestContext } from "./request-context";
-import { captureError } from "./error-details";
+import { enterRequest, newRequestId, roleOf, upstreamFailure, REQUEST_ID_HEADER, type RequestContext } from "./request-context";
+import { captureError, captureUpstream } from "./error-details";
 
 const SKIP = /^\/(?:_next\/(?:static|image|webpack-hmr)|__nextjs|fonts\/|icons\/|favicon\.ico|sw\.js|manifest\.webmanifest|icon\.svg|fonts\.css|api\/health(?:[/?]|$)|api\/metrics(?:[/?]|$))/;
 
@@ -86,7 +86,9 @@ export function startRequestMetrics() {
     if (!entry) return;
     try {
       const type = String(response.getHeader("content-type") || "");
-      noteRequest(response.statusCode, type.startsWith("text/event-stream") ? null : performance.now() - entry.at, Date.now(), entry.route);
+      // A 5xx that reports a failing third-party service is no server error (#514).
+      const upstream = !!upstreamFailure(entry.context, response.statusCode);
+      noteRequest(response.statusCode, type.startsWith("text/event-stream") ? null : performance.now() - entry.at, Date.now(), entry.route, upstream);
     } catch {
       // Counting never disturbs a request.
     }
@@ -106,9 +108,15 @@ export function startRequestMetrics() {
 // An answer with status ≥ 500 is kept in detail (lib/error-details.ts) with
 // the exception the request noted, if any – and so is an exception Next.js
 // reported for a request that still answered below 500 (server rendering
-// that showed an error boundary).
+// that showed an error boundary). A 5xx that reports a failing third-party
+// service (#514) goes to the upstream failures instead.
 export function noteFailure(status: number, context: RequestContext | undefined) {
   if (!context || !(status >= 500 || context.error !== undefined)) return;
+  const upstream = upstreamFailure(context, status);
+  if (upstream) {
+    captureUpstream({ route: context.route, action: context.action, service: upstream.service, host: upstream.host, status, message: upstream.message });
+    return;
+  }
   captureError({ method: context.method, route: context.route, action: context.action, status, requestId: context.id, role: roleOf(context), error: context.error });
 }
 

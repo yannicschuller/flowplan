@@ -377,7 +377,7 @@ async function directory<T>(config: LdapConfig, fn: (conn: LdapConnection) => Pr
   } catch (e) {
     if (e instanceof HttpError) throw e;
     console.error("LDAP contacts", e instanceof Error ? e.message : e);
-    throw new HttpError(503, "Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.");
+    throw new HttpError(503, "Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", { service: "ldap" });
   }
 }
 const nameOf = (entry: LdapEntry) =>

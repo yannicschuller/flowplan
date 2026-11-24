@@ -11,7 +11,14 @@ import { isIP } from "node:net";
 import { HttpError } from "../auth";
 import { pinnedLookup, privateAddress } from "../safe-fetch";
 
-export class AiError extends HttpError {}
+// 502/504: the AI provider (or Ollama) failed – a failing third-party
+// service, counted apart from Flowplan's own errors (#514); `host` where
+// the address is known.
+export class AiError extends HttpError {
+  constructor(status: number, message: string, host?: string | URL | null) {
+    super(status, message, status >= 502 && status <= 504 ? { service: "ai", host } : undefined);
+  }
+}
 
 export const AI_MESSAGES = {
   unreachable: "Der KI-Anbieter ist nicht erreichbar.",
@@ -91,18 +98,18 @@ export function aiFetch(raw: string, options: Options): Promise<AiResponse> {
         if (status >= 300 && status < 400) {
           res.resume();
           req.destroy();
-          return fail(new AiError(502, AI_MESSAGES.redirect));
+          return fail(new AiError(502, AI_MESSAGES.redirect, url));
         }
         settled = true;
         // Silence while streaming ends the request.
-        res.setTimeout(options.idleTimeout ?? 120_000, () => res.destroy(new AiError(504, AI_MESSAGES.timeout)));
+        res.setTimeout(options.idleTimeout ?? 120_000, () => res.destroy(new AiError(504, AI_MESSAGES.timeout, url)));
         const iterate = async function* () {
           try {
             for await (const chunk of res) yield chunk as Buffer;
           } catch (error) {
             if (signal?.aborted) throw new AiError(499, AI_MESSAGES.aborted);
             if (error instanceof AiError) throw error;
-            throw new AiError(502, AI_MESSAGES.unreachable);
+            throw new AiError(502, AI_MESSAGES.unreachable, url);
           }
         };
         resolve({
@@ -116,7 +123,7 @@ export function aiFetch(raw: string, options: Options): Promise<AiResponse> {
               size += chunk.length;
               if (size > maxBytes) {
                 res.destroy();
-                throw new AiError(502, AI_MESSAGES.tooLarge);
+                throw new AiError(502, AI_MESSAGES.tooLarge, url);
               }
               chunks.push(chunk);
             }
@@ -125,7 +132,7 @@ export function aiFetch(raw: string, options: Options): Promise<AiResponse> {
         });
       },
     );
-    const headersTimer = setTimeout(() => req.destroy(new AiError(504, AI_MESSAGES.timeout)), options.headersTimeout ?? 120_000);
+    const headersTimer = setTimeout(() => req.destroy(new AiError(504, AI_MESSAGES.timeout, url)), options.headersTimeout ?? 120_000);
     const onAbort = () => req.destroy(new AiError(499, AI_MESSAGES.aborted));
     signal?.addEventListener("abort", onAbort, { once: true });
     req.on("close", () => {
@@ -136,7 +143,7 @@ export function aiFetch(raw: string, options: Options): Promise<AiResponse> {
       clearTimeout(headersTimer);
       if (error instanceof AiError) return fail(error);
       if (/Interne Adressen/.test(error.message)) return fail(new AiError(400, AI_MESSAGES.internal));
-      fail(new AiError(502, AI_MESSAGES.unreachable));
+      fail(new AiError(502, AI_MESSAGES.unreachable, url));
     });
     req.end(body || undefined);
   });

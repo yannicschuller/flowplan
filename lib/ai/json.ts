@@ -102,5 +102,5 @@ export async function aiJson<T>(
   );
   const second = parseJsonAnswer(retry, schema);
   if (second.ok) return second.value;
-  throw new HttpError(502, AI_INVALID_JSON);
+  throw new HttpError(502, AI_INVALID_JSON, { service: "ai" });
 }

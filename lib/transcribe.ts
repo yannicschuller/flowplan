@@ -140,13 +140,16 @@ export function whisperPrompt(glossary = "") {
 // A failed transcription: `message` for the person (German source text),
 // `detail` for administrators (what actually went wrong: timeout, refused
 // connection, the service's answer) – never the API key.
+// `host`: the transcription service failed (502/504 with its address) –
+// a failing third-party service for the monitoring (#514).
 export class TranscribeError extends HttpError {
   constructor(
     status: number,
     message: string,
     public detail: string,
+    host?: URL,
   ) {
-    super(status, message);
+    super(status, message, host ? { service: "transcription", host } : undefined);
   }
 }
 const UNREACHABLE = "Der Transkriptionsdienst ist nicht erreichbar.";
@@ -245,12 +248,12 @@ export async function transcribe(audio: Blob, name = "sprachnotiz.webm", options
     const code = e.code || e.cause?.code || "";
     const detail = `${code ? `${code}: ` : ""}${e.message || "unknown error"} (${(audio.size / 1_000_000).toFixed(1)} MB, limit ${Math.round(timeout / 1000)} s)`;
     console.error("Transkription fehlgeschlagen:", detail);
-    throw new TranscribeError(code === "TIMEOUT" ? 504 : 502, code === "TIMEOUT" ? TOO_SLOW : UNREACHABLE, detail.slice(0, 500));
+    throw new TranscribeError(code === "TIMEOUT" ? 504 : 502, code === "TIMEOUT" ? TOO_SLOW : UNREACHABLE, detail.slice(0, 500), url);
   }
   if (response.status < 200 || response.status >= 300) {
     const detail = `HTTP ${response.status}: ${response.body.replace(/\s+/g, " ").trim().slice(0, 300)}`;
     console.error("Transkription fehlgeschlagen:", detail);
-    throw new TranscribeError(502, `Transkription fehlgeschlagen (${response.status}).`, detail);
+    throw new TranscribeError(502, `Transkription fehlgeschlagen (${response.status}).`, detail, url);
   }
   let data: unknown = {};
   try {

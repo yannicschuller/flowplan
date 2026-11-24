@@ -287,13 +287,10 @@ export async function safeFetch(
     try {
       result = await once(url, maxBytes, timeout, accept, allowPrivate, { method, headers, body });
     } catch (error) {
-      throw new HttpError(
-        502,
-        `Die Seite konnte nicht geladen werden: ${(error as Error).message}`,
-      );
+      throw new HttpError(502, `Die Seite konnte nicht geladen werden: ${(error as Error).message}`, { service: "web", host: url });
     }
     if (!result.location) return result;
     url = new URL(result.location, url);
   }
-  throw new HttpError(502, "Zu viele Weiterleitungen.");
+  throw new HttpError(502, "Zu viele Weiterleitungen.", { service: "web", host: url });
 }

@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 133;
+export const SCHEMA_VERSION = 134;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1697,11 +1697,27 @@ function migrate(d: DatabaseSync) {
   migrateUnassignedTasksPref(d);
   // Schema 133 – "Schriftart" per person (#512, lib/personal-font.ts).
   migratePersonalFont(d);
+  // Schema 134 – failures of third-party services, counted apart from the
+  // server errors (#514, lib/error-details.ts).
+  migrateUpstreamFailures(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 134 – upstream_failures (#514, lib/error-details.ts): 5xx answers
+// that report a failing third-party service (an HttpError marked
+// `upstream`: the AI provider, a linked site, the image search, a calendar
+// server …), one row per place (kind, route or worker/job, command),
+// service and host – the last status and scrubbed message, count, first and
+// last time and counts per 5 minutes and per hour (JSON). They are not
+// counted as server errors. No address, body or person. Kept 14 days, at
+// most 200 rows. An older version would count them as server errors again
+// and leave the table alone, hence the number.
+function migrateUpstreamFailures(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS upstream_failures(fingerprint TEXT PRIMARY KEY,kind TEXT NOT NULL DEFAULT 'request',route TEXT NOT NULL,action TEXT NOT NULL DEFAULT '',service TEXT NOT NULL,host TEXT NOT NULL DEFAULT '',status INTEGER NOT NULL DEFAULT 502,message TEXT NOT NULL DEFAULT '',count INTEGER NOT NULL DEFAULT 0,first_seen INTEGER NOT NULL,last_seen INTEGER NOT NULL,slots TEXT NOT NULL DEFAULT '{}');
+    CREATE INDEX IF NOT EXISTS upstream_failures_last ON upstream_failures(last_seen);`);
 }
 // Schema 133 – users.ui_font (#512, lib/personal-font.ts): the typeface
 // this person reads Flowplan in (NULL: the default – the workspace's

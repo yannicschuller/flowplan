@@ -3,7 +3,8 @@
 // of the landing page (numbers and the charts of its carousel), `?view=ai`
 // the AI statistics (`&days=7|30|90`, per person too), `?view=errors` the
 // error details (lib/error-details.ts, with `range` for the counts and
-// trend), `?view=restarts` the restart history and `?view=restart&id=…`
+// trend), `?view=upstream` the failures of third-party services counted
+// apart from the server errors (#514, same `range`), `?view=restarts` the restart history and `?view=restart&id=…`
 // one restart with its saved log lines (lib/restarts/history.ts, loaded
 // when the section opens and when a row is opened); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
 // off (`metrics.save`), deletes them (`metrics.clear`) or the error
@@ -26,7 +27,7 @@ import { applyRecommendationAction, recommendationAction, recommendations } from
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
-import { clearErrorDetails, errorDetails } from "@/lib/error-details";
+import { clearErrorDetails, errorDetails, upstreamFailures } from "@/lib/error-details";
 import { litestreamActions, litestreamAdminAction } from "@/lib/litestream-health";
 import { restartsForAdmin } from "@/lib/restarts/history";
 export const runtime = "nodejs";
@@ -50,6 +51,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);
+    if (url.searchParams.get("view") === "upstream") return Response.json(await upstreamFailures(Date.now(), range), noStore);
     // Administration → KI → Statistik: per model, workspace and person.
     if (url.searchParams.get("view") === "ai") {
       const days = [7, 30, 90].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 30;

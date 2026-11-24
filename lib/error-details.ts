@@ -23,6 +23,15 @@
 // days) for the trend, and the last OCCURRENCES occurrences. Kept 14 days,
 // at most MAX_GROUPS groups (the least recent go first).
 //
+// Failures of third-party services (#514): an answer whose 5xx reports a
+// failing service – an HttpError marked `upstream` (lib/auth.ts): the AI
+// provider, a linked site, the image search, a calendar server … – is not
+// a group here and not a server error in lib/metrics.ts. It is kept apart
+// ("Fehler bei Fremddiensten", upstream_failures): per place (route or
+// worker/job, command), service and host the status, scrubbed message,
+// count, first and last time and counts per 5 minutes and per hour – the
+// same retention, at most MAX_UPSTREAM rows.
+//
 // Cheap: a failing request only pushes a small object into memory (never a
 // database write, never an exception); a second later the pending ones are
 // written, merged under a lock per group (cluster mode: every instance
@@ -39,7 +48,7 @@ import { buildInfo } from "./build-info";
 import { instanceId } from "./cluster/config";
 import { hasPeers } from "./cluster/processes";
 import { requestContext, roleOf, type CallerRole } from "./request-context";
-import type { ErrorGroupView, ErrorKind, ErrorOccurrence, StackFrame } from "./error-report";
+import type { ErrorGroupView, ErrorKind, ErrorOccurrence, StackFrame, UpstreamFailureView } from "./error-report";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -50,8 +59,10 @@ const MESSAGE_MAX = 500;
 const MAX_FRAMES = 5;
 // Pending occurrences in memory at most (a flood must not grow memory).
 const MAX_PENDING = 1000;
+// Rows of upstream failures at most (the least recent go first).
+const MAX_UPSTREAM = 200;
 
-export type { ErrorKind, StackFrame, ErrorOccurrence, ErrorGroupView } from "./error-report";
+export type { ErrorKind, StackFrame, ErrorOccurrence, ErrorGroupView, UpstreamFailureView } from "./error-report";
 export { frameText, issueReport } from "./error-report";
 type Pending = {
   at: number;
@@ -204,8 +215,22 @@ export function fingerprintOf(route: string, action: string, name: string, frame
 
 /* ---------- Capture (memory only) ---------- */
 
-const holder = globalThis as unknown as { flowplanErrorDetails?: { pending: Pending[]; timer?: ReturnType<typeof setTimeout>; writing?: Promise<void>; sweptAt?: number } };
+type PendingUpstream = { at: number; kind: ErrorKind; route: string; action: string; service: string; host: string; status: number; message: string };
+const holder = globalThis as unknown as {
+  flowplanErrorDetails?: { pending: Pending[]; upstream?: PendingUpstream[]; timer?: ReturnType<typeof setTimeout>; writing?: Promise<void>; sweptAt?: number };
+};
 const state = () => (holder.flowplanErrorDetails ??= { pending: [] });
+const pendingUpstream = () => (state().upstream ??= []);
+function schedule() {
+  const s = state();
+  if (s.timer) return;
+  s.timer = setTimeout(() => {
+    s.timer = undefined;
+    afterTransaction(() => flushErrorDetails().catch(() => {}));
+  }, 1000);
+  s.timer.unref?.();
+}
+const cleanAction = (action: string | undefined) => (/^[a-z][A-Za-z0-9._]{1,47}$/.test(action || "") ? action! : action ? "other" : "");
 
 export type CaptureInput = { kind?: ErrorKind; method?: string; route: string; action?: string; status: number; requestId?: string; role?: CallerRole | ""; error?: unknown; at?: number };
 // One failure. Never throws, never waits.
@@ -218,22 +243,44 @@ export function captureError(input: CaptureInput) {
       kind: input.kind ?? "request",
       method: /^[A-Z]{3,7}$/.test(input.method || "") ? input.method! : "",
       route: String(input.route || "").slice(0, 200),
-      action: /^[a-z][A-Za-z0-9._]{1,47}$/.test(input.action || "") ? input.action! : input.action ? "other" : "",
+      action: cleanAction(input.action),
       status: Number.isInteger(input.status) ? input.status : 500,
       requestId: /^[A-Za-z0-9]{4,32}$/.test(input.requestId || "") ? input.requestId! : "",
       role: input.role || "",
       error: input.error,
     });
-    if (!s.timer) {
-      s.timer = setTimeout(() => {
-        s.timer = undefined;
-        afterTransaction(() => flushErrorDetails().catch(() => {}));
-      }, 1000);
-      s.timer.unref?.();
-    }
+    schedule();
   } catch {
     // The error details never disturb a request.
   }
+}
+export type UpstreamInput = { kind?: ErrorKind; route: string; action?: string; service: string; host?: string; status: number; message?: string; at?: number };
+// One failure of a third-party service (#514): counted apart from the
+// server errors. Never throws, never waits.
+export function captureUpstream(input: UpstreamInput) {
+  try {
+    const list = pendingUpstream();
+    if (list.length >= MAX_PENDING) return;
+    list.push({
+      at: input.at ?? Date.now(),
+      kind: input.kind ?? "request",
+      route: String(input.route || "").slice(0, 200),
+      action: cleanAction(input.action),
+      service: /^[a-z][a-z0-9-]{0,31}$/.test(input.service) ? input.service : "other",
+      host: /^[a-z0-9.[\]-]{1,253}$/.test(input.host || "") ? input.host! : "",
+      status: Number.isInteger(input.status) ? input.status : 502,
+      message: input.message || "",
+    });
+    schedule();
+  } catch {
+    // The error details never disturb a request.
+  }
+}
+// A failing worker or job whose error reports a third-party service.
+function upstreamOf(error: unknown): { service: string; host: string; status: number; message: string } | null {
+  const e = error as { upstream?: { service?: unknown; host?: unknown }; status?: unknown; message?: unknown } | null;
+  if (!e || typeof e !== "object" || !e.upstream || typeof e.upstream.service !== "string") return null;
+  return { service: e.upstream.service, host: typeof e.upstream.host === "string" ? e.upstream.host : "", status: typeof e.status === "number" ? e.status : 502, message: String(e.message ?? "") };
 }
 // An unexpected failure a handler answered without a 5xx (an MCP tool's
 // error result): kept with the current request's id, route and role.
@@ -242,12 +289,22 @@ export function captureHandledError(error: unknown, action?: string) {
   captureError({ method: context?.method, route: context?.route || "(no request)", action: action || context?.action, status: 500, requestId: context?.id, role: context ? roleOf(context) : "", error });
 }
 // A background worker reported a failure (lib/ops-events.ts noteWorkerRun).
-export const captureWorkerError = (name: string, error: unknown) => captureError({ kind: "worker", route: `worker ${String(name).slice(0, 60)}`, status: 500, error });
+// One that reports a failing third-party service goes to the upstream
+// failures (#514).
+export function captureWorkerError(name: string, error: unknown) {
+  const route = `worker ${String(name).slice(0, 60)}`;
+  const upstream = upstreamOf(error);
+  if (upstream) return captureUpstream({ kind: "worker", route, ...upstream });
+  captureError({ kind: "worker", route, status: 500, error });
+}
 // Work launched after its request failed (lib/background-jobs.ts launchJob).
 export function captureJobError(kind: string, error: unknown) {
   const status = (error as { status?: unknown })?.status;
   if (typeof status === "number" && status < 500) return; // refused on purpose (HttpError 4xx)
-  captureError({ kind: "job", route: `job ${String(kind).slice(0, 60)}`, status: 500, error });
+  const route = `job ${String(kind).slice(0, 60)}`;
+  const upstream = upstreamOf(error);
+  if (upstream) return captureUpstream({ kind: "job", route, ...upstream });
+  captureError({ kind: "job", route, status: 500, error });
 }
 
 /* ---------- Writing ---------- */
@@ -295,9 +352,10 @@ export async function flushErrorDetails(now = Date.now()): Promise<void> {
   const s = state();
   const before = s.writing;
   if (before) await before.catch(() => {});
-  if (!s.pending.length) return;
+  if (!s.pending.length && !s.upstream?.length) return;
   const items = s.pending.splice(0);
-  const work = writePending(items, now);
+  const upstream = s.upstream?.splice(0) || [];
+  const work = writePending(items, now).then(() => writeUpstream(upstream, now));
   s.writing = work;
   try {
     await work;
@@ -403,7 +461,9 @@ async function capGroups() {
 }
 export async function clearErrorDetails() {
   state().pending = [];
+  state().upstream = [];
   await run("DELETE FROM error_groups");
+  await run("DELETE FROM upstream_failures");
 }
 
 /* ---------- Reading ---------- */
@@ -442,4 +502,104 @@ export async function errorDetails(now = Date.now(), range: ErrorRange = "24h", 
     };
   });
   return { range, since, step, total, groups, keep: { ...ERROR_DETAILS_KEEP } };
+}
+
+/* ---------- Upstream failures (#514) ---------- */
+
+type UpstreamRow = {
+  fingerprint: string;
+  kind: string;
+  route: string;
+  action: string;
+  service: string;
+  host: string;
+  status: number;
+  message: string;
+  count: number;
+  first_seen: number;
+  last_seen: number;
+  slots: string;
+};
+export const upstreamKey = (kind: string, route: string, action: string, service: string, host: string) =>
+  createHash("sha256").update([kind, route, action, service, host].join("\n")).digest("hex").slice(0, 20);
+async function writeUpstream(items: PendingUpstream[], now: number) {
+  if (!items.length) return;
+  const rows = new Map<string, { item: PendingUpstream; count: number; first: number; last: number; message: string; status: number; slots: Slots }>();
+  for (const item of items) {
+    const key = upstreamKey(item.kind, item.route, item.action, item.service, item.host);
+    const r = rows.get(key) || { item, count: 0, first: item.at, last: item.at, message: "", status: item.status, slots: { f: [], h: [] } };
+    r.count++;
+    r.first = Math.min(r.first, item.at);
+    if (item.at >= r.last) {
+      r.last = item.at;
+      r.message = scrubMessage(item.message);
+      r.status = item.status;
+    }
+    addSlot(r.slots.f, Math.floor(item.at / FIVE) * FIVE, 1);
+    addSlot(r.slots.h, Math.floor(item.at / HOUR) * HOUR, 1);
+    rows.set(key, r);
+  }
+  for (const [key, r] of rows) {
+    try {
+      await transaction(async () => {
+        await lockFor(`upstream-failure:${key}`);
+        const old = await one<UpstreamRow>("SELECT * FROM upstream_failures WHERE fingerprint=?", key);
+        const slots = pruneSlots(old ? parse<Slots>(old.slots, { f: [], h: [] }) : { f: [], h: [] }, now);
+        for (const [at, n] of r.slots.f) addSlot(slots.f, at, n);
+        for (const [at, n] of r.slots.h) addSlot(slots.h, at, n);
+        const newer = !old || r.last >= Number(old.last_seen);
+        await run(
+          `INSERT INTO upstream_failures(fingerprint,kind,route,action,service,host,status,message,count,first_seen,last_seen,slots) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(fingerprint) DO UPDATE SET status=excluded.status,message=excluded.message,count=excluded.count,first_seen=excluded.first_seen,last_seen=excluded.last_seen,slots=excluded.slots`,
+          key,
+          r.item.kind,
+          r.item.route,
+          r.item.action,
+          r.item.service,
+          r.item.host,
+          newer ? r.status : Number(old!.status),
+          newer ? r.message : old!.message,
+          Number(old?.count || 0) + r.count,
+          Math.min(Number(old?.first_seen ?? r.first), r.first),
+          Math.max(Number(old?.last_seen ?? r.last), r.last),
+          JSON.stringify(slots),
+        );
+      });
+    } catch {
+      // Diagnostics only: a failed write loses these failures.
+    }
+  }
+  try {
+    await run("DELETE FROM upstream_failures WHERE last_seen<?", now - ERROR_DETAILS_KEEP.days * DAY);
+    const edge = await one<{ last_seen: number }>("SELECT last_seen FROM upstream_failures ORDER BY last_seen DESC LIMIT 1 OFFSET ?", MAX_UPSTREAM);
+    if (edge) await run("DELETE FROM upstream_failures WHERE last_seen<?", edge.last_seen);
+  } catch {}
+}
+export type UpstreamFailures = Awaited<ReturnType<typeof upstreamFailures>>;
+// The failing third-party services of the last 14 days, most recent first,
+// with their count in the range.
+export async function upstreamFailures(now = Date.now(), range: ErrorRange = "24h", limit = 100) {
+  await flushErrorDetails(now).catch(() => {});
+  const since = now - RANGE_MS[range];
+  const step = range === "7d" ? HOUR : FIVE;
+  const rows = await all<UpstreamRow>("SELECT * FROM upstream_failures WHERE last_seen>=? ORDER BY last_seen DESC LIMIT ?", now - ERROR_DETAILS_KEEP.days * DAY, limit);
+  const items: UpstreamFailureView[] = rows.map((r) => {
+    const slots = parse<Slots>(r.slots, { f: [], h: [] });
+    const list = step === FIVE ? slots.f : slots.h;
+    return {
+      key: r.fingerprint,
+      kind: (r.kind as ErrorKind) || "request",
+      route: r.route,
+      action: r.action,
+      service: r.service,
+      host: r.host,
+      status: Number(r.status),
+      message: r.message,
+      count: Number(r.count),
+      inRange: list.reduce((a, [at, n]) => (at + step > since ? a + n : a), 0),
+      firstSeen: Number(r.first_seen),
+      lastSeen: Number(r.last_seen),
+    };
+  });
+  return { range, since, items, keep: { days: ERROR_DETAILS_KEEP.days, max: MAX_UPSTREAM } };
 }

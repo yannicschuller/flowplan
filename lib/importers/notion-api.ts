@@ -89,7 +89,7 @@ export function notionClient(token: string, options: NotionClientOptions = {}) {
           continue;
         }
         void error;
-        throw new HttpError(502, "Notion ist gerade nicht erreichbar. Bitte versuche es später erneut.");
+        throw new HttpError(502, "Notion ist gerade nicht erreichbar. Bitte versuche es später erneut.", { service: "notion", host: "api.notion.com" });
       }
       if (response.status === 429 && attempt < MAX_RETRIES) {
         const after = Number(response.headers["retry-after"]);
@@ -107,7 +107,7 @@ export function notionClient(token: string, options: NotionClientOptions = {}) {
       if (response.status === 401) throw new HttpError(400, "Notion hat das Integrations-Token abgelehnt. Bitte prüfe es und versuche es erneut.");
       if (response.status === 403 || response.status === 404) throw new NotionMissing(String(data.code || response.status));
       if (response.status === 429) throw new HttpError(429, "Notion begrenzt gerade die Anfragen. Bitte versuche es später erneut.");
-      if (response.status < 200 || response.status >= 300) throw new HttpError(502, "Notion hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.");
+      if (response.status < 200 || response.status >= 300) throw new HttpError(502, "Notion hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.", { service: "notion", host: "api.notion.com" });
       return data;
     }
   }

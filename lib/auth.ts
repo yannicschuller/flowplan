@@ -8,7 +8,7 @@ import { needsTwoFactorSetup } from "./two-factor-policy";
 import { recordOpsEvent } from "./ops-events";
 import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
-import { noteRequestCaller } from "./request-context";
+import { noteRequestCaller, noteRequestUpstream } from "./request-context";
 import { readOnlyRefusal } from "./instance-read-only";
 import { rememberPolicy, rememberedEnd, sessionTerms } from "./session-policy";
 import { proxySessionEnds } from "./proxy-auth-config";
@@ -409,16 +409,47 @@ export async function refuseWhileReadOnly(req: Request) {
   const refusal = await readOnlyRefusal(path);
   if (refusal) throw new HttpError(423, refusal);
 }
+// A third-party service that failed (#514): its kind ("ai", "oembed",
+// "calendar" …) and, where known, its host (a URL is cut to its host).
+export type Upstream = { service: string; host?: string | URL | null };
+export type UpstreamMark = { service: string; host: string };
+const SERVICE = /^[a-z][a-z0-9-]{0,31}$/;
+// Only the host: no path, no credentials, no port; IP addresses (a
+// person's own server) as "[IP]".
+export function upstreamHost(host: string | URL | null | undefined): string {
+  let name = "";
+  try {
+    name = host instanceof URL ? host.hostname : String(host || "").includes("://") ? new URL(String(host)).hostname : String(host || "").split(/[/:?#]/)[0];
+  } catch {
+    name = "";
+  }
+  name = name.replace(/^\[|\]$/g, "").toLowerCase();
+  if (/^[\d.]+$/.test(name) || name.includes(":")) return name ? "[IP]" : "";
+  return /^[a-z0-9.-]{1,253}$/.test(name) ? name : "";
+}
 export class HttpError extends Error {
+  // Set when a third-party service failed, not Flowplan (#514): the
+  // monitoring counts such an answer apart from the server errors.
+  upstream?: UpstreamMark;
   constructor(
     public status: number,
     message: string,
+    upstream?: Upstream,
   ) {
     super(message);
     // Every limit that refuses with 429 counts for the operations dashboard.
     if (status === 429) recordOpsEvent("rate_limited");
+    if (upstream && status >= 500) {
+      this.upstream = { service: SERVICE.test(upstream.service) ? upstream.service : "other", host: upstreamHost(upstream.host) };
+      noteRequestUpstream({ status, ...this.upstream, message });
+    }
   }
 }
+// A third-party service failed (the AI provider, a linked site, the image
+// search, a calendar server …): 502 by default, 503/504 where that fits.
+export const upstreamError = (message: string, service: string, host?: string | URL | null, status: 502 | 503 | 504 = 502) => new HttpError(status, message, { service, host });
+// An HttpError that reports a third-party failure.
+export const isUpstreamError = (error: unknown): error is HttpError & { upstream: UpstreamMark } => error instanceof HttpError && !!error.upstream;
 export async function checkOrigin(req: Request) {
   // Every change passes here: while the instance moves (lib/instance-move.ts)
   // it is read-only, for API tokens as well. 423, not 503: a final answer

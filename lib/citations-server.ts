@@ -101,14 +101,14 @@ export async function resolveDoi(raw: unknown, fetcher = safeFetch): Promise<Omi
   });
   if (response.status === 404) throw new HttpError(404, "Diese DOI ist nicht bekannt.");
   if (response.status !== 200 || !/json/i.test(response.type))
-    throw new HttpError(502, "Die DOI konnte gerade nicht aufgelöst werden.");
+    throw new HttpError(502, "Die DOI konnte gerade nicht aufgelöst werden.", { service: "doi", host: "doi.org" });
   let item: CslItem | null = null;
   try {
     item = sanitizeItem(JSON.parse(response.body), "doi");
   } catch {
     item = null;
   }
-  if (!item) throw new HttpError(502, "Die DOI-Daten sind unvollständig.");
+  if (!item) throw new HttpError(502, "Die DOI-Daten sind unvollständig.", { service: "doi", host: "doi.org" });
   const { id: _, ...data } = { ...item, DOI: item.DOI || doi };
   await run(
     "INSERT INTO doi_cache(doi,item,fetched_at) VALUES(?,?,?) ON CONFLICT(doi) DO UPDATE SET item=excluded.item,fetched_at=excluded.fetched_at",

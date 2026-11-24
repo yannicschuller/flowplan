@@ -330,12 +330,12 @@ export async function probeSftp(input: unknown) {
     if (error instanceof HostKeyError) return { fingerprint: error.fingerprint };
     throw error;
   }
-  throw new HttpError(502, "Verbindung zum SFTP-Server fehlgeschlagen.");
+  throw new HttpError(502, "Verbindung zum SFTP-Server fehlgeschlagen.", { service: "sftp" });
 }
 
 // Writes a response body to a file, counting bytes.
 async function saveBody(response: Response, target: string, progress: RestoreProgress, limit = SETUP_RESTORE_LIMIT) {
-  if (!response.body) throw new HttpError(502, "Leere Antwort des Speichers.");
+  if (!response.body) throw new HttpError(502, "Leere Antwort des Speichers.", { service: "s3", host: response.url });
   let size = 0;
   const count = new Transform({
     transform(chunk: Buffer, _encoding, done) {
@@ -354,7 +354,7 @@ async function listS3(aws: AwsClient, base: string, prefix: string) {
   let token = "";
   for (let page = 0; page < 1000; page++) {
     const response = await aws.fetch(`${base}?list-type=2&prefix=${encodeURIComponent(prefix)}${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`);
-    if (!response.ok) throw new HttpError(502, `Liste: HTTP ${response.status}`);
+    if (!response.ok) throw new HttpError(502, `Liste: HTTP ${response.status}`, { service: "s3", host: base });
     const xml = await response.text();
     keys.push(...[...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]));
     token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml)?.[1] ?? "") : "";
@@ -367,10 +367,10 @@ async function fromS3(input: unknown, keys: Key[], progress: RestoreProgress) {
   const { aws, base, key } = s3Target(input);
   progress.phase = "connect";
   const list = await aws.fetch(`${base}?list-type=2&prefix=${encodeURIComponent(key("backups/"))}`).catch(() => {
-    throw new HttpError(502, "Der S3-Speicher ist nicht erreichbar.");
+    throw new HttpError(502, "Der S3-Speicher ist nicht erreichbar.", { service: "s3", host: base });
   });
   if (list.status === 403 || list.status === 401) throw new HttpError(400, "Der S3-Speicher lehnt die Zugangsschlüssel ab.");
-  if (!list.ok) throw new HttpError(502, `Liste der Sicherungen: HTTP ${list.status}`);
+  if (!list.ok) throw new HttpError(502, `Liste der Sicherungen: HTTP ${list.status}`, { service: "s3", host: base });
   const names = [...(await list.text()).matchAll(/<Key>([^<]+)<\/Key>/g)]
     .map((m) => m[1])
     .filter((k) => k.startsWith(key("backups/")) && BACKUP_FILE.test(k.slice(key("backups/").length)));
@@ -382,7 +382,7 @@ async function fromS3(input: unknown, keys: Key[], progress: RestoreProgress) {
   try {
     progress.phase = "download";
     const response = await aws.fetch(`${base}/${newest.split("/").map(encodeURIComponent).join("/")}`);
-    if (!response.ok) throw new HttpError(502, `Herunterladen: HTTP ${response.status}`);
+    if (!response.ok) throw new HttpError(502, `Herunterladen: HTTP ${response.status}`, { service: "s3", host: base });
     progress.bytesTotal = Number(response.headers.get("content-length")) || 0;
     await saveBody(response, file, progress);
     const fetchFiles: Fetcher = async (ids, folder) => {

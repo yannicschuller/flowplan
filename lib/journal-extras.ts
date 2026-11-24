@@ -1008,7 +1008,7 @@ export async function calendarEvents(journalId: string, date: string, zone: stri
     });
     const body = fetched.data.toString("utf8");
     if (!body.includes("BEGIN:VCALENDAR"))
-      throw new HttpError(502, "Die Adresse liefert keinen Kalender.");
+      throw new HttpError(502, "Die Adresse liefert keinen Kalender.", { service: "calendar-feed", host: url });
     cached = { at: Date.now(), events: parseIcs(body, validZone(zone) ? zone : "UTC") };
     icsCache.set(url, cached);
     if (icsCache.size > 200) icsCache.delete(icsCache.keys().next().value!);

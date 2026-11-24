@@ -235,13 +235,15 @@ export class IssueRateLimit extends HttpError {
   }
 }
 // A refusal of the provider (502 to our caller) with the provider's own
-// HTTP status (the Git connection's back-link shows it).
+// HTTP status (the Git connection's back-link shows it) – a failing
+// third-party service for the monitoring (#514).
 export class ProviderError extends HttpError {
   constructor(
     message: string,
-    public upstream: number,
+    public providerStatus: number,
+    host?: string,
   ) {
-    super(502, message);
+    super(502, message, { service: "git", host });
   }
 }
 // How long to wait after a 403/429: Retry-After (seconds or a date), else
@@ -286,7 +288,7 @@ async function request(client: Client, method: string, path: string, body?: unkn
     allowPrivate: client.endpoint.allowPrivate,
   });
   if (limited(response.status, response.headers)) throw new IssueRateLimit(retryAfter(response.headers));
-  const refused = (message: string) => new ProviderError(message, response.status);
+  const refused = (message: string) => new ProviderError(message, response.status, client.endpoint.api);
   if (response.status === 401) throw refused("Der Git-Anbieter lehnt das Token ab.");
   if (response.status === 403) throw refused("Dem Token fehlt die Berechtigung für dieses Repository.");
   if (response.status === 404) throw refused("Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.");
@@ -295,7 +297,7 @@ async function request(client: Client, method: string, path: string, body?: unkn
   try {
     return { data: response.body ? JSON.parse(response.body) : null, headers: lower };
   } catch {
-    throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
+    throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`, { service: "git", host: client.endpoint.api });
   }
 }
 

@@ -29,6 +29,24 @@ export type ErrorGroupView = {
   occurrences: ErrorOccurrence[];
 };
 
+// A failing third-party service (#514): per place (kind, route or worker,
+// command), service and host, the count and last time – counted apart from
+// the server errors (lib/error-details.ts upstreamFailures).
+export type UpstreamFailureView = {
+  key: string;
+  kind: ErrorKind;
+  route: string;
+  action: string;
+  service: string;
+  host: string;
+  status: number;
+  message: string;
+  count: number;
+  inRange: number;
+  firstSeen: number;
+  lastSeen: number;
+};
+
 export const frameText = (f: StackFrame) => `${f.fn ? `${f.fn} ` : ""}(${f.file}:${f.line}:${f.column})`;
 
 // A plain-text report for an issue: what, where, how often, which version –

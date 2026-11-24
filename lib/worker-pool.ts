@@ -34,7 +34,7 @@ import { SHARE_ENV, Worker, isMainThread, type WorkerOptions } from "node:worker
 import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { z } from "zod";
-import { HttpError } from "./auth";
+import { HttpError, type UpstreamMark } from "./auth";
 import { contentLocale } from "./content-locale";
 import { currentTx } from "./db-driver/context";
 import type { AuditEntry } from "./db";
@@ -61,7 +61,8 @@ export function workerCount(env: Record<string, string | undefined> = process.en
 }
 
 export type SerializedError =
-  | { kind: "http"; status: number; message: string }
+  // `upstream`: a failing third-party service (#514, lib/auth.ts).
+  | { kind: "http"; status: number; message: string; upstream?: UpstreamMark }
   | { kind: "zod"; issues: unknown[] }
   | { kind: "error"; message: string; stack?: string }
   // The job tried to write (SQLite's read-only connection, PostgreSQL's
@@ -70,13 +71,13 @@ export type SerializedError =
 const READ_ONLY_WRITE = /attempt to write a readonly database|read-only transaction/i;
 export function serializeError(error: unknown): SerializedError {
   if (error instanceof Error && (READ_ONLY_WRITE.test(error.message) || (error as { code?: string }).code === "25006")) return { kind: "write", message: error.message };
-  if (error instanceof HttpError) return { kind: "http", status: error.status, message: error.message };
+  if (error instanceof HttpError) return { kind: "http", status: error.status, message: error.message, ...(error.upstream ? { upstream: error.upstream } : {}) };
   if (error instanceof z.ZodError) return { kind: "zod", issues: JSON.parse(JSON.stringify(error.issues)) };
   const e = error instanceof Error ? error : new Error(String(error));
   return { kind: "error", message: e.message, stack: e.stack };
 }
 export function reviveError(error: SerializedError): Error {
-  if (error.kind === "http") return new HttpError(error.status, error.message);
+  if (error.kind === "http") return new HttpError(error.status, error.message, error.upstream);
   if (error.kind === "zod") return new z.ZodError(error.issues as z.core.$ZodIssue[]);
   const revived = new Error(error.message);
   if (error.kind === "error" && error.stack) revived.stack = error.stack;
