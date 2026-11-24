@@ -91,12 +91,17 @@ function unzstd(data: Buffer, max: number): Buffer {
 }
 
 type ProtoValue = number | Buffer;
+// Values of one message read at most: far more than the media list of any
+// real package holds, and a bound on what a crafted message can cost (#478).
+export const MAX_PROTO_VALUES = 1_000_000;
 // A protobuf message as its fields (number → values in order): varints as
 // numbers (precise to 2^53, enough for the enums and sizes read here),
 // length-delimited fields as bytes; fixed 32/64-bit fields are skipped.
+// Linear in the message: values are pushed, never copied (#478).
 export function protoFields(data: Buffer): Map<number, ProtoValue[]> {
   const out = new Map<number, ProtoValue[]>();
-  let at = 0;
+  let at = 0,
+    count = 0;
   const varint = () => {
     let value = 0,
       shift = 0;
@@ -123,7 +128,11 @@ export function protoFields(data: Buffer): Map<number, ProtoValue[]> {
     } else if (wire === 1) at += 8;
     else if (wire === 5) at += 4;
     else throw new Error("wire type");
-    if (value !== null) out.set(field, [...(out.get(field) || []), value]);
+    if (value === null) continue;
+    if (++count > MAX_PROTO_VALUES) throw new Error("too many values");
+    const list = out.get(field);
+    if (list) list.push(value);
+    else out.set(field, [value]);
   }
   return out;
 }
@@ -157,6 +166,14 @@ function packageVersion(entries: Map<string, Buffer>) {
   const meta = entries.get("meta");
   if (!meta) return 0;
   return protoNumber(safeProto(meta), 1);
+}
+
+// Appends to the list of a key in place (copying the list on every append
+// is quadratic, #478).
+export function pushTo<K, V>(map: Map<K, V[]>, key: K, value: V) {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
 }
 
 const cleanKey = (key: string) => (key === "__proto__" || key === "constructor" || key === "prototype" ? "" : key);
@@ -264,11 +281,11 @@ function readCollection(data: Buffer, format: AnkiFormat, warnings: string[]) {
       // Schema 18.
       const fields = new Map<string, string[]>();
       for (const f of all(`SELECT CAST(ntid AS TEXT) ntid, ord, name FROM fields ORDER BY ntid, ord LIMIT ${ANKI_LIMITS.notetypes * ANKI_LIMITS.fields}`))
-        fields.set(text(f.ntid), [...(fields.get(text(f.ntid)) || []), text(f.name)]);
+        pushTo(fields, text(f.ntid), text(f.name));
       const templates = new Map<string, AnkiTemplate[]>();
       for (const t of all(`SELECT CAST(ntid AS TEXT) ntid, ord, name, config FROM templates ORDER BY ntid, ord LIMIT ${ANKI_LIMITS.notetypes * 50}`)) {
         const config = safeProto(t.config);
-        templates.set(text(t.ntid), [...(templates.get(text(t.ntid)) || []), { name: text(t.name), qfmt: protoString(config, 1), afmt: protoString(config, 2) }]);
+        pushTo(templates, text(t.ntid), { name: text(t.name), qfmt: protoString(config, 1), afmt: protoString(config, 2) });
       }
       for (const n of all(`SELECT CAST(id AS TEXT) id, name, config FROM notetypes LIMIT ${ANKI_LIMITS.notetypes}`)) {
         const config = safeProto(n.config);

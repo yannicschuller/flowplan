@@ -10,6 +10,7 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-linear-"));
 const { writeZip } = await import("../lib/archive");
 const { officeText } = await import("../lib/office-text");
 const { sharedStrings, sheetRows, dateStyles, isDateFormat } = await import("../lib/sheet-xlsx");
+const { protoFields, MAX_PROTO_VALUES } = await import("../lib/importers/anki-read");
 
 // Generous for slow CI machines; the old code took several seconds per case.
 const BOUND_MS = 2000;
@@ -68,4 +69,16 @@ test("The spreadsheet preview still reads well-formed sheets", () => {
     { strings, dates, date1904: false },
   );
   assert.deepEqual(rows.rows, [["Rich", "2025-12-09"], [], ["", "inline"]]);
+});
+
+test("Anki protobuf decoding is linear and bounded (#478)", async () => {
+  // N repeats of field 1 = 0 (key 0x08, value 0x00), as in a crafted meta.
+  const repeated = (n: number) => Buffer.alloc(n * 2, Buffer.from([0x08, 0x00]));
+  const fields = await within("protoFields", () => protoFields(repeated(30_000)));
+  assert.equal(fields.get(1)?.length, 30_000);
+  assert.throws(() => protoFields(repeated(MAX_PROTO_VALUES + 1)), /too many values/);
+  // Ordinary messages read as before: field 1 = 3, field 2 = "ab", field 1 = 4.
+  const message = protoFields(Buffer.from([0x08, 0x03, 0x12, 0x02, 0x61, 0x62, 0x08, 0x04]));
+  assert.deepEqual(message.get(1), [3, 4]);
+  assert.equal((message.get(2)?.[0] as Buffer).toString(), "ab");
 });
