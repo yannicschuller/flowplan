@@ -303,7 +303,7 @@ export function htmlToMarkdown(
     if (node.attrs.indent) source.lossy.add(tr("Einzug", "Indent"));
     if (node.attrs.dir) source.lossy.add(tr("Textrichtung", "Text direction"));
     if (node.attrs.reactions) source.lossy.add(tr("Reaktionen", "Reactions"));
-    if (node.attrs.journalSince) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
+    if (node.attrs.journalSince || node.attrs.journalContinued) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
   }
   function inline(node: Node, inTable = false, before = "", after = ""): string {
     if (node.type.name === "hardBreak") return "  \n";

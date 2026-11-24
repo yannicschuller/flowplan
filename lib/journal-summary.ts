@@ -58,7 +58,8 @@ const schema = () => (cachedSchema ??= documentSchema());
 
 // Tasks written down up to the month's end that are still open now. Open
 // tasks move on to each new day (lib/journal.ts), so they live on the
-// journal's latest day, marked with the day they were first written.
+// journal's latest day, marked with the day they were first written; copied
+// on instead (#469), the originals left behind are closed and not counted.
 export async function stillOpenTasks(journal: Page, from: string, to: string) {
   const latest = await one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date>=? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",

@@ -49,6 +49,7 @@ export type JournalSettings = {
   // create: "Seite des Tages anlegen" – when the day starts or on the first write.
   // completed: "An diesem Tag erledigt" below each day (#169).
   // carried: where the open tasks of the day before go in a new day (#247).
+  // carry: whether they move there or are copied (#469).
   options?: {
     place: boolean;
     events: boolean;
@@ -57,6 +58,7 @@ export type JournalSettings = {
     sidebar?: SidebarMode;
     carried?: CarriedMode;
     carriedHeading?: string;
+    carry?: "move" | "copy";
   };
 };
 type CarriedMode = "top" | "end" | "heading";
@@ -240,6 +242,13 @@ export function JournalSettingsDialog({
     setCurrent({ ...current, options: { ...options, ...next } });
     if (!(await save({ options: next }))) setCurrent(before);
   };
+  // "Offene Aufgaben" (#469): move to the new day (the default) or copy.
+  const carry = options.carry || "move";
+  const setCarry = async (value: "move" | "copy") => {
+    const before = current;
+    setCurrent({ ...current, options: { ...options, carry: value } });
+    if (!(await save({ options: { carry: value } }))) setCurrent(before);
+  };
   // "Tage in der Seitenleiste" (#49): how the days show in the page tree.
   const sidebar = options.sidebar || DEFAULT_SIDEBAR_MODE;
   const setSidebar = async (value: SidebarMode) => {
@@ -414,6 +423,19 @@ export function JournalSettingsDialog({
                   {t(`Unter „${carriedHeading}“ (nicht in der Vorlage – nach der Vorlage)`, `Below “${carriedHeading}” (not in the template – after the template)`)}
                 </option>
               )}
+            </Select>
+          </label>
+          <label className="js-field js-carry">
+            <strong className="js-label">{t("Offene Aufgaben", "Open tasks")}</strong>
+            <small className="muted">
+              {t(
+                "Was mit den offenen Aufgaben des Vortags geschieht, wenn ein neuer Tag beginnt. Kopiert bleiben sie auch am Vortag stehen, als übernommen markiert – sie zählen dort nicht mehr als offen.",
+                "What happens to the open tasks of the day before when a new day starts. Copied, they also stay on the day before, marked as carried over – they no longer count as open there.",
+              )}
+            </small>
+            <Select value={carry} disabled={busy} onChange={(e) => void setCarry(e.target.value === "copy" ? "copy" : "move")}>
+              <option value="move">{t("Verschieben (Standard)", "Move (default)")}</option>
+              <option value="copy">{t("Kopieren", "Copy")}</option>
             </Select>
           </label>
           <strong className="js-label">{t("Fertige Vorlagen", "Ready-made templates")}</strong>

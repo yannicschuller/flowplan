@@ -17,7 +17,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { subtasksPlugin } from "./task-subtasks";
 import { cycleTaskStatus, taskStatusPlugin } from "./task-status-commands";
-import { isStoredStatus, isTaskSymbol, statusHtmlAttrs, statusName, taskStatusOf, taskSymbolOf } from "./task-status";
+import { isContinuedTask, isStoredStatus, isTaskSymbol, statusHtmlAttrs, statusName, taskStatusOf, taskSymbolOf } from "./task-status";
 import type { TaskItemOptions } from "@tiptap/extension-task-item";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
@@ -435,8 +435,11 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
         if (!box) return;
         const status = taskStatusOf(node.attrs);
         const symbol = taskSymbolOf(node.attrs);
-        const text = node.firstChild?.textContent.trim() || options.translate("Leere Aufgabe", "Empty task");
-        const name = `${statusName(options.translate, status)}${symbol ? ` [${symbol}]` : ""}: ${text}`;
+        const t = options.translate;
+        const text = node.firstChild?.textContent.trim() || t("Leere Aufgabe", "Empty task");
+        // Copied on to a later journal day (#469): carried over, not cancelled.
+        const state = isContinuedTask(node.attrs) ? t("Übernommen in einen späteren Tag", "Carried over to a later day") : statusName(t, status);
+        const name = `${state}${symbol ? ` [${symbol}]` : ""}: ${text}`;
         box.setAttribute("aria-label", name);
         if (hidden) hidden.textContent = name;
         box.indeterminate = status === "progress";
@@ -592,6 +595,20 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
         renderHTML: (attributes) =>
           attributes.journalSince
             ? { "data-journal-since": attributes.journalSince }
+            : {},
+      },
+      // The day an original was copied on to (#469, lib/task-status.ts
+      // isContinuedTask): shown as carried over while it is closed.
+      journalContinued: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-journal-continued");
+          return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+        },
+        renderHTML: (attributes) =>
+          attributes.journalContinued
+            ? { "data-journal-continued": attributes.journalContinued }
             : {},
       },
       // In progress, cancelled or deferred (lib/task-status.ts); null: open
