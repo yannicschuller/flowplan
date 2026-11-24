@@ -48,6 +48,10 @@ test("workflows switched off for the instance: no workflow in new page, an exist
     const workflow = (await made.json()) as { id: string };
 
     // Switched off in the administration (with a confirmation).
+    // Loaded afresh at that address: a change of only the hash while the
+    // first page still hydrates is undone by Next.js, which writes the
+    // address it was loaded with ("/") into the history when it starts.
+    await page.goto("about:blank");
     await page.goto(`${origin}/#admin/general`);
     const card = page.locator("#modules-off");
     await expect(card).toBeVisible({ timeout: 30_000 });

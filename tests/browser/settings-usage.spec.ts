@@ -70,9 +70,12 @@ test("Speicher & KI: tile, page, notice at 80 % and the old addresses", async ({
     await page.emulateMedia({ colorScheme: "light" });
   };
   // A new address with only another hash: loaded afresh, as from a link.
+  // Not a hash change and a reload: a hash changed while the page still
+  // hydrates is undone by Next.js, which writes the address it was loaded
+  // with into the history when it starts – the reload then loaded that.
   const go = async (hash: string) => {
+    await page.goto("about:blank");
     await page.goto(`${origin}/${hash}`);
-    await page.reload();
   };
   try {
     // The first visit creates Ida's workspace; then 8.5 of 10 MB in it.
