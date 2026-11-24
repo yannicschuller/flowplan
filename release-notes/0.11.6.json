@@ -19,6 +19,13 @@
       "issues": [
         515
       ]
+    },
+    {
+      "de": "Datenbanken werden in jeder Auswahl nach Bereich gruppiert; gleich benannte Datenbanken zeigen ihren Ort, etwa „Notizen · Familie“.",
+      "en": "Database pickers are grouped by space; databases with the same title show where they are, e.g. “Notes · Family”.",
+      "issues": [
+        520
+      ]
     }
   ]
 }
