@@ -146,3 +146,32 @@ test("an ID without a prefix counts up and is left out of references (#313)", as
   assert.deepEqual(await shown(), ["1", "2", "3"]);
   assert.equal(await resolveTicket(owner, wid, "PLN-2"), null);
 });
+
+test("the title cannot become an ID or another computed property (#463)", async () => {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Leer 463", databaseKind: "empty" })).id as string;
+  const d = await database(pageId);
+  const update = async (fields: Field[]) => act({ action: "database.update", pageId, version: (await database(pageId)).version, fields, views: d.views });
+  const refused = /Die erste Eigenschaft ist der Titel/;
+  // The title's type changed to an ID, a formula or "Erstellt am": refused.
+  for (const type of ["id", "formula", "created_at"] as const)
+    await assert.rejects(update([{ ...d.fields[0], type, ...(type === "id" ? { prefix: "TTL" } : {}) }]), refused);
+  // A computed property moved to the front, or the title deleted before one.
+  const ticket: Field = { id: "nr", name: "Nr.", type: "id", prefix: "TTM" };
+  await assert.rejects(update([ticket, d.fields[0]]), refused);
+  await assert.rejects(update([ticket]), refused);
+  // An ID and a checkbox beside the title are fine; the title stays a text
+  // one can type (the steps of #463).
+  await update([d.fields[0], ticket, { id: "done", name: "Erledigt", type: "checkbox" }]);
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "Neuer Eintrag" } })).id;
+  const row = await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid);
+  await act({ action: "row.update", pageId, rowId: rid, version: row!.version, cells: { title: "12345" } });
+  const saved = (await rows(pageId)).find((r) => r.id === rid)!;
+  assert.equal(saved.cells.title, "12345");
+  // A title that already is an ID (saved before #463) may stay one, and can
+  // become a text again.
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([{ ...d.fields[0], type: "id", prefix: "TTN" }]), pageId);
+  const legacy = (await database(pageId)).fields;
+  await update([{ ...legacy[0], name: "Nummer" }]);
+  await update([{ ...legacy[0], type: "text" }]);
+  assert.equal((await database(pageId)).fields[0].type, "text");
+});

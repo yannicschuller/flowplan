@@ -27,6 +27,7 @@ import * as Y from "yjs";
 import {
   CheckSquare,
   Code,
+  CodeSimple,
   DownloadSimple,
   FileArrowUp,
   ListBullets,
@@ -422,6 +423,7 @@ export default function EncryptedEditor({
         ? {
             bold: e.isActive("bold"),
             italic: e.isActive("italic"),
+            inlineCode: e.isActive("code"),
             h1: e.isActive("heading", { level: 1 }),
             h2: e.isActive("heading", { level: 2 }),
             bullet: e.isActive("bulletList"),
@@ -449,6 +451,7 @@ export default function EncryptedEditor({
           <>
             {button(t("Fett", "Bold"), state.bold, () => chain().toggleBold().run(), <TextB size={16} />)}
             {button(t("Kursiv", "Italic"), state.italic, () => chain().toggleItalic().run(), <TextItalic size={16} />)}
+            {button(t("Inline-Code", "Inline code"), state.inlineCode, () => chain().toggleCode().run(), <CodeSimple size={16} />)}
             {button(t("Überschrift 1", "Heading 1"), state.h1, () => chain().toggleHeading({ level: 1 }).run(), <TextHOne size={16} />)}
             {button(t("Überschrift 2", "Heading 2"), state.h2, () => chain().toggleHeading({ level: 2 }).run(), <TextHTwo size={16} />)}
             {button(t("Aufzählung", "Bulleted list"), state.bullet, () => chain().toggleBulletList().run(), <ListBullets size={16} />)}

@@ -31,6 +31,7 @@ export const TOOLBAR_BUTTONS = [
   "italic",
   "underline",
   "strike",
+  "code",
   "highlight",
   "comment",
   "color",
@@ -126,6 +127,7 @@ export const GROUPABLE_BUTTONS = [
   "italic",
   "underline",
   "strike",
+  "code",
   "highlight",
   "comment",
   "superscript",
@@ -167,6 +169,7 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
   "italic",
   "underline",
   "strike",
+  "code",
   "highlight",
   "comment",
   "color",
@@ -204,6 +207,12 @@ export const DEFAULT_TOOLBAR_ORDER: ToolbarEntry[] = [
 // The cloze of flashcards (lib/cloze-mark.ts, ⌘⌥G) came with phase 5 of
 // the flashcards and is hidden by default as well: only people who make
 // cards need it.
+//
+// Inline code (#465, the `code` mark, ⌘E) came after that and is shown:
+// on a phone the toolbar is the only way to it (no text menu, no ⌘E), so a
+// stored layout without it gets it right after strikethrough (or the group
+// holding it), shown – as spoiler and suggest did. Not to be confused with
+// "block:code", the code block of the "/" menu.
 export const DEFAULT_HIDDEN: ToolbarItem[] = ["bulletList", "orderedList", "indent", "outdent", "cloze"];
 export function defaultToolbarLayout(): ToolbarLayout {
   return { order: [...DEFAULT_TOOLBAR_ORDER], hidden: [...DEFAULT_HIDDEN] };

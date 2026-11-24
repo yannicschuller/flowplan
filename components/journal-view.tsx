@@ -1,6 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { isAutoDayTitle } from "@/lib/journal-title";
+import { todayRollFailure } from "@/lib/journal-offline";
 import { LOCALE_TAG, WEEK_START, tr } from "@/lib/locale-tag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,6 +24,7 @@ import {
   moodFaces,
   type JournalSettings,
 } from "./journal-parts";
+import { deviceOffline, isTransient } from "./ui";
 
 export type JournalDay = {
   id: string;
@@ -179,9 +181,16 @@ export function JournalView({
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Today's page could not be asked for (no connection): asked again once
-  // the connection is back; meanwhile "Heute" opens the offline entry.
+  // the connection is back – and, while the device is online all along,
+  // after a pause –; meanwhile "Heute" opens the offline entry. A refusal
+  // of the server is shown as an error, not as "offline" (#456,
+  // todayRollFailure in lib/journal-offline.ts).
   const [unrolled, setUnrolled] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const failures = useRef(0);
+  // Stops the pending retry (its timer and "online" listener).
+  const stopRetry = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopRetry.current?.(), []);
   useEffect(() => {
     if (!editable || current || rolled.current === `${pageId}:${today}:${attempt}`)
       return;
@@ -189,17 +198,35 @@ export function JournalView({
     void onRoll(pageId, today).then(
       (result) => {
         const r = result as { trashed?: boolean; dayId?: string; draft?: boolean } | null;
+        failures.current = 0;
         setUnrolled(false);
         setTrashed(r?.trashed && r.dayId ? r.dayId : null);
         setDraft(r?.draft && r.dayId ? r.dayId : null);
       },
-      () => {
-        setUnrolled(true);
-        const again = () => setAttempt((n) => n + 1);
-        window.addEventListener("online", again, { once: true });
+      (error) => {
+        const failure = todayRollFailure(deviceOffline(), isTransient(error), ++failures.current);
+        setUnrolled(failure.offline);
+        if (!failure.offline) {
+          onError((error as Error)?.message || String(error));
+          return;
+        }
+        stopRetry.current?.();
+        let timer: number | undefined;
+        const stop = () => {
+          window.removeEventListener("online", again);
+          if (timer !== undefined) window.clearTimeout(timer);
+          if (stopRetry.current === stop) stopRetry.current = null;
+        };
+        const again = () => {
+          stop();
+          setAttempt((n) => n + 1);
+        };
+        window.addEventListener("online", again);
+        if (failure.retryIn !== null) timer = window.setTimeout(again, failure.retryIn);
+        stopRetry.current = stop;
       },
     );
-  }, [editable, current, pageId, today, onRoll, attempt]);
+  }, [editable, current, pageId, today, onRoll, onError, attempt]);
   const todayId = current?.id || (!trashed && draft) || null;
   const offlineToday = !todayId && unrolled && !!onToday;
   const [layout, setLayout] = useState<"list" | "calendar">(() => {

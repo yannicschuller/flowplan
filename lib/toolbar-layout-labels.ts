@@ -15,6 +15,7 @@ export function toolbarItemLabels(t: T): Record<ToolbarItem, string> {
     italic: t("Kursiv", "Italic"),
     underline: t("Unterstrichen", "Underline"),
     strike: t("Durchgestrichen", "Strikethrough"),
+    code: t("Inline-Code", "Inline code"),
     highlight: t("Markieren", "Highlight"),
     comment: t("Kommentieren", "Comment"),
     color: t("Farbe", "Colour"),

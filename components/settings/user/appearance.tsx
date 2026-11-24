@@ -45,6 +45,7 @@ import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { commentMargin, setCommentMarginLocal, useCommentMargin } from "@/lib/comment-margin-pref-client";
+import { setStrikeDoneTasksLocal, strikeDoneTasks, useStrikeDoneTasks } from "@/lib/done-strike-pref-client";
 import type { WhiteboardCanvasPref } from "@/lib/whiteboard-canvas-pref";
 import { setWhiteboardCanvasLocal, useWhiteboardCanvas, whiteboardCanvas } from "@/lib/whiteboard-canvas-pref-client";
 import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
@@ -174,6 +175,20 @@ export default function AppearanceSection() {
         await mutate({ action: "profile.commentMargin", commentMargin: on });
       } catch (e) {
         setCommentMarginLocal(before);
+        throw e;
+      }
+    });
+  };
+  const strikeDone = useStrikeDoneTasks();
+  const [strikeStatus, runStrike] = useSaveState();
+  const chooseStrike = (on: boolean) => {
+    const before = strikeDoneTasks();
+    setStrikeDoneTasksLocal(on);
+    void runStrike(async () => {
+      try {
+        await mutate({ action: "profile.strikeDoneTasks", strikeDoneTasks: on });
+      } catch (e) {
+        setStrikeDoneTasksLocal(before);
         throw e;
       }
     });
@@ -477,6 +492,17 @@ export default function AppearanceSection() {
         >
           <SaveState status={wideStatus} />
           <Switch checked={allWide} label={t("Seiten in voller Breite anzeigen", "Show pages at full width")} onChange={chooseWide} />
+        </SettingRow>
+        <SettingRow
+          anchor="strike-done-tasks"
+          label={t("Erledigte Aufgaben durchstreichen", "Strike through done tasks")}
+          description={t(
+            "Der Text erledigter Aufgaben wird durchgestrichen – in Dokumenten, Journalen, Einträgen, Meine Aufgaben und den Widgets der Startseite. Aus: Erledigte Aufgaben zeigen nur das Häkchen und blassere Schrift. Nur deine Ansicht, das Dokument bleibt, wie es ist. Gilt auf allen Geräten.",
+            "The text of done tasks is struck through – in documents, journals, records, My tasks and the start page's widgets. Off: done tasks show only the tick and fainter text. Only how you see them; the document stays as it is. Applies on all devices.",
+          )}
+        >
+          <SaveState status={strikeStatus} />
+          <Switch checked={strikeDone} label={t("Erledigte Aufgaben durchstreichen", "Strike through done tasks")} onChange={chooseStrike} />
         </SettingRow>
         <SettingRow
           anchor="comment-margin"

@@ -52,6 +52,8 @@ export default function SavedTemplates({
   spaces = [],
   manageWorkspace = false,
   marketplace = null,
+  onOpenDraft,
+  pages = [],
 }: {
   workspaceId: string;
   canCreate: boolean;
@@ -68,6 +70,10 @@ export default function SavedTemplates({
   manageWorkspace?: boolean;
   // The Flowplan Marketplace (components/marketplace.tsx); null: off.
   marketplace?: MarketplaceClientConfig | null;
+  // "Inhalt bearbeiten" (#461): open the template's draft page.
+  onOpenDraft?: (pageId: string) => void;
+  // The pages one may pick for "Aus Seite ersetzen …" (#461).
+  pages?: { id: string; title: string; kind: string; space_id: string | null }[];
 }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]),
@@ -153,6 +159,56 @@ export default function SavedTemplates({
     const extra = { spaceId: target, ...(spaceRefs ? { spaceMeta: "remove" } : {}) };
     if (!target) return change(t, "template.copy", extra);
     return withDependencies(t, target, (meta) => change(t, "template.copy", { ...extra, ...(meta ? { meta } : {}) }));
+  }
+  // The content of a template (#461, lib/template-drafts.ts): a draft page
+  // to edit, or another page's content in its place.
+  const [replacing, setReplacing] = useState<Template | null>(null),
+    [replaceWith, setReplaceWith] = useState(""),
+    [replaceRefs, setReplaceRefs] = useState("");
+  const contentEditable = (t: Template) => !t.shared && ["document", "database", "notebook"].includes(t.kind);
+  // Pages that may become the template's content: of its kind, and of its
+  // space when it belongs to one.
+  const replaceCandidates = (t: Template) => pages.filter((p) => p.kind === t.kind && (!t.space_id || p.space_id === t.space_id));
+  async function editContent(t: Template) {
+    setBusy(true);
+    try {
+      const draft = await api<{ id: string }>("/api/command", {
+        action: "template.draft",
+        workspaceId,
+        templateId: t.id,
+        // A template of the whole workspace opens in the current space.
+        ...(t.space_id ? {} : { spaceId: spaceId || spaces[0]?.id }),
+      });
+      setEditing(null);
+      onOpenDraft?.(draft.id);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function replaceContent(t: Template, withoutSpaceMeta = false) {
+    const current = items.find((x) => x.id === t.id) ?? t;
+    setBusy(true);
+    try {
+      await api("/api/command", {
+        action: "template.content",
+        workspaceId,
+        templateId: t.id,
+        pageId: replaceWith,
+        version: current.version,
+        ...(withoutSpaceMeta ? { spaceMeta: "remove" } : {}),
+      });
+      await refresh();
+      setReplacing(null);
+      setReplaceRefs("");
+    } catch (e) {
+      if (!withoutSpaceMeta && e instanceof ApiError && e.status === 409 && /spaceMeta/.test(e.message)) setReplaceRefs(e.message);
+      else onError((e as Error).message);
+      await refresh().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
   }
   // The template trash, emptied: only templates this person manages.
   async function emptyTemplates() {
@@ -516,6 +572,78 @@ export default function SavedTemplates({
             >
               {t("Änderungen speichern", "Save changes")}
             </button>
+          </form>
+        )}
+        {editing && contentEditable(editing) && (
+          <section className="template-content-edit" aria-labelledby="template-content-heading">
+            <h4 id="template-content-heading">{t("Inhalt", "Content")}</h4>
+            <p className="muted">
+              {t(
+                "Bearbeite den Inhalt in einem Entwurf, den nur du siehst, und speichere ihn mit „Vorlage speichern“ – oder nimm den Inhalt einer Seite. Bereits erstellte Seiten werden nicht verändert.",
+                "Edit the content in a draft only you see and save it with “Save template” – or take a page's content. Pages already created are not changed.",
+              )}
+            </p>
+            <div className="saved-template-actions">
+              <button type="button" className="button compact" disabled={busy || !onOpenDraft} onClick={() => void editContent(editing)}>
+                {t("Inhalt bearbeiten", "Edit content")}
+              </button>
+              <button
+                type="button"
+                className="button compact"
+                disabled={busy || !replaceCandidates(editing).length}
+                onClick={() => {
+                  setReplaceRefs("");
+                  setReplaceWith(replaceCandidates(editing)[0]?.id ?? "");
+                  setReplacing(editing);
+                  setEditing(null);
+                }}
+              >
+                {t("Aus Seite ersetzen …", "Replace from page …")}
+              </button>
+            </div>
+          </section>
+        )}
+      </Modal>
+      <Modal open={!!replacing} onClose={() => !busy && setReplacing(null)} title={t("Inhalt aus Seite ersetzen", "Replace content from page")}>
+        {replacing && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void replaceContent(replacing, !!replaceRefs);
+            }}
+          >
+            <label>
+              {t("Seite", "Page")}
+              <Select value={replaceWith} onChange={(e) => {
+                setReplaceRefs("");
+                setReplaceWith(e.target.value);
+              }}>
+                {replaceCandidates(replacing).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title || t("Ohne Titel", "Untitled")}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <p>
+              {t(
+                `Der Inhalt von „${replacing.name}“ wird durch den Inhalt dieser Seite ersetzt – Text, Anhänge, Tags und Eigenschaften, bei Datenbanken auch Ansichten und Einträge. Die Seite selbst bleibt, wie sie ist. Bereits erstellte Seiten werden nicht verändert.`,
+                `The content of “${replacing.name}” is replaced by this page's content – text, attachments, tags and properties, for databases also views and records. The page itself stays as it is. Pages already created are not changed.`,
+              )}
+            </p>
+            {replaceRefs && (
+              <p className="callout" role="alert">
+                {replaceRefs} {t("Beim Ersetzen werden sie aus der Vorlage genommen.", "Replacing takes them out of the template.")}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="button" disabled={busy} onClick={() => setReplacing(null)}>
+                {t("Abbrechen", "Cancel")}
+              </button>
+              <button className="button danger" disabled={busy || !replaceWith}>
+                {t("Inhalt ersetzen", "Replace content")}
+              </button>
+            </div>
           </form>
         )}
       </Modal>

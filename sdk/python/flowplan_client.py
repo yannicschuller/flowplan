@@ -1120,6 +1120,16 @@ CommandProfileCommentMarginResult = TypedDict("CommandProfileCommentMarginResult
     "commentMargin": Required[bool],
 }, total=False)
 
+# Strike through done tasks, or show them only ticked. For the caller, on all devices: true (the default) strikes through the text of done tasks in the web app; false shows done tasks only with their ticked box and a faded text colour – in documents, journals, records, My tasks and the start page's widgets. Cancelled tasks stay struck through. Display only: documents, exports and published pages are unchanged. Delivered with the bootstrap as `strikeDoneTasks`.
+CommandProfileStrikeDoneTasks = TypedDict("CommandProfileStrikeDoneTasks", {
+    "action": Required[Literal["profile.strikeDoneTasks"]],
+    "strikeDoneTasks": Required[bool],
+}, total=False)
+
+CommandProfileStrikeDoneTasksResult = TypedDict("CommandProfileStrikeDoneTasksResult", {
+    "strikeDoneTasks": Required[bool],
+}, total=False)
+
 # Show the whiteboard canvas dark in dark mode or always light. For the caller, on all devices: "theme" (the default) shows whiteboards on a dark canvas while the dark colour scheme is used – very dark strokes and text shown light, light fills toned down; "light" keeps the canvas light. Display only: the boards' colours are stored unchanged, others see their own choice and exports stay light.
 CommandProfileWhiteboardCanvas = TypedDict("CommandProfileWhiteboardCanvas", {
     "action": Required[Literal["profile.whiteboardCanvas"]],
@@ -1655,6 +1665,46 @@ CommandTemplatePurgeResult = TypedDict("CommandTemplatePurgeResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Open a draft page to edit a saved template's content. Who may change the template's name and visibility may edit its content: its creator or a workspace owner, an administrator for templates of all workspaces or the public gallery; not in the template trash. The draft is a page made from the template – in the template's space, or for a template of the whole workspace in `spaceId` (write access needed). Only its creator sees it: it is not listed in the page tree or found by search, for nobody. Calling it again returns the same draft (`resumed: true`). Save it into the template with template.content, throw it away with template.draft.discard; drafts left alone for 7 days are deleted. Pages already created from the template are not changed.
+CommandTemplateDraft = TypedDict("CommandTemplateDraft", {
+    "action": Required[Literal["template.draft"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "spaceId": str,  # Where a template of the whole workspace opens
+    "version": int,  # The template's version, refused when it changed meanwhile
+}, total=False)
+
+CommandTemplateDraftResult = TypedDict("CommandTemplateDraftResult", {
+    "id": Required[str],
+    "resumed": Required[bool],
+}, total=False)
+
+# Throw away a template draft. Deletes the draft (template.draft) with its files and sub-pages for good. Only its creator; the template stays as it was.
+CommandTemplateDraftDiscard = TypedDict("CommandTemplateDraftDiscard", {
+    "action": Required[Literal["template.draft.discard"]],
+    "pageId": Required[str],
+}, total=False)
+
+CommandTemplateDraftDiscardResult = TypedDict("CommandTemplateDraftDiscardResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Replace a saved template's content with a page's. Same rights as template.draft, plus write access to `pageId`, a page of the template's kind – its draft or any other page ("Replace from page"). Saved as by template.save: the page's content, appearance, tags and property values (for a database its properties, views, the records the person sees and its record templates), with own copies of its files (at most 200, 10 MB each, 100 MB in all) and at most 20 MB. A template of a space takes only pages of that space; one of the whole workspace only the workspace's tags and properties (409 naming the space's, or `spaceMeta: "remove"` leaves them out). A draft is deleted afterwards. Pages already created from the template are not changed.
+CommandTemplateContent = TypedDict("CommandTemplateContent", {
+    "action": Required[Literal["template.content"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "pageId": Required[str],
+    "version": int,  # The template's version, refused when it changed meanwhile
+    "spaceMeta": Literal["remove"],
+}, total=False)
+
+CommandTemplateContentResult = TypedDict("CommandTemplateContentResult", {
+    "ok": Required[Literal[True]],
+    "version": Required[int],
+    "draftDeleted": Required[bool],
+}, total=False)
+
 # Empty the trash of a workspace. Deletes for good everything in the workspace's trash the caller may delete: pages they can edit, spaces they manage, and deleted records they can edit. Pages of others' private spaces and read-only items are never touched. With `scope: "templates"` the template trash is emptied instead (templates the caller manages). Needs the editor role. Cannot be undone.
 CommandTrashEmpty = TypedDict("CommandTrashEmpty", {
     "action": Required[Literal["trash.empty"]],
@@ -1734,7 +1784,7 @@ CommandSidebarStateResult = TypedDict("CommandSidebarStateResult", {
     "updatedAt": Required[int],
 }, total=False)
 
-# Add a task to your own task page ("Add a task" in My tasks). Writes an open task into your own page "Aufgaben"/"Tasks" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date ("tomorrow", "Friday", "24.12." – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. Needs full membership with edit rights (not guests or readers).
+# Add a task to your own task page or your task database ("Add a task" in My tasks). Writes an open task where you chose with `task.target`: by default into your own page "Aufgaben"/"Tasks" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date ("tomorrow", "Friday", "24.12." – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. With a task database chosen the task becomes a record of it (`target: "database"`, `pageId` the database, `rowId` the record): the text without the shorthand is its title, the date goes into its due date property, `@name` into its person property (only someone who may open the database), #tag and !priority into their properties; without `@name` the person property gets you. A select status gets the database's first "open" option unless a default value or the default record template sets one; default values, the default record template and the database's automations apply. When the chosen database can no longer take tasks (`fallback`: `missing` – deleted, `readonly` – you may no longer add records, `untracked` – it has no status or done checkbox any more) the task goes to your own page instead. Needs full membership with edit rights (not guests or readers).
 CommandTaskAdd = TypedDict("CommandTaskAdd", {
     "action": Required[Literal["task.add"]],
     "workspaceId": Required[str],
@@ -1745,12 +1795,27 @@ CommandTaskAdd = TypedDict("CommandTaskAdd", {
 }, total=False)
 
 CommandTaskAddResult = TypedDict("CommandTaskAddResult", {
-    "pageId": Required[str],
+    "pageId": Required[str],  # Your own task page, or the task database
     "title": Required[str],
     "created": Required[bool],  # Whether the page was made now
     "spaceCreated": Required[bool],  # Whether a private space was made for it
+    "target": Required[Literal["page", "database"]],  # Where the task went
+    "rowId": Required[Optional[str]],  # The new record in the task database; null for the page
     "task": Required[dict[str, Any]],
-    "unassigned": Required[Optional[str]],  # The member `@name` named who cannot open the page: the task is not given to them, the name stays in the text
+    "unassigned": Required[Optional[str]],  # The member `@name` named who did not get the task: the name stays in the text
+    "unassignedReason": Required[Optional[Literal["access", "property"]]],  # `access`: they cannot open the page or database; `property`: the database has no person property you may fill
+    "fallback": Required[Optional[Literal["missing", "readonly", "untracked"]]],  # Your chosen task database could not take the task, so it went to your own page
+}, total=False)
+
+# Choose where "Add a task" in My tasks writes. Per workspace: `databaseId` null for your own page "Aufgaben"/"Tasks" (the default), or a task database you may add records to that counts for My tasks – one with a status or a done checkbox you can see, outside end-to-end encrypted spaces (GET /api/tasks/targets lists them). `task.add` follows the choice. Only for you; the answer is the choice as it is now.
+CommandTaskTarget = TypedDict("CommandTaskTarget", {
+    "action": Required[Literal["task.target"]],
+    "workspaceId": Required[str],
+    "databaseId": Required[Optional[str]],
+}, total=False)
+
+CommandTaskTargetResult = TypedDict("CommandTaskTargetResult", {
+    "target": Required[dict[str, Any]],
 }, total=False)
 
 # Mark My tasks as seen: tasks given to you until now are no longer new. The bootstrap's `newTasks` counts open tasks given to you by others since then; GET /api/tasks marks them `fresh`.
@@ -2216,7 +2281,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandCommentEdit", "CommandCommentDelete", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileStrikeDoneTasks", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTemplateDraft", "CommandTemplateDraftDiscard", "CommandTemplateContent", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTaskTarget", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandCommentEdit", "CommandCommentDelete", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -2258,6 +2323,10 @@ NotificationsQuery = TypedDict("NotificationsQuery", {
 TasksQuery = TypedDict("TasksQuery", {
     "workspace": Required[str],  # Workspace ID
     "done": Literal["0", "1"],  # `1` for completed tasks
+}, total=False)
+
+TaskTargetsQuery = TypedDict("TaskTargetsQuery", {
+    "workspace": Required[str],  # Workspace ID
 }, total=False)
 
 RecordsQuery = TypedDict("RecordsQuery", {
@@ -2925,8 +2994,12 @@ class FlowplanClient:
         return self._json("GET", "/api/notifications", query=dict(query) if query else None, headers=headers)
 
     def tasks(self, query: "TasksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """My tasks — Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task) and whether you may add tasks here. (GET /api/tasks)"""
+        """My tasks — Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task), whether you may add tasks here and where `task.add` writes (`target`: `{ kind: "page" }` or `{ kind: "database", id, title, icon, problem }`, command `task.target`). (GET /api/tasks)"""
         return self._json("GET", "/api/tasks", query=dict(query) if query else None, headers=headers)
+
+    def task_targets(self, query: "TaskTargetsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Task databases for "Add a task" — The databases `task.target` accepts: those you may add records to that count for My tasks (a status or done checkbox you can see), outside end-to-end encrypted spaces – `databases` (id, title, icon, space) – and the current choice (`target`, as in GET /api/tasks). Full members with edit rights only. (GET /api/tasks/targets)"""
+        return self._json("GET", "/api/tasks/targets", query=dict(query) if query else None, headers=headers)
 
     def records(self, query: "RecordsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Records across all databases — With an optional filter (JSON, same shape as a view filter group) and the saved record views. (GET /api/records)"""

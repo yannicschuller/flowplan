@@ -291,6 +291,17 @@ const pages: Scene[] = [
       await page.getByRole("dialog", { name: "Due" }).waitFor();
     },
   },
+  // Where "Add a task" writes (#457): the own page or a task database.
+  {
+    id: "tasks-target",
+    group: "Pages",
+    title: "My tasks – where new tasks go",
+    path: "#tasks",
+    steps: async (page) => {
+      await page.getByRole("button", { name: /^Goes to: / }).click();
+      await page.getByRole("dialog", { name: "New tasks go to" }).waitFor();
+    },
+  },
   {
     id: "tasks-databases",
     group: "Pages",
@@ -694,6 +705,22 @@ const editorScenes: Scene[] = [
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
       await pageAction(page, "Owner and review …");
+      await page.getByRole("dialog").last().waitFor();
+    },
+  },
+  {
+    // A draft of a saved page template (#461): its bar and "Discard".
+    id: "template-draft",
+    group: "Documents & editor",
+    title: "Template draft",
+    covers: ["components/template-draft-bar.tsx"],
+    steps: async (page, ctx) => {
+      const source = await ctx.fixture({ html: RICH_HTML, title: "Meeting notes" });
+      const template = await ctx.command({ action: "template.save", pageId: source, name: `Meeting notes ${ctx.variant.id}` });
+      const draft = await ctx.command({ action: "template.draft", workspaceId: ctx.ids.workspaceId, templateId: template.id });
+      await ctx.open(`#page=${draft.id}`);
+      await editor(page).waitFor();
+      await page.locator(".template-draft-bar").getByRole("button", { name: "Discard" }).click();
       await page.getByRole("dialog").last().waitFor();
     },
   },

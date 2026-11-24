@@ -13,6 +13,7 @@ import { setUserToolbarLayout, userToolbarLayoutState } from "./user-toolbar-lay
 import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserCommentMargin, userCommentMargin } from "./user-comment-margin";
+import { setUserStrikeDoneTasks, userStrikeDoneTasks } from "./user-done-strike";
 import { setUserWhiteboardCanvas, userWhiteboardCanvas } from "./user-whiteboard-canvas";
 import { setUserNotificationSound, userNotificationSound } from "./user-notification-sound";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
@@ -30,7 +31,7 @@ import type { TransactionHook } from "./idempotency";
 import { teamReply } from "./service-desk";
 import { deletePlugin, updatePlugin } from "./plugins";
 import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
-import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncryptedCommand, isEncryptedPage, makeSpaceEncrypted } from "./e2ee-server";
+import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncryptedCommand, isEncryptedPage, makeSpaceEncrypted, requirePlaintext } from "./e2ee-server";
 import { emergencyCommand } from "./emergency-access";
 import { deadmanCommand } from "./dead-man-switch";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
@@ -87,6 +88,7 @@ import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed,
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, indexPageTasks, markTasksSeen, reindexRowTasks, syncDocTasks, taskBadges } from "./doc-tasks";
 import { addPersonalTask } from "./personal-tasks";
+import { setMyTaskTarget } from "./my-task-target";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention } from "./page-graph";
 import { followRename } from "./link-titles";
@@ -250,6 +252,7 @@ import {
   validateImportedCells,
   addImportedOptions,
   assertNoNewTimes,
+  assertEditableTitle,
 } from "./database-operations";
 import { cleanNoTime, validZone, withoutNewTimes } from "./date-values";
 import { field, view } from "./database-schema";
@@ -455,6 +458,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     fullWidthPages: await userFullWidthPages(user.id),
     // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
     commentMargin: await userCommentMargin(user.id),
+    // "Erledigte Aufgaben durchstreichen" (#458, lib/done-strike-pref.ts).
+    strikeDoneTasks: await userStrikeDoneTasks(user.id),
     // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
     whiteboardCanvas: await userWhiteboardCanvas(user.id),
     // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
@@ -574,6 +579,41 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ai: await aiStatus(user, workspace.id, pages, { workspaceId: workspace.id, pages: storedPages }),
   }, { pages: pagesTag, members: membersTag });
 }
+// What a page's template holds (template.save, template.content #461):
+// its content, appearance, tags and property values as this person sees
+// them.
+async function pageTemplatePayload(user: Identity, p: Page): Promise<string> {
+  // Workflows start from the gallery's templates (lib/workflows/templates.ts)
+  // or an export (lib/workflows/portable.ts), not from saved page templates.
+  if (p.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich noch nicht als Vorlage speichern.");
+  return (
+    p.kind === "database"
+      ? JSON.stringify({
+          appearance: pageAppearance(p),
+          database: await (async () => {
+            // Of the settings only the card mapping (flashcards §8.4).
+            const { settings, ...rest } = await database(p.id);
+            return { ...rest, ...(settings?.study ? { settings: { study: settings.study } } : {}) };
+          })(),
+          // Only the records this person sees go into the template.
+          rows: await visibleRows(user, p, await rows(p.id)),
+          ...(await databaseTemplateExtras(user, p)),
+          // Tags and property values (lib/page-properties-server.ts).
+          meta: await portableMeta(p.id),
+        })
+      : JSON.stringify({
+          appearance: pageAppearance(p),
+          html:
+            (await one<{ html: string }>(
+              "SELECT html FROM documents WHERE page_id=?",
+              p.id,
+            ))?.html || "",
+          // Notebooks: their sheets' paper and handwriting.
+          ...(p.kind === "notebook" ? { notebook: await notebookArchive(p.id) } : {}),
+          meta: await portableMeta(p.id),
+        })
+  );
+}
 export async function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const data = await pageContent(user, pid, options);
   // Tags and property values (#70); none behind a journal PIN or for
@@ -583,9 +623,11 @@ export async function pageData(user: Identity, pid: string, options: { presence?
   // kind of device, so a record opens in the right state without a jump.
   const records = "database" in data && data.database ? { recordPropertiesCollapsed: await recordPropertiesCollapsed(user, data.page.id) } : {};
   const properties = await pageMetaFor(data.page);
+  // A draft of a saved page template (#461): which one, for its bar.
+  const draft = data.page.template_draft ? { templateDraft: await templateDraftInfo(user, data.page) } : {};
   // Whether this person collapsed the bar (#83; null: the default applies),
   // so the bar opens in the right state without a jump.
-  return properties ? { ...data, ...records, properties, propertiesCollapsed: await propertiesCollapsed(user, data.page.id) } : { ...data, ...records };
+  return properties ? { ...data, ...records, ...draft, properties, propertiesCollapsed: await propertiesCollapsed(user, data.page.id) } : { ...data, ...records, ...draft };
 }
 async function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const p = await requirePage(user, pid);
@@ -1139,6 +1181,10 @@ async function runCommand(
       // Text comments in the margin or below the document (#387, lib/comment-margin-pref.ts).
       case "profile.commentMargin":
         result = await setUserCommentMargin(user, b.commentMargin);
+        break;
+      // Done tasks struck through or only ticked (#458, lib/done-strike-pref.ts).
+      case "profile.strikeDoneTasks":
+        result = await setUserStrikeDoneTasks(user, b.strikeDoneTasks);
         break;
       // The whiteboard canvas dark in dark mode or always light (#399, lib/whiteboard-canvas-pref.ts).
       case "profile.whiteboardCanvas":
@@ -1993,6 +2039,10 @@ async function runCommand(
       case "task.add":
         result = await addPersonalTask(user, b, afterCommit);
         break;
+      // Where "Aufgabe hinzufügen" writes: the own page or a task database (#457).
+      case "task.target":
+        result = await setMyTaskTarget(user, b);
+        break;
       // My tasks opened: what was new is seen (#208).
       case "tasks.seen":
         result = await markTasksSeen(user);
@@ -2670,6 +2720,8 @@ async function runCommand(
         );
         if (fields.length > 80)
           throw new HttpError(400, "Zu viele Eigenschaften.");
+        // The title stays a property one can type (#463).
+        assertEditableTitle(fields, d.fields);
         await validateFieldAccess(user, await write(), fields, d.fields);
         // A new option written like another one of its property (case and
         // accents aside) would be a second "Erledigt" (#423).
@@ -4040,35 +4092,7 @@ async function runCommand(
       }
       case "template.save": {
         const p = await write();
-        // Workflows start from the gallery's templates (lib/workflows/templates.ts)
-        // or an export (lib/workflows/portable.ts), not from saved page templates.
-        if (p.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich noch nicht als Vorlage speichern.");
-        const payload =
-          p.kind === "database"
-            ? JSON.stringify({
-                appearance: pageAppearance(p),
-                database: await (async () => {
-                  // Of the settings only the card mapping (flashcards §8.4).
-                  const { settings, ...rest } = await database(p.id);
-                  return { ...rest, ...(settings?.study ? { settings: { study: settings.study } } : {}) };
-                })(),
-                // Only the records this person sees go into the template.
-                rows: await visibleRows(user, p, await rows(p.id)),
-                ...(await databaseTemplateExtras(user, p)),
-                // Tags and property values (lib/page-properties-server.ts).
-                meta: await portableMeta(p.id),
-              })
-            : JSON.stringify({
-                appearance: pageAppearance(p),
-                html:
-                  (await one<{ html: string }>(
-                    "SELECT html FROM documents WHERE page_id=?",
-                    p.id,
-                  ))?.html || "",
-                // Notebooks: their sheets' paper and handwriting.
-                ...(p.kind === "notebook" ? { notebook: await notebookArchive(p.id) } : {}),
-                meta: await portableMeta(p.id),
-              });
+        const payload = await pageTemplatePayload(user, p);
         const templateId = id();
         if (payload.length > 20_000_000)
           throw new HttpError(413, "Vorlage zu groß.");
@@ -4105,6 +4129,20 @@ async function runCommand(
         await captureTemplateFiles(user, templateId, storedPayload);
         await quota();
         result = { id: templateId };
+        break;
+      }
+      // Editing a saved page template's content (#461, lib/template-drafts.ts).
+      case "template.draft":
+        result = await openTemplateDraft(user, b);
+        break;
+      case "template.draft.discard":
+        result = await discardTemplateDraft(user, b);
+        break;
+      case "template.content": {
+        const template = await requireEditableTemplate(user, wid(), b.templateId, b.version);
+        const p = await write();
+        await requirePlaintext(p);
+        result = await replaceTemplateContent(user, template, p, await pageTemplatePayload(user, p), b);
         break;
       }
       case "template.copy":
@@ -4694,6 +4732,7 @@ import { purgeTrashedFile, restoreFile, trashFiles, trashUnusedFiles } from "./f
 import { emptyTrash, purgeTemplate, purgeTrashedPage, restoreTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
+import { discardTemplateDraft, openTemplateDraft, replaceTemplateContent, requireEditableTemplate, templateDraftInfo } from "./template-drafts";
 import { deleteSticker, deleteTemplate, insertSticker, listStickers, listTemplates, notebookPictures, renameSticker, saveSticker, updateTemplate } from "./notebook-library";
 import { transferSheets } from "./notebook-organize";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";

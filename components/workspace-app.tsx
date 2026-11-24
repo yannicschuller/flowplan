@@ -132,6 +132,7 @@ import {
 } from "@/lib/journal-offline";
 import { dayTitle as journalDayTitle } from "@/lib/journal-title";
 import SavedTemplates from "./saved-templates";
+import { TemplateDraftBar, type TemplateDraftInfo } from "./template-draft-bar";
 import { MarketplaceLink, MarketplaceReceiver } from "./marketplace";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
@@ -356,6 +357,8 @@ import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { setCommentMarginLocal } from "@/lib/comment-margin-pref-client";
+import { setStrikeDoneTasksLocal, useStrikeDoneTasks } from "@/lib/done-strike-pref-client";
+import { DONE_TASKS_PLAIN_CLASS } from "@/lib/done-strike-pref";
 import { setWhiteboardCanvasLocal } from "@/lib/whiteboard-canvas-pref-client";
 import { setNotificationSoundLocal } from "@/lib/notification-sound-client";
 import { setStartScreenLocal } from "@/lib/start-screen-client";
@@ -475,6 +478,8 @@ type PageData = DatabaseData & {
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   // Tags and property values (#70, lib/page-properties-server.ts).
   properties?: import("@/lib/page-properties").PageMeta;
+  // A draft of a saved page template, for its creator (#461).
+  templateDraft?: TemplateDraftInfo | null;
   // Whether this person collapsed that bar (#83; null: never chose).
   propertiesCollapsed?: boolean | null;
   sinceVisit?: SinceVisit | null;
@@ -785,6 +790,7 @@ export default function WorkspaceApp({
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
   // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
   useEffect(() => setCommentMarginLocal(boot.commentMargin), [boot.commentMargin]);
+  useEffect(() => setStrikeDoneTasksLocal(boot.strikeDoneTasks), [boot.strikeDoneTasks]);
   // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
   useEffect(() => setWhiteboardCanvasLocal(boot.whiteboardCanvas), [boot.whiteboardCanvas]);
   // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
@@ -812,6 +818,13 @@ export default function WorkspaceApp({
     root.classList.toggle(HIDE_EXTERNAL_LINK_ICON_CLASS, !linkIcon);
     return () => root.classList.remove(HIDE_EXTERNAL_LINK_ICON_CLASS);
   }, [linkIcon]);
+  // "Erledigte Aufgaben durchstreichen" off (#458): done tasks only ticked.
+  const strikeDone = useStrikeDoneTasks();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle(DONE_TASKS_PLAIN_CLASS, !strikeDone);
+    return () => root.classList.remove(DONE_TASKS_PLAIN_CLASS);
+  }, [strikeDone]);
   // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
   setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(
@@ -2735,7 +2748,9 @@ export default function WorkspaceApp({
   // Shelves whose access the person may change ("Wer sieht dieses Regal?").
   const manageableSpaces = useMemo(() => new Set((boot.managedSpaces || []).map((sp) => sp.id)), [boot.managedSpaces]);
   const pageLibrary = screen === "page" && data && !data.journalDay ? boot.spaces.find((sp) => sp.id === data.page.space_id && sp.library) : undefined;
-  const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at), [titledPages]),
+  // Drafts of saved templates (#461) are opened from the templates only:
+  // not in the tree, the pickers or the lists.
+  const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at && !p.template_draft), [titledPages]),
     // The tree's levels in one pass: sub pages per parent, top-level pages
     // per space ("space:<id>") – no search through all pages per row.
     treeIndex = useMemo(() => {
@@ -5915,6 +5930,25 @@ export default function WorkspaceApp({
                 >
                   {/* A record as a page of its own (#231): only the record. */}
                   {!recordFull && (<>
+                  {/* A draft of a saved page template (#461): save it into the template or discard it. */}
+                  {data.templateDraft && (
+                    <TemplateDraftBar
+                      key={data.page.id}
+                      draft={data.templateDraft}
+                      pageId={data.page.id}
+                      workspaceId={boot.workspace.id}
+                      onError={notifyError}
+                      onDone={(outcome) => {
+                        appCache().delete(pageKey(data.page.id));
+                        currentId.current = null;
+                        go("home");
+                        setPageId(null);
+                        setData(null);
+                        notify(outcome === "saved" ? t("Vorlage gespeichert", "Template saved") : t("Entwurf verworfen", "Draft discarded"));
+                        void refresh().catch(() => {});
+                      }}
+                    />
+                  )}
                   {data.page.cover && (
                     <CoverFrame
                       className="page-cover"
@@ -7945,6 +7979,15 @@ export default function WorkspaceApp({
             newPageFromTemplate({ saved: t.id, name: t.name, kind: t.kind, meta }, templatesFor?.spaceId ?? currentSpaceId, templatesFor?.parent ?? null, !!templatesFor);
             setTemplatesFor(null);
           }}
+          // "Inhalt bearbeiten" (#461): the template's draft opens as a page.
+          onOpenDraft={(id) => {
+            setTemplates(false);
+            setTemplatesFor(null);
+            appCache().delete(pageKey(id));
+            void openPage(id);
+          }}
+          // "Aus Seite ersetzen …" (#461): the pages to choose from.
+          pages={activePages}
         />
         )}
       </Modal>

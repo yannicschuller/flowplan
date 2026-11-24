@@ -749,6 +749,7 @@ const exact: Record<string, string> = {
   "Eine Bildeigenschaft auswählen.": "Choose an image property.",
   "Mindestens eine Eigenschaft wählen.": "Choose at least one property.",
   "Eigenschaft kann nicht bearbeitet werden.": "The property cannot be edited.",
+  "Die erste Eigenschaft ist der Titel und kann keine ID, Formel oder andere berechnete Eigenschaft sein.": "The first property is the title and cannot be an ID, formula or other computed property.",
   "Datei gehört nicht zu dieser Datenbank.": "The file does not belong to this database.",
   "Relationsziel fehlt.": "Relation target missing.",
   "Verknüpfter Eintrag fehlt.": "Linked record missing.",
@@ -886,6 +887,11 @@ const exact: Record<string, string> = {
   "Die Seite zuerst in den Papierkorb verschieben.": "Move the page to the trash first.",
   "Die Vorlage zuerst in den Papierkorb verschieben.": "Move the template to the trash first.",
   "Vorlagentyp passt nicht zur Seite.": "Template type does not fit the page.",
+  // Editing a template's content (#461, lib/template-drafts.ts).
+  "Der Inhalt dieser Vorlage lässt sich nicht bearbeiten.": "This template's content cannot be edited.",
+  "Bereich fehlt.": "Space missing.",
+  "Entwurf nicht gefunden.": "Draft not found.",
+  "Diese Seite ist der Entwurf einer anderen Vorlage.": "This page is the draft of another template.",
   // A saved template as a journal's daily template (#316, lib/journal-saved-template.ts).
   "Nur Dokumentvorlagen lassen sich als Tagesvorlage verwenden.": "Only document templates can be used as the daily template.",
   "Doppelte Eigenschaft, Ansicht oder Datensatz-ID in Vorlage.": "Duplicate property, view or record ID in the template.",
@@ -1282,6 +1288,10 @@ const exact: Record<string, string> = {
   "Zu viele Aufgaben auf einmal (höchstens 1.000).": "Too many tasks at once (at most 1,000).",
   "Das Dokument lässt sich so nicht ändern.": "The document cannot be changed this way.",
   "Mindestens ein Eintrag ist für dich schreibgeschützt.": "At least one record is read-only for you.",
+  // Where "Aufgabe hinzufügen" of My tasks writes (#457, lib/my-task-target.ts)
+  "In dieser Datenbank darfst du keine Einträge anlegen.": "You may not add records to this database.",
+  "Diese Datenbank zählt nicht für Meine Aufgaben: Sie braucht einen Status oder ein Erledigt-Häkchen.":
+    "This database does not count for My tasks: it needs a status or a done checkbox.",
   // Page owners and reviews, scheduled rules, repeating records
   "Besitzer muss Mitglied des Arbeitsbereichs sein.": "The owner must be a member of the workspace.",
   "Der Besitzer hat keinen Zugriff auf diese Seite.": "The owner has no access to this page.",
