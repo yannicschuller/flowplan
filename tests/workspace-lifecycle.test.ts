@@ -186,6 +186,62 @@ test("space management requires ownership and current confirmation/version; rest
   assert.equal((await spaceData(sid)).owner_id, f.editor.id);
 });
 
+test("owners manage other members' private spaces but cannot open them through grants, groups or visibility (#473)", async () => {
+  const f = await fixture(),
+    sid = await f.space(true, f.editor, "Private"),
+    secret = await f.page(sid, "Secret", "document", f.editor);
+  const denied = { status: 403 };
+  await assert.rejects(async () => await requirePage(f.owner, secret), denied);
+  assert.ok((await bootstrap(f.owner, f.wid)).managedSpaces!.some((s) => s.id === sid));
+  // No grant for oneself, on the space or a page in it.
+  for (const resourceId of [sid, secret])
+    await assert.rejects(
+      async () => await command(f.owner, { action: "grant.set", workspaceId: f.wid, resourceId, userId: f.owner.id, role: "viewer" }),
+      denied,
+    );
+  // Nor for a group, nor for someone else.
+  const group = ((await command(f.owner, { action: "group.create", workspaceId: f.wid, name: "G" })) as { id: string }).id;
+  await command(f.owner, { action: "group.member", groupId: group, userId: f.owner.id, enabled: true });
+  await assert.rejects(
+    async () => await command(f.owner, { action: "grant.set", workspaceId: f.wid, resourceId: sid, groupId: group, role: "viewer" }),
+    denied,
+  );
+  await assert.rejects(
+    async () => await command(f.owner, { action: "grant.set", workspaceId: f.wid, resourceId: sid, userId: f.viewer.id, role: "editor" }),
+    denied,
+  );
+  // A group with a grant on the private space (set while someone who could
+  // see it did): the owner manages its members but cannot join it.
+  const shared = ((await command(f.owner, { action: "group.create", workspaceId: f.wid, name: "Shared" })) as { id: string }).id;
+  await run(
+    "INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?,?)",
+    sid, "", shared, "viewer", "space", f.wid,
+  );
+  await assert.rejects(
+    async () => await command(f.owner, { action: "group.member", groupId: shared, userId: f.owner.id, enabled: true }),
+    denied,
+  );
+  await command(f.owner, { action: "group.member", groupId: shared, userId: f.viewer.id, enabled: true });
+  await command(f.owner, { action: "group.member", groupId: shared, userId: f.viewer.id, enabled: false });
+  // Removing grants stays possible.
+  await command(f.owner, { action: "grant.set", workspaceId: f.wid, resourceId: sid, groupId: shared, role: "remove" });
+  // No visibility flip, but renaming (management) still works.
+  const version = (await spaceData(sid)).version!;
+  await assert.rejects(
+    async () => await command(f.owner, { action: "space.update", spaceId: sid, version, name: "Private", private: false }),
+    denied,
+  );
+  await command(f.owner, { action: "space.update", spaceId: sid, version, name: "Renamed", private: true });
+  assert.equal((await spaceData(sid)).visibility, "private");
+  assert.equal((await spaceData(sid)).name, "Renamed");
+  await assert.rejects(async () => await requirePage(f.owner, secret), denied);
+  await assert.rejects(async () => await requirePage(f.viewer, secret), denied);
+  // The space's owner still opens it and gives access; then the owner may too.
+  await command(f.editor, { action: "space.update", spaceId: sid, version: version + 1, name: "Renamed", private: false });
+  assert.equal((await requirePage(f.owner, secret)).id, secret);
+  await command(f.owner, { action: "grant.set", workspaceId: f.wid, resourceId: sid, groupId: shared, role: "viewer" });
+});
+
 test("trashing a space revokes publications, guest links, forms and pending notifications; archive excludes it", async () => {
   const f = await fixture(),
     sid = await f.space(),
@@ -417,12 +473,12 @@ test("workspace deletion requires owner, exact name and another workspace; remov
     userId: f.viewer.id,
     enabled: true,
   });
-  await command(f.owner, {
-    action: "grant.set",
-    resourceId: privateArea,
-    groupId: gid,
-    role: "viewer",
-  });
+  // Set as the editor's own grant would be: the owner cannot read the
+  // private area and so cannot grant it (#473).
+  await run(
+    "INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?,?)",
+    privateArea, "", gid, "viewer", "space", f.wid,
+  );
   await run("INSERT INTO presence VALUES(?,?,?)", root, f.editor.id, Date.now());
   await run(
     "INSERT INTO notifications(id,user_id,page_id,body) VALUES(?,?,?,?)",

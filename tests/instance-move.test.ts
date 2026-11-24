@@ -376,7 +376,14 @@ test("step-up: password for password accounts, a fresh sign-in for SSO, never an
   };
   await assert.rejects(move.requireStepUp(sso, req(await session(Date.now() - 20 * 60_000)), "", "de"), /erneut an/);
   assert.equal(await move.requireStepUp(sso, req(await session(Date.now() - 60_000)), "", "de"), "recent-sign-in");
-  await assert.rejects(move.requireStepUp({ ...sso, apiScope: "write" }, req(await session(Date.now())), "", "de"), /API-Token/);
+  await assert.rejects(move.requireStepUp({ ...sso, apiScope: "write" }, req(await session(Date.now())), "", "de"), /API-Token/);  // #475: an app hand-off session is new (created_at now) but keeps the
+  // browser's old sign-in time (authenticated_at); that is no fresh sign-in.
+  const handoff = id();
+  await run(
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,authenticated_at) VALUES(?,?,?,?,?,?)",
+    hash(handoff), sso.id, "[]", Date.now() + 3_600_000, Date.now(), Date.now() - 2 * 3_600_000,
+  );
+  await assert.rejects(move.requireStepUp(sso, req(`flowplan_session=${handoff}`), "", "de"), /erneut an/);
 });
 
 test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=true, and runs the whole move from another instance", async () => {

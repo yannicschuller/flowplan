@@ -38,6 +38,7 @@ import { mailConfig, smtpOptions, smtpTlsHint } from "./mail";
 import { bucketFetch, storageConfig, localCacheMode, localUploadNames, openUpload, withUploadFile } from "./storage";
 import { confirmsWithPassword } from "./account-deletion";
 import { passwordLogin } from "./local-auth";
+import { sessionStartedAt } from "./step-up";
 import { verifyLdapPassword } from "./ldap-auth";
 import type { Locale } from "./i18n";
 import { INCOMING_KEY, MOVE_KEY, readOnlyState } from "./instance-read-only";
@@ -765,7 +766,9 @@ export async function requireStepUp(user: Identity, req: Request, password: unkn
     const [name, ...value] = part.trim().split("=");
     if (name === cookieName) token = decodeURIComponent(value.join("="));
   }
-  const created = token ? (await one<{ created_at: number | null }>("SELECT created_at FROM sessions WHERE token=?", hash(token)))?.created_at : null;
+  // The time of the real sign-in: an app hand-off session keeps the browser's
+  // (authenticated_at), so it never counts as fresh on its own.
+  const created = await sessionStartedAt(token || undefined);
   if (!created || Date.now() - created > STEP_UP_MINUTES * 60_000)
     throw new HttpError(403, "Bitte melde dich ab und erneut an, um den Umzug vorzubereiten (Anmeldung höchstens 15 Minuten alt).");
   return "recent-sign-in";

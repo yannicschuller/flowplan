@@ -531,6 +531,10 @@ const exact: Record<string, string> = {
   "Entweder eine Seite oder einen Bereich exportieren.": "Export either a page or a space.",
   "Ein Bereich lässt sich nur als ZIP exportieren.": "A space can only be exported as a ZIP.",
   "Keine Berechtigung für diesen Bereich.": "No permission for this space.",
+  // Owners manage spaces and groups without reading private ones (#473).
+  "Nur wer den Bereich sehen darf, kann ihn für das Team öffnen.": "Only someone who can see the space may open it to the whole team.",
+  "Rechte vergibt nur, wer die Seite oder den Bereich selbst sehen darf.": "Only someone who can see the page or space may give permissions on it.",
+  "Diese Gruppe hat Rechte auf private Inhalte, die du nicht sehen darfst. Du kannst dich nicht selbst hinzufügen.": "This group has permissions on private content you may not see. You cannot add yourself.",
   "Keine verschlüsselte Flowplan-Datei.": "Not a file encrypted by Flowplan.",
   "Entschlüsseln fehlgeschlagen: falscher Schlüssel oder beschädigte Datei.": "Decryption failed: wrong key or damaged file.",
   "EXPORT_GIT_URL muss eine https-Adresse ohne Zugangsdaten sein.": "EXPORT_GIT_URL must be an https address without credentials.",
