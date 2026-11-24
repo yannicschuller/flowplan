@@ -128,6 +128,8 @@ function needsHtmlMarks(markdown: string, before: string, after: string) {
 }
 // The character next to an inline node, as far as it decides the above.
 function edge(node: Node, end: boolean) {
+  // A page link chip is written as [Title](…) (#466).
+  if (node.type.name === "pageLink") return end ? ")" : "[";
   if (!node.isText) return "";
   const text = node.text || "";
   return (end ? text[text.length - 1] : text[0]) || "";
@@ -329,6 +331,14 @@ export function htmlToMarkdown(
     if (node.type.name === "meetingCite") {
       const label = cites.label(node.attrs);
       return label ? `\`${label}\`` : "";
+    }
+    // A page link as a chip (#466): written as the link it is,
+    // [Title](</#page=…>), which the import reads back as a chip.
+    if (node.type.name === "pageLink") {
+      const link = node.type.schema.marks.link;
+      const title = String(node.attrs.title || "");
+      if (!title) return "";
+      return inline(node.type.schema.text(title, link ? [...node.marks, link.create({ href: String(node.attrs.href || "") })] : node.marks), inTable, before, after);
     }
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");

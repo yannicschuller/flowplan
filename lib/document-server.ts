@@ -179,7 +179,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       ),
       // A callout's own symbol and colour name (checked in transformTags).
       aside: [dir, "data-callout-icon", "data-callout-color"],
-      a: ["href", "name", "target", "rel"],
+      // data-page-link: a page link as a chip (#466, lib/page-chip.ts).
+      a: ["href", "name", "target", "rel", { name: "data-page-link", multiple: false, values: [""] }],
       img: ["src", "alt", "width", "height", "data-original", "data-annotations", "data-occlusion", { name: "data-align", multiple: false, values: ["center", "right"] }],
       input: ["type", "checked", "disabled"],
       ol: ["start", dir],

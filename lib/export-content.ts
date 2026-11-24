@@ -4,6 +4,7 @@
 // /api/files/<id> – with the same rights as the Markdown export
 // (lib/markdown-export.ts): readable pages only, PIN-locked journals and
 // hidden records stay out.
+import { linksFromChips } from "./page-chip";
 import { withLookups, type Awaitable } from "./resolve-ahead";
 import { readableDatabase } from "./field-access";
 import { readFileSync, statSync } from "node:fs";
@@ -110,7 +111,8 @@ export const fileId = (raw: string) => {
 
 // The sanitised HTML as a ProseMirror document, for the format walkers.
 export function documentNode(html: string) {
-  return documentSchema().nodeFromJSON(htmlJson(cleanHtml(html) || "<p></p>"));
+  // Page link chips (#466) as the links they are.
+  return linksFromChips(documentSchema().nodeFromJSON(htmlJson(cleanHtml(html) || "<p></p>")));
 }
 
 export async function collectExportContent(user: Identity, options: ExportSelection): Promise<CollectedExport> {

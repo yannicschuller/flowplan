@@ -295,6 +295,7 @@ import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptInvite, acceptPendingInvites, inviteToken, type Invite } from "./auth";
 import { createInviteLink, revokeInviteLink } from "./invite-links";
 import { documentRevision } from "./document-revision";
+import { upgradePageChips } from "./page-chip-upgrade";
 import {
   applyDocumentUpdate,
   cleanHtml,
@@ -794,6 +795,9 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
     "SELECT * FROM documents WHERE page_id=?",
     pid,
   );
+  // Page links stored as link marks become chips (#466, lib/page-chip-upgrade.ts).
+  if (doc?.state && await upgradePageChips(pid, null, doc.html))
+    doc = await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT * FROM documents WHERE page_id=?", pid);
   if (doc && !doc.state) {
     const state = htmlState(doc.html);
     await run(

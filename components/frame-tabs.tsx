@@ -55,8 +55,8 @@ import {
   type GroupColor,
   cycle,
   focus,
-  follow,
-  go,
+  navigate,
+  step as stepTab,
   move,
   moveBy,
   nth,
@@ -228,7 +228,7 @@ export function useFrameTabs({
       }
       if (here && !plain && activePlace(next, 0) !== here) {
         const same = next.frames[0].tabs.find((t) => placeOf(t) === here);
-        next = same ? activate(next, 0, same.id) : follow(next, 0, here, "push");
+        next = same ? activate(next, 0, same.id) : navigate(next, 0, here, "push");
       }
       return next;
     },
@@ -306,8 +306,9 @@ export function useFrameTabs({
         return;
       }
       // Back or forward to an entry of another tab: commit() shows this
-      // tab's step instead.
-      const next = follow(l, 0, place, how, how === "replace" ? browserPlaceAt(-1) : null);
+      // tab's step instead. A pinned tab keeps its page: the place opens
+      // in a new tab beside it (#466).
+      const next = navigate(l, 0, place, how, how === "replace" ? browserPlaceAt(-1) : null);
       if (next !== l) commit(next);
     };
     nav?.addEventListener("navigate", navigating);
@@ -344,7 +345,7 @@ export function useFrameTabs({
       const frame = from ?? frameNow(l);
       if (mode === "here") {
         if (frame !== 1 || !l.frames[1] || !wideRef.current) return false;
-        commit(focus(follow(l, 1, place, "push"), 1), { address: false });
+        commit(focus(navigate(l, 1, place, "push"), 1), { address: false });
         return true;
       }
       const target = mode === "side" && wideRef.current ? (frame === 0 ? 1 : 0) : frame;
@@ -473,8 +474,13 @@ export function useFrameTabs({
         const [, frameText, tabId] = step.key.split(":");
         const frame = Number(frameText);
         if (!l.frames[frame] || tabOf(l.frames[frame]).id !== tabId) return;
-        const next = go(l, frame, step.delta);
+        const next = stepTab(l, frame, step.delta);
         if (next === l) return;
+        // From a pinned tab: a new tab beside it (#466).
+        if (tabOf(next.frames[frame]).id !== tabId) {
+          commit(next, { address: frame === 0 });
+          return;
+        }
         // The same step in the browser's history: through it, so the
         // browser's own buttons stay in step.
         if (frame === 0 && !ownSteps.current.length && browserPlaceAt(step.delta) === activePlace(next, 0)) {

@@ -76,6 +76,9 @@ export async function rewriteDocument(
   rowId: string | null,
   userId: string,
   change: (doc: PMNode) => PMNode | null,
+  // false: a change of form only (lib/page-chip-upgrade.ts) – the page or
+  // record keeps its "changed" time and author.
+  options: { touch?: boolean } = {},
 ) {
   const stored = rowId
     ? (await one<{ state: Uint8Array | null; html: string; generation: string }>(
@@ -104,12 +107,14 @@ export async function rewriteDocument(
   );
   const state = Y.encodeStateAsUpdate(ydoc);
   const html = stateHtml(ydoc);
+  const touch = options.touch !== false;
   if (rowId) {
     await run("UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?", state, html, nowText(), rowId);
-    await run("UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?", html, nowText(), userId, rowId);
+    if (touch) await run("UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?", html, nowText(), userId, rowId);
+    else await run("UPDATE rows SET content=? WHERE id=?", html, rowId);
   } else {
     await run("UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?", state, html, nowText(), pageId);
-    await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+    if (touch) await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   }
   const update = Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString("base64");
   const key = documentKey(pageId, rowId, stored.generation);

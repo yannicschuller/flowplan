@@ -246,6 +246,7 @@ import {
   Callout,
   Toggle,
   Mention,
+  PageLink,
   Columns,
   Column,
   Media,
@@ -277,6 +278,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { ListTidy, TabStaysInText } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
+import { chipTitle, pageChipContent } from "@/lib/page-chip";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
@@ -647,7 +649,7 @@ export default function DocumentEditor({
     }
     const link = editor.schema.nodes.paragraph.create(
       first.isTextblock ? { blockId: first.attrs.blockId } : null,
-      editor.schema.text(title, [editor.schema.marks.link.create({ href: `/#page=${created.id}` })]),
+      editor.schema.nodes.pageLink.create({ href: `/#page=${created.id}`, title: chipTitle(title) || title }),
     );
     const tr = editor.state.tr.replaceWith(range.from, range.to, link);
     editor.view.dispatch(tr.scrollIntoView());
@@ -673,7 +675,7 @@ export default function DocumentEditor({
       return;
     }
     if (!created || editor.isDestroyed) return;
-    const link = { type: "text", text: created.title, marks: [{ type: "link", attrs: { href: `/#page=${created.id}` } }] };
+    const link = pageChipContent(`/#page=${created.id}`, created.title);
     // Typed on meanwhile: where the cursor is now.
     const chain = editor.chain().focus();
     (editor.state.doc === before ? chain.insertContentAt(at, link) : chain.insertContent(link)).run();
@@ -1008,6 +1010,8 @@ export default function DocumentEditor({
         // The workflow button (#168): starts a workflow with a manual trigger.
         WorkflowButtonView.configure({ pageId, workspaceId: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.workspace_id || linkedContext.current?.pages[0]?.workspace_id || "" }),
         Mention,
+        // Page links as chips (#466): one piece of the text.
+        PageLink,
         // The linked page's or record's own icon in front of the link (#96).
         PageLinkIcons,
         Columns,
@@ -2895,7 +2899,7 @@ export default function DocumentEditor({
       editor
         ?.chain()
         .focus()
-        .insertContent({ type: "text", text: link.title, marks: [{ type: "link", attrs: { href: `/#page=${link.dayId}` } }] })
+        .insertContent(pageChipContent(`/#page=${link.dayId}`, link.title))
         .run();
       setReferences(false);
       setReferenceQuery("");
@@ -2985,11 +2989,7 @@ export default function DocumentEditor({
       editor
         ?.chain()
         .focus()
-        .insertContent({
-          type: "text",
-          text: blockLinkLabel(hit.pageTitle || t("Ohne Titel", "Untitled"), hit.text),
-          marks: [{ type: "link", attrs: { href: blockLinkHref({ pageId: hit.pageId, blockId }) } }],
-        })
+        .insertContent(pageChipContent(blockLinkHref({ pageId: hit.pageId, blockId }), blockLinkLabel(hit.pageTitle || t("Ohne Titel", "Untitled"), hit.text)))
         .run();
       setReferences(false);
       setReferenceQuery("");
@@ -3007,12 +3007,8 @@ export default function DocumentEditor({
         editor
           ?.chain()
           .focus()
-          .insertContent({
-            type: "text",
-            // Found by an alias: the alias is the link text.
-            text: alias || p.title,
-            marks: [{ type: "link", attrs: { href: `/#page=${p.id}` } }],
-          })
+          // Found by an alias: the alias is the link text.
+          .insertContent(pageChipContent(`/#page=${p.id}`, alias || p.title || t("Ohne Titel", "Untitled")))
           .run();
         setReferences(false);
         setReferenceQuery("");
@@ -3025,11 +3021,7 @@ export default function DocumentEditor({
         editor
           ?.chain()
           .focus()
-          .insertContent({
-            type: "text",
-            text: record.alias || record.title,
-            marks: [{ type: "link", attrs: { href: `/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}` } }],
-          })
+          .insertContent(pageChipContent(`/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}`, record.alias || record.title || t("Ohne Titel", "Untitled")))
           .run();
         setReferences(false);
         setReferenceQuery("");
@@ -3118,7 +3110,7 @@ export default function DocumentEditor({
       editor.chain().focus().insertContentAt(at, { type: "text", text: url, marks: [{ type: "link", attrs: { href: url } }] }).run();
       return;
     }
-    editor.chain().focus().insertContentAt(at, { type: "text", text: label, marks: [{ type: "link", attrs: { href } }] }).run();
+    editor.chain().focus().insertContentAt(at, pageChipContent(href, label)).run();
   };
   return (
     <div

@@ -50,11 +50,19 @@ export async function pageToRecordPlan(user: Identity, pageId: string) {
 }
 
 const address = /^(.*#page=)([0-9a-f-]{36})((?:&block=[\w-]{1,64})?)$/i;
-// Changes the href of link marks (page and record links, @ links); `href`
+// Changes the href of link marks and page link chips (page and record
+// links, @ links); `href`
 // returns the new address or null to keep a link as it is.
 export function relinkDocument(doc: PMNode, href: (current: string) => string | null) {
   const changes: { from: number; to: number; href: string; mark: PMNode["marks"][number] }[] = [];
+  // Page links as chips (#466): their own address.
+  const chips: { pos: number; node: PMNode; href: string }[] = [];
   doc.descendants((node, pos) => {
+    if (node.type.name === "pageLink") {
+      const next = typeof node.attrs.href === "string" ? href(node.attrs.href.trim()) : null;
+      if (next !== null) chips.push({ pos, node, href: next });
+      return false;
+    }
     if (!node.isText) return true;
     for (const mark of node.marks) {
       if (mark.type.name !== "link" || typeof mark.attrs.href !== "string") continue;
@@ -63,8 +71,9 @@ export function relinkDocument(doc: PMNode, href: (current: string) => string | 
     }
     return false;
   });
-  if (!changes.length) return null;
+  if (!changes.length && !chips.length) return null;
   const tr = new Transform(doc);
+  for (const chip of chips) tr.setNodeMarkup(chip.pos, undefined, { ...chip.node.attrs, href: chip.href }, chip.node.marks);
   for (const change of changes)
     tr.removeMark(change.from, change.to, change.mark).addMark(change.from, change.to, change.mark.type.create({ ...change.mark.attrs, href: change.href }));
   return tr.doc;

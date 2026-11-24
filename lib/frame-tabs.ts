@@ -7,6 +7,7 @@
 // components/frame-tabs.tsx keeps the layout per device and draws the tab
 // bars; this file is the pure model, without the DOM (tests/frame-tabs.test.ts).
 import { stepOf } from "./history-nav";
+import { parsePageLocation } from "./page-location";
 
 export type Tab = {
   id: string;
@@ -164,6 +165,33 @@ export function follow(layout: Layout, frame: number, place: string, change: Cha
     else next = pushed(tab, place);
   }
   return withFrame(layout, frame, withTab(f, next));
+}
+
+// Pinned tabs keep their page (#466): every way out of one – a link, a
+// new sub-page, the search, the page tree, a record, back or forward –
+// opens the place in a new tab beside it. Steps that stay on its page or
+// record (a block, a view of a database) stay in it.
+const placeIdentity = (place: string) => {
+  const location = place.startsWith("page=") ? parsePageLocation(place) : null;
+  return location ? `page=${location.pageId}${location.rowId ? `&row=${location.rowId}` : ""}` : place;
+};
+export const leavesPlace = (from: string | undefined, to: string) => !!from && placeIdentity(from) !== placeIdentity(to);
+export function navigate(layout: Layout, frame: number, place: string, change: Change = "push", before?: string | null): Layout {
+  const f = layout.frames[frame];
+  if (!f) return layout;
+  const tab = tabOf(f);
+  if (tab.pinned && leavesPlace(placeOf(tab), place) && f.tabs.length < MAX_TABS) return open(layout, place, { frame, reuse: false });
+  return follow(layout, frame, place, change, before);
+}
+// A step through the active tab's history (go); from a pinned tab, as a
+// new tab beside it.
+export function step(layout: Layout, frame: number, delta: number): Layout {
+  const f = layout.frames[frame];
+  if (!f) return layout;
+  const tab = tabOf(f);
+  const target = tab.stack[Math.max(0, Math.min(tab.stack.length - 1, tab.index + delta))];
+  if (tab.pinned && target !== undefined && leavesPlace(placeOf(tab), target) && f.tabs.length < MAX_TABS) return open(layout, target, { frame, reuse: false });
+  return go(layout, frame, delta);
 }
 
 // Back (negative) or forward through the active tab's own history.

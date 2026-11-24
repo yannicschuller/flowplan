@@ -245,6 +245,8 @@ test("inserted links are page links: in backlinks, renamed with their page, in t
   const next = state.apply(aiInsertTransaction(state, blocks, { from: empty, to: empty }, "replace")!);
   const links: { text: string; href: string }[] = [];
   next.doc.descendants((node) => {
+    // Page links are chips (#466).
+    if (node.type.name === "pageLink") links.push({ text: node.attrs.title, href: node.attrs.href });
     const link = node.marks.find((m) => m.type.name === "link");
     if (node.isText && link) links.push({ text: node.text!, href: link.attrs.href });
   });

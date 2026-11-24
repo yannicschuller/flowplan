@@ -12,6 +12,7 @@ import { rewriteDocument } from "./document-rewrite";
 import { assertRowAccess } from "./row-access";
 import type { Identity, Page } from "./types";
 import { BLOCK_LINK_SEPARATOR } from "./block-ids";
+import { PAGE_CHIP, chipTitle } from "./page-chip";
 
 type Target = { pageId: string; rowId?: string };
 const address = /#page=([0-9a-f-]{36})(?:&row=([0-9a-f-]{36}))?$/i;
@@ -57,8 +58,22 @@ export function retitleLinks(doc: PMNode, target: Target, before: string, after:
     close();
     return false;
   });
-  if (!ranges.length) return null;
+  // Page links as chips (#466): the chip's text, same rules.
+  const chips: { pos: number; attrs: Record<string, unknown> }[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name !== PAGE_CHIP) return true;
+    const href = String(node.attrs.href || "");
+    const title = String(node.attrs.title || "");
+    if (linksTo(href, target) && title.trim() === before.trim()) chips.push({ pos, attrs: { ...node.attrs, title: chipTitle(after) } });
+    const prefix = before.trim() + BLOCK_LINK_SEPARATOR;
+    if (linksToBlockOf(href, target) && title.trimStart().startsWith(prefix))
+      chips.push({ pos, attrs: { ...node.attrs, title: chipTitle(after.trim() + BLOCK_LINK_SEPARATOR + title.trimStart().slice(prefix.length)) } });
+    return false;
+  });
+  if (!ranges.length && !chips.length) return null;
   const tr = new Transform(doc);
+  // Attribute changes keep every position: the chips first.
+  for (const chip of chips) tr.setNodeMarkup(chip.pos, undefined, chip.attrs, doc.nodeAt(chip.pos)!.marks);
   for (const range of ranges.reverse()) tr.replaceWith(range.from, range.to, doc.type.schema.text(range.text, range.marks));
   return tr.doc;
 }

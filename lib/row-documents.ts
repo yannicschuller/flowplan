@@ -11,6 +11,7 @@ import { applyDocumentUpdate, cleanHtml, escaped, htmlState, stateHtml } from ".
 import type { Identity, Page, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
 import { recordDocumentAuthors } from "./document-authors";
+import { upgradePageChips } from "./page-chip-upgrade";
 import { mentionWebhook } from "./webhooks";
 import { mapHtmlPlaceholders, mapPlaceholders, mapTextCells, storeKey } from "./record-placeholders";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
@@ -73,7 +74,9 @@ export async function ensureRowDocument(row: Row, forUpdate = false): Promise<St
 }
 export async function rowDocumentData(user: Identity, pageId: string, rowId: string) {
   const { row } = await requireRow(user, pageId, rowId);
-  const d = await ensureRowDocument(row);
+  let d = await ensureRowDocument(row);
+  // Page links stored as link marks become chips (#466, lib/page-chip-upgrade.ts).
+  if (await upgradePageChips(pageId, rowId, d.html)) d = await ensureRowDocument(row);
   return {
     state: Buffer.from(d.state).toString("base64"),
     html: d.html,
