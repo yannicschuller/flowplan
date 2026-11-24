@@ -25,9 +25,13 @@
 }
 .whats-new-versions {
   display: grid;
+  /* One column no wider than the dialog: a grid's auto column grew to the
+     notes' widest line in the iOS app, past the sheet's right edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .whats-new-version {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -127,6 +131,8 @@
   margin: 0;
   padding-inline-start: 22px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
   gap: 5px;
   line-height: 1.45;
 }
