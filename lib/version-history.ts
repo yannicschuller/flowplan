@@ -7,6 +7,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { expireTrash } from "./trash";
+import { expireTemplateDrafts } from "./template-drafts";
 import { pruneNotifications } from "./notification-retention";
 import { pruneSearchVisits } from "./search-visits";
 import {
@@ -245,6 +246,8 @@ export async function startRetentionWorker() {
       await pruneSnapshots();
       // Pages, spaces, records and templates after the trash period (#123).
       await expireTrash();
+      // Drafts of template contents left alone (#461, lib/template-drafts.ts).
+      await expireTemplateDrafts();
       // Old notifications (lib/notification-retention.ts).
       await pruneNotifications();
       // The quick search's visit history (#243).

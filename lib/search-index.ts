@@ -531,7 +531,9 @@ export async function searchWorkspace(
     return out;
   };
   const scope =
-    "p.workspace_id=? AND p.deleted_at IS NULL" +
+    // Drafts of template contents (#461) are not found, not even by their
+    // creator (lib/template-drafts.ts).
+    "p.workspace_id=? AND p.deleted_at IS NULL AND p.template_draft IS NULL" +
     (options.spaceId ? " AND p.space_id=?" : "") +
     (options.spaceIds ? ` AND p.space_id IN ${sql.jsonValues()}` : "") +
     (scoped ? ` AND p.id IN ${sql.jsonValues()}` : "");

@@ -709,6 +709,22 @@ const editorScenes: Scene[] = [
     },
   },
   {
+    // A draft of a saved page template (#461): its bar and "Discard".
+    id: "template-draft",
+    group: "Documents & editor",
+    title: "Template draft",
+    covers: ["components/template-draft-bar.tsx"],
+    steps: async (page, ctx) => {
+      const source = await ctx.fixture({ html: RICH_HTML, title: "Meeting notes" });
+      const template = await ctx.command({ action: "template.save", pageId: source, name: `Meeting notes ${ctx.variant.id}` });
+      const draft = await ctx.command({ action: "template.draft", workspaceId: ctx.ids.workspaceId, templateId: template.id });
+      await ctx.open(`#page=${draft.id}`);
+      await editor(page).waitFor();
+      await page.locator(".template-draft-bar").getByRole("button", { name: "Discard" }).click();
+      await page.getByRole("dialog").last().waitFor();
+    },
+  },
+  {
     id: "page-aliases",
     group: "Documents & editor",
     title: "Aliases",

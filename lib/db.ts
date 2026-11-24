@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 129;
+export const SCHEMA_VERSION = 130;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1684,11 +1684,30 @@ function migrate(d: DatabaseSync) {
   // lib/my-task-target.ts) and "Erledigte Aufgaben durchstreichen" (#458,
   // lib/done-strike-pref.ts).
   migrateMyTaskTarget(d);
+  // Schema 130 – drafts of saved page templates (#461,
+  // lib/template-drafts.ts).
+  migrateTemplateDrafts(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 130 – drafts of saved page templates (#461, lib/template-drafts.ts):
+// pages.template_draft names the template whose content a page holds while
+// someone edits it ("Inhalt bearbeiten"); NULL for every other page. Such a
+// page is readable only by the person who opened it (its created_by,
+// lib/permissions.ts) and is deleted when the template is saved, the draft
+// discarded or left alone for TEMPLATE_DRAFT_DAYS. A change of either
+// column moves the "roles" version (lib/cache-versions.ts). An older
+// version would show drafts to everyone in the space, hence the number.
+function migrateTemplateDrafts(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "template_draft"))
+    d.exec("ALTER TABLE pages ADD COLUMN template_draft TEXT");
+  const roles = "INSERT INTO cache_versions(name,version) SELECT 'roles',0 WHERE NOT EXISTS(SELECT 1 FROM cache_versions WHERE name='roles'); UPDATE cache_versions SET version=(random() % 9007199254740991) WHERE name='roles';";
+  d.exec(`CREATE INDEX IF NOT EXISTS pages_template_draft ON pages(template_draft) WHERE template_draft IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS cache_pages_draft AFTER UPDATE OF template_draft,created_by ON pages
+      WHEN NEW.template_draft IS NOT OLD.template_draft OR (NEW.template_draft IS NOT NULL AND NEW.created_by IS NOT OLD.created_by) BEGIN ${roles} END;`);
 }
 // Schema 124 – the highlight colour of a text comment thread (#450,
 // lib/comment-colors.ts): inline_threads.color holds a palette name of the
