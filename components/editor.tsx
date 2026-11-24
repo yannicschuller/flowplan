@@ -98,6 +98,7 @@ import {
   moveSelectedBlock,
 } from "@/lib/block-shortcuts";
 import { BlockGaps } from "@/lib/block-gaps";
+import { TextTurnShortcut, turnIntoText } from "@/lib/block-turn";
 import { useCanCreatePages } from "./create-rights";
 import { readTable, tableTitle } from "@/lib/table-read";
 import { TABLE_DATABASE_LIMITS } from "@/lib/table-database";
@@ -906,6 +907,7 @@ export default function DocumentEditor({
         ShortcutBlockquote.configure({ creates: quoteShortcut }),
         EditableCodeBlock,
         BlockShortcuts,
+        TextTurnShortcut,
         // Room for a new block between tables, images and embeds (#261).
         BlockGaps,
         // Rows and columns of tables: move and duplicate the selected ones (#240).
@@ -2026,7 +2028,7 @@ export default function DocumentEditor({
       keywords: ["text", "p", "absatz", "paragraph"],
       description: t("Einfach losschreiben", "Just start writing"),
       icon: TextAlignLeft,
-      run: () => editor?.chain().focus().setParagraph().run(),
+      run: () => editor?.chain().focus().command(turnIntoText).run(),
     },
     {
       id: "h1",
@@ -2644,11 +2646,16 @@ export default function DocumentEditor({
     setSlash(null);
     setSlashRecents(rememberSlashCommand(item.id));
     if (menu.mode === "inline" && editor) {
+      // The command is an undo step of its own (#464): less than half a
+      // second after typing or another change, Yjs merged it with that, and
+      // ⌘Z took both back.
+      beginUndoStep(editor.state);
       const to = editor.state.selection.from;
       if (to > menu.from)
         editor.chain().focus().deleteRange({ from: menu.from, to }).run();
     } else editor?.commands.focus();
     item.run();
+    if (editor) beginUndoStep(editor.state);
   };
   // Back from a second level to the entry that opened it.
   slashBack.current = () => {

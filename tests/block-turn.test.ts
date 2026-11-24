@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Window } from "happy-dom";
 import * as Y from "yjs";
-import { EditorState } from "@tiptap/pm/state";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-block-turn-"));
@@ -27,6 +27,7 @@ after(async () => {
 const { documentSchema } = await import("../lib/document-schema");
 const { toggleToBlock, blockToToggle, blockToMath, blocksToColumns, setBlockColors } = await import("../lib/block-turn");
 const { blockColor } = await import("../lib/block-colors");
+const itemTurn = await import("../lib/block-turn");
 const { htmlState, stateHtml, cleanHtml } = await import("../lib/document-server");
 const { htmlToMarkdown } = await import("../lib/markdown");
 const { markdownToHtml } = await import("../lib/markdown-import");
@@ -176,4 +177,97 @@ test("block equations and columns", () => {
   assert.equal(trn.doc.child(0).child(2).textContent, "");
   // More than the columns the editor allows: refused.
   assert.equal(blocksToColumns(s.tr, 0, s.doc.content.size, 4), false);
+});
+
+// "Text" on tasks and list items (#464): the items leave their list, the
+// rest of the list stays as it was – one step, the caret in the text.
+test("Text on a task or list item lifts it out of its list, splitting the list around it (#464)", () => {
+  const { itemsToText, turnIntoText } = itemTurn;
+  const task = (text: string, attrs: Record<string, unknown> = {}, ...sub: PMNode[]) =>
+    schema.nodes.taskItem.create({ checked: false, ...attrs }, [p(text), ...(sub.length ? [schema.nodes.taskList.create(null, sub)] : [])]);
+  const tasks = (...items: PMNode[]) => schema.nodes.taskList.create({ blockId: "lst12345" }, items);
+  const li = (text: string) => schema.nodes.listItem.create(null, p(text));
+  // Text, its block's kind and its nesting: "TL[a, b]", "p(x)".
+  const outline = (node: PMNode): string => {
+    const kids = () => node.content.content.map(outline).join(", ");
+    if (node.type.name === "doc") return kids();
+    if (node.type.name === "taskList") return `TL[${kids()}]`;
+    if (node.type.name === "bulletList") return `UL[${kids()}]`;
+    if (node.type.name === "orderedList") return `OL${node.attrs.start}[${kids()}]`;
+    if (node.type.name === "taskItem" || node.type.name === "listItem") return kids();
+    return node.type.name === "paragraph" ? node.textContent : node.type.name;
+  };
+  const caretAt = (s: EditorState, text: string, end = false) => {
+    let at = -1;
+    s.doc.descendants((n, pos) => {
+      if (at < 0 && n.isText && n.text === text) at = pos + (end ? n.nodeSize : 0);
+      return at < 0;
+    });
+    return s.apply(s.tr.setSelection(TextSelection.create(s.doc, at)));
+  };
+  const turn = (s: EditorState) => {
+    const trn = s.tr;
+    const done = itemsToText(trn);
+    return { done, trn, doc: trn.doc };
+  };
+
+  // The issue's case: three tasks, the first one becomes text; the other
+  // two stay one task list and keep their states and dates.
+  const three = () =>
+    docState(tasks(task("text 1", { blockId: "tsk11111" }), task("text 2", { status: "progress", due: "2026-12-01" }), task("text 3", { status: "progress" })));
+  let r = turn(caretAt(three(), "text 1", true));
+  assert.equal(r.done, true);
+  assert.equal(r.trn.steps.length, 1, "one undo step");
+  assert.equal(outline(r.doc), "text 1, TL[text 2, text 3]");
+  assert.equal(r.doc.child(0).type.name, "paragraph");
+  assert.equal(r.doc.child(0).attrs.blockId, "tsk11111", "links to the task keep working");
+  assert.equal(r.doc.child(1).attrs.blockId, "lst12345", "the rest is still the same list");
+  assert.deepEqual([r.doc.child(1).child(0).attrs.status, r.doc.child(1).child(0).attrs.due], ["progress", "2026-12-01"]);
+  assert.equal(r.trn.selection.$from.parent.textContent, "text 1");
+  assert.equal(r.trn.selection.$from.parentOffset, 6, "the caret stays where it was");
+
+  // In the middle: the list is split; at the end: nothing left after it.
+  r = turn(caretAt(three(), "text 2"));
+  assert.equal(outline(r.doc), "TL[text 1], text 2, TL[text 3]");
+  assert.equal(r.trn.selection.$from.parent.textContent, "text 2");
+  assert.equal(r.trn.selection.$from.parentOffset, 0);
+  r = turn(caretAt(three(), "text 3"));
+  assert.equal(outline(r.doc), "TL[text 1, text 2], text 3");
+
+  // Several selected tasks at once.
+  const s3 = three();
+  let a = -1,
+    b = -1;
+  s3.doc.descendants((n, pos) => {
+    if (n.isText && n.text === "text 1") a = pos + 2;
+    if (n.isText && n.text === "text 2") b = pos + 3;
+    return true;
+  });
+  const trnRange = s3.tr.setSelection(TextSelection.create(s3.doc, a, b));
+  assert.equal(itemsToText(trnRange), true);
+  assert.equal(outline(trnRange.doc), "text 1, text 2, TL[text 3]");
+  assert.equal(trnRange.doc.textBetween(trnRange.selection.from, trnRange.selection.to, "|"), s3.doc.textBetween(a, b, "|"), "the selection keeps its text");
+
+  // A task with subtasks: its line becomes text, the subtasks stay tasks
+  // (before, setParagraph left such a task as it was – box and all).
+  r = turn(caretAt(docState(tasks(task("a", {}, task("a1"), task("a2")), task("b"))), "a"));
+  assert.equal(outline(r.doc), "a, TL[a1, a2], TL[b]");
+  // A subtask stays under its parent task, as a line without box; its
+  // siblings keep their level.
+  r = turn(caretAt(docState(tasks(task("a", {}, task("a1"), task("a2"), task("a3")), task("b"))), "a2"));
+  assert.equal(outline(r.doc), "TL[a, TL[a1], a2, TL[a3], b]");
+
+  // Bullet and numbered items the same way; the numbers after it stay.
+  r = turn(caretAt(docState(schema.nodes.bulletList.create(null, [li("x"), li("y"), li("z")])), "y"));
+  assert.equal(outline(r.doc), "UL[x], y, UL[z]");
+  r = turn(caretAt(docState(schema.nodes.orderedList.create(null, [li("x"), li("y"), li("z")])), "y"));
+  assert.equal(outline(r.doc), "OL1[x], y, OL3[z]");
+
+  // Outside a list nothing happens here: "Text" is the editor's setParagraph.
+  assert.equal(turn(caretAt(docState(p("frei")), "frei")).done, false);
+  let paragraphs = 0;
+  const heading = docState(schema.nodes.heading.create({ level: 2 }, schema.text("Kopf")));
+  const trnHead = caretAt(heading, "Kopf").tr;
+  assert.equal(turnIntoText({ tr: trnHead, commands: { setParagraph: () => ++paragraphs > 0 } }), true);
+  assert.equal(paragraphs, 1);
 });

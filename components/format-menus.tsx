@@ -7,6 +7,7 @@
 // (components/editor.tsx) and the one of shared pages
 // (components/shared-editor.tsx).
 import { useRef, type ReactNode } from "react";
+import { turnIntoText } from "@/lib/block-turn";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -210,7 +211,7 @@ export function HeadingMenu({ editor }: { editor: Editor | null }) {
       onChoose={(value, selection) => {
         if (!editor) return;
         const chain = chainAt(editor, selection);
-        if (value === "paragraph") chain.setParagraph().run();
+        if (value === "paragraph") chain.command(turnIntoText).run();
         else chain.setHeading({ level: Number(value) as 1 | 2 | 3 | 4 }).run();
       }}
     />
