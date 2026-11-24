@@ -114,8 +114,12 @@ test("offline, today's entry still says so and can be written; back online it is
   await expect(today).toBeEnabled();
   await today.click();
   await expect(page.locator(".journal-draft-hint")).toContainText(offlineText);
-  // Back online and on the journal page: today is the server's draft again.
+  // Back on the journal page while still offline: it cannot be loaded (a
+  // journal is never kept on the device) …
+  const journalFailed = page.waitForEvent("requestfailed", (r) => r.url().includes(`/api/pages/${journalId}`));
   await page.goBack();
+  await journalFailed;
+  // … and once online it loads by itself: today is the server's draft again.
   await context.setOffline(false);
   await expect(today).toContainText("Noch nichts geschrieben", { timeout: 20_000 });
   await expect(today).not.toContainText(offlineText);

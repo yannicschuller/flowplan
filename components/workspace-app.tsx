@@ -2153,6 +2153,17 @@ export default function WorkspaceApp({
             retry: kind === "offline" || kind === "server" ? () => void openPageRef.current(id, target) : undefined,
             background: keptShown && currentId.current === id,
           });
+        // Opened without a connection and without a kept copy (a journal is
+        // never kept, lib/swr-cache.ts): the page area stays empty until the
+        // connection is back, then the page loads by itself (#456) – unless
+        // another place was opened meanwhile.
+        if (kind === "offline" && !keptShown && deviceOffline() && version === navigationVersion.current) {
+          const again = () => {
+            if (version === navigationVersion.current && currentId.current === id && screenRef.current === "page" && !dataRef.current)
+              void openPageRef.current(id, target);
+          };
+          window.addEventListener("online", again, { once: true });
+        }
       } finally {
         if (version === navigationVersion.current) {
           navigationPending.current = false;
