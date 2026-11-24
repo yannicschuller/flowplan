@@ -98,10 +98,12 @@ test("#463: the title property cannot become an ID", async ({ page }) => {
   await page.locator(`th[data-field-id="${titleId}"] > button`).first().click();
   const edit = page.getByRole("dialog", { name: "Eigenschaft bearbeiten", exact: true });
   const type = edit.getByLabel("Eigenschaftstyp");
-  for (const computed of ["id", "formula", "created_at"])
+  // An ID or a value Flowplan fills in itself is refused; a formula or
+  // rollup title stays possible – a title derived from other properties.
+  for (const computed of ["id", "created_at"])
     await expect(type.locator(`option[value="${computed}"]`)).toHaveJSProperty("disabled", true);
-  await expect(type.locator('option[value="text"]')).toHaveJSProperty("disabled", false);
-  await expect(type.locator('option[value="checkbox"]')).toHaveJSProperty("disabled", false);
+  for (const allowed of ["text", "checkbox", "formula", "rollup"])
+    await expect(type.locator(`option[value="${allowed}"]`)).toHaveJSProperty("disabled", false);
   await page.keyboard.press("Escape");
   await expect(edit).toBeHidden();
   // A new property may be an ID.
