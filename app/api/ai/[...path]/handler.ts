@@ -37,6 +37,8 @@ import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 import { aiJournalSummaryResponse } from "@/lib/ai/journal-summary";
 import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
+import { runPlan, undoPlan } from "@/lib/ai/plan";
+import { planResponse } from "@/lib/ai/plan-read";
 import { FLASHCARD_LIMITS, addFlashcards, proposeFlashcards, type ProposeCardsInput } from "@/lib/ai/flashcards";
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
 import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
@@ -248,6 +250,14 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       if (path[1] === "propose")
         return NextResponse.json(await proposeActions(user, (await body(req, ACTION_LIMITS.context * 4 + 100_000)) as ProposeInput, req.signal), noStore);
       if (path[1] === "run") return NextResponse.json(await runActions(user, await body(req, 2_000_000)), noStore);
+    }
+    // Plans in "KI fragen" (#462, lib/ai/plan-read.ts, lib/ai/plan.ts): an
+    // instruction read and planned (NDJSON progress, then the checked plan),
+    // the confirmed steps run as the person, and "Alles rückgängig".
+    if (path.length === 1 && path[0] === "plan") return await planResponse(user, await body(req, 200_000), req.signal);
+    if (path.length === 2 && path[0] === "plan") {
+      if (path[1] === "run") return NextResponse.json(await runPlan(user, await body(req, 4_000_000)), noStore);
+      if (path[1] === "undo") return NextResponse.json(await undoPlan(user, await body(req, 1_000_000)), noStore);
     }
     // Flashcards (lib/ai/flashcards.ts): suggestions from a page, a
     // selection, a file or text to review, then the confirmed cards added.

@@ -93,7 +93,7 @@ export function pageEditPrompt(input: { title: string; outline: string; truncate
 }
 
 // The stored document as it is now (its Yjs state, else the HTML).
-async function storedDocument(pageId: string) {
+export async function storedDocument(pageId: string) {
   const stored = await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const ydoc = new Y.Doc();
@@ -105,7 +105,7 @@ async function storedDocument(pageId: string) {
   }
 }
 // Markdown of an edit → blocks of the document schema.
-const parseMarkdown = (markdown: string) =>
+export const parseMarkdown = (markdown: string) =>
   PMNode.fromJSON(rewriteSchema(), htmlJson(cleanHtml(aiMarkdownToHtml(markdown, null, { raw: true })) || "<p></p>")).content;
 
 export type PageEditResult = {

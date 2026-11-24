@@ -29730,6 +29730,271 @@ h3 .block-reactions {
 .ai-ask-suggest-result.error > svg {
   color: var(--signal);
 }
+/* "Nur antworten" in the composer (#462): plans off for a question. */
+.ai-ask-only {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ai-ask-only.active {
+  background: color-mix(in srgb, var(--blue) 10%, var(--bg));
+  color: var(--accent-strong);
+}
+.ai-ask-only:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-border);
+}
+@media (hover: hover) {
+  .ai-ask-only:hover:not(:disabled) {
+    background: var(--hover);
+  }
+}
+@media (max-width: 480px) {
+  .ai-ask-only > span {
+    display: none;
+  }
+}
+/* A plan in the conversation (components/ai-plan.tsx, #462). */
+.ai-ask-plan-summary {
+  margin: 0 0 8px;
+}
+.ai-plan {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.ai-plan-head {
+  display: grid;
+  gap: 4px;
+}
+.ai-plan-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-plan-meta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.ai-plan-read-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-strong);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ai-plan-read {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-plan-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.ai-plan-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-plan-step {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.ai-plan-step.unmentioned {
+  border-color: color-mix(in srgb, var(--signal) 45%, var(--border));
+}
+.ai-plan-step.blocked,
+.ai-plan-step.off {
+  opacity: 0.6;
+}
+.ai-plan-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ai-plan-step-head > input {
+  margin: 0;
+}
+.ai-plan-step-head > svg {
+  flex: none;
+  color: var(--secondary);
+}
+.ai-plan-number {
+  min-width: 16px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.ai-plan-target {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-plan-target::before {
+  content: "· ";
+}
+.ai-plan-flag,
+.ai-plan-reason,
+.ai-plan-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 12px;
+}
+.ai-plan-flag {
+  color: var(--signal);
+}
+.ai-plan-reason {
+  color: var(--muted);
+}
+.ai-plan-result {
+  color: var(--accent-strong);
+}
+.ai-plan-result.failed {
+  color: var(--signal);
+}
+.ai-plan-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-strong);
+  font: inherit;
+  cursor: pointer;
+}
+.ai-plan-preview {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.ai-plan-preview > * {
+  margin: 0;
+}
+.ai-plan-title {
+  font-weight: 600;
+}
+.ai-plan-move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--secondary);
+}
+.ai-plan-text {
+  max-height: 140px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-plan-tasks {
+  padding-left: 4px;
+  list-style: none;
+}
+.ai-plan-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ai-plan-tags .chip.removed {
+  text-decoration: line-through;
+}
+.ai-plan-cells {
+  display: grid;
+  gap: 2px;
+}
+.ai-plan-cells > div {
+  display: flex;
+  gap: 6px;
+}
+.ai-plan-cells dt {
+  color: var(--muted);
+}
+.ai-plan-cells dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ai-plan-diff {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+.ai-plan-diff-item {
+  display: grid;
+  gap: 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-plan-diff del {
+  color: var(--muted);
+  text-decoration-color: var(--signal);
+}
+.ai-plan-diff ins {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+.ai-plan-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+  background: var(--bg);
+}
+.ai-plan-keys {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.ai-plan-done {
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-plan-error {
+  margin: 0;
+}
 /* The handle on the panel's left edge (components/sidebar-resize.tsx). */
 .sidebar-resize.sidebar-resize-start {
   right: auto;
