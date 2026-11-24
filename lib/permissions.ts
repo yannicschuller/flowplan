@@ -77,11 +77,17 @@ export async function spaceRole(user: Identity, space: Space): Promise<Role | nu
     ? membership
     : null;
 }
+// A draft of a saved page template (#461, lib/template-drafts.ts) is read
+// only by whoever opened it – no grant, space or ownership lets anyone else
+// in, and nothing below it either.
+const othersDraft = (user: Identity, page: Pick<Page, "template_draft" | "created_by">) => !!page.template_draft && page.created_by !== user.id;
 export async function pageRole(user: Identity, page: Page): Promise<Role | null> {
   // Known from the roles of all pages of the workspace (workspaceRoles()),
   // when they were computed in this request for the page as it is stored.
   const known = knownRole(user, page) ?? knownRole(user, page, await keptRoles(user, page.workspace_id));
   if (known !== undefined) return known;
+  // A page given without the column (a partial row): as it is stored.
+  if (othersDraft(user, "template_draft" in page ? page : ((await pageRow(page.id)) ?? page))) return null;
   const space = await spaceRow(page.space_id as string);
   if (!space || space.deleted_at) return null;
   const membership = await memberRole(user, page.workspace_id);
@@ -105,6 +111,7 @@ export async function pageRole(user: Identity, page: Page): Promise<Role | null>
       if (database) return await (await import("./row-access")).subPageRecordRole(user, database, current.parent_row_id);
     }
     current = await pageRow(current.parent_id);
+    if (current && othersDraft(user, current)) return null;
     if (current) {
       const inherited = await grantRole(user, "page", current.id, page.workspace_id);
       if (inherited)
@@ -151,7 +158,7 @@ export function requireAdmin(user: Identity) {
 // record; shared by everyone's roles of the workspace), so pageRole() takes
 // the answer from here only for a page with exactly these – a page changed
 // in memory is checked on its own.
-type PageLink = Readonly<{ id: string; workspace_id: string; space_id: string | null; parent_id: string | null; parent_row_id: string | null }>;
+type PageLink = Readonly<{ id: string; workspace_id: string; space_id: string | null; parent_id: string | null; parent_row_id: string | null; template_draft: string | null; created_by: string }>;
 export type WorkspaceRoles = { readonly roles: ReadonlyMap<string, Role | null>; readonly links: ReadonlyMap<string, PageLink> };
 type RecordRow = { id: string; page_id: string; access: string; created_by: string | null };
 type RecordGrant = { row_id: string; user_id: string; group_id: string; role: "viewer" | "editor" };
@@ -171,7 +178,7 @@ const kept = globalThis as { flowplanRoles?: VersionedCache<WorkspaceRoles>; flo
 const keptAcross = (kept.flowplanRoles ??= new VersionedCache<WorkspaceRoles>(500));
 const keptLinks = (kept.flowplanPageLinks ??= new VersionedCache<ReadonlyMap<string, PageLink>>(50));
 const pageLinks = async (workspace: string) =>
-  new Map((await all<PageLink>("SELECT id,workspace_id,space_id,parent_id,parent_row_id FROM pages WHERE workspace_id=?", workspace)).map((p) => [p.id, Object.freeze(p)]));
+  new Map((await all<PageLink>("SELECT id,workspace_id,space_id,parent_id,parent_row_id,template_draft,created_by FROM pages WHERE workspace_id=?", workspace)).map((p) => [p.id, Object.freeze(p)]));
 export async function workspaceRoles(user: Identity, workspace: string): Promise<WorkspaceRoles> {
   return await memoized(rolesKey(workspace, user.id), async () => {
     if (inTransaction()) return await computeWorkspaceRoles(user, workspace, await pageLinks(workspace));
@@ -263,7 +270,7 @@ async function computeWorkspaceRoles(user: Identity, workspace: string, links: R
   };
   // The steps of pageRole(), on the rows above.
   function decide(p: PageLink): Role | null | undefined {
-    if (!p.space_id) return null;
+    if (!p.space_id || othersDraft(user, p)) return null;
     const space = spaces.get(p.space_id);
     if (!space) return undefined;
     if (space.deleted_at) return null;
@@ -285,6 +292,7 @@ async function computeWorkspaceRoles(user: Identity, workspace: string, links: R
         return role === undefined ? undefined : combine(user, role, row, recordGrants.get(row.id) || []);
       }
       current = parent;
+      if (othersDraft(user, current)) return null;
       const inherited = pageGrant.get(current.id);
       if (inherited) return capped(inherited);
     }

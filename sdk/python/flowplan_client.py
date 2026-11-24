@@ -1665,6 +1665,46 @@ CommandTemplatePurgeResult = TypedDict("CommandTemplatePurgeResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Open a draft page to edit a saved template's content. Who may change the template's name and visibility may edit its content: its creator or a workspace owner, an administrator for templates of all workspaces or the public gallery; not in the template trash. The draft is a page made from the template – in the template's space, or for a template of the whole workspace in `spaceId` (write access needed). Only its creator sees it: it is not listed in the page tree or found by search, for nobody. Calling it again returns the same draft (`resumed: true`). Save it into the template with template.content, throw it away with template.draft.discard; drafts left alone for 7 days are deleted. Pages already created from the template are not changed.
+CommandTemplateDraft = TypedDict("CommandTemplateDraft", {
+    "action": Required[Literal["template.draft"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "spaceId": str,  # Where a template of the whole workspace opens
+    "version": int,  # The template's version, refused when it changed meanwhile
+}, total=False)
+
+CommandTemplateDraftResult = TypedDict("CommandTemplateDraftResult", {
+    "id": Required[str],
+    "resumed": Required[bool],
+}, total=False)
+
+# Throw away a template draft. Deletes the draft (template.draft) with its files and sub-pages for good. Only its creator; the template stays as it was.
+CommandTemplateDraftDiscard = TypedDict("CommandTemplateDraftDiscard", {
+    "action": Required[Literal["template.draft.discard"]],
+    "pageId": Required[str],
+}, total=False)
+
+CommandTemplateDraftDiscardResult = TypedDict("CommandTemplateDraftDiscardResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Replace a saved template's content with a page's. Same rights as template.draft, plus write access to `pageId`, a page of the template's kind – its draft or any other page ("Replace from page"). Saved as by template.save: the page's content, appearance, tags and property values (for a database its properties, views, the records the person sees and its record templates), with own copies of its files (at most 200, 10 MB each, 100 MB in all) and at most 20 MB. A template of a space takes only pages of that space; one of the whole workspace only the workspace's tags and properties (409 naming the space's, or `spaceMeta: "remove"` leaves them out). A draft is deleted afterwards. Pages already created from the template are not changed.
+CommandTemplateContent = TypedDict("CommandTemplateContent", {
+    "action": Required[Literal["template.content"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "pageId": Required[str],
+    "version": int,  # The template's version, refused when it changed meanwhile
+    "spaceMeta": Literal["remove"],
+}, total=False)
+
+CommandTemplateContentResult = TypedDict("CommandTemplateContentResult", {
+    "ok": Required[Literal[True]],
+    "version": Required[int],
+    "draftDeleted": Required[bool],
+}, total=False)
+
 # Empty the trash of a workspace. Deletes for good everything in the workspace's trash the caller may delete: pages they can edit, spaces they manage, and deleted records they can edit. Pages of others' private spaces and read-only items are never touched. With `scope: "templates"` the template trash is emptied instead (templates the caller manages). Needs the editor role. Cannot be undone.
 CommandTrashEmpty = TypedDict("CommandTrashEmpty", {
     "action": Required[Literal["trash.empty"]],
@@ -2241,7 +2281,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileStrikeDoneTasks", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTaskTarget", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandCommentEdit", "CommandCommentDelete", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandStudySettings", "CommandStudyQueue", "CommandStudyReview", "CommandStudyReviews", "CommandStudyReminder", "CommandStudyUndo", "CommandStudyPrefs", "CommandStudyHistory", "CommandStudyParams", "CommandStudyOptimize", "CommandStudyDue", "CommandStudyStats", "CommandWorkspaceCreate", "CommandWorkspaceTheme", "CommandWorkspaceLinkRules", "CommandWorkspacePrintPresets", "CommandProfilePrint", "CommandProfilePlainLook", "CommandProfileTextMenu", "CommandProfilePageIcon", "CommandProfileExternalLinkIcon", "CommandProfileQuoteShortcut", "CommandProfileFormattingToolbar", "CommandProfileToolbarLayout", "CommandProfileMotion", "CommandProfileFullWidthPages", "CommandProfileCommentMargin", "CommandProfileStrikeDoneTasks", "CommandProfileWhiteboardCanvas", "CommandProfileNotificationSound", "CommandProfileStartScreen", "CommandProfileUpdateNotes", "CommandProfileSettingsLevel", "CommandProfileModules", "CommandProfileHtmlScripts", "CommandProfileHtmlScriptsClear", "CommandReleaseNotesList", "CommandSpaceCreate", "CommandSpaceUpdate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTemplateDraft", "CommandTemplateDraftDiscard", "CommandTemplateContent", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandDatabaseCollapseRecordProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandTaskAdd", "CommandTaskTarget", "CommandTasksSeen", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandPageTasksToDatabase", "CommandPageTasksToDatabaseUndo", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandCommentEdit", "CommandCommentDelete", "CommandMemberInvite", "CommandInviteLinkCreate", "CommandInviteLinkRevoke", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

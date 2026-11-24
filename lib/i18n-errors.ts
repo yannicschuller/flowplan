@@ -887,6 +887,11 @@ const exact: Record<string, string> = {
   "Die Seite zuerst in den Papierkorb verschieben.": "Move the page to the trash first.",
   "Die Vorlage zuerst in den Papierkorb verschieben.": "Move the template to the trash first.",
   "Vorlagentyp passt nicht zur Seite.": "Template type does not fit the page.",
+  // Editing a template's content (#461, lib/template-drafts.ts).
+  "Der Inhalt dieser Vorlage lässt sich nicht bearbeiten.": "This template's content cannot be edited.",
+  "Bereich fehlt.": "Space missing.",
+  "Entwurf nicht gefunden.": "Draft not found.",
+  "Diese Seite ist der Entwurf einer anderen Vorlage.": "This page is the draft of another template.",
   // A saved template as a journal's daily template (#316, lib/journal-saved-template.ts).
   "Nur Dokumentvorlagen lassen sich als Tagesvorlage verwenden.": "Only document templates can be used as the daily template.",
   "Doppelte Eigenschaft, Ansicht oder Datensatz-ID in Vorlage.": "Duplicate property, view or record ID in the template.",

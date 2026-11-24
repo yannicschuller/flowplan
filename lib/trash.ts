@@ -10,6 +10,7 @@ import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
 import type { Identity, Page, Space } from "./types";
 import { filterAsync } from "./each-async";
 import { claimTicketPrefix } from "./ticket-refs";
+import { purgeTemplateDrafts } from "./template-drafts";
 
 // The trash (#123): pages, spaces, records (lib/row-trash.ts), files
 // (lib/file-trash.ts, #164) and saved templates stay there for `trashDays()`
@@ -107,7 +108,10 @@ export async function emptyTrash(user: Identity, input: Record<string, unknown>)
   await requireMember(user, workspaceId, "editor");
   if (scope === "templates") {
     const templates = await trashedTemplates(user, workspaceId);
-    for (const t of templates) await run("DELETE FROM templates WHERE id=?", t.id);
+    for (const t of templates) {
+      await run("DELETE FROM templates WHERE id=?", t.id);
+      await purgeTemplateDrafts(t.id);
+    }
     await audit(user.id, "trash.emptied", workspaceId, `${templates.length} templates`);
     return { ok: true, templates: templates.length };
   }
@@ -194,6 +198,8 @@ export async function purgeTemplate(user: Identity, input: Record<string, unknow
   if (input.version !== undefined && input.version !== template.version)
     throw new HttpError(409, "Vorlage wurde zwischenzeitlich geändert. Bitte neu laden.");
   await run("DELETE FROM templates WHERE id=?", template.id);
+  // Drafts of its content (#461) go with it.
+  await purgeTemplateDrafts(template.id);
   return { ok: true };
 }
 

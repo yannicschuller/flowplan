@@ -126,7 +126,7 @@ export const commandActionNames = [
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "inviteLink.create", "inviteLink.revoke", "member.role", "member.guest",
   "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member",
-  "template.save", "template.update", "template.delete", "template.restore", "template.purge", "template.apply", "template.copy", "template.dependencies",
+  "template.save", "template.update", "template.delete", "template.restore", "template.purge", "template.apply", "template.copy", "template.dependencies", "template.draft", "template.draft.discard", "template.content",
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
@@ -982,6 +982,42 @@ export const commandActions: ActionDoc[] = [
       version: z.number().int().optional().describe("The template's version, refused when it changed meanwhile"),
     }),
     result: okResult,
+  },
+  {
+    action: "template.draft",
+    summary: "Open a draft page to edit a saved template's content",
+    description:
+      "Who may change the template's name and visibility may edit its content: its creator or a workspace owner, an administrator for templates of all workspaces or the public gallery; not in the template trash. The draft is a page made from the template – in the template's space, or for a template of the whole workspace in `spaceId` (write access needed). Only its creator sees it: it is not listed in the page tree or found by search, for nobody. Calling it again returns the same draft (`resumed: true`). Save it into the template with template.content, throw it away with template.draft.discard; drafts left alone for 7 days are deleted. Pages already created from the template are not changed.",
+    input: z.object({
+      action: z.literal("template.draft"),
+      workspaceId: uuid,
+      templateId: uuid,
+      spaceId: uuid.optional().describe("Where a template of the whole workspace opens"),
+      version: z.number().int().optional().describe("The template's version, refused when it changed meanwhile"),
+    }),
+    result: idResult.extend({ resumed: z.boolean() }),
+  },
+  {
+    action: "template.draft.discard",
+    summary: "Throw away a template draft",
+    description: "Deletes the draft (template.draft) with its files and sub-pages for good. Only its creator; the template stays as it was.",
+    input: z.object({ action: z.literal("template.draft.discard"), pageId: uuid }),
+    result: okResult,
+  },
+  {
+    action: "template.content",
+    summary: "Replace a saved template's content with a page's",
+    description:
+      "Same rights as template.draft, plus write access to `pageId`, a page of the template's kind – its draft or any other page (\"Replace from page\"). Saved as by template.save: the page's content, appearance, tags and property values (for a database its properties, views, the records the person sees and its record templates), with own copies of its files (at most 200, 10 MB each, 100 MB in all) and at most 20 MB. A template of a space takes only pages of that space; one of the whole workspace only the workspace's tags and properties (409 naming the space's, or `spaceMeta: \"remove\"` leaves them out). A draft is deleted afterwards. Pages already created from the template are not changed.",
+    input: z.object({
+      action: z.literal("template.content"),
+      workspaceId: uuid,
+      templateId: uuid,
+      pageId: uuid,
+      version: z.number().int().optional().describe("The template's version, refused when it changed meanwhile"),
+      spaceMeta: z.literal("remove").optional(),
+    }),
+    result: okResult.extend({ version: z.number().int(), draftDeleted: z.boolean() }),
   },
   {
     action: "trash.empty",

@@ -9148,6 +9148,28 @@ body:has(.public-page:not(.public-wide) .public-embed) {
     padding-left: 28px;
   }
 }
+/* The content of a saved template (#461): edit it in a draft or take a
+   page's (components/saved-templates.tsx, components/template-draft-bar.tsx). */
+.template-content-edit {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.template-content-edit h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.template-content-edit p {
+  margin: 0;
+}
+.template-draft-refs {
+  margin: -8px 0 16px;
+}
+.template-draft-refs p {
+  margin: 0 0 8px;
+}
 
 .page-emoji {
   display: inline-flex;

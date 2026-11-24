@@ -112,6 +112,9 @@ export type Page = {
   aliases?: string | null;
   // When the page was created (schema 82; null for older pages).
   created_at?: string | null;
+  // A draft of the saved page template with this id (#461, schema 130):
+  // only its creator reads it (lib/template-drafts.ts).
+  template_draft?: string | null;
 };
 export type FieldType =
   | "text"
