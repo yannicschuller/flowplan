@@ -1457,6 +1457,7 @@ export default function DocumentEditor({
           if (all) sendAll.current = false;
           applyRemote(result.state);
         }
+        checkPending.current = false;
         onStatus(dirty.current ? "unsaved" : "saved");
       } else {
         // A hidden tab does not check (#383): the check follows once it is
@@ -1471,15 +1472,23 @@ export default function DocumentEditor({
         const result = await apiIfChanged<{ state: string | null; generation: string }>(
           rowId ? `/api/pages/${pageId}/rows/${rowId}` : `/api/pages/${pageId}`,
         );
-        if (result === lastChecked.current) return;
-        lastChecked.current = result;
-        // A restored or guest-edited document has a new CRDT identity. The parent
-        // remounts this editor with that generation; merging it into this one duplicates content.
-        if (result.generation !== generation) {
-          onStatus("reloading");
-          return;
+        if (result !== lastChecked.current) {
+          lastChecked.current = result;
+          // A restored or guest-edited document has a new CRDT identity. The parent
+          // remounts this editor with that generation; merging it into this one duplicates content.
+          if (result.generation !== generation) {
+            onStatus("reloading");
+            return;
+          }
+          if (result.state) applyRemote(result.state);
         }
-        if (result.state) applyRemote(result.state);
+        // Opened unchanged: "Synchronisieren …" until the first check with
+        // the server, then "Gespeichert" – not "Synchronisieren …" for as
+        // long as nobody types.
+        if (checkPending.current && !dirty.current) {
+          checkPending.current = false;
+          onStatus("saved");
+        }
       }
     } catch (e) {
       dirty.current = true;
@@ -1504,6 +1513,9 @@ export default function DocumentEditor({
   const saveSoon = useRef(() => {});
   // The last answer of the full check (apiIfChanged).
   const lastChecked = useRef<unknown>(null);
+  // "Synchronisieren …" shows since the document opened: the first save or
+  // check with the server turns it into "Gespeichert".
+  const checkPending = useRef(false);
   saveSoon.current = () => {
     if (saveTimer.current) return;
     saveTimer.current = setTimeout(() => {
@@ -1652,7 +1664,9 @@ export default function DocumentEditor({
       // right away (changes kept in IndexedDB, content set from the HTML):
       // opening an unchanged document asks nothing.
       dirty.current = editable && !sameAsServer(doc, initial.current.state);
-      onStatus(!kept && editable && (!navigator.onLine || isPendingPage(pageId) || !!draftRef.current) ? "not-kept" : navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
+      const status = !kept && editable && (!navigator.onLine || isPendingPage(pageId) || !!draftRef.current) ? "not-kept" : navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline";
+      checkPending.current = status === "syncing";
+      onStatus(status);
     };
     void persistence.whenSynced.then(() => start(true));
     (persistence as unknown as { _db: Promise<unknown> })._db.catch(() => start(false));
