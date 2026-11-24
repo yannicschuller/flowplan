@@ -229,3 +229,71 @@ test("in progress, deferred and other symbols stay in My tasks; cancelled leaves
   assert.ok(!(await myTasks(ben, wid)).some((t) => t.text === "Später @Ben"));
   assert.equal((await one<{ status: string }>("SELECT status FROM doc_tasks WHERE page_id=? AND text='Später @Ben'", pageId))!.status, "cancelled");
 });
+
+// #511: "Auch Aufgaben ohne Person aus meinen Seiten" – off by default;
+// on, My tasks also lists the open unassigned tasks without a date in the
+// pages the person created, never those in other people's pages.
+test("the switch for unassigned tasks from my pages", async () => {
+  const { userUnassignedTasks } = await import("../lib/unassigned-tasks-pref");
+  const { openTasksEverywhere } = await import("../lib/doc-tasks");
+  const mine = ((await command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Notizen", kind: "document" })) as { id: string }).id;
+  const bens = ((await command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "Bens Liste", kind: "document" })) as { id: string }).id;
+  await syncPage(anna, wid, mine, `<ul data-type="taskList">${task("Ohne Datum notieren")}${task("Mit Datum notieren", ` data-due="${today}"`)}${task(`Für Ben ${mention(ben)}`)}</ul>`);
+  await syncPage(ben, wid, bens, `<ul data-type="taskList">${task("Bens Notiz")}</ul>`);
+  const texts = async (user: Identity) => (await myTasks(user, wid)).map((t) => t.text).sort();
+  const badge = async (user: Identity) => ((await bootstrap(user, wid)) as { dueTasks: number }).dueTasks;
+
+  // Off (the default): as before – only the dated one of Anna's own.
+  assert.equal(await userUnassignedTasks(anna.id), false);
+  const before = await texts(anna);
+  const badgeBefore = await badge(anna);
+  assert.ok(before.includes("Mit Datum notieren"));
+  assert.ok(!before.includes("Ohne Datum notieren"));
+  assert.ok(!before.includes("Bens Notiz"));
+
+  // On: the undated one comes too, marked; nothing of Ben's page.
+  assert.deepEqual(await command(anna, { action: "tasks.unassigned", unassigned: true }), { unassigned: true });
+  assert.equal(await userUnassignedTasks(anna.id), true);
+  const after = await myTasks(anna, wid);
+  // Everything listed before stays; what comes is unassigned, undated and in
+  // pages Anna created (here also the starter tasks of her workspace).
+  const added = after.filter((t) => !before.includes(t.text));
+  assert.ok(before.every((text) => after.some((t) => t.text === text)));
+  assert.ok(added.some((t) => t.text === "Ohne Datum notieren" && t.pageId === mine));
+  for (const t of added) {
+    assert.equal(t.fromMyPages, true);
+    assert.equal(t.due, null);
+    assert.equal((await one<{ created_by: string }>("SELECT created_by FROM pages WHERE id=?", t.pageId))!.created_by, anna.id);
+  }
+  assert.ok(after.filter((t) => t.fromMyPages).every((t) => added.includes(t)));
+  assert.ok(!after.some((t) => t.text === "Bens Notiz"));
+  assert.ok((await openTasksEverywhere(anna)).some((t) => t.text === "Ohne Datum notieren" && t.fromMyPages));
+  // A task without a date is never due: the badge stays.
+  assert.equal(await badge(anna), badgeBefore);
+  // The switch is Anna's: Ben's list is unchanged, and with his own switch
+  // he gets his page's task, never Anna's.
+  assert.ok(!(await texts(ben)).includes("Bens Notiz"));
+  await command(ben, { action: "tasks.unassigned", unassigned: true });
+  assert.ok((await texts(ben)).includes("Bens Notiz"));
+  assert.ok(!(await texts(ben)).includes("Ohne Datum notieren"));
+  await command(ben, { action: "tasks.unassigned", unassigned: false });
+  await assert.rejects(async () => await command(anna, { action: "tasks.unassigned", unassigned: "ja" }));
+
+  // Ticked off in My tasks like any other.
+  const undated = after.find((t) => t.text === "Ohne Datum notieren")!;
+  await command(anna, { action: "task.update", pageId: mine, rowId: null, index: undated.index, text: undated.text, checked: true });
+  assert.match(String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", mine))!.html), /data-checked="true"[^]*Ohne Datum notieren/);
+  assert.ok(!(await texts(anna)).includes("Ohne Datum notieren"));
+  assert.ok((await myTasks(anna, wid, true)).some((t) => t.text === "Ohne Datum notieren" && t.checked));
+
+  // A page in the trash keeps its tasks out.
+  await syncPage(anna, wid, mine, `<ul data-type="taskList">${task("Noch eine")}</ul>`);
+  assert.ok((await texts(anna)).includes("Noch eine"));
+  await run("UPDATE pages SET deleted_at=? WHERE id=?", new Date().toISOString(), mine);
+  assert.ok(!(await texts(anna)).includes("Noch eine"));
+  await run("UPDATE pages SET deleted_at=NULL WHERE id=?", mine);
+
+  // Off again: back to the dated ones.
+  await command(anna, { action: "tasks.unassigned", unassigned: false });
+  assert.ok(!(await texts(anna)).includes("Noch eine"));
+});

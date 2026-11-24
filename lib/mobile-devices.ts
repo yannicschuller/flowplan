@@ -482,7 +482,7 @@ export async function mobileSummary(user: Identity, todayInput?: unknown, zone?:
   const tasks = sortTasks(
     [
       ...(await openTasksEverywhere(user))
-        .filter((t) => t.assigned || t.journal || t.due)
+        .filter((t) => t.assigned || t.journal || t.due || t.fromMyPages)
         .map((t) => ({
           due: t.due,
           page: t.title,

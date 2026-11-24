@@ -23,6 +23,11 @@
 // remembered on this device; the database picker, the search and the saved
 // views only exist for records and say so. The server answers the two
 // sources separately (/api/tasks, /api/records); they are merged here.
+//
+// #511: "Auch Aufgaben ohne Person aus meinen Seiten" in the filter row adds
+// the unassigned tasks without a date in pages I created (dated ones are
+// always there). Stored per person on the server (lib/unassigned-tasks-
+// pref.ts, command `tasks.unassigned`), so the widgets and the apps follow.
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
@@ -54,6 +59,8 @@ type Task = {
   own?: boolean;
   // Given to me by someone else since I last opened My tasks.
   fresh?: boolean;
+  // Unassigned and undated in a page I created: only with the switch (#511).
+  fromMyPages?: boolean;
   title: string;
   icon: string;
   workspaceId?: string;
@@ -126,6 +133,9 @@ export function MyTasks({
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [others, setOthers] = useState<Others>([]);
   const [personal, setPersonal] = useState<Personal>({ pageId: null, canAdd: false });
+  // "Auch Aufgaben ohne Person aus meinen Seiten" (#511), as the server keeps it.
+  const [unassigned, setUnassigned] = useState(false);
+  const [unassignedBusy, setUnassignedBusy] = useState(false);
   const [records, setRecords] = useState<RecordsResult | null>(null);
   const [filters, setFiltersState] = useState<Filters>(DEFAULTS);
   // Records only: which database, a search, the saved view shown. Not kept
@@ -173,12 +183,13 @@ export function MyTasks({
   const loadTasks = useCallback(async () => {
     if (!ready) return;
     try {
-      const result = await api<{ tasks: Task[]; others?: Others; personal?: Personal }>(
+      const result = await api<{ tasks: Task[]; others?: Others; personal?: Personal; unassigned?: boolean }>(
         `/api/tasks?workspace=${workspaceId}${done ? "&done=1" : ""}`,
       );
       setTasks(result.tasks);
       setOthers(result.others || []);
       if (result.personal) setPersonal(result.personal);
+      setUnassigned(result.unassigned === true);
       const now = [...result.tasks, ...(result.others || []).flatMap((w) => w.tasks)].filter((task) => task.fresh).map(taskKey);
       if (now.length) setFresh((current) => new Set([...current, ...now]));
       // Opened: what was new counts as seen from now on (once per opening).
@@ -314,6 +325,22 @@ export function MyTasks({
       setAdding(false);
       // Ready for the next one.
       requestAnimationFrame(() => input.current?.focus());
+    }
+  };
+  // The switch for unassigned tasks from my pages (#511): kept on the
+  // server, then the list (and the badge) loads again.
+  const chooseUnassigned = async (on: boolean) => {
+    setUnassignedBusy(true);
+    setUnassigned(on);
+    try {
+      await api("/api/command", { action: "tasks.unassigned", unassigned: on });
+      await loadTasks();
+      onChanged();
+    } catch (e) {
+      setUnassigned(!on);
+      onError((e as Error).message);
+    } finally {
+      setUnassignedBusy(false);
     }
   };
   // The tasks from documents are filtered here, records by the server.
@@ -769,6 +796,16 @@ export function MyTasks({
         <label className="my-tasks-done">
           <input type="checkbox" checked={done} onChange={(e) => setFilters({ done: e.target.checked })} />
           {t("Erledigte zeigen", "Show completed")}
+        </label>
+        <label
+          className="my-tasks-done my-tasks-unassigned"
+          title={t(
+            "Offene Aufgaben ohne @Person und ohne Datum aus Seiten, die du angelegt hast – auf allen Geräten",
+            "Open tasks without an @person and without a date from pages you created – on all your devices",
+          )}
+        >
+          <input type="checkbox" checked={unassigned} disabled={unassignedBusy} onChange={(e) => void chooseUnassigned(e.target.checked)} />
+          {t("Auch Aufgaben ohne Person aus meinen Seiten", "Also unassigned tasks from my pages")}
         </label>
         {intoDatabase ? (
           <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(target.id, null)}>

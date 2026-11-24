@@ -24,6 +24,7 @@ import { filterAsync } from "./each-async";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { validBlockId } from "./block-ids";
+import { userUnassignedTasks } from "./unassigned-tasks-pref";
 import { TASK_STATUSES, isClosedStatus, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
 
 // The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
@@ -229,6 +230,9 @@ async function followDoneLog(
 // Tasks for "Meine Aufgaben": assigned to the person, unassigned ones with
 // a date in pages they created (their own to-dos), and every unassigned
 // task in the days of their journals – in pages they may still read.
+// With "Auch Aufgaben ohne Person aus meinen Seiten" (#511, lib/
+// unassigned-tasks-pref.ts) also the unassigned ones without a date in
+// pages they created.
 // `workspaceId` null: all workspaces the person belongs to.
 type TaskRow = {
   page_id: string;
@@ -248,6 +252,7 @@ type TaskRow = {
   assigned_at: number | null;
 };
 async function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
+  const undated = await userUnassignedTasks(user.id);
   const rows = await all<TaskRow>(
     `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.status,t.assignee,t.due,t.updated_at,t.assigned_at,p.title,p.icon,t.workspace_id,
        (j.id IS NOT NULL) AS journal,(o.page_id IS NOT NULL) AS own
@@ -259,7 +264,7 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
        AND p.deleted_at IS NULL
        AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
        AND (t.assignee=?
-         OR (t.assignee IS NULL AND p.created_by=? AND t.due IS NOT NULL)
+         OR (t.assignee IS NULL AND p.created_by=?${undated ? "" : " AND t.due IS NOT NULL"})
          OR (t.assignee IS NULL AND j.id IS NOT NULL)
          OR (t.assignee IS NULL AND o.page_id IS NOT NULL))
      ${includeDone ? "" : "AND t.checked=0"}
@@ -299,6 +304,10 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
       journal: !!row.journal,
       // In the person's own task page (#208): "Eigene" in My tasks.
       own: !!Number(row.own),
+      // Listed only through "Auch Aufgaben ohne Person aus meinen Seiten"
+      // (#511): unassigned, undated, in a page the person created – not in
+      // their journal or own task page.
+      fromMyPages: row.assignee === null && !row.due && !Number(row.journal) && !Number(row.own),
       // Given by someone else since My tasks was last opened: "Neu".
       fresh: row.assignee === user.id && !row.checked && !!row.assigned_at && Number(row.assigned_at) > seen,
       title: row.title,

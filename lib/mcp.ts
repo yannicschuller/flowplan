@@ -1045,7 +1045,7 @@ const tools: Tool[] = [
     name: "my_tasks",
     title: "My tasks",
     description:
-      "Tasks in documents and records that are assigned to you or that you wrote, with due dates. Across all workspaces unless one is given. index and key name a task for set_task.",
+      "Tasks in documents and records that are assigned to you or that you wrote, with due dates. Across all workspaces unless one is given. index and key name a task for set_task. Unassigned tasks without a date from pages you created are included only when that switch in My tasks is on.",
     input: z.object({
       workspaceId: id("Only this workspace").optional(),
       includeDone: z.boolean().optional().describe("Also completed tasks"),

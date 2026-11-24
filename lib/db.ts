@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 131;
+export const SCHEMA_VERSION = 132;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1692,11 +1692,22 @@ function migrate(d: DatabaseSync) {
   // Schema 131 – what each person has staged in unfinished uploads
   // (#493–#495, lib/staging-quota.ts).
   migrateStagedUploads(d);
+  // Schema 132 – "Auch Aufgaben ohne Person aus meinen Seiten" in My tasks
+  // (#511, lib/unassigned-tasks-pref.ts).
+  migrateUnassignedTasksPref(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 132 – users.my_tasks_unassigned (#511, lib/unassigned-tasks-pref.ts):
+// whether My tasks also lists the unassigned tasks without a date in pages
+// the person created (NULL: never chosen, off; 0: off; 1: on). An older
+// version would ignore it, hence the number.
+function migrateUnassignedTasksPref(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "my_tasks_unassigned"))
+    d.exec("ALTER TABLE users ADD COLUMN my_tasks_unassigned INTEGER");
 }
 // Schema 131 – the staged parts of unfinished uploads per person (#493–#495,
 // lib/staging-quota.ts): notebook recordings, meeting pieces and

@@ -89,6 +89,7 @@ import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, indexPageTasks, markTasksSeen, reindexRowTasks, syncDocTasks, taskBadges } from "./doc-tasks";
 import { addPersonalTask } from "./personal-tasks";
 import { setMyTaskTarget } from "./my-task-target";
+import { setUserUnassignedTasks } from "./unassigned-tasks-pref";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention } from "./page-graph";
 import { followRename } from "./link-titles";
@@ -2051,6 +2052,10 @@ async function runCommand(
       // Where "Aufgabe hinzufügen" writes: the own page or a task database (#457).
       case "task.target":
         result = await setMyTaskTarget(user, b);
+        break;
+      // "Auch Aufgaben ohne Person aus meinen Seiten" in My tasks (#511).
+      case "tasks.unassigned":
+        result = await setUserUnassignedTasks(user, b.unassigned);
         break;
       // My tasks opened: what was new is seen (#208).
       case "tasks.seen":

@@ -426,7 +426,7 @@ async function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
       return editable.get(pageId)!;
     };
     items = await mapAsync((await openTasksEverywhere(user))
-      .filter((t) => t.assigned || t.journal || t.due)
+      .filter((t) => t.assigned || t.journal || t.due || t.fromMyPages)
       .filter((t) => keep(t.due)), async (t) => ({
         source: "doc" as const,
         pageId: t.pageId,

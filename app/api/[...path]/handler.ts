@@ -137,6 +137,7 @@ import { pagePreview } from "@/lib/page-preview";
 import { blockPreview, searchBlocks } from "@/lib/block-links";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { userUnassignedTasks } from "@/lib/unassigned-tasks-pref";
 import { canAddPersonalTask, personalTaskPage } from "@/lib/personal-tasks";
 import { myTaskTarget, taskTargetDatabases } from "@/lib/my-task-target";
 import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
@@ -685,6 +686,8 @@ async function handleGET(
           // and whether the person may add tasks here (not guests, readers).
           // Where the field writes (#457): the page or a task database.
           personal: { pageId: (await personalTaskPage(user, wid))?.id ?? null, canAdd: await canAddPersonalTask(user, wid), target: await myTaskTarget(user, wid) },
+          // "Auch Aufgaben ohne Person aus meinen Seiten" (#511, command `tasks.unassigned`).
+          unassigned: await userUnassignedTasks(user.id),
         },
         { headers: { "Cache-Control": "no-store" } },
       );
