@@ -7,6 +7,7 @@ import { all, id, nowText, one, run } from "../../db";
 import { isAtom, type InlineRun } from "../../inline-markdown";
 import { pageRole } from "../../permissions";
 import { hiddenRowIds } from "../../row-access";
+import { hiddenFieldsFor, stripCells } from "../../field-access";
 import { cellText } from "../../cell-text";
 import type { Identity, Page } from "../../types";
 import { headerSafe, isEmpty, renderText, renderValue } from "../placeholders";
@@ -47,7 +48,11 @@ export const notifyPerson: NodeImpl = async (ctx) => {
   const inline = ctx.inline;
   const triggerPageId = ctx.trigger.pageId;
   const triggerRowId = ctx.trigger.rowId;
-  const cells = inline ? { ...inline.cells, ...inline.patch } : (((ctx.scope.values[ctx.run.triggerNodeId] as { record?: { fields?: Record<string, unknown> } })?.record?.fields || {}) as Record<string, unknown>);
+  let cells = inline ? { ...inline.cells, ...inline.patch } : (((ctx.scope.values[ctx.run.triggerNodeId] as { record?: { fields?: Record<string, unknown> } })?.record?.fields || {}) as Record<string, unknown>);
+  // The runner's read rules apply to the immediate part as to the queued
+  // one, whose trigger output leaves hidden properties out (§9.1); only the
+  // database rules keep their old way.
+  if (inline && !ctx.legacy) cells = ctx.runner ? stripCells(cells, await hiddenFieldsFor(ctx.runner, inline.databasePage, inline.fields)) : {};
   const createdBy = inline ? inline.row.created_by : ((ctx.scope.values[ctx.run.triggerNodeId] as { record?: { createdBy?: { id: string } } })?.record?.createdBy?.id ?? null);
   // The message is formatted (#330): `body` is its plain text (push, chat
   // apps, widgets, the API), `markup` the inline Markdown the inbox and

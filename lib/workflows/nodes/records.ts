@@ -6,8 +6,10 @@
 // writes on the triggering record are collected (lib/workflows/inline.ts).
 import { all, id, one, run, nowText } from "../../db";
 import { requirePage } from "../../permissions";
-import { visibleRows } from "../../row-access";
-import { unwritableFieldIds } from "../../field-access";
+import { assertRowAccess, visibleRows } from "../../row-access";
+import { assertFieldsWritable, unwritableFieldIds } from "../../field-access";
+import { isEncryptedPage } from "../../e2ee-server";
+import { behindJournalPin } from "../runner";
 import { computedCells } from "../../database";
 import { matches } from "../../database-filters";
 import { isFormattedText } from "../../inline-markdown";
@@ -87,7 +89,25 @@ async function databasePage(ctx: NodeRun, databaseId: string, write: boolean): P
   // record or database id from a placeholder must not reach into another
   // workspace the runner belongs to. Every record action goes through here.
   if (page.workspace_id !== ctx.run.workspaceId) throw new StepError("Die Datenbank liegt in einem anderen Arbeitsbereich als der Workflow.", "permission");
+  // Encrypted spaces and journals behind a PIN are closed to workflows
+  // (§9.1) – in dry runs too, before anything of them reaches an output.
+  if (await isEncryptedPage(page)) throw new StepError(write ? "Die Datenbank liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben." : "In verschlüsselten Bereichen nicht möglich.", "validation");
+  if (await behindJournalPin(page)) throw new StepError("Dieses Journal ist gesperrt.", "permission");
   return page;
+}
+// The record and field rules of row.update (lib/row-access.ts,
+// lib/field-access.ts), checked by the node itself: a dry run never reaches
+// the command, and the immediate part writes past it. A record hidden from
+// the runner is "not found", as in test and live runs.
+async function requireRecordWrite(ctx: NodeRun, page: Page, rowId: string, fields: Field[], keys: string[]) {
+  const access = await one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+  if (!access) throw new StepError("Den Eintrag gibt es nicht (mehr).", "validation");
+  try {
+    await assertRowAccess(ctx.runner!, page, access, true);
+    await assertFieldsWritable(ctx.runner!, page, fields, keys);
+  } catch (e) {
+    throw new StepError((e as Error).message, (e as { status?: number }).status === 404 ? "validation" : "permission");
+  }
 }
 // The record a node acts on: the triggering one, or a placeholder/id.
 async function targetRecord(ctx: NodeRun, ref: unknown) {
@@ -109,6 +129,7 @@ export const recordUpdate: NodeImpl = async (ctx) => {
     const batch = ctx.inline!;
     let values = await cellsFor(c.values, batch.fields, ctx, batch.row.created_by);
     if (!ctx.legacy && ctx.runner) {
+      await requireRecordWrite(ctx, batch.databasePage, batch.rowId, batch.fields, []);
       const locked = await unwritableFieldIds(ctx.runner, batch.databasePage, batch.fields);
       const refused = Object.keys(values).filter((k) => locked.has(k));
       if (refused.length) throw new StepError(`Keine Schreibrechte für „${batch.fields.find((f) => f.id === refused[0])?.name}“.`, "permission");
@@ -128,6 +149,9 @@ export const recordUpdate: NodeImpl = async (ctx) => {
   const fields = await databaseFields(page.id);
   const current = JSON.parse(row.cells) as Cells;
   let patch = await cellsFor(c.values, fields, ctx, row.created_by);
+  // Before anything of the record is read: `before` and "only empty" see
+  // only properties the runner may write (and so read).
+  await requireRecordWrite(ctx, page, row.id, fields, Object.keys(patch));
   if (c.onlyEmpty) patch = Object.fromEntries(Object.entries(patch).filter(([k]) => isEmpty(current[k])));
   const before = Object.fromEntries(Object.keys(patch).map((k) => [k, current[k] ?? null]));
   if (dryRun(ctx)) return { port: "out", output: { wouldUpdate: { record: row.id, cells: patch }, record: await recordValue(ctx.runner, row.id, patch), before } };
@@ -197,6 +221,7 @@ export const recordTemplate: NodeImpl = async (ctx) => {
   const c = ctx.config as { record?: string; template: string; mode: "empty" | "append" };
   if (isTriggerRecord(ctx, c.record)) {
     const batch = ctx.inline!;
+    if (!ctx.legacy && ctx.runner) await requireRecordWrite(ctx, batch.databasePage, batch.rowId, batch.fields, []);
     batch.templates.push({
       key: ctx.legacy ? ctx.legacy.ruleId : `wf:${ctx.run.pageId}:${ctx.node.id}`,
       template: c.template,
@@ -208,6 +233,7 @@ export const recordTemplate: NodeImpl = async (ctx) => {
   }
   const row = await targetRecord(ctx, c.record);
   const page = await databasePage(ctx, row.page_id, true);
+  await requireRecordWrite(ctx, page, row.id, await databaseFields(page.id), []);
   if (dryRun(ctx)) return { port: "out", output: { wouldApply: { record: row.id, template: c.template, mode: c.mode } } };
   // Once per record and node, like the rules (automation_runs).
   const fresh = await run(
