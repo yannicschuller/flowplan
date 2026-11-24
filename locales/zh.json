@@ -4585,6 +4585,7 @@
   "Empty: {0}": "空：{0}",
   "Empty: api.telegram.org. Otherwise an own Bot API server or a relay/proxy (also in the own network).": "空: api.telegram.org。否则使用自己的 Bot API 服务器或中继/代理（也可以在自己的网络中）。",
   "Empty: people may name any public server for Gotify, ntfy, Matrix and own Telegram bots. Otherwise only these hosts, one per line (*.example.org for subdomains); api.telegram.org and ntfy.sh always work.": "空：人们可以为 Gotify、ntfy、Matrix 和自己的 Telegram 机器人命名任何公共服务器。否则仅允许以下主机，每行一个（*.example.org 表示子域名）；api.telegram.org 和 ntfy.sh 始终可用。",
+  "Empty: the address": "留空：使用地址",
   "empty(value)": "empty(值)",
   "Enable form": "启用表单",
   "Enable push": "启用推送",

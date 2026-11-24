@@ -272,6 +272,7 @@ import { BibliographyView, CitationView } from "./citation-views";
 import { CitationDialog } from "./citation-dialog";
 import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
 import { beginUndoStep } from "@/lib/node-target";
+import { applyLinkEdit, linkTarget, removeLink, targetFits, type LinkTarget } from "@/lib/link-edit";
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { BlockColorAttribute } from "@/lib/block-colors";
 import { blockForInsert, blockRange, emptyBlockNear } from "@/lib/document-blocks";
@@ -491,6 +492,9 @@ export default function DocumentEditor({
     [slashRecents, setSlashRecents] = useState<string[]>([]),
     [link, setLink] = useState(false),
     [linkUrl, setLinkUrl] = useState(""),
+    // The link's text, edited together with its address (#530).
+    [linkText, setLinkText] = useState(""),
+    [linkEdit, setLinkEdit] = useState<LinkTarget | null>(null),
     [diagram, setDiagram] = useState<DiagramTarget | null>(null),
     [drawio, setDrawio] = useState<DrawioTarget | null>(null),
     [math, setMath] = useState<MathTarget | null>(null),
@@ -3013,6 +3017,16 @@ export default function DocumentEditor({
     });
     return result.blockId ? { id: result.blockId, node: block.node } : null;
   }
+  // The link dialog works on the selection grown to the whole link it
+  // touches: text and address prefilled (#530).
+  const openLinkDialog = () => {
+    if (!editor || editor.isDestroyed) return;
+    const target = linkTarget(editor.state);
+    setLinkEdit(target);
+    setLinkText(target.text);
+    setLinkUrl(target.href || String(editor.getAttributes("link").href || ""));
+    setLink(true);
+  };
   copyBlockLink.current = async (pos: number) => {
     try {
       const found = await blockIdAt(pos);
@@ -3528,8 +3542,7 @@ export default function DocumentEditor({
                   <button
                     title="Link"
                     onClick={() => {
-                      setLinkUrl(editor?.getAttributes("link").href || "");
-                      setLink(true);
+                      openLinkDialog();
                     }}
                   >
                     <LinkIcon />
@@ -3660,8 +3673,7 @@ export default function DocumentEditor({
                   label: "Link",
                   icon: <LinkIcon />,
                   run: () => {
-                    setLinkUrl(editor?.getAttributes("link").href || "");
-                    setLink(true);
+                    openLinkDialog();
                   },
                 },
                 bulletList: { label: t("Aufzählung", "Bulleted list"), icon: <ListBullets />, run: () => chain()?.toggleBulletList().run(), active: !!editor?.isActive("bulletList") },
@@ -3992,8 +4004,7 @@ export default function DocumentEditor({
             moveBlock,
           }}
           onLink={() => {
-            setLinkUrl(editor?.getAttributes("link").href || "");
-            setLink(true);
+            openLinkDialog();
           }}
         />
       )}
@@ -4200,20 +4211,39 @@ export default function DocumentEditor({
           {!linkedShown.length && <p className="muted">{t("Keine passende Datenbank.", "No matching database.")}</p>}
         </div>
       </Modal>
-      <Modal open={link} onClose={() => setLink(false)} title={t("Link einfügen", "Insert link")}>
+      <Modal open={link} onClose={() => setLink(false)} title={linkEdit?.href ? t("Link bearbeiten", "Edit link") : t("Link einfügen", "Insert link")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (
-              /^https?:\/\//.test(linkUrl) ||
-              /^mailto:/.test(linkUrl) ||
-              linkUrl.startsWith("/")
-            ) {
-              editor?.chain().focus().setLink({ href: linkUrl }).run();
+            const href = linkUrl.trim();
+            if (/^https?:\/\//.test(href) || /^mailto:/.test(href) || href.startsWith("/")) {
+              if (editor && !editor.isDestroyed) {
+                // Someone may have edited the text meanwhile: then the
+                // selection decides again.
+                const state = editor.state;
+                const target = linkEdit && targetFits(state, linkEdit) ? linkEdit : linkTarget(state);
+                const tr = applyLinkEdit(state, target, { text: linkText, href });
+                if (tr) {
+                  beginUndoStep(state);
+                  editor.view.dispatch(tr);
+                  beginUndoStep(editor.state);
+                }
+                editor.commands.focus();
+              }
               setLink(false);
             } else onError(t("Bitte eine gültige URL eingeben.", "Please enter a valid URL."));
           }}
         >
+          {linkEdit?.textEditable && (
+            <label>
+              {t("Text", "Text")}
+              <input
+                value={linkText}
+                onChange={(e) => setLinkText(e.target.value)}
+                placeholder={linkEdit.from === linkEdit.to ? t("Leer: die Adresse", "Empty: the address") : undefined}
+              />
+            </label>
+          )}
           <label>
             {t("Adresse", "Address")}
             <input
@@ -4228,13 +4258,19 @@ export default function DocumentEditor({
               type="button"
               className="button"
               onClick={() => {
-                editor?.chain().focus().unsetLink().run();
+                if (editor && !editor.isDestroyed) {
+                  const state = editor.state;
+                  const tr = linkEdit && targetFits(state, linkEdit) ? removeLink(state, linkEdit) : null;
+                  if (tr) editor.view.dispatch(tr);
+                  else editor.chain().focus().extendMarkRange("link").unsetLink().run();
+                  editor.commands.focus();
+                }
                 setLink(false);
               }}
             >
               {t("Link entfernen", "Remove link")}
             </button>
-            <button className="button primary">{t("Einfügen", "Insert")}</button>
+            <button className="button primary">{linkEdit?.href ? t("Speichern", "Save") : t("Einfügen", "Insert")}</button>
           </div>
         </form>
       </Modal>
