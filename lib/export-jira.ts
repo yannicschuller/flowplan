@@ -11,7 +11,7 @@
 import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { audit } from "./db";
-import { offThread } from "./worker-pool";
+import { offThread, type PoolJobOptions } from "./worker-pool";
 import { calloutType, type CalloutType } from "./document-schema";
 import { taskStatusOf, type TaskStatus } from "./task-status";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
@@ -473,8 +473,8 @@ export async function exportText(
 }
 
 // In a worker thread (lib/worker-pool.ts), like the Confluence export.
-export async function exportJira(user: Identity, options: { pageId: string; rowId?: string }) {
-  return await offThread("export.jira", [user, options], () => jiraHere(user, options));
+export async function exportJira(user: Identity, options: { pageId: string; rowId?: string }, job: PoolJobOptions = {}) {
+  return await offThread("export.jira", [user, options], () => jiraHere(user, options), job);
 }
 async function jiraHere(user: Identity, options: { pageId: string; rowId?: string }) {
   return await exportText(user, options, "jira", documentJira, (title, url) => `Whiteboard: [${jiraText(title)}|${jiraUrl(url)}]\n`);

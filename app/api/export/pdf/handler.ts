@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 // browser turns it into a PDF (components/print-page.ts, printDocument);
 // opened directly, it is a plain page without scripts. `print` holds the
 // print options as JSON (#215, lib/print-options.ts printOptionsQuery).
-export const GET = exportRoute(async (user, query) => {
-  const result = await exportPrintHtml(user, selection(query), printOptionsFromQuery(query.get("print")));
+export const GET = exportRoute(async (user, query, job) => {
+  const result = await exportPrintHtml(user, selection(query), printOptionsFromQuery(query.get("print")), job);
   const name = encodeURIComponent(result.name).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
   return new Response(result.html, {
     headers: {

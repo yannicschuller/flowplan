@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // A page (?page=<id>, with &children=1 its sub-pages) or a whole space
 // (?space=<id>) as an e-book.
-export const GET = exportRoute(async (user, query) => {
-  const result = await exportEpub(user, selection(query));
+export const GET = exportRoute(async (user, query, job) => {
+  const result = await exportEpub(user, selection(query), job);
   return attachment(result.bytes, result.name, result.mime, "epub");
 });

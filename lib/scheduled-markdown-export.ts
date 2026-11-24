@@ -17,6 +17,7 @@ import { exportFolder, exportMarkdown } from "./markdown-export";
 import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { withContentLocale } from "./content-locale";
+import { retryWhenBusy } from "./worker-pool";
 import { fixedLanguage, userLocale } from "./user-locale";
 import { gitConfig, syncGit, type GitRun } from "./git-export";
 import { encryptionEnabled, seal } from "./encryption";
@@ -123,7 +124,9 @@ export async function lastMarkdownExport() {
 }
 const zipName = (name: string) => name.endsWith(".zip") || name.endsWith(".zip.enc");
 
-export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]> {
+// `busy`: how a full worker queue is waited out (lib/worker-pool.ts
+// retryWhenBusy); "Run now" of the administration does not wait.
+export async function runMarkdownExports(now = Date.now(), busy: { attempts?: number; delayMs?: number } = {}): Promise<ExportRun[]> {
   const config = await state<Config>("markdownExport");
   if (!config?.pageIds.length) return [];
   const keep = Math.max(1, (await instanceSettings()).backupKeep ?? 7);
@@ -144,7 +147,9 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
       if (!user) throw new Error("Das Konto, das den Export eingerichtet hat, gibt es nicht mehr oder es ist deaktiviert.");
       const encrypted = encryptionEnabled();
       if (encrypted) name += ".enc";
-      const { bytes } = await withContentLocale(locale, () => exportMarkdown(user, { pageId, format: "zip", includeSubpages: true, history: true }));
+      // Work of the instance: no owner in the worker queue (lib/worker-pool.ts,
+      // #504), and tried again when the queue is full.
+      const { bytes } = await retryWhenBusy(() => withContentLocale(locale, () => exportMarkdown(user, { pageId, format: "zip", includeSubpages: true, history: true })), busy);
       const stored = seal(bytes as Buffer);
       if (storage) {
         const response = await bucketFetch(`exports/${name}`, {

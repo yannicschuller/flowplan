@@ -1659,7 +1659,7 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
       requireAdmin(user);
       const backup = await runScheduledBackup();
-      return NextResponse.json({ ...backup, exports: await runMarkdownExports() });
+      return NextResponse.json({ ...backup, exports: await runMarkdownExports(Date.now(), { attempts: 1 }) });
     }
     // Saving or deleting an own whiteboard template.
     // Whiteboards switched off for the instance (#386): their templates,
@@ -2004,7 +2004,9 @@ async function handlePOST(
       }
       const dryRun = fields.get("dryRun") === "1";
       const importWorkspace = () => z.uuid().parse(fields.get("workspaceId"));
-      const imported = () =>
+      // The worker queue (lib/worker-pool.ts, #504) counts the person's jobs;
+      // a request that waits gives its abort signal (not a background job).
+      const imported = (signal?: AbortSignal) =>
         importFromSource(
           user,
           importWorkspace(),
@@ -2021,6 +2023,7 @@ async function handlePOST(
             // person's time zone for the learning state.
             anki: fields.get("anki") || undefined,
             zone: typeof fields.get("zone") === "string" ? (fields.get("zone") as string) : undefined,
+            job: { owner: user.id, signal },
           },
         ).then(async (result) => {
           // An import ticks "Importieren" in "Erste Schritte" (lib/getting-started.ts).
@@ -2058,7 +2061,7 @@ async function handlePOST(
       }
       let keep = false;
       try {
-        const result = dryRun ? await imported() : await trackJob(user, "import", file.name, imported);
+        const result = dryRun ? await imported(req.signal) : await trackJob(user, "import", file.name, () => imported(req.signal));
         // After a preview the upload waits for the import.
         keep = dryRun && !!kept;
         return NextResponse.json(keep ? { ...result, upload: kept } : result);

@@ -22,6 +22,7 @@ const exact: Record<string, string> = {
   "Zeitüberschreitung bei der Hintergrundarbeit.": "The background work timed out.",
   "Der Server wird gerade neu gestartet. Bitte versuche es gleich noch einmal.": "The server is restarting. Please try again in a moment.",
   "Der Worker-Thread wurde beendet.": "The worker thread ended.",
+  "Bei dir laufen schon mehrere Exporte oder Importe. Bitte warte, bis einer fertig ist.": "You already have several exports or imports running. Please wait until one has finished.",
   // AI quotas (lib/ai/quota.ts, #382).
   "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).": "Cost limits need prices per model (Administration → AI → Prices).",
   "Unbekannte Rolle.": "Unknown role.",

@@ -14604,6 +14604,7 @@
   "you (when saving)": "votre compte (au moment de l’enregistrement)",
   "You already have access.": "Vous avez déjà accès.",
   "You already have an account": "Vous avez déjà un compte",
+  "You already have several exports or imports running. Please wait until one has finished.": "Vous avez déjà plusieurs exports ou imports en cours. Veuillez attendre que l’un d’eux soit terminé.",
   "You are all caught up": "Vous êtes à jour",
   "You are an administrator. This is where the basics of this instance stand – tackle red first, yellow is optional or worth a look. You find this overview again in the command palette (“Set up the instance”).": "Vous êtes administrateur. Voici où en sont les bases de cette instance – traitez d’abord le rouge, le jaune est facultatif ou mérite un coup d’œil. Vous retrouvez cet aperçu dans la palette de commandes (« Configurer l’instance »).",
   "You are invited to “{0}”. Sign in or sign up to join.": "Vous êtes invité à rejoindre « {0} ». Connectez-vous ou inscrivez-vous pour le rejoindre.",

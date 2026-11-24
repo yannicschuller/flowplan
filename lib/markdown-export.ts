@@ -57,7 +57,7 @@ import { linkedBlockIds } from "./block-links";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { uploadSource } from "./storage";
-import { offThread } from "./worker-pool";
+import { offThread, type PoolJobOptions } from "./worker-pool";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -923,8 +923,8 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
 // held the request thread for seconds (a space of 120 pages: 16 s). There
 // the transaction is a read snapshot of its own connection, which keeps
 // nobody else from the database meanwhile.
-export async function exportMarkdown(user: Identity, options: MarkdownExportOptions) {
-  return await offThread("export.markdown", [user, options], () => markdownHere(user, options));
+export async function exportMarkdown(user: Identity, options: MarkdownExportOptions, job: PoolJobOptions = {}) {
+  return await offThread("export.markdown", [user, options], () => markdownHere(user, options), job);
 }
 async function markdownHere(
   user: Identity,

@@ -6,15 +6,18 @@ import { z } from "zod";
 import { requireUser, HttpError } from "./auth";
 import { withRequestLocale } from "./content-locale";
 import type { Identity } from "./types";
+import type { PoolJobOptions } from "./worker-pool";
 
 export const uuid = z.string().uuid();
 const headers = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 
-export function exportRoute(run: (user: Identity, query: URLSearchParams) => Promise<Response>) {
+// `job` goes to the export (lib/worker-pool.ts, #504): the queue counts the
+// person's exports, and a waiting one leaves it when the request is aborted.
+export function exportRoute(run: (user: Identity, query: URLSearchParams, job: PoolJobOptions) => Promise<Response>) {
   return withRequestLocale(async (req: Request) => {
     try {
       const user = await requireUser();
-      return await run(user, new URL(req.url).searchParams);
+      return await run(user, new URL(req.url).searchParams, { owner: user.id, signal: req.signal });
     } catch (error) {
       if (!(error instanceof HttpError) && !(error instanceof z.ZodError)) console.error(error);
       return Response.json(

@@ -6,7 +6,7 @@
 // session; renderers that know `target-counter` (Prince, Paged.js) also
 // fill in the page numbers of the table of contents.
 import { audit } from "./db";
-import { offThread } from "./worker-pool";
+import { offThread, type PoolJobOptions } from "./worker-pool";
 import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import { exportName } from "./export-name";
@@ -191,8 +191,8 @@ export function printHtml(content: ExportContent, author: string, options: Print
 }
 
 // In a worker thread (lib/worker-pool.ts): a space's HTML is parsed page by page.
-export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }, print: PrintOptions = DEFAULT_PRINT_OPTIONS) {
-  return await offThread("export.print", [user, options, print], () => printHere(user, options, print));
+export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }, print: PrintOptions = DEFAULT_PRINT_OPTIONS, job: PoolJobOptions = {}) {
+  return await offThread("export.print", [user, options, print], () => printHere(user, options, print), job);
 }
 async function printHere(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }, print: PrintOptions) {
   const content = await collectExportContent(user, { ...options, maxPages: PDF_MAX_PAGES, format: "PDF" });
