@@ -7,6 +7,7 @@ import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/server-message";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
+import { defaultColumnWidth } from "@/lib/column-widths";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
@@ -826,7 +827,8 @@ export default function DatabaseView({
     return resize?.id === field.id
       ? resize.width
       : view.columnWidths?.[field.id] ||
-          (field.id === fields[0].id ? 280 : 180);
+          // A date column as wide as its format needs (#523).
+          defaultColumnWidth(field, field.id === fields[0].id);
   }
   async function moveColumn(source: string, target: string) {
     const order = orderedFields.map((f) => f.id).filter((id) => id !== source);
@@ -2472,7 +2474,7 @@ export default function DatabaseView({
       return (
         <span className="date-cell">
           <CalendarBlank size={14} />
-          {formatFieldDate(v, f)}
+          <span className="date-cell-text">{formatFieldDate(v, f)}</span>
         </span>
       );
     }
@@ -2481,7 +2483,7 @@ export default function DatabaseView({
       return (
         <span className="date-cell">
           <CalendarBlank size={14} />
-          {formatTimestamp(v, f)}
+          <span className="date-cell-text">{formatTimestamp(v, f)}</span>
         </span>
       );
     }
