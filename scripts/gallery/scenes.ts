@@ -291,6 +291,17 @@ const pages: Scene[] = [
       await page.getByRole("dialog", { name: "Due" }).waitFor();
     },
   },
+  // Where "Add a task" writes (#457): the own page or a task database.
+  {
+    id: "tasks-target",
+    group: "Pages",
+    title: "My tasks – where new tasks go",
+    path: "#tasks",
+    steps: async (page) => {
+      await page.getByRole("button", { name: /^Goes to: / }).click();
+      await page.getByRole("dialog", { name: "New tasks go to" }).waitFor();
+    },
+  },
   {
     id: "tasks-databases",
     group: "Pages",

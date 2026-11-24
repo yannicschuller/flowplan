@@ -86,6 +86,8 @@ const PERSONAL = [
   "page_view_prefs",
   // The own task page per workspace (#208); the page itself stays a page.
   "personal_task_pages",
+  // Where "Aufgabe hinzufügen" writes (#457); the database stays.
+  "my_task_targets",
   "presence",
   // (editor_presence has no user_id: its rows go with the sessions.)
   "record_views",

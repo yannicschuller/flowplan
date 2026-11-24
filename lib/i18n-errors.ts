@@ -1283,6 +1283,10 @@ const exact: Record<string, string> = {
   "Zu viele Aufgaben auf einmal (höchstens 1.000).": "Too many tasks at once (at most 1,000).",
   "Das Dokument lässt sich so nicht ändern.": "The document cannot be changed this way.",
   "Mindestens ein Eintrag ist für dich schreibgeschützt.": "At least one record is read-only for you.",
+  // Where "Aufgabe hinzufügen" of My tasks writes (#457, lib/my-task-target.ts)
+  "In dieser Datenbank darfst du keine Einträge anlegen.": "You may not add records to this database.",
+  "Diese Datenbank zählt nicht für Meine Aufgaben: Sie braucht einen Status oder ein Erledigt-Häkchen.":
+    "This database does not count for My tasks: it needs a status or a done checkbox.",
   // Page owners and reviews, scheduled rules, repeating records
   "Besitzer muss Mitglied des Arbeitsbereichs sein.": "The owner must be a member of the workspace.",
   "Der Besitzer hat keinen Zugriff auf diese Seite.": "The owner has no access to this page.",

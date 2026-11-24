@@ -222,6 +222,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         level: "normal",
       },
       {
+        title: { de: "Erledigte Aufgaben durchstreichen", en: "Strike through done tasks" },
+        keywords: { de: "durchgestrichen durchstreichen erledigt aufgaben häkchen abgehakt blass checkliste", en: "strikethrough strike through done completed tasks tick checked faded checklist" },
+        anchor: "strike-done-tasks",
+        level: "normal",
+      },
+      {
         title: { de: "Formatierungsleiste", en: "Formatting toolbar" },
         keywords: { de: "symbolleiste toolbar leiste ausblenden fokusmodus formatieren", en: "toolbar bar hide focus mode formatting" },
         anchor: "formatting-toolbar",

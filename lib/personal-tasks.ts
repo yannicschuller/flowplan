@@ -17,6 +17,9 @@
 // task to that member only when they may open the page – a private page is
 // theirs to read only after it was shared or moved; otherwise the name
 // stays in the text and the answer says why.
+//
+// #457: the person may send these tasks to a task database instead
+// (lib/my-task-target.ts); then the task is a record – see addToDatabase.
 import { z } from "zod";
 import { all, lockFor, one, run } from "./db";
 import { pageRole, requireMember } from "./permissions";
@@ -24,13 +27,17 @@ import { ct } from "./content-locale";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { isEncryptedPage } from "./e2ee-server";
 import { journalLocked } from "./journal-extras";
-import { parseCapture, type CaptureMember } from "./capture-parse";
+import { findMember, parseCapture, type CaptureMember } from "./capture-parse";
 import { syncDocTasks } from "./doc-tasks";
 import { TASK_TEXT_MAX } from "./task-text-max";
 import { recordPageEdit } from "./page-activity";
 import { appendTask, taskItemJson } from "./task-append";
 import { SPACE_ORDER } from "./space-order";
-import type { Identity, Page } from "./types";
+import { myTaskTarget, type TaskTargetProblem } from "./my-task-target";
+import { selectedRowTemplate } from "./row-documents";
+import { databaseSettings } from "./database-settings";
+import { taskFields } from "./task-database-fields";
+import type { Field, Identity, Page } from "./types";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const api = import("./api");
@@ -110,9 +117,95 @@ export const personalTaskInput = z.object({
   due: z.string().regex(DAY).nullable().optional(),
 });
 
-// The command `task.add`.
+type TaskInput = z.infer<typeof personalTaskInput>;
+const asIdentity = (person: CaptureMember) => ({ id: person.id, name: person.name, groups: [], isAdmin: false }) as unknown as Identity;
+
+// The command `task.add`: into the chosen task database (#457), else – also
+// when that database can no longer take it (`fallback` says why) – into the
+// own page.
 export async function addPersonalTask(user: Identity, raw: unknown, afterCommit: (() => unknown)[]) {
   const input = personalTaskInput.parse(raw);
+  await requireMember(user, input.workspaceId, "editor");
+  const target = await myTaskTarget(user, input.workspaceId);
+  if (target.kind === "database" && !target.problem) return await addToDatabase(user, target.id, input);
+  return { ...(await addToPage(user, input, afterCommit)), fallback: target.kind === "database" ? target.problem : null };
+}
+
+// A record of the task database, mapped like "Aufgaben in Datenbank
+// verschieben" (#420) and quick capture: the text without the shorthand is
+// the title, its date goes into the due date property, "@name" into the
+// person property (only someone who may open the database, else the name
+// stays in the text), #tag and !priority into their properties; without
+// "@name" the person property gets the person adding it, so the task shows
+// in their My tasks. A select status gets the database's "open" value
+// unless a default value or the default record template sets it. The
+// record is made through row.create: field rights, default values, the
+// default record template and the database's automations apply.
+async function addToDatabase(user: Identity, databaseId: string, input: TaskInput) {
+  const { command } = await api;
+  const { captureProperties } = await import("./desktop-capture");
+  const db = (await one<Page>("SELECT * FROM pages WHERE id=?", databaseId))!;
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db.id))!.fields) as Field[];
+  const properties = await captureProperties(user, db);
+  const people = await members(input.workspaceId);
+  const context = { today: input.today, locale: input.locale, properties, members: people };
+  let parsed = parseCapture(input.text, context);
+  let unassigned: string | null = null;
+  let unassignedReason: "access" | "property" | null = null;
+  const personToken = parsed.chips.find((c) => c.kind === "person");
+  // The person property "@name" goes into (the capture shorthand's choice), else the first.
+  const personField = properties.find((p) => p.id === personToken?.field?.id) || properties.find((p) => p.type === "person");
+  if (personToken?.field && personToken.cell !== user.id) {
+    const person = people.find((m) => m.id === personToken.cell)!;
+    if (!(await pageRole(asIdentity(person), db))) {
+      // The name stays as typed: the record would be invisible to them.
+      parsed = parseCapture(input.text, { ...context, literal: [personToken.id] });
+      unassigned = person.name || person.email;
+      unassignedReason = "access";
+    }
+  } else if (personToken && !personToken.field) {
+    // "@name" of a member, but no person property they could go into.
+    const member = findMember(people, personToken.value as string);
+    if (member) {
+      unassigned = member.name || member.email;
+      unassignedReason = "property";
+    }
+  }
+  const cells: Record<string, unknown> = { ...parsed.cells };
+  if (personField && cells[personField.id] === undefined) cells[personField.id] = user.id;
+  const due = properties.find((p) => p.type === "date" && p.due);
+  if (due && input.due !== undefined) {
+    if (input.due) cells[due.id] = input.due;
+    else delete cells[due.id];
+  }
+  const found = taskFields(fields, await databaseSettings(db.id), db.id);
+  const status = found.status;
+  if (status?.type === "select" && found.openValue && cells[status.id] === undefined && status.defaultValue === undefined && properties.some((p) => p.id === status.id)) {
+    const template = await selectedRowTemplate(db.id, undefined);
+    const preset = template ? (JSON.parse(template.cells) as Record<string, unknown>)[status.id] : undefined;
+    if (preset === undefined || preset === null || preset === "") cells[status.id] = found.openValue;
+  }
+  const text = (parsed.title || input.text).slice(0, TASK_TEXT_MAX);
+  if (fields[0]) cells[fields[0].id] = text;
+  const row = (await command(user, { action: "row.create", pageId: db.id, cells }, true)) as { id: string };
+  const assignee = personField && typeof cells[personField.id] === "string" ? (cells[personField.id] as string) : null;
+  const dueValue = due && typeof cells[due.id] === "string" ? String(cells[due.id]).slice(0, 10) : null;
+  return {
+    pageId: db.id,
+    title: db.title,
+    created: false,
+    spaceCreated: false,
+    target: "database" as const,
+    rowId: row.id,
+    task: { text, due: dueValue, assignee },
+    unassigned,
+    unassignedReason,
+    fallback: null as TaskTargetProblem | null,
+  };
+}
+
+// Into the own page "Aufgaben".
+async function addToPage(user: Identity, input: TaskInput, afterCommit: (() => unknown)[]) {
   const { page, created, spaceCreated } = await ensurePersonalTaskPage(user, input.workspaceId);
   const people = await members(input.workspaceId);
   const context = { today: input.today, locale: input.locale, task: true, members: people };
@@ -122,7 +215,7 @@ export async function addPersonalTask(user: Identity, raw: unknown, afterCommit:
   let assignee: CaptureMember | null = null;
   if (parsed.assignee && parsed.assignee !== user.id) {
     const person = people.find((m) => m.id === parsed.assignee)!;
-    if (await pageRole({ id: person.id, name: person.name, groups: [], isAdmin: false } as unknown as Identity, page)) assignee = person;
+    if (await pageRole(asIdentity(person), page)) assignee = person;
     else {
       // The name stays as typed: the task would be invisible to them.
       const chip = parsed.chips.find((c) => c.kind === "person" && c.field);
@@ -137,5 +230,15 @@ export async function addPersonalTask(user: Identity, raw: unknown, afterCommit:
   await syncDocTasks(user, page, null, changed.ydoc);
   await recordPageEdit(user, page.id);
   afterCommit.push(changed.publish);
-  return { pageId: page.id, title: page.title, created, spaceCreated, task: { text, due, assignee: assignee?.id ?? null }, unassigned };
+  return {
+    pageId: page.id,
+    title: page.title,
+    created,
+    spaceCreated,
+    target: "page" as const,
+    rowId: null,
+    task: { text, due, assignee: assignee?.id ?? null },
+    unassigned,
+    unassignedReason: unassigned ? ("access" as const) : null,
+  };
 }

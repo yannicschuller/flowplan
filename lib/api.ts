@@ -13,6 +13,7 @@ import { setUserToolbarLayout, userToolbarLayoutState } from "./user-toolbar-lay
 import { setUserMotion, userMotion } from "./user-motion";
 import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserCommentMargin, userCommentMargin } from "./user-comment-margin";
+import { setUserStrikeDoneTasks, userStrikeDoneTasks } from "./user-done-strike";
 import { setUserWhiteboardCanvas, userWhiteboardCanvas } from "./user-whiteboard-canvas";
 import { setUserNotificationSound, userNotificationSound } from "./user-notification-sound";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
@@ -87,6 +88,7 @@ import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed,
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, indexPageTasks, markTasksSeen, reindexRowTasks, syncDocTasks, taskBadges } from "./doc-tasks";
 import { addPersonalTask } from "./personal-tasks";
+import { setMyTaskTarget } from "./my-task-target";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention } from "./page-graph";
 import { followRename } from "./link-titles";
@@ -456,6 +458,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     fullWidthPages: await userFullWidthPages(user.id),
     // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
     commentMargin: await userCommentMargin(user.id),
+    // "Erledigte Aufgaben durchstreichen" (#458, lib/done-strike-pref.ts).
+    strikeDoneTasks: await userStrikeDoneTasks(user.id),
     // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
     whiteboardCanvas: await userWhiteboardCanvas(user.id),
     // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
@@ -1140,6 +1144,10 @@ async function runCommand(
       // Text comments in the margin or below the document (#387, lib/comment-margin-pref.ts).
       case "profile.commentMargin":
         result = await setUserCommentMargin(user, b.commentMargin);
+        break;
+      // Done tasks struck through or only ticked (#458, lib/done-strike-pref.ts).
+      case "profile.strikeDoneTasks":
+        result = await setUserStrikeDoneTasks(user, b.strikeDoneTasks);
         break;
       // The whiteboard canvas dark in dark mode or always light (#399, lib/whiteboard-canvas-pref.ts).
       case "profile.whiteboardCanvas":
@@ -1993,6 +2001,10 @@ async function runCommand(
       // "Aufgabe hinzufügen" in My tasks (#208, lib/personal-tasks.ts).
       case "task.add":
         result = await addPersonalTask(user, b, afterCommit);
+        break;
+      // Where "Aufgabe hinzufügen" writes: the own page or a task database (#457).
+      case "task.target":
+        result = await setMyTaskTarget(user, b);
         break;
       // My tasks opened: what was new is seen (#208).
       case "tasks.seen":

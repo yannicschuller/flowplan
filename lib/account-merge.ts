@@ -125,6 +125,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "doc_tasks.updated_by": "move",
   // The own task page per workspace (#208): the target's stays when it has one.
   "personal_task_pages.user_id": "move",
+  // Where "Aufgabe hinzufügen" writes (#457): the target's choice stays when it has one.
+  "my_task_targets.user_id": "move",
   "task_done_log.user_id": "move",
   "rows.created_by": "move",
   "rows.updated_by": "move",

@@ -11,6 +11,12 @@
 // space); tasks others gave me since I last looked are marked "Neu" until I
 // open My tasks again.
 //
+// #457: the chip at the end of the field chooses where it writes – the own
+// page (default) or a task database the person may add records to
+// (lib/my-task-target.ts, command `task.target`). Then the task becomes a
+// record of it; when that database can no longer take tasks they go to the
+// own page and a line below the field says why.
+//
 // #314: the two tabs ("Aufgaben aus Dokumenten", "Einträge aus
 // Datenbanken") became this one list. The filter row – Quelle, Person, the
 // date range and "Erledigte zeigen" – applies to both sources and is
@@ -20,7 +26,7 @@
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
-import { CalendarBlank, CheckSquare, Plus, X } from "@phosphor-icons/react";
+import { CalendarBlank, CheckSquare, Plus, Tray, X } from "@phosphor-icons/react";
 import { optimistic } from "@/lib/optimistic";
 import { api, PageIcon } from "./ui";
 import { RecordRow, RecordTools, RecordViews, type RecordsResult, type RecordView, type TaskRecord } from "./my-records";
@@ -31,6 +37,7 @@ import { dueGroupName, groupByDue } from "@/lib/due-groups";
 import { DUE_RANGES, inDueRange, type DueRange } from "@/lib/due-range";
 import { statusName, type TaskStatus } from "@/lib/task-status";
 import { TaskStatusIcon } from "./task-status-menu";
+import type { TaskTarget, TaskTargetProblem } from "@/lib/my-task-target";
 
 type Task = {
   pageId: string;
@@ -52,7 +59,15 @@ type Task = {
   workspaceId?: string;
 };
 type Others = { workspaceId: string; name: string; tasks: Task[] }[];
-type Personal = { pageId: string | null; canAdd: boolean };
+type Personal = { pageId: string | null; canAdd: boolean; target?: TaskTarget };
+type TargetDatabase = { id: string; title: string; icon: string; space: string };
+type AddResult = {
+  target?: "page" | "database";
+  title?: string;
+  unassigned?: string | null;
+  unassignedReason?: "access" | "property" | null;
+  fallback?: TaskTargetProblem | null;
+};
 // One line of the list: a task in a document or a record of a database.
 type Entry =
   | { kind: "task"; key: string; due: string | null; checked: boolean; task: Task }
@@ -122,6 +137,10 @@ export function MyTasks({
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState("");
+  // The target chip: its panel and the databases it offers (loaded on opening).
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [targetDatabases, setTargetDatabases] = useState<TargetDatabase[] | null>(null);
+  const [targetBusy, setTargetBusy] = useState(false);
   // "Neu" stays on the tasks that were new when the list opened, while it is open.
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const seen = useRef(false);
@@ -207,13 +226,67 @@ export function MyTasks({
     const timer = setTimeout(() => void loadRecords(), query ? 250 : 0);
     return () => clearTimeout(timer);
   }, [loadRecords, query]);
+  const currentTarget = () => personal.target;
+  const targetName = (target: TaskTarget | undefined) => (target?.kind === "database" ? target.title || t("Ohne Titel", "Untitled") : t("Aufgaben", "Tasks"));
+  // Why a chosen database takes no tasks now.
+  const fallbackText = (problem: TaskTargetProblem, target: TaskTarget | undefined) => {
+    const name = targetName(target);
+    const why =
+      problem === "missing"
+        ? t(`Die Datenbank „${name}“ gibt es nicht mehr`, `The database “${name}” no longer exists`)
+        : problem === "readonly"
+          ? t(`In „${name}“ darfst du keine Einträge mehr anlegen`, `You can no longer add records to “${name}”`)
+          : t(`„${name}“ hat keinen Status und kein Erledigt-Häkchen mehr`, `“${name}” no longer has a status or a done checkbox`);
+    return t(`${why} – neue Aufgaben landen auf deiner Seite „Aufgaben“.`, `${why} – new tasks go to your page “Tasks”.`);
+  };
+  const unassignedText = (result: AddResult) => {
+    const who = result.unassigned!;
+    if (result.target !== "database")
+      return t(
+        `${who} kann deine Seite „Aufgaben“ nicht öffnen, der Name bleibt im Text. Aufgaben für andere schreibst du in ein Dokument, das ihr beide seht.`,
+        `${who} cannot open your page “Tasks”, so the name stays in the text. Write tasks for others in a document you both can see.`,
+      );
+    const name = result.title || t("Ohne Titel", "Untitled");
+    return result.unassignedReason === "property"
+      ? t(`„${name}“ hat keine Personen-Eigenschaft, die du ausfüllen darfst – ${who} bleibt im Text.`, `“${name}” has no person property you may fill – ${who} stays in the text.`)
+      : t(`${who} kann „${name}“ nicht öffnen, der Name bleibt im Text.`, `${who} cannot open “${name}”, so the name stays in the text.`);
+  };
+  // The target chip opened: the databases to choose from.
+  useEffect(() => {
+    if (!targetOpen) return;
+    let active = true;
+    api<{ databases: TargetDatabase[]; target: TaskTarget }>(`/api/tasks/targets?workspace=${workspaceId}`)
+      .then((r) => {
+        if (!active) return;
+        setTargetDatabases(r.databases);
+        setPersonal((p) => ({ ...p, target: r.target }));
+      })
+      .catch((e) => active && onError((e as Error).message));
+    return () => {
+      active = false;
+    };
+  }, [targetOpen, workspaceId, onError]);
+  const chooseTarget = async (databaseId: string | null) => {
+    setTargetBusy(true);
+    try {
+      const r = await api<{ target: TaskTarget }>("/api/command", { action: "task.target", workspaceId, databaseId });
+      setPersonal((p) => ({ ...p, target: r.target }));
+      setNotice("");
+      setTargetOpen(false);
+      requestAnimationFrame(() => input.current?.focus());
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setTargetBusy(false);
+    }
+  };
   const add = async () => {
     const text = draft.trim();
     if (!text || adding) return;
     setAdding(true);
     setNotice("");
     try {
-      const result = await api<{ unassigned?: string | null }>("/api/command", {
+      const result = await api<AddResult>("/api/command", {
         action: "task.add",
         workspaceId,
         text,
@@ -221,16 +294,18 @@ export function MyTasks({
         ...(locale === "de" || locale === "en" || locale === "fr" ? { locale } : {}),
       });
       setDraft("");
-      // "@name" of someone who cannot open the private page: not given to them.
-      if (result.unassigned)
-        setNotice(
-          t(
-            `${result.unassigned} kann deine Seite „Aufgaben“ nicht öffnen, der Name bleibt im Text. Aufgaben für andere schreibst du in ein Dokument, das ihr beide seht.`,
-            `${result.unassigned} cannot open your page “Tasks”, so the name stays in the text. Write tasks for others in a document you both can see.`,
-          ),
-        );
-      // A new task would be hidden by "Datenbanken": show where it went.
-      if (source === "databases") setFilters({ source: "all" }, true);
+      const lines: string[] = [];
+      // The chosen database could not take it: on the own page instead.
+      if (result.fallback) lines.push(fallbackText(result.fallback, currentTarget()));
+      // "@name" who cannot open the page or database: not given to them.
+      if (result.unassigned) lines.push(unassignedText(result));
+      setNotice(lines.join(" "));
+      if (result.target === "database") {
+        // A record: shown with the records, so the filters must let it through.
+        if (source === "documents") setFilters({ source: "all" }, true);
+        if (person === "own") setFilters({ person: "mine" }, true);
+        void loadRecords();
+      } else if (source === "databases") setFilters({ source: "all" }, true);
       await loadTasks();
       onChanged();
     } catch (e) {
@@ -511,6 +586,71 @@ export function MyTasks({
     );
   };
 
+  const target = personal.target;
+  const intoDatabase = target?.kind === "database" && !target.problem;
+  // Where "Aufgabe hinzufügen" writes: the own page or a task database.
+  const targetChip = () => (
+    <ChipPopover
+      icon={<Tray size={15} />}
+      label={targetName(target)}
+      name={t(`Ziel: ${targetName(target)}`, `Goes to: ${targetName(target)}`)}
+      active={target?.kind === "database"}
+      panelLabel={t("Neue Aufgaben landen in", "New tasks go to")}
+      className="my-tasks-target"
+      panelClassName="my-tasks-target-panel"
+      open={targetOpen}
+      onOpenChange={setTargetOpen}
+    >
+      <fieldset
+        className="chip-panel chip-options my-tasks-targets"
+        disabled={targetBusy}
+        // Enter on a choice does not add the half-typed task (the panel sits in the form).
+        onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+      >
+        <legend className="sr-only">{t("Neue Aufgaben landen in", "New tasks go to")}</legend>
+        <label data-active={target?.kind !== "database"}>
+          <input type="radio" name="my-tasks-target" checked={target?.kind !== "database"} onChange={() => void chooseTarget(null)} />
+          <span>
+            {t("Meine Seite „Aufgaben“", "My page “Tasks”")}
+            <small>{t("Ein Dokument in deinem privaten Bereich", "A document in your private space")}</small>
+          </span>
+        </label>
+        {target?.kind === "database" && !targetDatabases?.some((d) => d.id === target.id) && (
+          <label data-active="true">
+            <input type="radio" name="my-tasks-target" checked readOnly />
+            <span>
+              {targetName(target)}
+              <small>{target.problem ? t("Nimmt gerade keine Aufgaben an", "Takes no tasks right now") : t("Datenbank", "Database")}</small>
+            </span>
+          </label>
+        )}
+        {!targetDatabases ? (
+          <p className="muted my-tasks-targets-note">{t("Wird geladen …", "Loading …")}</p>
+        ) : (
+          targetDatabases.map((d) => (
+            <label key={d.id} data-active={target?.kind === "database" && target.id === d.id}>
+              <input type="radio" name="my-tasks-target" checked={target?.kind === "database" && target.id === d.id} onChange={() => void chooseTarget(d.id)} />
+              <span>
+                <span className="my-tasks-target-name">
+                  <PageIcon name={d.icon} size={14} />
+                  {d.title || t("Ohne Titel", "Untitled")}
+                </span>
+                <small>{d.space}</small>
+              </span>
+            </label>
+          ))
+        )}
+        {targetDatabases && !targetDatabases.length && (
+          <p className="muted my-tasks-targets-note">
+            {t(
+              "Keine Datenbank mit Status oder Erledigt-Häkchen, in der du Einträge anlegen darfst.",
+              "No database with a status or a done checkbox that you may add records to.",
+            )}
+          </p>
+        )}
+      </fieldset>
+    </ChipPopover>
+  );
   return (
     <div className="utility-content my-tasks" ref={list}>
       <div className="utility-title">
@@ -548,10 +688,21 @@ export function MyTasks({
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setDraft("")}
           />
+          {targetChip()}
           <small id="my-tasks-add-hint" className="my-tasks-add-hint">
-            {t("Enter legt sie auf deiner Seite „Aufgaben“ an – „morgen“ oder „Freitag“ setzen das Datum.", "Enter adds it to your page “Tasks” – “tomorrow” or “Friday” set the date.")}
+            {intoDatabase
+              ? t(
+                  `Enter legt sie als Eintrag in „${targetName(target)}“ an – „morgen“ oder „Freitag“ setzen das Fälligkeitsdatum, @Name die Person.`,
+                  `Enter adds it as a record to “${targetName(target)}” – “tomorrow” or “Friday” set the due date, @name the person.`,
+                )
+              : t("Enter legt sie auf deiner Seite „Aufgaben“ an – „morgen“ oder „Freitag“ setzen das Datum.", "Enter adds it to your page “Tasks” – “tomorrow” or “Friday” set the date.")}
           </small>
         </form>
+      )}
+      {personal.canAdd && target?.kind === "database" && target.problem && !notice && (
+        <p className="my-tasks-notice my-tasks-target-problem" role="status">
+          {fallbackText(target.problem, target)}
+        </p>
       )}
       {notice && (
         <p className="my-tasks-notice" role="status">
@@ -619,10 +770,16 @@ export function MyTasks({
           <input type="checkbox" checked={done} onChange={(e) => setFilters({ done: e.target.checked })} />
           {t("Erledigte zeigen", "Show completed")}
         </label>
-        {personal.pageId && (
-          <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(personal.pageId!, null)}>
-            {t("Seite „Aufgaben“ öffnen", "Open the page “Tasks”")}
+        {intoDatabase ? (
+          <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(target.id, null)}>
+            {t(`„${targetName(target)}“ öffnen`, `Open “${targetName(target)}”`)}
           </button>
+        ) : (
+          personal.pageId && (
+            <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(personal.pageId!, null)}>
+              {t("Seite „Aufgaben“ öffnen", "Open the page “Tasks”")}
+            </button>
+          )
         )}
       </div>
       {wantRecords && records && (

@@ -20,7 +20,7 @@ import { filterAsync } from "./each-async";
 import { withDefaults } from "./field-defaults";
 
 const rank: Record<string, number> = { viewer: 1, commenter: 1, editor: 2, owner: 3 };
-const writable = async (user: Identity, page: Page) =>
+export const writable = async (user: Identity, page: Page) =>
   !page.deleted_at && page.kind === "database" && !page.locked && rank[await pageRole(user, page) || ""] >= 2 && !(await journalLocked(user, page));
 
 // Databases of the workspace this person may add records to.
