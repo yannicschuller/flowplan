@@ -39,3 +39,25 @@ export async function readJsonLimited(req: Request, maxBytes: number, message?: 
   const text = await readTextLimited(req, maxBytes, message);
   return JSON.parse(text || "{}") as unknown;
 }
+
+// The same request with its body limited: a declared size above the limit
+// is refused at once, and reading the body (`text()`, `json()`,
+// `formData()` …) fails with 413 as soon as more than `maxBytes` arrived –
+// for handlers that read the body in many places or as a form.
+export function limitedRequest(req: Request, maxBytes: number, message = "Anfrage zu groß."): Request {
+  const header = req.headers.get("content-length");
+  if (header && /^\d+$/.test(header) && Number(header) > maxBytes) {
+    void req.body?.cancel().catch(() => undefined);
+    throw new HttpError(413, message);
+  }
+  if (!req.body) return req;
+  let size = 0;
+  const limit = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      size += chunk.byteLength;
+      if (size > maxBytes) controller.error(new HttpError(413, message));
+      else controller.enqueue(chunk);
+    },
+  });
+  return new Request(req, { body: req.body.pipeThrough(limit), duplex: "half" } as RequestInit);
+}

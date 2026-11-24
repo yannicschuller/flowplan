@@ -1,6 +1,7 @@
 // Time reports (lib/time-reports.ts): GET the report of a database (`page`)
 // or a workspace (`workspace`) as JSON or CSV; POST changes the billing
 // status of entries and the hourly rates of a workspace.
+import { readJsonLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -44,10 +45,12 @@ export const POST = withRequestLocale(
   withIdempotency(async (req: Request) => {
     try {
       await checkOrigin(req);
-      if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
       const user = await requireUser();
       if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      const body = (await readJsonLimited(req, 1_000_000).catch((e) => {
+        if (e instanceof HttpError) throw e;
+        return {};
+      })) as Record<string, unknown>;
       if (body.action === "billing") return Response.json(await setBilling(user, body));
       if (body.action === "rate") return Response.json({ rates: await setRate(user, body) });
       if (body.action === "currency") return Response.json(await setCurrency(user, body));

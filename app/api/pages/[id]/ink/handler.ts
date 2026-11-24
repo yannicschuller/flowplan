@@ -6,6 +6,7 @@
 //   GET ?surface=S&version=N         the ink of one version
 //   PUT or POST ?surface=S {base, doc, recognized?}  saves (merged with saves in between)
 //   PUT or POST ?surface=S {version, recognized}     text recognised on the device for that version
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -55,8 +56,7 @@ async function save(req: Request, { params }: Context) {
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     const pageId = z.uuid().parse((await params).id);
     const surface = surfaceOf(new URL(req.url));
-    const text = await req.text();
-    if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, INK_LIMITS.bytes * 2);
     const body = JSON.parse(text);
     if (body && typeof body === "object" && body.doc === undefined && body.recognized !== undefined)
       return NextResponse.json(await savePageRecognized(user, pageId, surface, body), noStore);

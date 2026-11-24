@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withContentLocale } from "@/lib/content-locale";
@@ -32,8 +33,7 @@ async function handlePOST(req: Request) {
   return withContentLocale(locale, async () => {
     try {
       await refuseDeviceWrite(req);
-      const text = await req.text();
-      if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, 10_000);
       return NextResponse.json(await notificationAction(user, JSON.parse(text || "{}"), device), { headers });
     } catch (e) {
       return deviceFailure(e, locale);

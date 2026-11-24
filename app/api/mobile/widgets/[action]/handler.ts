@@ -1,3 +1,4 @@
+import { limitedRequest, readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withDevice } from "@/lib/mobile-device-route";
@@ -36,8 +37,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ action: 
 }
 
 async function jsonBody(req: Request) {
-  const text = await req.text();
-  if (text.length > JSON_LIMIT) throw new HttpError(413, "Anfrage zu groß.");
+  const text = await readTextLimited(req, JSON_LIMIT);
   return JSON.parse(text || "{}") as Record<string, unknown>;
 }
 
@@ -55,10 +55,10 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     limitWidgets(user, "action");
     // Photos and voice memos come as multipart/form-data.
     if ((req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
-      const length = req.headers.get("content-length");
-      if (length && Number(length) > Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * SHARE_MAX_FILES) + 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
+      const max = Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * SHARE_MAX_FILES) + 1_000_000;
+      const limited = limitedRequest(req, max);
       limitWidgets(user, "upload");
-      const form = await req.formData();
+      const form = await limited.formData();
       // capture.share takes several "file" parts, capture.upload the first.
       const parts = form.getAll("file").filter((value): value is File => value instanceof File);
       if (parts.length > SHARE_MAX_FILES) throw new HttpError(413, "Anfrage zu groß.");

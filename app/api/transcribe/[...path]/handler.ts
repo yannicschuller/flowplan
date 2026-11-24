@@ -3,6 +3,7 @@
 // bytes as body), then POST /api/transcribe/finish puts them together and
 // sends the whole recording to the transcription service (lib/transcribe.ts).
 // Short recordings still go in one request to POST /api/transcribe.
+import { readBodyLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -35,8 +36,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
       // The recording would reach the transcription service as plaintext
       // (as for short recordings, app/api/[...path]/handler.ts).
       await requirePlaintext(await requirePage(user, pageId, true));
-      if (Number(req.headers.get("content-length") || 0) > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
-      const bytes = new Uint8Array(await req.arrayBuffer());
+      const bytes = new Uint8Array(await readBodyLimited(req, TRANSCRIBE_CHUNK_BYTES));
       return NextResponse.json(
         await storeTranscribeChunk(user, { uploadId: uuid.parse(url.searchParams.get("upload")), pageId, index: Number(url.searchParams.get("index")) }, bytes),
       );

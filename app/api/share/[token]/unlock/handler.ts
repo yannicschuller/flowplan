@@ -1,3 +1,4 @@
+import { readJsonLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { checkOrigin, HttpError } from "@/lib/auth";
 import { clientAddress } from "@/lib/client-address";
@@ -14,9 +15,11 @@ const headers = {
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     await checkOrigin(req);
-    if (Number(req.headers.get("content-length") || 0) > 2000) throw new HttpError(413, "Anfrage zu groß.");
     const { token } = await params;
-    const body = (await req.json().catch(() => ({}))) as { password?: unknown };
+    const body = (await readJsonLimited(req, 2000).catch((e) => {
+      if (e instanceof HttpError) throw e;
+      return {};
+    })) as { password?: unknown };
     const { value, maxAge } = await unlockShare(token, body?.password, clientAddress(req.headers));
     const response = NextResponse.json({ ok: true }, { headers });
     if (value) for (const cookie of unlockCookies(token, value, maxAge)) response.headers.append("Set-Cookie", cookie);

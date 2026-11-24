@@ -1,6 +1,7 @@
 // Workshop facilitation on a whiteboard (lib/whiteboard-facilitation.ts):
 // private mode, planning poker and "Alle zu mir holen". Browser sessions
 // only – API tokens are refused; changes also need the origin check.
+import { readTextLimited } from "@/lib/request-body";
 import { requireModule } from "@/lib/instance-modules";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
@@ -51,9 +52,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: Context) 
     await requireModule("whiteboards");
     const pageId = z.uuid().parse((await params).id);
     const limit = Math.ceil((PRIVATE_LIMITS.update * 4) / 3) + 4096;
-    if (Number(req.headers.get("content-length") || 0) > limit) throw new HttpError(413, "Anfrage zu groß.");
-    const text = await req.text();
-    if (text.length > limit) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, limit);
     let body: unknown;
     try {
       body = JSON.parse(text || "{}");

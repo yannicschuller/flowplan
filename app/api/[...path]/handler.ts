@@ -23,6 +23,7 @@ import { hasCalDavAccess } from "@/lib/caldav";
 import { withMeetingNotes } from "@/lib/meeting-notes";
 import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
+import { limitedRequest, readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { requireBodySize, sanitizeFileName, stripLocationFile, uploadMime } from "@/lib/upload-safety";
 import { readFileSync, statSync } from "node:fs";
 import { uploadPath, uploadsDir } from "@/lib/storage";
@@ -1578,16 +1579,17 @@ async function handlePOST(
           : 12_000_000;
     if (req.headers.get("content-type")?.startsWith("multipart/form-data"))
       requireBodySize(req, maxBody, "Anfrage zu groß.");
-    else if (Number(req.headers.get("content-length") || 0) > maxBody)
-      throw new HttpError(413, "Anfrage zu groß.");
+    // Other bodies are counted while they are read – also a chunked one
+    // without Content-Length (lib/request-body.ts).
+    else if (maxBody < Number.MAX_SAFE_INTEGER) req = limitedRequest(req, maxBody);
     // The denial from the e-mail's confirmation page (#281): no sign-in,
-    // the signed link decides.
+    // the signed link decides. The form holds only the token.
     if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") {
-      const form = await req.formData();
+      const form = await limitedRequest(req, 16_384).formData();
       return await emergencyDenied(String(form.get("token") || ""));
     }
     if (path.length === 2 && path[0] === "deadman" && path[1] === "here") {
-      const form = await req.formData();
+      const form = await limitedRequest(req, 16_384).formData();
       return await deadmanHere(String(form.get("token") || ""));
     }
     const user = await requireUser();
@@ -1687,8 +1689,7 @@ async function handlePOST(
       return NextResponse.json(await netboxImport(user, path[1], await req.json()), { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
-      if (Number(req.headers.get("content-length") || 0) > 512)
-        throw new HttpError(413, "Cursoranfrage zu groß.");
+      const cursor = await readJsonLimited(req, 512, "Cursoranfrage zu groß.");
       const page = await requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
       // A notebook's presenter: the sheet shown and since when (follow mode).
@@ -1711,7 +1712,7 @@ async function handlePOST(
             .optional(),
         })
         .nullable()
-        .parse(await req.json());
+        .parse(cursor);
       moveCursor(page.id, user, body);
       return new Response(null, { status: 204 });
     }
@@ -1797,15 +1798,13 @@ async function handlePOST(
     // and taking a capture back.
     if (path.length === 2 && path[0] === "capture") {
       if (path[1] === "preview") {
-        const text = await req.text();
-        if (text.length > 100_000) throw new HttpError(413, "Anfrage zu groß.");
+        const text = await readTextLimited(req, 100_000);
         return NextResponse.json(await capturePreview(user, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
       }
       if (path[1] === "undo") return NextResponse.json(await captureUndo(user, await req.json()));
       if (path[1] === "save") {
         if (!(req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
-          const text = await req.text();
-          if (text.length > 150_000) throw new HttpError(413, "Anfrage zu groß.");
+          const text = await readTextLimited(req, 150_000);
           const saved = await desktopCaptureSave(user, JSON.parse(text || "{}"));
           after(dispatchPush);
           return NextResponse.json(saved);
@@ -1822,17 +1821,14 @@ async function handlePOST(
       }
     }
     if (path[0] === "command") {
-      const text = await req.text();
-      if (text.length > 10_000_000)
-        throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, 10_000_000);
       const result = await command(user, JSON.parse(text), false, idempotencyHook());
       after(dispatchPush);
       return NextResponse.json(result);
     }
     if (path[0] === "push") {
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
-      const text = await req.text();
-      if (text.length > 10000) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, 10000);
       const body = JSON.parse(text);
       const result =
         body.action === "unsubscribe"

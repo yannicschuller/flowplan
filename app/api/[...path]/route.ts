@@ -21,6 +21,7 @@
 // them only /.well-known/flowplan-push and /llms.txt load the core.
 import type { NextRequest } from "next/server";
 import { apiRoutes, matchApiRoute, routeMethod, type RouteModule } from "@/lib/api-routes";
+import { blockedRequest } from "@/lib/security-events";
 import * as general from "./handler";
 import * as adminDirectory from "../admin/directory/handler";
 import * as adminInstanceBackup from "../admin/instance-backup/handler";
@@ -190,6 +191,11 @@ const routes = apiRoutes([
 
 type Context = { params: Promise<{ path: string[] }> };
 async function dispatch(request: NextRequest, context: Context) {
+  // Blocked addresses (Administration → Sicherheit) get only a refusal.
+  // proxy.ts does that for requests without a body; its matcher leaves out
+  // those with one, so the block applies here too, before any handler.
+  if (await blockedRequest(request.headers))
+    return new Response("Forbidden", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
   const { path } = await context.params;
   const hit = matchApiRoute(routes, path);
   if (!hit) return routeMethod(general as RouteModule, request.method)(request, context);

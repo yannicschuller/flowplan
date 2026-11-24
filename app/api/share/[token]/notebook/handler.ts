@@ -4,6 +4,7 @@
 //   GET ?pageId=P&surface=S       the ink of one sheet
 //   POST ?pageId=P&surface=S {base, doc}            saves a sheet's ink (merged)
 //   POST {pageId, op, ...}        sheet.add | sheet.duplicate | sheet.delete | sheet.move
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -44,9 +45,7 @@ export async function POST(req: Request, { params }: Context) {
     await checkOrigin(req);
     const { token } = await params,
       url = new URL(req.url);
-    if (Number(req.headers.get("content-length") || 0) > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
-    const text = await req.text();
-    if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, INK_LIMITS.bytes * 2);
     const body = JSON.parse(text);
     const data = await withShareRequest(req, async () => {
       if (url.searchParams.has("surface")) return await saveSharedInk(token, z.uuid().parse(url.searchParams.get("pageId")), surfaceOf(url), body);

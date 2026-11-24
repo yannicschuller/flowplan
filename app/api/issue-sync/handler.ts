@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -46,8 +47,7 @@ export const POST = withRequestLocale(
       await checkOrigin(req);
       const user = await requireUser();
       if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-      const text = await req.text();
-      if (text.length > 20_000) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, 20_000);
       const body = z.object({ op: z.enum(["test", "run"]) }).passthrough().parse(JSON.parse(text || "{}"));
       if (body.op === "test") return NextResponse.json(await testIssueConnection(user, body));
       return NextResponse.json(await runIssueSync(user, z.uuid().parse(body.pageId)));
