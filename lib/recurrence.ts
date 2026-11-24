@@ -101,12 +101,19 @@ export function occurrenceDates(
       ? date.with({ day: Math.min(anchor, date.daysInMonth) })
       : date;
   };
-  // Skip ahead for fixed-length steps instead of walking from the start.
+  // Skip ahead to just before the window instead of walking from the start:
+  // by days for daily and weekly steps, by calendar months for monthly and
+  // yearly ones (step(k) is computed from the start, so clamped month ends
+  // do not drift). A series begun centuries ago costs as little as a new one.
   let k = 1;
   if (rule.freq === "daily" || rule.freq === "weekly") {
     const days = base.until(first, { largestUnit: "days" }).days;
     const size = rule.interval * (rule.freq === "weekly" ? 7 : 1);
     k = Math.max(1, Math.floor(days / size) - 1);
+  } else {
+    const months = (first.year - base.year) * 12 + (first.month - base.month);
+    const size = rule.interval * (rule.freq === "yearly" ? 12 : 1);
+    k = Math.max(1, Math.floor(months / size) - 1);
   }
   const dates: string[] = [];
   for (let guard = 0; guard < 20000 && dates.length < limit; guard++, k++) {
