@@ -107,6 +107,7 @@ import {
   useLayoutEffect,
   useRef,
   useEffect,
+  useId,
   startTransition,
   ViewTransition,
 } from "react";
@@ -269,6 +270,7 @@ const DatabaseForm = dynamic(() => loadView(() => import("./database-form")), { 
 const ItemQrDialog = dynamic(() => loadView(() => import("./item-qr")), { ssr: false });
 const QrLabelsDialog = dynamic(() => loadView(() => import("./qr-labels")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
+import { parseTitleInput, titleDisplayText, titleEditText, titleMode, titlePlaceholder } from "@/lib/title-input";
 import type {
   Database,
   Row,
@@ -972,7 +974,19 @@ export default function DatabaseView({
   // The open record for the workspace (#231): its breadcrumb and, as a
   // page, the page around it. Before painting, so the database's title
   // never flashes above a record page.
-  const recordTitle = selected ? cellText(selected.cells[fields[0]?.id || "title"]) || t("Ohne Titel", "Untitled") : "";
+  // The title as text, formatted like the table's first column (#529): a
+  // date title "23.11.2026", a number with its unit, a formula's result.
+  function computedTitleText(row: Row) {
+    return titleDisplayText(fields[0], computedCells(row, fields, related, data.relatedSchemas)[fields[0].id], { members });
+  }
+  function recordTitleText(row: Row) {
+    const mode = titleMode(fields[0]);
+    if (mode === "readonly") return computedTitleText(row);
+    const v = row.cells[fields[0]?.id || "title"];
+    return mode === "text" ? cellText(v) : titleDisplayText(fields[0], v, { members });
+  }
+  // A title of another type than text (#529) reads as in the table.
+  const recordTitle = selected ? recordTitleText(selected) || t("Ohne Titel", "Untitled") : "";
   const reportRecord = useRef(onRecordView);
   reportRecord.current = onRecordView;
   useLayoutEffect(() => {
@@ -2233,8 +2247,10 @@ export default function DatabaseView({
     const withTemplate = templateId || (templateId !== null && data.rowTemplates?.some((t) => t.is_default));
     const r = (await act({
       action: "row.create",
-      // A computed title (an ID made the title before #463) takes no text.
-      cells: withTemplate || computedTypes.includes(fields[0].type) ? cells : { [fields[0].id]: newRecordTitle, ...cells },
+      // Only a text title is called "Neue Aufgabe" (a date or number title
+      // starts empty and the record opens with it focused, #529); a
+      // computed one takes no value.
+      cells: withTemplate || titleMode(fields[0]) !== "text" ? cells : { [fields[0].id]: newRecordTitle, ...cells },
       templateId,
       // Dates of placeholders ({{Heute}}) and of "Heute" defaults (#411)
       // in the person's time zone.
@@ -6592,19 +6608,54 @@ export default function DatabaseView({
                   className="row-title-icon"
                 />
               )}
-              {computedTypes.includes(fields[0].type) ? (
-                // A computed title (an ID made the title before #463) is
-                // shown, not typed: the server refuses changes of it.
-                cellText(computedCells(selected, fields, related, data.relatedSchemas)[fields[0].id]) || t("Ohne Titel", "Untitled")
-              ) : selectedEditable ? (
+              {titleMode(fields[0]) === "readonly" ? (
+                // A formula or rollup title (or an ID made the title before
+                // #463) is shown, formatted as in the table, not typed: the
+                // server refuses changes of it.
+                <span className="row-title-value">
+                  {computedTitleText(selected) || t("Ohne Titel", "Untitled")}
+                </span>
+              ) : selectedEditable && titleMode(fields[0]) === "text" ? (
                 <RowTitle
                   key={selected.id}
                   value={cellText(selected.cells[fields[0].id])}
                   focus={freshRowId === selected.id}
                   onSave={(title) => updateCell(selected, fields[0], title)}
                 />
+              ) : selectedEditable && !fieldLocked(selected, fields[0]) && titleMode(fields[0]) === "typed" ? (
+                // A date, number, select or person title (#529): typed in
+                // the writings the table reads, saved as the property's value.
+                <TypedTitle
+                  key={selected.id}
+                  field={fields[0]}
+                  value={selected.cells[fields[0].id]}
+                  members={members}
+                  focus={freshRowId === selected.id}
+                  onSave={(v) => updateCell(selected, fields[0], v)}
+                />
+              ) : selectedEditable && !fieldLocked(selected, fields[0]) && titleMode(fields[0]) === "editor" ? (
+                // Other types (a checkbox, relation, files …): the property's
+                // own editor, as in the table.
+                <span className="row-title-editor">
+                  <CellInput
+                    field={fields[0]}
+                    value={selected.cells[fields[0].id]}
+                    members={members}
+                    related={related}
+                    links
+                    optionPicker={optionPicker(fields[0])}
+                    onChange={(v) => updateCell(selected, fields[0], v)}
+                    keepRequired
+                    upload={uploadFile}
+                    files={data.files}
+                  />
+                </span>
               ) : (
-                cellText(selected.cells[fields[0].id]) || t("Ohne Titel", "Untitled")
+                <span className="row-title-value">
+                  {titleMode(fields[0]) === "text"
+                    ? cellText(selected.cells[fields[0].id]) || t("Ohne Titel", "Untitled")
+                    : titleDisplayText(fields[0], selected.cells[fields[0].id], { members }) || t("Ohne Titel", "Untitled")}
+                </span>
               )}
             </h2>
             {freshRowId === selected.id && <DuplicateHint workspaceId={page.workspace_id} title={cellText(selected.cells[fields[0].id])} databaseId={page.id} excludeRowId={selected.id} />}
@@ -7260,6 +7311,112 @@ function RowTitle({
         } else if (e.key === "Escape") e.stopPropagation();
       }}
     />
+  );
+}
+
+// A title of another type than text (#529) – a date, number, select or
+// person: shown as the table shows it ("23. Nov. 2026", "12,5 kg"), typed
+// as text on focus ("23.11.2026") and read into the stored value
+// (lib/title-input.ts). What cannot be read stays in the field with a hint
+// below it; nothing is saved then.
+function TypedTitle({
+  field,
+  value,
+  members,
+  focus,
+  onSave,
+}: {
+  field: Field;
+  value: unknown;
+  members: User[];
+  focus: boolean;
+  onSave: (value: unknown) => unknown;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => titleEditText(field, value, { members }));
+  const [error, setError] = useState("");
+  const errorId = useId();
+  const input = useRef<HTMLTextAreaElement>(null);
+  // Typed and not saved yet.
+  const typed = useRef<string | null>(null);
+  const latest = useRef({ field, value, members, onSave, t });
+  useEffect(() => {
+    latest.current = { field, value, members, onSave, t };
+  });
+  // Reads what was typed; true when it was saved or nothing changed.
+  const save = useRef(() => {
+    if (typed.current === null) return true;
+    const { field, value, members, onSave, t } = latest.current;
+    const result = parseTitleInput(field, typed.current, { t, members, current: value });
+    if (!result.ok) {
+      setError(result.error);
+      return false;
+    }
+    typed.current = null;
+    setError("");
+    if (JSON.stringify(result.value ?? null) !== JSON.stringify(value ?? null)) void onSave(result.value);
+    return true;
+  }).current;
+  useEffect(() => () => void save(), [save]);
+  useEffect(() => {
+    if (typed.current !== null) return;
+    setDraft(titleEditText(field, value, { members }));
+    setError("");
+  }, [field, value, members]);
+  useEffect(() => {
+    if (!focus) return;
+    input.current?.focus();
+    input.current?.select();
+  }, [focus]);
+  const shown = editing || error ? draft : titleDisplayText(field, value, { members });
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [shown]);
+  return (
+    <span className="row-title-typed">
+      <textarea
+        ref={input}
+        className="row-title-input"
+        aria-label={t(`Titel des Eintrags (${field.name})`, `Record title (${field.name})`)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        placeholder={titlePlaceholder(field, t)}
+        rows={1}
+        value={shown}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => {
+          typed.current = e.target.value.replace(/\n/g, "");
+          setDraft(typed.current);
+          setError("");
+        }}
+        onBlur={() => {
+          save();
+          setEditing(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            // A value that cannot be read keeps the focus with its hint.
+            if (save()) e.currentTarget.blur();
+          } else if (e.key === "Escape") e.stopPropagation();
+        }}
+      />
+      {error && (
+        <span id={errorId} className="row-title-error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }
 

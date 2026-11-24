@@ -6971,6 +6971,40 @@ h2:has(> .row-title-input) .row-title-icon {
 .row-title-input::placeholder {
   color: var(--muted);
 }
+/* A title of another type than text (#529): typed, with a hint below
+   when it cannot be read; other types take their property editor. */
+h2:has(> .row-title-typed),
+h2:has(> .row-title-editor) {
+  display: flex;
+  align-items: flex-start;
+}
+h2:has(> .row-title-typed) .row-title-icon,
+h2:has(> .row-title-editor) .row-title-icon {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.row-title-typed {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.row-title-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--required-missing);
+  white-space: normal;
+}
+.row-title-editor {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: normal;
+}
 .row-icon {
   margin-right: 6px;
   vertical-align: -2px;
@@ -25085,7 +25119,12 @@ h3 .block-reactions {
 }
 .subtask-add {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+.subtask-add .cell-required-error {
+  flex-basis: 100%;
+  margin-top: 0;
 }
 .subtask-add input {
   flex: 1;
