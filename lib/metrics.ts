@@ -38,8 +38,15 @@ export const localDay = (ms: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-// Upper bounds (ms) of the latency buckets; the last one takes the rest.
-export const LATENCY_BUCKETS = [5, 10, 20, 35, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10_000, 30_000, Infinity] as const;
+// Upper bounds (ms) of the latency buckets, in the order of their index in
+// the stored histograms ("index:count", encodeHist): Infinity takes the
+// rest. Indices never change meaning – finer buckets are appended (15 s and
+// 20 s, #516) – so rows written before still read the same. Since then
+// index 18 (≤ 30 s) holds 20–30 s; in older rows it holds 10–30 s, which
+// reads as 20–30 s (as coarse as it was then, never faster). Walk the
+// buckets in LATENCY_ORDER, ascending by bound.
+export const LATENCY_BUCKETS = [5, 10, 20, 35, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10_000, 30_000, Infinity, 15_000, 20_000] as const;
+export const LATENCY_ORDER: readonly number[] = LATENCY_BUCKETS.map((_, i) => i).sort((a, b) => LATENCY_BUCKETS[a] - LATENCY_BUCKETS[b]);
 
 type Minute = { at: number; requests: number; errors: number; clientErrors: number; hist: number[] };
 type AiCount = { requests: number; tokensIn: number; tokensOut: number };
@@ -144,9 +151,9 @@ export async function clearMetrics() {
 
 /* ---------- Collectors (memory only) ---------- */
 
-const bucketOf = (ms: number) => {
-  for (let i = 0; i < LATENCY_BUCKETS.length; i++) if (ms <= LATENCY_BUCKETS[i]) return i;
-  return LATENCY_BUCKETS.length - 1;
+export const bucketOf = (ms: number) => {
+  for (const i of LATENCY_ORDER) if (ms <= LATENCY_BUCKETS[i]) return i;
+  return LATENCY_ORDER[LATENCY_ORDER.length - 1];
 };
 function minuteFor(s: State, now: number) {
   const at = floorTo(now, MINUTE);
@@ -376,9 +383,10 @@ export function percentile(hist: number[], q: number): number | null {
   if (!total) return null;
   const want = Math.max(1, Math.ceil(total * q));
   let seen = 0;
-  for (let i = 0; i < hist.length; i++) {
-    seen += hist[i];
-    if (seen >= want) return Number.isFinite(LATENCY_BUCKETS[i]) ? LATENCY_BUCKETS[i] : LATENCY_BUCKETS[i - 1] * 2;
+  for (let k = 0; k < LATENCY_ORDER.length; k++) {
+    const i = LATENCY_ORDER[k];
+    seen += hist[i] || 0;
+    if (seen >= want) return Number.isFinite(LATENCY_BUCKETS[i]) ? LATENCY_BUCKETS[i] : LATENCY_BUCKETS[LATENCY_ORDER[k - 1]] * 2;
   }
   return null;
 }

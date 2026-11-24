@@ -223,6 +223,15 @@ test("AI latency for the recommendations: comparable features only, p95 and coun
   assert.equal(s.requests, 60);
   assert.ok(s.p95! < 2000);
   assert.equal(fires(s), null);
+  // About 12 s: read as 15 s, so it does not fire at 20 s (it read as 30 s before).
+  await metrics.clearMetrics();
+  for (let i = 0; i < 60; i++) call("ask", 12_000);
+  s = await sample();
+  assert.equal(s.p95, 15_000);
+  assert.equal(fires(s), null);
+  await metrics.clearMetrics();
+  for (let i = 0; i < 500; i++) call("write", 60_000, now - 10 * DAY);
+  for (let i = 0; i < 60; i++) call("write", 900);
   // The 14-day statistics still see all of them.
   assert.equal((await aiStatistics(now, 14, false)).total.requests, 560);
 });

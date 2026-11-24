@@ -152,6 +152,8 @@ test("AI latency: only on enough comparable requests (#516)", () => {
   assert.ok(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 50 } }), T));
   // The sample size is a threshold of its own.
   assert.ok(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 11 } }), { ...T, aiMinRequests: 10 }));
+  // A p95 of about 12 s reads as 15 s (#516: the 10–30 s bucket is split) and does not fire at 20 s.
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 15_000, requests: 60 } }), T), null);
   // Fast enough, off, or no timed request.
   assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 19_000, requests: 500 } }), T), null);
   assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 60, enabled: false } }), T), null);

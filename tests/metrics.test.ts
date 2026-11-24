@@ -76,6 +76,30 @@ test("percentiles and histograms", () => {
   assert.deepEqual(metrics.decodeHist("x,3:2,99:1").slice(0, 4), [0, 0, 0, 2]);
 });
 
+test("latency buckets of 15 s and 20 s, appended so stored histograms keep their meaning (#516)", () => {
+  // Indices of rows written before stay what they were.
+  assert.deepEqual(metrics.LATENCY_BUCKETS.slice(0, 20), [5, 10, 20, 35, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 10_000, 30_000, Infinity]);
+  assert.equal(metrics.bucketOf(12_000), metrics.LATENCY_BUCKETS.indexOf(15_000));
+  assert.equal(metrics.bucketOf(18_000), metrics.LATENCY_BUCKETS.indexOf(20_000));
+  assert.equal(metrics.bucketOf(25_000), 18);
+  assert.equal(metrics.bucketOf(10_000), 17);
+  assert.equal(metrics.bucketOf(90_000), 19);
+  // A p95 of about 12 s reads as 15 s, no longer as 30 s.
+  const hist = new Array(metrics.LATENCY_BUCKETS.length).fill(0);
+  for (let i = 0; i < 95; i++) hist[metrics.bucketOf(2000)]++;
+  for (let i = 0; i < 5; i++) hist[metrics.bucketOf(12_000)]++;
+  assert.equal(metrics.percentile(hist, 0.95), 2000);
+  assert.equal(metrics.percentile(hist, 0.99), 15_000);
+  assert.equal(metrics.percentile(metrics.decodeHist(metrics.encodeHist(hist)), 0.99), 15_000);
+  // An old row's 10–30 s bucket reads as before; mixed with new rows the
+  // order is by bound, not by index.
+  assert.equal(metrics.percentile(metrics.decodeHist("18:1"), 1), 30_000);
+  assert.equal(metrics.percentile(metrics.decodeHist("18:1,20:1,21:1"), 0.33), 15_000);
+  assert.equal(metrics.percentile(metrics.decodeHist("18:1,20:1,21:1"), 0.66), 20_000);
+  assert.equal(metrics.percentile(metrics.decodeHist("18:1,20:1,21:1"), 1), 30_000);
+  assert.equal(metrics.percentile(metrics.decodeHist("19:1,21:1"), 1), 60_000);
+});
+
 test("the request series: buckets per range, gaps before collecting began", async () => {
   const now = base + 30 * MINUTE;
   const hourly = await metrics.requestSeries("1h", now);
