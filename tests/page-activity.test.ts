@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Identity } from "../lib/types";
+import type { Identity, Page } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-activity-"));
 const { run, id, all, one } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const { htmlState } = await import("../lib/document-server");
-const { withActivity } = await import("../lib/page-activity");
+const { withActivity, visitPage } = await import("../lib/page-activity");
 
 const person = async (name: string) => {
   const uid = id();
@@ -96,4 +96,18 @@ test("unfollowing stops notifications", async () => {
   await run("UPDATE page_edits SET at=at-120000");
   await sync(anna, "<p>Noch einmal</p>");
   assert.equal((await changeNotes(ben)).length, 0);
+});
+
+test("changed records since the last visit count only records the person may see (#508)", async () => {
+  const db = ((await command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Fälle", kind: "database" })) as { id: string }).id;
+  const since = async (user: Identity) =>
+    await visitPage(user, (await one<Page>("SELECT * FROM pages WHERE id=?", db))!, null);
+  await since(ben);
+  await run("UPDATE page_visits SET seen_at=? WHERE user_id=? AND page_id=?", Date.now() - 10_000, ben.id, db);
+  for (let i = 0; i < 3; i++) {
+    const rowId = ((await command(anna, { action: "row.create", pageId: db, cells: { title: `privat-${i}` } })) as { id: string }).id;
+    await command(anna, { action: "row.access", pageId: db, rowId, access: "private", grants: [] });
+  }
+  await command(anna, { action: "row.create", pageId: db, cells: { title: "offen" } });
+  assert.equal((await since(ben))!.rows, 1);
 });
