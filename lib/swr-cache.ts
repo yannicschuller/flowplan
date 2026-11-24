@@ -18,12 +18,15 @@
 // This is not the offline copy (components/offline.ts): it holds a few
 // recent things for speed, not the whole workspace for offline use.
 
+import { isAccountTabKey, SWR_STORAGE_PREFIX } from "./tab-storage";
+
 export type CachePolicy = "none" | "memory" | "persist";
 export type CacheEntry<T> = { value: T; version: string; at: number; persist: boolean };
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "length">;
 
-// components/login.tsx clears the same prefix (without loading this module).
-export const STORAGE_PREFIX = "flowplan:swr:";
+// components/login.tsx clears the same keys (lib/tab-storage.ts) without
+// loading this module.
+export const STORAGE_PREFIX = SWR_STORAGE_PREFIX;
 const OWNER_KEY = `${STORAGE_PREFIX}owner`;
 
 export function createSwrCache({
@@ -231,13 +234,15 @@ export function appCache(): SwrCache {
     });
   return shared;
 }
-// Sign-out and the sign-in page: nothing of the last person stays in this tab.
+// Sign-out and the sign-in page: nothing of the last person stays in this
+// tab – the page cache, the Ask-AI conversation and the history titles
+// (lib/tab-storage.ts).
 export function clearAppCache() {
   appCache().clear();
   try {
     for (let i = sessionStorage.length - 1; i >= 0; i--) {
       const key = sessionStorage.key(i);
-      if (key?.startsWith(STORAGE_PREFIX)) sessionStorage.removeItem(key);
+      if (key && isAccountTabKey(key)) sessionStorage.removeItem(key);
     }
   } catch {}
 }

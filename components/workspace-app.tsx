@@ -106,7 +106,6 @@ import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, touchHold as holdForTouch, type R
 import { MediaLibrary } from "./media-library";
 import {
   checkOfflineOwner,
-  disableOffline,
   offlineMarker,
   registerServiceWorker,
 } from "./offline";
@@ -147,6 +146,7 @@ import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/l
 import { branchPath, branchUp, leavesBranch, readBranch, writeBranch } from "@/lib/sidebar-branch";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
+import { clearAccountData } from "./sign-out";
 import { workspaceCookie } from "@/lib/last-workspace";
 import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
@@ -4497,8 +4497,7 @@ export default function WorkspaceApp({
       : []),
   ];
   const signOut = async () => {
-    await disableOffline().catch(() => undefined);
-    clearAppCache();
+    await clearAccountData();
     const done = await fetch("/api/auth/logout", { method: "POST" })
       .then((r) => r.json() as Promise<{ redirect?: string }>)
       .catch(() => ({}) as { redirect?: string });
@@ -5244,6 +5243,7 @@ export default function WorkspaceApp({
               type="button"
               className="button"
               onClick={async () => {
+                await clearAccountData();
                 await fetch("/api/auth/trial-end", { method: "POST" });
                 location.assign("/");
               }}
@@ -6160,7 +6160,7 @@ export default function WorkspaceApp({
                       onError={notifyError}
                     />
                   ) : data.page.kind === "notebook" && data.notebook ? (
-                    <NotebookView key={data.page.id} pageId={data.page.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={(message) => notifyError(message)} />
+                    <NotebookView key={data.page.id} pageId={data.page.id} userId={boot.user.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={(message) => notifyError(message)} />
                   ) : data.page.kind === "dashboard" && data.dashboard ? (
                     <DashboardView key={data.page.id} pageId={data.page.id} dashboard={data.dashboard} editable={editable} userId={boot.user.id} members={boot.members} pages={activePages} onRefresh={refresh} onError={notifyError} />
                   ) : data.page.kind === "workflow" && data.workflow ? (

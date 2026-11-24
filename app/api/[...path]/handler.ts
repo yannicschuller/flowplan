@@ -122,6 +122,7 @@ import { captureUndo, capturePreview, desktopCaptureSave, desktopCaptureTargets 
 import { MAX_CAPTURE_FILES } from "@/lib/mobile-capture";
 import { listInboundAddresses } from "@/lib/inbound-mail";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
+import { SIGNED_OUT_HEADERS } from "@/lib/sign-out";
 import { sessionSettings } from "@/lib/session-policy";
 import { mySecurity } from "@/lib/my-security";
 import { pageToRecordPlan } from "@/lib/page-to-record";
@@ -2181,7 +2182,8 @@ async function handlePOST(
       const jar = await cookies();
       const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
       if (result.current) jar.delete(cookieName);
-      return NextResponse.json(result);
+      // This device signed out: the browser drops its cache too (#501).
+      return NextResponse.json(result, result.current ? { headers: SIGNED_OUT_HEADERS } : undefined);
     }
     // A face for the workspace's look (owners; lib/workspace-fonts.ts).
     if (path.length === 1 && path[0] === "workspace-fonts") {

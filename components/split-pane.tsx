@@ -234,7 +234,7 @@ export function SplitPane({
       />
     );
   else if (data.page.kind === "notebook" && data.notebook)
-    body = <NotebookView key={data.page.id} pageId={data.page.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={onError} />;
+    body = <NotebookView key={data.page.id} pageId={data.page.id} userId={userId} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={onError} />;
   else if (data.page.kind === "document" && !data.locked && !data.journal)
     body = (
       <DocumentEditor

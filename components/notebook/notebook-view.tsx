@@ -111,6 +111,7 @@ const fileName = (title: string) => (title || "Notebook").replace(/[\\/:*?"<>|\u
 
 export default function NotebookView({
   pageId,
+  userId = "",
   title,
   notebook,
   editable,
@@ -118,6 +119,8 @@ export default function NotebookView({
   guest,
 }: {
   pageId: string;
+  // The signed-in member (none for a guest of an edit link).
+  userId?: string;
   title: string;
   notebook: NotebookPayload;
   editable: boolean;
@@ -196,7 +199,7 @@ export default function NotebookView({
   // ---- Layout, zoom, current sheet ----
   const scroller = useRef<HTMLDivElement>(null);
   // Audio recordings, synced to the ink (notebook-audio.tsx).
-  const audio = useNotebookAudio({ pageId, editor, canEdit: canEdit && member, scroller, onError, off: !member });
+  const audio = useNotebookAudio({ pageId, userId, editor, canEdit: canEdit && member, scroller, onError, off: !member });
   const [fit, setFit] = useState(760);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {

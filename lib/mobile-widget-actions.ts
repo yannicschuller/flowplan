@@ -18,6 +18,7 @@ import { cleanHtml, escaped, htmlState } from "./document-server";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { indexPageTasks, syncDocTasks } from "./doc-tasks";
 import { enforceQuota } from "./instance-ops";
+import { pageModule, requireModule } from "./instance-modules";
 import { dayTitle } from "./journal";
 import { recordPageEdit } from "./page-activity";
 import { requirePage } from "./permissions";
@@ -49,7 +50,8 @@ const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: strin
 // ---- Capture ----
 
 // A target the person may add to: readable for writing, not read-only, not
-// behind a PIN, not end-to-end encrypted (the server would see plaintext).
+// behind a PIN, not end-to-end encrypted (the server would see plaintext),
+// not of a feature switched off for the instance (#386, as command write()).
 export async function captureTarget(user: Identity, pageId: string) {
   const access = await pageAccess(user, pageId);
   if (!access) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
@@ -57,6 +59,7 @@ export async function captureTarget(user: Identity, pageId: string) {
   if (access.locked) throw new HttpError(423, ct("Dieses Journal ist gesperrt.", "This journal is locked."));
   if (rank[access.role] < 2) throw new HttpError(403, ct("Keine Berechtigung für diese Seite.", "No permission for this page."));
   if (access.page.locked) throw new HttpError(409, ct("Diese Seite ist gesperrt.", "This page is locked."));
+  await requireModule(pageModule(access.page));
   if (access.page.kind !== "database" && access.page.kind !== "document")
     throw new HttpError(400, ct("Hierhin kann nicht erfasst werden.", "Cannot capture here."));
   return access;

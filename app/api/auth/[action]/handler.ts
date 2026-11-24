@@ -181,6 +181,7 @@ const wantsRemember = (input: unknown) => !!input && typeof input === "object" &
 import { clientAddress } from "@/lib/client-address";
 import { groupsClaimMissing, groupsClaimName, recordSsoGroups } from "@/lib/sso-group-report";
 import { demoSignInAllowed } from "@/lib/e2e-build";
+import { SIGNED_OUT_HEADERS } from "@/lib/sign-out";
 export const GET = withRequestLocale(handleGET);
 async function handleGET(
   req: Request,
@@ -462,7 +463,7 @@ async function handlePOST(
       const user = await currentUser();
       if (user?.demo) await endDemo(user.id);
       (await cookies()).delete(cookieName);
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true }, { headers: SIGNED_OUT_HEADERS });
     }
     const locale = await requestLocale();
     // Confirmed in the browser: a one-time code for the app.
@@ -826,7 +827,7 @@ async function handlePOST(
       // working copies go with them (lib/space-git-export.ts).
       await sweepSpaceGitCopies();
       (await cookies()).delete(cookieName);
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: SIGNED_OUT_HEADERS });
     }
     if (action === "logout") {
       const demoUser = await currentUser();
@@ -840,7 +841,7 @@ async function handlePOST(
       if (token) await run("DELETE FROM sessions WHERE token=?", hash(token));
       jar.delete(cookieName);
       const portal = proxied ? proxyAuthConfig()?.logoutUrl : "";
-      return NextResponse.json(portal ? { ok: true, redirect: portalAddress(portal, `${appUrl()}/`) } : { ok: true });
+      return NextResponse.json(portal ? { ok: true, redirect: portalAddress(portal, `${appUrl()}/`) } : { ok: true }, { headers: SIGNED_OUT_HEADERS });
     }
     throw new HttpError(404, "Nicht gefunden");
   } catch (e) {
