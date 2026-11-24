@@ -4736,6 +4736,14 @@ tr:hover .row-open,
   height: 1px;
   pointer-events: none;
 }
+/* An alert or notice at the top of the content (components/ui.tsx) is
+   scrolled into view when it appears: below the sticky heading, not under
+   it – there a tap meant for its ✕ hit the dialog's ✕ and closed it. The
+   heading's lower edge counts from the content edge, the scrollport starts
+   at the padding edge above it. */
+.modal > .error-alert {
+  scroll-margin-top: calc(var(--modal-heading-bottom, 0px) + var(--modal-pad-top, 0px) + 8px);
+}
 /* Sticky parts of the content stop below the heading (phones place the
    outline button at the bottom edge instead). */
 @media (min-width: 768px) {
