@@ -27,5 +27,14 @@
         520
       ]
     }
+  ],
+  "features": [
+    {
+      "de": "Zahlen-Eigenschaften mit eigener Einheit, etwa kg oder m – auch in Summen; die Werte bleiben Zahlen.",
+      "en": "Number properties with their own unit, e.g. kg or m – also in sums; the values stay numbers.",
+      "issues": [
+        522
+      ]
+    }
   ]
 }
