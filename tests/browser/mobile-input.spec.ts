@@ -44,12 +44,20 @@ test("removing a date with a tap removes it and keeps it removed after a reload"
 
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const dialog = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  const date = dialog.getByLabel("Fällig am", { exact: true });
+  // The date's controls are in its editor, opened on the value (#519; a
+  // bottom sheet on phones).
+  const value = dialog.getByRole("button", { name: /^Fällig am: .*, ändern$/ });
+  await expect(value).toHaveAccessibleName("Fällig am: 3. Nov. 2026, ändern");
+  if (info.project.name === "mobile") await value.tap();
+  else await value.click();
+  const date = page.getByLabel("Fällig am", { exact: true });
   await expect(date).toHaveValue("2026-11-03");
   // No <label> around the date: WebKit would pass the tap on "Datum
   // entfernen" to the date input and open the picker instead.
   expect(await date.evaluate((el) => !!el.closest("label"))).toBe(false);
-  const remove = dialog.getByRole("button", { name: "Datum entfernen: Fällig am" });
+  const remove = page.getByRole("button", { name: "Datum entfernen: Fällig am" });
+  // The editor focuses the date when it opens; leave it as a tap would find it.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   if (info.project.name === "mobile") await remove.tap();
   else await remove.click();
   await expect(date).toHaveValue("");
@@ -62,19 +70,28 @@ test("removing a date with a tap removes it and keeps it removed after a reload"
   expect((await read()).rows[0].cells.due ?? "").toBe("");
 
   await page.reload();
-  await expect(page.getByRole("dialog", { name: "Eintrag", exact: true }).getByLabel("Fällig am", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("dialog", { name: "Eintrag", exact: true }).getByRole("button", { name: "Fällig am: leer, ändern" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Datum entfernen: Fällig am" })).toHaveCount(0);
 
-  // With the keyboard: the focus stays in the field.
+  // With the keyboard: Enter opens the editor, the focus stays in the field.
   if (info.project.name === "desktop") {
     await command(page, { action: "row.update", pageId: p.id, rowId: row.id, version: (await read()).rows[0].version, cells: { due: "2026-12-24" } });
     await page.reload();
     const again = page.getByRole("dialog", { name: "Eintrag", exact: true });
+    const valueAgain = again.getByRole("button", { name: "Fällig am: 24. Dez. 2026, ändern" });
+    await valueAgain.focus();
+    await page.keyboard.press("Enter");
+    await expect(again.getByLabel("Fällig am", { exact: true })).toBeFocused();
     await expect(again.getByLabel("Fällig am", { exact: true })).toHaveValue("2026-12-24");
     await again.getByRole("button", { name: "Datum entfernen: Fällig am" }).focus();
     await page.keyboard.press("Enter");
     await expect(again.getByLabel("Fällig am", { exact: true })).toBeFocused();
     await expect.poll(async () => (await read()).rows[0].cells.due ?? "", { timeout: 15000 }).toBe("");
+    // Escape closes the editor and returns the focus to the value.
+    await page.keyboard.press("Escape");
+    await expect(again.getByLabel("Fällig am", { exact: true })).toHaveCount(0);
+    await expect(again.getByRole("button", { name: "Fällig am: leer, ändern" })).toBeFocused();
+    await expect(again).toBeVisible();
   }
   expect(errors).toEqual([]);
 });

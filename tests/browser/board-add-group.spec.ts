@@ -48,6 +48,8 @@ test("a new status becomes its own board column; a due date can be removed", asy
   await page.getByText(String(dated.cells.title)).first().click();
   // On a phone a record's properties start folded (record-properties-fold.spec.ts).
   if (info.project.name === "mobile") await page.getByRole("button", { name: /^Eigenschaften ausklappen/ }).click();
+  // The date's editor opens on its value (#519).
+  await page.getByRole("button", { name: new RegExp(`^${due.name}: .*, ändern$`) }).first().click();
   const remove = page.getByRole("button", { name: `Datum entfernen: ${due.name}` }).first();
   await expect(remove).toBeVisible();
   await remove.click();

@@ -6984,8 +6984,8 @@ h2:has(> .row-title-input) .row-title-icon {
 }
 .row-property {
   display: grid;
-  /* minmax(0, …): wide values (native date fields on iOS, long links)
-     must not push the record wider than the screen. */
+  /* minmax(0, …): wide values (long links, many chips) must not push the
+     record wider than the screen. */
   grid-template-columns: 150px minmax(0, 1fr);
   align-items: center;
   gap: 15px;
@@ -7006,15 +7006,256 @@ h2:has(> .row-title-input) .row-title-icon {
 .row-property > * {
   min-width: 0;
 }
-/* A date with its buttons below, and the reminder, recurrence and
-   repeating-task rows that wrap: the name lines up with the first line of
-   controls, not with the middle of the whole block. */
-.row-property:has(> * > .date-input),
-.row-property:is(.recurrence-property, .record-repeat) {
+/* A record's own properties, compact (#519, components/record-property-value.tsx):
+   the type's icon and the name in a narrow column, the value as text or
+   chips on a button that opens its editor. Rows about 32 px high; 44 px
+   touch targets on phones. */
+.row-property:has(> .row-property-name) {
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 14px;
+}
+/* The reminder, recurrence and repeating task of a date: rows of the same
+   kind, their choices flat until pointed at. */
+.row-property:has(> .row-property-name) :is(.reminder-choice, .recurrence-choice, .record-repeat-choice) > .fp-select {
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.row-property:has(> .row-property-name) :is(.reminder-choice, .recurrence-choice, .record-repeat-choice) > .fp-select:is(:hover, :focus-within, .open) {
+  border-color: transparent;
+  background: var(--hover);
+}
+.row-property:has(> .row-property-name) .reminder-choice > .fp-select {
+  width: auto;
+  max-width: 100%;
+}
+.row-property-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 0;
+}
+.row-property-name > svg {
+  flex: none;
+  color: var(--muted);
+}
+.row-property-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-property-value {
+  display: block;
+  min-width: 0;
+}
+.record-value-wrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 6px;
+}
+.record-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+button.record-value:hover,
+.record-value[aria-expanded="true"],
+.record-value-wrap.with-links:hover {
+  background: var(--hover);
+}
+button.record-value:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.record-value.readonly {
+  cursor: default;
+}
+.record-value-empty {
+  color: var(--muted);
+}
+.record-value-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.record-value .tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.record-value .person-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A web address, mail, phone or files: the links open, the rest of the
+   row (a pencil at its end) opens the editor. */
+.record-value-wrap.with-links > :is(.cell-link, .cell-link-text, .record-value-links) {
+  min-width: 0;
+  padding: 4px 0 4px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-value-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  white-space: normal !important;
+}
+.record-value.readonly .record-value-links {
+  padding: 0;
+}
+.record-value.record-value-pencil {
+  flex: 1 0 32px;
+  justify-content: flex-end;
+  width: auto;
+  color: var(--muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .record-value.record-value-pencil > svg {
+    opacity: 0;
+  }
+  .record-value-wrap:hover .record-value-pencil > svg,
+  .record-value.record-value-pencil:focus-visible > svg {
+    opacity: 1;
+  }
+}
+.relation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+}
+/* Beside the text the column is narrow: the names take a share of it. */
+.row-columns.properties-side .row-property:has(> .row-property-name) {
+  grid-template-columns: minmax(72px, 38%) minmax(0, 1fr);
+}
+/* Checkbox, stars and checklist: changed with one tap, in place. */
+.record-value-direct {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 8px;
+}
+.record-value-direct > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.record-value-direct.record-value-checklist {
+  display: block;
+  padding: 4px 8px;
+}
+/* The editor: today's controls in a panel below the value. */
+.record-value-popover.meeting-popover {
+  width: 320px;
+  /* Lists of its fields (a select's options) open in the panel, the
+     dialog their field is in, and may reach past its edge; long lists
+     (relations) scroll on their own. */
+  max-height: none;
+  overflow: visible;
+  padding: 8px;
+}
+.record-value-popover.wide.meeting-popover {
+  width: 420px;
+}
+.record-value-editor {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.record-value-editor :where(input:not([type="checkbox"]):not([type="radio"]):not([type="number"]), .fp-select, textarea) {
+  box-sizing: border-box;
+  width: 100%;
+}
+.record-value-editor > input[type="number"] {
+  box-sizing: border-box;
+  width: 100%;
+}
+.record-value-editor .relation-picker {
+  padding: 0;
+  border: 0;
+}
+.record-value-editor .relation-options {
+  max-height: 280px;
+  overflow: auto;
+}
+.record-value-editor .option-input,
+.record-value-editor .option-picker {
+  display: flex;
+  width: 100%;
+}
+.meeting-popover-sheet .record-value-editor {
+  padding-bottom: 8px;
+  font-size: 16px;
+}
+/* Room below a search or select in the sheet: its list opens downwards,
+   inside the sheet, instead of above it past the sheet's top. */
+.meeting-popover-sheet .record-value-editor:has(.option-picker, .tag-cell-input, .fp-select) {
+  min-height: min(320px, 50dvh);
+  align-content: start;
+}
+@media (max-width: 600px) {
+  .row-property:has(> .row-property-name) {
+    grid-template-columns: 35% minmax(0, 1fr);
+  }
+  /* Two lines rather than a cut name; long words hyphenated. */
+  .row-property-label {
+    white-space: normal;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.25;
+  }
+  .row-property-name,
+  .record-value,
+  .record-value-direct {
+    min-height: 44px;
+  }
+}
+/* A date with its buttons below (forms): the name lines up with the first
+   line of controls, not with the middle of the whole block. The record's
+   recurrence and repeating task are compact rows (#521). */
+.row-property:has(> * > .date-input) {
   align-items: start;
 }
-.row-property:has(> * > .date-input) > span:first-child,
-.row-property:is(.recurrence-property, .record-repeat) > span:first-child {
+.row-property:has(> * > .date-input) > span:first-child {
   display: flex;
   align-items: center;
   min-height: calc(1.5em + 22px);

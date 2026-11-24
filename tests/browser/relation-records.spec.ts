@@ -103,7 +103,9 @@ test("relation cells show record icons and open related records on top of the ta
   await expect(entry.locator(".ProseMirror").first()).toBeVisible();
   await page.screenshot({ path: `${shots}-overlay.png` });
   // Edits save to the customer, as in its own database.
-  const revenue = entry.getByLabel("Umsatz", { exact: true });
+  // The number's field opens on its value (#519).
+  await entry.getByRole("button", { name: /^Umsatz: .*, ändern$/ }).click();
+  const revenue = page.getByLabel("Umsatz", { exact: true });
   await revenue.fill("42");
   await revenue.press("Enter");
   await expect
@@ -127,7 +129,9 @@ test("relation cells show record icons and open related records on top of the ta
 
   // The relation picker of the task shows the icons too (#190).
   await page.goto(`/#page=${tasks}&row=${task}`);
-  const options = entry.locator(".relation-options");
+  // In the relation's editor, opened on its value (#519).
+  await entry.getByRole("button", { name: /^Kunde: .*, ändern$/ }).click();
+  const options = page.locator(".record-value-editor .relation-options");
   await expect(options.locator("label", { hasText: "Acme" }).locator(".page-emoji")).toHaveText("🚀");
   await expect(options.locator("label", { hasText: "Logo AG" }).locator("img.page-image-icon")).toBeVisible();
   await expect(options.locator("label", { hasText: "Ohne Symbol" }).locator(".relation-icon")).toHaveCount(0);

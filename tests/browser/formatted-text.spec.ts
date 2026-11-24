@@ -118,18 +118,26 @@ test("a table cell: bold, a line break and a link with the keyboard", async ({ p
   // The record: line breaks shown, Enter makes another one.
   await row("Alpha").getByText("Alpha", { exact: true }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  const property = entry.getByRole("textbox", { name: "Notiz" });
-  await expect(property.locator("strong")).toHaveText("world", { timeout: 30_000 });
+  // The value shows formatted (its link as text inside the button) and
+  // opens the editor on click (#519).
+  const value = entry.getByRole("button", { name: /^Notiz: / });
+  await expect(value.locator("strong")).toHaveText("world", { timeout: 30_000 });
+  await expect(value).toContainText("Hello");
+  await value.click();
+  const property = page.getByRole("textbox", { name: "Notiz" });
   await expect(property.locator("a")).toHaveText("Hello");
-  await property.click();
+  await expect(property).toBeFocused();
+  // As in the cell: the caret is placed at the end once the editor is ready.
+  await page.waitForTimeout(300);
   await press(page, "ControlOrMeta+End");
   await page.keyboard.press("Enter");
   await page.keyboard.type("third");
   await press(page, "Shift+ArrowLeft", 5);
   await press(page, "ControlOrMeta+i");
   if (shots) await entry.screenshot({ path: `${shots}/record-dialog.png` });
-  // Leaving the field saves.
-  await entry.getByRole("heading").first().click();
+  // Leaving the field saves (a click beside it: in the panel's sheet on phones).
+  if (info.project.name === "mobile") await page.getByRole("dialog", { name: "Notiz ändern" }).getByRole("heading").click();
+  else await entry.getByRole("heading").first().click();
   await expect.poll(() => notes("Alpha")).toBe("[Hello](https://example.com/docs) **world**\nsecond line\n_third_");
   expect(errors).toEqual([]);
 });

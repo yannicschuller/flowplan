@@ -53,7 +53,9 @@ test("files & media cells upload several files, add links, remove entries and sh
       .media;
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  const group = entry.getByRole("group", { name: "Anhänge", exact: true });
+  // The files' editor opens on the value (#519; a bottom sheet on phones).
+  await entry.getByRole("button", { name: "Anhänge: leer, ändern" }).click();
+  const group = page.getByRole("group", { name: "Anhänge", exact: true });
   await group.getByLabel("Anhänge: Datei hochladen").setInputFiles([
     { name: "foto.png", mimeType: "image/png", buffer: png },
     {
@@ -79,6 +81,12 @@ test("files & media cells upload several files, add links, remove entries and sh
     .getByRole("button", { name: "angebot.pdf entfernen", exact: true })
     .click();
   await expect.poll(async () => (await media())?.length).toBe(2);
+  // Closed, the record shows the files as links beside the value.
+  await page.keyboard.press("Escape");
+  await expect(group).toHaveCount(0);
+  await expect(entry.getByRole("link", { name: "foto.png" })).toBeVisible();
+  await expect(entry.getByRole("link", { name: "plan.pdf" })).toBeVisible();
+  await expect(entry.getByRole("button", { name: "Anhänge: foto.png, plan.pdf, ändern" })).toBeFocused();
   await page.screenshot({
     path: `test-results/files-property-verification/${testInfo.project.name}-dialog.png`,
   });

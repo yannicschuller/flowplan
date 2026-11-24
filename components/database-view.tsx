@@ -8,7 +8,9 @@ import { serverMessage } from "@/lib/server-message";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { defaultColumnWidth } from "@/lib/column-widths";
-import { isLinkField } from "@/lib/cell-links";
+import { isLinkField, type LinkFieldType } from "@/lib/cell-links";
+import { isEmptyValue } from "@/lib/empty-value";
+import { RecordPropertyValue } from "./record-property-value";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
 import { recordsClipboard, type ClipboardContext } from "@/lib/database-clipboard";
@@ -41,7 +43,7 @@ import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertyList } from "./record-property-order";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
-import { summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
+import { recordDateExtras, summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
 import { doneRule } from "@/lib/database-settings-schema";
 import type { RecordPropertiesChoice } from "@/lib/page-view-prefs";
 import {
@@ -204,6 +206,8 @@ import {
   ArrowRight,
   ShareNetwork,
   QrCode,
+  Bell as BellIcon,
+  ArrowsClockwise as RecurrenceIcon,
 } from "@phosphor-icons/react";
 import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
@@ -216,6 +220,7 @@ import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
 import {
   parseRecurrence,
+  parseRepeat,
   recurrenceLabels,
   recurrenceText,
   type Recurrence,
@@ -1202,7 +1207,20 @@ export default function DatabaseView({
   const recordFields = (
     showEmpty ? layoutFields : layoutFields.filter((f) => !emptyFields.has(f.id))
   ).filter((f) => f.id !== fields[0]?.id);
-  const emptyHidden = emptyFields.size;
+  // The recurrence and repeating task below the first date (#521): only
+  // where they apply, hidden like empty properties while nothing is set.
+  const firstDateId = fields.find((f) => f.type === "date")?.id;
+  const dateExtras =
+    selected && firstDateId && layoutFields.some((f) => f.id === firstDateId)
+      ? recordDateExtras({
+          hideEmpty: recordLayout.hideEmpty,
+          showEmpty,
+          hasRecurrence: !!parseRecurrence(selected.recurrence),
+          hasRepeat: !!parseRepeat(selected.repeat),
+          canRepeat: !!doneRule(fields, data.database.settings),
+        })
+      : null;
+  const emptyHidden = emptyFields.size + (dateExtras?.hiddenEmpty ?? 0);
   // The folded properties (#186): a few values as chips, most telling first.
   const recordDevice = useRecordDevice();
   const recordSummary = selected
@@ -2498,6 +2516,137 @@ export default function DatabaseView({
       return formatFieldNumber(v, f);
     return cellText(v) || <span className="muted">—</span>;
   }
+  // A record's property, compact (#519): the value as text or chips on a
+  // button that opens today's editor (components/record-property-value.tsx);
+  // checkboxes, stars and checklists stay one-tap controls. Values that may
+  // not be changed are only shown – with their links.
+  function recordValueText(r: Row, f: Field): string {
+    const v = r.cells[f.id];
+    if (isEmptyValue(v, f.type)) return "";
+    const list = (Array.isArray(v) ? v : [v]).filter((x) => !isEmptyValue(x));
+    let text: string;
+    if (f.type === "person") text = list.map((id) => members.find((m) => m.id === id)?.name || "").filter(Boolean).join(", ");
+    else if (f.type === "relation")
+      text = list
+        .map((id) => {
+          const target = related[f.relationPage || ""]?.find((x) => x.id === id);
+          return target ? cellText(target.cells.title) || t("Ohne Titel", "Untitled") : t("Nicht verfügbar", "Not available");
+        })
+        .join(", ");
+    else if (f.type === "date") text = typeof v === "string" ? formatFieldDate(v, f) : "";
+    else if (f.type === "number") text = typeof v === "number" ? formatNumber(v, f.format, f.decimals) : cellText(v);
+    else if (f.type === "sprint") text = data.database.settings?.sprints?.find((s) => s.id === v)?.name || "";
+    else if (f.type === "files") {
+      const names = new Map((data.files || []).map((x) => [x.url, x.name]));
+      text = fileUrls(v).map((url) => fileLabel(url, names)).join(", ");
+    } else text = list.map((x) => cellText(x)).join(", ");
+    text = text.replace(/\s+/g, " ").trim();
+    return text.length > 80 ? `${text.slice(0, 79)}…` : text;
+  }
+  function recordFileLinks(v: unknown) {
+    const names = new Map((data.files || []).map((x) => [x.url, x.name]));
+    return (
+      <span className="record-value-links">
+        {fileUrls(v).map((url) => (
+          <a key={url} className="file-chip" href={url} target="_blank" rel="noreferrer noopener">
+            {data.files?.find((x) => x.url === url)?.mime.startsWith("image/") && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt="" />
+            )}
+            {fileLabel(url, names)}
+          </a>
+        ))}
+      </span>
+    );
+  }
+  function recordValueDisplay(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    if (isFormattedText(f, fields)) return <span className="record-value-text"><InlineText value={cellText(v)} links={false} /></span>;
+    if (f.type === "date") return typeof v === "string" ? formatFieldDate(v, f) : null;
+    if (f.type === "relation")
+      return (
+        <span className="tags">
+          {(Array.isArray(v) ? (v as string[]) : []).map((rid) => {
+            const target = related[f.relationPage || ""]?.find((x) => x.id === rid);
+            return target ? (
+              <span key={rid} className="relation-chip">
+                {target.icon && <PageIcon name={target.icon} size={14} className="relation-icon" />}
+                {cellText(target.cells.title) || t("Ohne Titel", "Untitled")}
+              </span>
+            ) : (
+              <span key={rid} className="relation-chip muted">
+                {t("Nicht verfügbar", "Not available")}
+              </span>
+            );
+          })}
+        </span>
+      );
+    if (f.type === "text" || f.type === "aliases") return <span className="record-value-text">{cellText(v)}</span>;
+    return display(r, f, "button");
+  }
+  function recordPropertyValue(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    const locked = !rowEditable(r) || fieldLocked(r, f);
+    // One tap changes these.
+    if (f.type === "checkbox" || f.type === "checklist" || (f.type === "number" && f.rollupDisplay === "rating"))
+      return (
+        <span className={`record-value-direct record-value-${f.type}`}>
+          <CellInput field={f} value={v} members={members} related={related} disabled={locked} onChange={(next) => updateCell(r, f, next)} keepRequired />
+        </span>
+      );
+    if (locked)
+      return (
+        <span className="record-value readonly">
+          {isEmptyValue(v, f.type) ? (
+            <span className="record-value-empty">{t("Leer", "Empty")}</span>
+          ) : f.type === "files" ? (
+            recordFileLinks(v)
+          ) : isFormattedText(f, fields) ? (
+            <span className="record-value-text"><InlineText value={cellText(v)} /></span>
+          ) : f.type === "text" || f.type === "aliases" ? (
+            <span className="record-value-text">{cellText(v)}</span>
+          ) : (
+            display(r, f, "cell")
+          )}
+        </span>
+      );
+    // Values of one choice or one line: the panel closes once it is saved.
+    const closes =
+      ["person", "sprint", "number", "aliases", "url", "email", "phone"].includes(f.type) ||
+      (f.type === "text" && !isFormattedText(f, fields)) ||
+      (f.type === "relation" && !!f.parent);
+    return (
+      <RecordPropertyValue
+        name={f.name}
+        text={recordValueText(r, f)}
+        display={recordValueDisplay(r, f)}
+        links={isLinkField(f.type) ? <LinkValue type={f.type as LinkFieldType} value={cellText(v)} /> : f.type === "files" ? recordFileLinks(v) : undefined}
+        wide={f.type === "relation" || f.type === "files" || isFormattedText(f, fields)}
+        editor={(done) => (
+          <CellInput
+            field={f}
+            value={v}
+            members={members}
+            related={related}
+            links
+            editing
+            onCancel={done}
+            formatted={isFormattedText(f, fields)}
+            multiline
+            optionPicker={optionPicker(f)}
+            onChange={(next) => {
+              const result = updateCell(r, f, next);
+              if (closes) done();
+              return result;
+            }}
+            keepRequired
+            upload={uploadFile}
+            files={data.files}
+          />
+        )}
+      />
+    );
+  }
   const galleryConfig = view.gallery || defaultGallery;
   const galleryImages = new Set((data.images || []).map((image) => image.url));
   // No cover boxes while no record has an image (or a colour) to show.
@@ -2570,105 +2719,126 @@ export default function DatabaseView({
     const base: Recurrence = rule || { freq: "weekly", interval: 1 };
     return (
       <div className="row-property recurrence-property">
-        <span>{t("Wiederholung", "Recurrence")}</span>
-        <span className="recurrence-choice">
-          <Select
-            aria-label={t("Wiederholung", "Recurrence")}
-            disabled={!rowEditable(row)}
-            value={rule?.freq || ""}
-            onChange={(e) =>
-              void save(
-                e.target.value
-                  ? { ...base, freq: e.target.value as Recurrence["freq"] }
-                  : null,
-              )
-            }
-          >
-            <option value="">{t("Keine", "None")}</option>
-            {Object.entries(recurrenceLabels).map(([key, [label]]) => (
-              <option key={key} value={key}>
-                {t(label)}
-              </option>
-            ))}
-          </Select>
-          {rule && (
-            <>
-              <label>
-                {t("Alle", "Every")}
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  aria-label={t("Wiederholungsintervall", "Recurrence interval")}
-                  disabled={!rowEditable(row)}
-                  defaultValue={rule.interval}
-                  onBlur={(e) => {
-                    const interval = Math.min(
-                      99,
-                      Math.max(1, Math.round(Number(e.target.value) || 1)),
-                    );
-                    if (interval !== rule.interval)
-                      void save({ ...rule, interval });
-                  }}
-                />
-                {t(recurrenceLabels[rule.freq][1])}
-              </label>
-              <label>
-                {t("Endet", "Ends")}
-                <input
-                  type="date"
-                  aria-label={t("Wiederholung endet am", "Recurrence ends on")}
-                  disabled={!rowEditable(row)}
-                  defaultValue={rule.until || ""}
-                  onBlur={(e) => {
-                    const until = e.target.value || undefined;
-                    if (until !== rule.until)
-                      void save({ ...rule, count: undefined, until });
-                  }}
-                />
-              </label>
-              <label>
-                {t("Termin auslassen", "Skip occurrence")}
-                <input
-                  type="date"
-                  aria-label={t("Termin auslassen am", "Skip occurrence on")}
-                  disabled={!rowEditable(row)}
-                  onChange={(e) => {
-                    const date = e.target.value;
-                    e.target.value = "";
-                    if (date && !rule.exclude?.includes(date))
-                      void save({
-                        ...rule,
-                        exclude: [...(rule.exclude || []), date].sort(),
-                      });
-                  }}
-                />
-              </label>
-              {!!rule.exclude?.length && (
-                <span className="recurrence-exclusions">
-                  {rule.exclude.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      className="chip"
-                      disabled={!rowEditable(row)}
-                      aria-label={t(`${date} wieder einplanen`, `Schedule ${date} again`)}
-                      onClick={() =>
-                        void save({
-                          ...rule,
-                          exclude: rule.exclude!.filter((d) => d !== date),
-                        })
-                      }
-                    >
-                      {date} ×
-                    </button>
-                  ))}
+        <span className="row-property-name">
+          <RecurrenceIcon size={13} aria-hidden />
+          <span className="row-property-label">{t("Wiederholung", "Recurrence")}</span>
+        </span>
+        {rowEditable(row) ? (
+          // Compact like the properties (#519, #521): the rule as text,
+          // its controls on click.
+          <span className="row-property-value">
+            <RecordPropertyValue
+              name={t("Wiederholung", "Recurrence")}
+              text={rule ? recurrenceText(rule, t) : ""}
+              emptyText={t("Keine", "None")}
+              display={rule ? recurrenceText(rule, t) : null}
+              editor={() => (
+                <span className="recurrence-choice">
+                  <Select
+                    aria-label={t("Wiederholung", "Recurrence")}
+                    disabled={!rowEditable(row)}
+                    value={rule?.freq || ""}
+                    onChange={(e) =>
+                      void save(
+                        e.target.value
+                          ? { ...base, freq: e.target.value as Recurrence["freq"] }
+                          : null,
+                      )
+                    }
+                  >
+                    <option value="">{t("Keine", "None")}</option>
+                    {Object.entries(recurrenceLabels).map(([key, [label]]) => (
+                      <option key={key} value={key}>
+                        {t(label)}
+                      </option>
+                    ))}
+                  </Select>
+                  {rule && (
+                    <>
+                      <label>
+                        {t("Alle", "Every")}
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          aria-label={t("Wiederholungsintervall", "Recurrence interval")}
+                          disabled={!rowEditable(row)}
+                          defaultValue={rule.interval}
+                          onBlur={(e) => {
+                            const interval = Math.min(
+                              99,
+                              Math.max(1, Math.round(Number(e.target.value) || 1)),
+                            );
+                            if (interval !== rule.interval)
+                              void save({ ...rule, interval });
+                          }}
+                        />
+                        {t(recurrenceLabels[rule.freq][1])}
+                      </label>
+                      <label>
+                        {t("Endet", "Ends")}
+                        <input
+                          type="date"
+                          aria-label={t("Wiederholung endet am", "Recurrence ends on")}
+                          disabled={!rowEditable(row)}
+                          defaultValue={rule.until || ""}
+                          onBlur={(e) => {
+                            const until = e.target.value || undefined;
+                            if (until !== rule.until)
+                              void save({ ...rule, count: undefined, until });
+                          }}
+                        />
+                      </label>
+                      <label>
+                        {t("Termin auslassen", "Skip occurrence")}
+                        <input
+                          type="date"
+                          aria-label={t("Termin auslassen am", "Skip occurrence on")}
+                          disabled={!rowEditable(row)}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            e.target.value = "";
+                            if (date && !rule.exclude?.includes(date))
+                              void save({
+                                ...rule,
+                                exclude: [...(rule.exclude || []), date].sort(),
+                              });
+                          }}
+                        />
+                      </label>
+                      {!!rule.exclude?.length && (
+                        <span className="recurrence-exclusions">
+                          {rule.exclude.map((date) => (
+                            <button
+                              key={date}
+                              type="button"
+                              className="chip"
+                              disabled={!rowEditable(row)}
+                              aria-label={t(`${date} wieder einplanen`, `Schedule ${date} again`)}
+                              onClick={() =>
+                                void save({
+                                  ...rule,
+                                  exclude: rule.exclude!.filter((d) => d !== date),
+                                })
+                              }
+                            >
+                              {date} ×
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                      <small className="muted">{recurrenceText(rule, t)}</small>
+                    </>
+                  )}
                 </span>
               )}
-              <small className="muted">{recurrenceText(rule, t)}</small>
-            </>
-          )}
-        </span>
+            />
+          </span>
+        ) : (
+          <span className="record-value readonly">
+            {rule ? recurrenceText(rule, t) : <span className="record-value-empty">{t("Keine", "None")}</span>}
+          </span>
+        )}
       </div>
     );
   }
@@ -2697,7 +2867,10 @@ export default function DatabaseView({
             )}`, `Reminder on ${new Date(target.epochMilliseconds).toLocaleString(LOCALE_TAG, { timeZone: reminder.timeZone, dateStyle: "medium", timeStyle: "short" })}`);
     return (
       <label className="row-property reminder-property">
-        <span>{t("Erinnerung", "Reminder")}</span>
+        <span className="row-property-name">
+          <BellIcon size={13} aria-hidden />
+          <span className="row-property-label">{t("Erinnerung", "Reminder")}</span>
+        </span>
         <span className="reminder-choice">
           <Select
             aria-label={t(`Erinnerung für ${field.name}`, `Reminder for ${field.name}`)}
@@ -6460,15 +6633,17 @@ export default function DatabaseView({
                     save={(order) => act({ action: "database.recordLayout", layout: { ...recordLayout, order } })}
                     render={(f) => (
                     <Fragment key={`${selected.id}-${f.id}`}>
-                      <PropertyRow group={f.type === "files" || f.type === "date" || f.type === "select" || f.type === "multiselect" || isTagField(f)}>
-                        <span>
-                          {f.name}
+                      <PropertyRow>
+                        <span className="row-property-name">
+                          <FieldTypeIcon field={f} />
+                          <span className="row-property-label">{f.name}</span>
                           {isRequired(f) && <RequiredMark />}
                           {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
                           {isMissing(f, selected.cells) && <RequiredMissing label />}
                         </span>
                         {computedTypes.includes(f.type) ? (
-                          <span>
+                          // Computed: shown, never edited.
+                          <span className="record-value readonly">
                             {display(
                               {
                                 ...selected,
@@ -6483,22 +6658,8 @@ export default function DatabaseView({
                             )}
                           </span>
                         ) : (
-                          <span title={lockedTitle(f, selected)}>
-                            <CellInput
-                              field={f}
-                              value={selected.cells[f.id]}
-                              members={members}
-                              related={related}
-                              disabled={!selectedEditable || fieldLocked(selected, f)}
-                              links
-                              formatted={isFormattedText(f, fields)}
-                              multiline
-                              optionPicker={optionPicker(f)}
-                              onChange={(v) => updateCell(selected, f, v)}
-                              keepRequired
-                              upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
-                              files={data.files}
-                            />
+                          <span className="row-property-value" title={lockedTitle(f, selected)}>
+                            {recordPropertyValue(selected, f)}
                           </span>
                         )}
                       </PropertyRow>
@@ -6517,10 +6678,8 @@ export default function DatabaseView({
                         />
                       )}
                       {f.type === "date" && reminderControl(selected, f)}
-                      {f.type === "date" &&
-                        f.id === fields.find((x) => x.type === "date")?.id &&
-                        recurrenceControl(selected)}
-                      {f.type === "date" && f.id === fields.find((x) => x.type === "date")?.id && (
+                      {f.id === firstDateId && dateExtras?.recurrence && recurrenceControl(selected)}
+                      {f.id === firstDateId && dateExtras?.repeat && (
                         <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
                       )}
                     </Fragment>
@@ -7118,21 +7277,11 @@ function watchRecordWidth(el: HTMLDivElement | null) {
   observer.observe(el);
   return () => observer.disconnect();
 }
-function PropertyRow({
-  group,
-  children,
-}: {
-  group: boolean;
-  children: ReactNode;
-}) {
-  // Fields with several controls (files; a date with "Datum entfernen" and
-  // its time switch) are no <label>: WebKit passes taps on their buttons to
-  // the first input, which reopened the date picker instead of clearing.
-  return group ? (
-    <div className="row-property">{children}</div>
-  ) : (
-    <label className="row-property">{children}</label>
-  );
+// One property of an opened record: its name (with the type's icon) and
+// its value (#519). No <label>: the value is a button or a one-tap control
+// named on its own.
+function PropertyRow({ children }: { children: ReactNode }) {
+  return <div className="row-property">{children}</div>;
 }
 // Incoming relations of a record ("Verknüpft von").
 function RelationBacklinks({

@@ -148,8 +148,8 @@ test("a new record: title, then status and priority right away", async ({ page }
   await expect(page.getByText("Datensatz wurde geändert")).toHaveCount(0);
   // What the dialog shows is what was saved.
   await expect(title).toHaveValue("test");
-  await expect(status).toHaveAccessibleName("Status: In Arbeit");
-  await expect(priority).toHaveAccessibleName("Priorität: Hoch");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit, ändern");
+  await expect(priority).toHaveAccessibleName("Priorität: Hoch, ändern");
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await page.reload();

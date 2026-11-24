@@ -48,3 +48,31 @@ export function summaryFields<F extends Pick<Field, "id" | "type">>(
     .map(({ f }) => f);
   return { shown, more: Math.max(0, fields.length - shown.length) };
 }
+
+// The recurrence and the repeating task below a record's first date
+// (#521): they are no properties, but count as such when nothing is set.
+// The repeating task only where it applies – a database with a done rule
+// (repeating needs "done") or a record that already repeats. Without a
+// rule, "Leere Eigenschaften ausblenden" hides them until the empty
+// properties are shown; with one they always show.
+export function recordDateExtras({
+  hideEmpty,
+  showEmpty,
+  hasRecurrence,
+  hasRepeat,
+  canRepeat,
+}: {
+  hideEmpty: boolean;
+  showEmpty: boolean;
+  hasRecurrence: boolean;
+  hasRepeat: boolean;
+  canRepeat: boolean;
+}): { recurrence: boolean; repeat: boolean; hiddenEmpty: number } {
+  const repeats = canRepeat || hasRepeat;
+  const empties = !hideEmpty || showEmpty;
+  return {
+    recurrence: hasRecurrence || empties,
+    repeat: repeats && (hasRepeat || empties),
+    hiddenEmpty: hideEmpty ? (hasRecurrence ? 0 : 1) + (repeats && !hasRepeat ? 1 : 0) : 0,
+  };
+}

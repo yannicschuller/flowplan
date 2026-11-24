@@ -1425,15 +1425,18 @@ test("rollup property picker, progress display and relation board groups work on
   ).toHaveAttribute("aria-valuemax", "20");
   await page.getByRole("button", { name: "Eintrag öffnen: Website", exact: true }).click();
   const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await record
+  // The relation's search and list are in its editor (#519).
+  await record.getByRole("button", { name: /^Aufgaben: .*, ändern$/ }).click();
+  await page
     .getByRole("searchbox", { name: "Aufgaben: Einträge suchen", exact: true })
     .fill("Umsetzung");
   await expect(
-    record.getByRole("checkbox", { name: "Analyse", exact: true }),
+    page.getByRole("checkbox", { name: "Analyse", exact: true }),
   ).toHaveCount(0);
-  await record
+  await page
     .getByRole("checkbox", { name: "Umsetzung", exact: true })
     .uncheck();
+  await page.keyboard.press("Escape");
   await expect(
     record.getByRole("progressbar", { name: "Gesamtstunden", exact: true }),
   ).toHaveAttribute("aria-valuenow", "4");
@@ -1551,7 +1554,9 @@ test("bidirectional relations create an inverse property and synchronize both ed
   await expect(property).not.toBeVisible();
   await page.getByRole("button", { name: "Eintrag öffnen: Website", exact: true }).click();
   const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await record.getByRole("checkbox", { name: "Analyse", exact: true }).check();
+  // The relation's list is in its editor (#519).
+  await record.getByRole("button", { name: /^Aufgaben: .*, ändern$/ }).click();
+  await page.getByRole("checkbox", { name: "Analyse", exact: true }).check();
   await expect
     .poll(async () => {
       const data = await (
@@ -1565,13 +1570,16 @@ test("bidirectional relations create an inverse property and synchronize both ed
       ];
     })
     .toEqual([a.id]);
+  await page.keyboard.press("Escape");
   await record.getByRole("button", { name: "Schließen", exact: true }).click();
   await page.goto(`/#page=${target.id}`);
   await page.getByRole("button", { name: "Eintrag öffnen: Analyse", exact: true }).click();
+  await expect(record.getByRole("button", { name: "Projekte: Website, ändern" })).toBeVisible();
+  await record.getByRole("button", { name: "Projekte: Website, ändern" }).click();
   await expect(
-    record.getByRole("checkbox", { name: "Website", exact: true }),
+    page.getByRole("checkbox", { name: "Website", exact: true }),
   ).toBeChecked();
-  await record
+  await page
     .getByRole("checkbox", { name: "Website", exact: true })
     .uncheck();
   await expect
@@ -1587,6 +1595,7 @@ test("bidirectional relations create an inverse property and synchronize both ed
       ];
     })
     .toEqual([]);
+  await page.keyboard.press("Escape");
   await record.getByRole("button", { name: "Schließen", exact: true }).click();
   await page.getByRole("button", { name: "Projekte", exact: true }).click();
   const edit = page.getByRole("dialog", {

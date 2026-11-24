@@ -346,16 +346,25 @@ test("iOS: titles and other fields get a floating hide button above the keyboard
   await keyboard(page, 0);
 
   // A text property is a small formatted-text field (#126), not an input.
-  const note = dialog.getByRole("textbox", { name: "Notiz", exact: true });
+  // It opens on its value, in a bottom sheet (#519).
+  await dialog.getByRole("button", { name: "Notiz: Belege, ändern" }).tap();
+  const note = page.getByRole("textbox", { name: "Notiz", exact: true });
   await note.tap();
   await expect.poll(() => note.evaluate((el) => el.contains(document.activeElement))).toBe(true);
   await keyboard(page, KEYBOARD);
-  await expectFabAboveKeyboard(page, visibleBottom);
-  await fab(page).tap();
+  // One hide button above the keyboard – the floating one or, in the
+  // editor's sheet, its docked toolbar's – never two.
+  const hide = page.getByRole("button", { name: "Tastatur ausblenden" }).filter({ visible: true });
+  await expect(hide).toHaveCount(1);
+  await expect.poll(async () => { const b = await hide.boundingBox(); return b ? b.y + b.height : Infinity; }).toBeLessThanOrEqual(visibleBottom);
+  await hide.tap();
   await expect.poll(() => note.evaluate((el) => el.contains(document.activeElement))).toBe(false);
-  await expect(dialog).toBeVisible();
+  // The editor's sheet and the record stay open.
+  await expect(page.getByRole("dialog", { name: "Notiz ändern" })).toBeVisible();
   await expect(note).toHaveText("Belege");
   await keyboard(page, 0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
   await expect(fab(page)).toHaveCount(0);
 });
 

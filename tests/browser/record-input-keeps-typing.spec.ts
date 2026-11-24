@@ -68,8 +68,13 @@ test("Escape on a record's title keeps what was typed", async ({ page }, info) =
 
   // A property typed into, then Escape.
   await page.getByRole("button", { name: "Eintrag öffnen: Einkauf morgen" }).first().click();
-  await entry.getByRole("spinbutton", { name: "Menge" }).click();
+  // The number's field is in its editor, opened on the value (#519):
+  // Escape closes the editor and keeps the number, a second one the record.
+  await entry.getByRole("button", { name: "Menge: leer, ändern" }).click();
+  await expect(page.getByRole("spinbutton", { name: "Menge" })).toBeFocused();
   await page.keyboard.type("3");
+  await page.keyboard.press("Escape");
+  await expect(entry.getByRole("button", { name: "Menge: 3, ändern" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(entry).toBeHidden();
   await expect.poll(async () => (await rows())[0].cells.amount, { timeout: 10000 }).toBe(3);
