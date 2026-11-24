@@ -280,11 +280,16 @@ export async function sharedContent(token: string, pageId?: string, rowId?: stri
       : {},
     related,
     files,
-    comments: await all<SharedComment>(
-      "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id LIMIT 500",
-      s.page.id,
-      rowId || null,
-    ),
+    // A publication is read by anyone: guest comments stay with the links
+    // (#480), as for a record publication (sharedRecordContent).
+    comments:
+      s.root.public_token === token
+        ? []
+        : await all<SharedComment>(
+            "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id LIMIT 500",
+            s.page.id,
+            rowId || null,
+          ),
   };
 }
 async function sharedRecordContent(token: string, s: Awaited<ReturnType<typeof source>>, scope: RecordScope) {

@@ -345,6 +345,25 @@ test("record tokens open no member API, plugins of other workspaces, or other sh
   await fails(() => publicFile(dbLink, fid), 404);
 });
 
+// #480: a page publication is read by anyone – guest comments written
+// through (password-protected) commenter links of the page or of one of its
+// records stay with the links.
+test("a page publication returns no guest comments of the links", async () => {
+  const f = await fixture();
+  const recordLink = await share(f.db, f.record, "commenter");
+  await mutateSharedContent(recordLink, { action: "comment", pageId: f.db, rowId: f.record, name: "GuestR", body: "RECORD-REMARK" });
+  const pageLink = ((await command(owner, { action: "share.create", pageId: f.db, role: "commenter", name: "db" })) as { token: string }).token;
+  await mutateSharedContent(pageLink, { action: "comment", pageId: f.db, name: "GuestP", body: "PAGE-REMARK" });
+  // The links still share their comments (components/share-links.tsx).
+  assert.deepEqual((await sharedContent(pageLink, f.db)).comments.map((c) => c.body), ["PAGE-REMARK"]);
+  assert.deepEqual((await sharedContent(pageLink, f.db, f.record)).comments.map((c) => c.body), ["RECORD-REMARK"]);
+  await command(owner, { action: "page.publish", pageId: f.db, enabled: true });
+  const token = (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", f.db))!.public_token;
+  assert.ok(token);
+  assert.deepEqual((await sharedContent(token, f.db)).comments, []);
+  assert.deepEqual((await sharedContent(token, f.db, f.record)).comments, []);
+});
+
 test("own and administrators' overviews list record links and revoke them", async () => {
   const f = await fixture();
   const token = await share(f.db, f.record, "editor");
