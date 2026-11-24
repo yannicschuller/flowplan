@@ -250,6 +250,26 @@ test("forms off: every form is closed with a message", async () => {
   await saveInstanceSettings({ modulesOff: [] });
 });
 
+test("capture (mobile, widget, desktop) into a journal day is refused while the journal is off (#500)", async () => {
+  const { saveCapture } = await import("../lib/mobile-capture");
+  const { widgetAction } = await import("../lib/mobile-widget-actions");
+  const { desktopCaptureSave } = await import("../lib/desktop-capture");
+  const journal = (await act({ action: "page.create", workspaceId: wid, spaceId: space, kind: "journal", title: "Tagebuch" })).id as string;
+  const today = new Date().toISOString().slice(0, 10);
+  const { dayId } = (await act({ action: "journal.roll", pageId: journal, date: today, write: true })) as { dayId: string };
+  const device = { ...anna, apiScope: "read" } as Identity;
+  // On: capture into the day works.
+  assert.equal(await status(() => saveCapture(device, { targetId: dayId, place: "append", text: "ON-MOBILE" })), 200);
+  await saveInstanceSettings({ modulesOff: ["journal"] });
+  assert.equal(await message(() => saveCapture(device, { targetId: dayId, place: "append", text: "OFF-MOBILE" })), modules.MODULE_OFF_TEXT.journal);
+  assert.equal(await status(() => widgetAction(device, { action: "capture.task", targetId: dayId, title: "OFF-WIDGET" })), 403);
+  assert.equal(await status(() => desktopCaptureSave(anna, { targetId: dayId, text: "OFF-DESKTOP", today, parse: false })), 403);
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", dayId))!.html;
+  assert.ok(html.includes("ON-MOBILE"));
+  for (const text of ["OFF-MOBILE", "OFF-WIDGET", "OFF-DESKTOP"]) assert.ok(!html.includes(text), text);
+  await saveInstanceSettings({ modulesOff: [] });
+});
+
 test("MCP: tools of a switched-off feature are left out and refused", async () => {
   const token = { ...anna, apiScope: "read" } as Identity;
   const names = async () => ((await handleMcpMessage(token, { jsonrpc: "2.0", id: 1, method: "tools/list" })) as unknown as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
