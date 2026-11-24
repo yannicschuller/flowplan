@@ -54,6 +54,13 @@
       "issues": [
         527
       ]
+    },
+    {
+      "de": "Veröffentlichte und per Link geteilte Seiten übernehmen Seitensymbol-Position, Schriftart und Durchstreichen erledigter Aufgaben von dem, der sie teilt; im Reiter Web änderbar.",
+      "en": "Published and link-shared pages take the page icon position, font and strike-through of done tasks from the person who shares them; changeable in the Web tab.",
+      "issues": [
+        526
+      ]
     }
   ],
   "features": [
