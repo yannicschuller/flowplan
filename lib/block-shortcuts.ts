@@ -1,6 +1,6 @@
 import { prefersReducedMotion } from "./motion";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
-import { Plugin, type Transaction } from "@tiptap/pm/state";
+import { Plugin, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { Extension, type Editor } from "@tiptap/core";
 import {
   adjacentBlockTarget,
@@ -95,10 +95,22 @@ export function moveSelectedBlock(editor: Editor | null, direction: -1 | 1) {
   try {
     const target = adjacentBlockTarget(editor.state, positions, direction);
     if (target === undefined) return false;
-    applyBlockChange(
-      editor,
-      changeBlocks(editor.state, positions, "move", target),
-    );
+    const { selection } = editor.state;
+    const tr = changeBlocks(editor.state, positions, "move", target);
+    // The caret stays where it was in the moved text, so the next press
+    // moves the block on and typing goes on there (#467).
+    const moved = (tr.getMeta(BLOCK_SELECTION_META) as number[] | undefined)?.[0];
+    if (selection instanceof TextSelection && moved !== undefined) {
+      const from = moved + selection.from - block.pos,
+        to = moved + selection.to - block.pos;
+      if (to <= tr.doc.content.size) {
+        const $from = tr.doc.resolve(from),
+          $to = tr.doc.resolve(to);
+        if ($from.parent.inlineContent && $to.parent.inlineContent)
+          tr.setSelection(TextSelection.between($from, $to));
+      }
+    }
+    applyBlockChange(editor, tr);
     editor.commands.focus();
     return true;
   } catch {

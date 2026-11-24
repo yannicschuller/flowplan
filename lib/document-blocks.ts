@@ -370,7 +370,69 @@ export function adjacentBlockTarget(
     direction < 0
       ? siblings.find((b) => b.end === range.from)
       : siblings.find((b) => b.pos === range.to);
-  return neighbor ? (direction < 0 ? neighbor.pos : neighbor.end) : undefined;
+  if (neighbor) return direction < 0 ? neighbor.pos : neighbor.end;
+  // List items at the edge of their list go on (#467, #468).
+  return range.blocks.every((b) => LIST_ITEMS.includes(b.node.type.name))
+    ? listEdgeTarget(state.doc, range.from, direction)
+    : undefined;
+}
+// Where list items at the first / last place of their list go with ⌘⇧↑ /
+// ⌘⇧↓, one step per press, like in Notion or Workflowy (#467, #468):
+// - items of a top-level list leave it and pass the block before / after
+//   (a paragraph, a heading, another list) – into a list of their kind
+//   right there they go at its near end, and next to one they join it
+//   (changeBlocks);
+// - subtasks go to the end / start of the child list of the previous /
+//   next item on their parent's level, so repeated presses walk them
+//   through the parents; their level stays (Tab / ⇧Tab change it).
+// Undefined where there is no such place.
+function listEdgeTarget(doc: Node, from: number, direction: -1 | 1) {
+  const $from = doc.resolve(from);
+  const list = $from.parent,
+    depth = $from.depth;
+  if (depth < 1 || !LISTS.includes(list.type.name)) return undefined;
+  const listPos = $from.before(depth),
+    listEnd = listPos + list.nodeSize;
+  const holder = $from.node(depth - 1);
+  if (!LIST_ITEMS.includes(holder.type.name)) {
+    const next =
+      direction < 0 ? doc.resolve(listPos).nodeBefore : doc.resolve(listEnd).nodeAfter;
+    if (!next) return undefined;
+    if (next.type === list.type) return direction < 0 ? listPos - 1 : listEnd + 1;
+    return direction < 0 ? listPos - next.nodeSize : listEnd + next.nodeSize;
+  }
+  // The items on the parent's level in the same list tree (a list and
+  // the lists next to it in the same container, across headings).
+  const parentPos = $from.before(depth - 1),
+    parentEnd = parentPos + holder.nodeSize;
+  let outer = depth;
+  for (let d = depth - 1; d > 0; d--) if (LISTS.includes($from.node(d).type.name)) outer = d;
+  const container = $from.node(outer - 1),
+    start = $from.start(outer - 1),
+    level = depth - 1;
+  const peers: { pos: number; node: Node }[] = [];
+  container.descendants((node, offset) => {
+    const pos = start + offset;
+    if (LIST_ITEMS.includes(node.type.name) && doc.resolve(pos).depth + 1 === level) {
+      peers.push({ pos, node });
+      return false;
+    }
+    return LISTS.includes(node.type.name) || LIST_ITEMS.includes(node.type.name);
+  });
+  const peer =
+    direction < 0
+      ? peers.filter((p) => p.pos + p.node.nodeSize <= parentPos).at(-1)
+      : peers.find((p) => p.pos >= parentEnd);
+  if (!peer) return undefined;
+  const end = peer.pos + peer.node.nodeSize;
+  if (direction < 0)
+    return peer.node.lastChild?.type === list.type ? end - 2 : end - 1;
+  let childList: number | undefined;
+  peer.node.forEach((child, offset) => {
+    if (childList === undefined && child.type === list.type) childList = peer.pos + 1 + offset;
+  });
+  if (childList !== undefined) return childList + 1;
+  return peer.pos + 1 + (peer.node.firstChild?.nodeSize ?? 0);
 }
 export const MAX_COLUMNS = 3;
 // Dropping blocks at the side of another block places them next to it:
