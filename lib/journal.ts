@@ -2,7 +2,11 @@ import { journalDayEvent } from "./workflows/hooks";
 import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
-// its page is created and the open tasks of the last day move over to it.
+// its page is created and the open tasks of the last day move over to it –
+// or, with the journal option "Offene Aufgaben: kopieren" (#469), are
+// copied there, the originals staying on their day marked as carried over
+// (closed, lib/task-status.ts isContinuedTask), so they are neither open
+// nor counted twice nor carried again.
 // A day that got no entry of its own (only carried tasks) and under which
 // "An diesem Tag erledigt" lists nothing goes to the trash, so the journal
 // holds only days on which something happened; opening its date again
@@ -22,6 +26,7 @@ import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
 import { placeBlocks, type BlockPlace } from "./journal-place";
 import { indexPageTasks } from "./doc-tasks";
+import { isContinuedTask, statusAttrs } from "./task-status";
 import {
   hasEntryData,
   journalSettings,
@@ -108,15 +113,44 @@ export function withoutOpenTasks(
     strip(doc) || doc.type.createAndFill() || doc.type.schema.node("doc")
   );
 }
+// The document with its open tasks marked as copied on to the day `to`
+// (#469, "Offene Aufgaben: kopieren"): the tasks withoutOpenTasks would
+// take out (and their open subtasks, which travelled with them) are closed
+// as continued – not open any more, not carried again.
+export function withContinuedTasks(
+  doc: PMNode,
+  to: string,
+  keep: (task: PMNode) => boolean = () => false,
+): PMNode {
+  // `copied`: inside a task that was copied (its open subtasks went along).
+  // Outside, the same tasks as openTasks finds: the topmost open ones; one
+  // kept (the template's own) or empty stays as it is, subtasks included.
+  const mark = (node: PMNode, copied: boolean): PMNode => {
+    if (node.isLeaf || node.isTextblock) return node;
+    let attrs = node.attrs;
+    let inside = copied;
+    if (node.type.name === "taskItem" && !node.attrs.checked) {
+      if (!copied && (emptyTask(node) || keep(node))) return node;
+      attrs = { ...node.attrs, ...statusAttrs("cancelled"), journalContinued: to };
+      inside = true;
+    }
+    const children: PMNode[] = [];
+    node.forEach((child) => children.push(mark(child, inside)));
+    return node.type.create(attrs, children, node.marks);
+  };
+  return mark(doc, false);
+}
 // Whether anything was written on that day: text, media, new or completed
-// tasks. Tasks carried over from an earlier day and still open do not count.
+// tasks. Tasks carried over from an earlier day and still open – or copied
+// on to a later day from there (#469) – do not count; a task written on
+// that day and copied on does.
 export function hasOwnEntry(doc: PMNode, date: string) {
   let own = false;
   doc.descendants((node) => {
     if (own) return false;
     if (node.type.name === "taskItem") {
       const carried =
-        !node.attrs.checked &&
+        (!node.attrs.checked || isContinuedTask(node.attrs)) &&
         typeof node.attrs.journalSince === "string" &&
         node.attrs.journalSince < date;
       if (!carried) own = true;
@@ -133,7 +167,7 @@ export function hasOwnEntry(doc: PMNode, date: string) {
 export function carryTasks(tasks: PMNode[], from: string) {
   return tasks.map((task) =>
     task.type.create(
-      { ...task.attrs, journalSince: task.attrs.journalSince || from },
+      { ...task.attrs, journalSince: task.attrs.journalSince || from, journalContinued: null },
       task.content,
       task.marks,
     ),
@@ -150,6 +184,8 @@ export function dayDocument(tasks: PMNode[], template: PMNode[] = [], place: Blo
   const where = template.length ? place : { at: "top" as const };
   return s.node("doc", null, placeBlocks(body, tasks.length ? [s.node("taskList", null, tasks)] : [], where));
 }
+// The journal option "Offene Aufgaben" (#469): move (the default) or copy.
+export const carryMode = (options: { carry?: "move" | "copy" }) => options.carry || "move";
 // The journal option "Übernommene Aufgaben" (#247) as a place.
 export const carriedPlace = (options: { carried?: "top" | "end" | "heading"; carriedHeading?: string }): BlockPlace => ({
   at: options.carried || "top",
@@ -250,7 +286,8 @@ async function trashDay(user: Identity, day: Page) {
   await audit(user.id, AUTO_TRASH, day.id, at);
 }
 // A day of the date in the trash that the journal put there itself: back
-// out of the trash (its open tasks had moved on before, so nothing doubles).
+// out of the trash (its open tasks had moved on before – or, copied, were
+// marked as carried over (#469) – so nothing doubles).
 async function restoreAutoTrashed(day: Page | undefined) {
   if (!day?.deleted_at) return false;
   if (!(await one("SELECT 1 FROM audit WHERE action=? AND resource_id=? AND detail=? LIMIT 1", AUTO_TRASH, day.id, day.deleted_at)))
@@ -262,7 +299,7 @@ async function restoreAutoTrashed(day: Page | undefined) {
 
 // What a new day starts with: the open tasks of the last day before it
 // (without the template's own tasks, which come back by themselves) and
-// the template. Reads only; rollJournal moves the tasks.
+// the template. Reads only; rollJournal moves (or copies) the tasks.
 export async function dayStart(journal: Page, today: string) {
   const previous = await one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
@@ -279,8 +316,9 @@ export async function dayStart(journal: Page, today: string) {
       previous.journal_date!,
     );
   }
-  const doc = dayDocument(carried, await templateNodes(journal.id, schema()), carriedPlace((await journalSettings(journal.id)).options));
-  return { previous, before, carried, daily, doc };
+  const { options } = await journalSettings(journal.id);
+  const doc = dayDocument(carried, await templateNodes(journal.id, schema()), carriedPlace(options));
+  return { previous, before, carried, daily, doc, mode: carryMode(options) };
 }
 
 // Makes sure the journal has a page for `today`. Runs inside the command
@@ -343,7 +381,7 @@ export async function rollJournal(
   // where they are; the draft id is the same for every device.
   if (!options.write && (await journalSettings(journal.id)).options.create === "write")
     return { dayId: await ensureDraft(journal.id, today), changed: false, draft: true };
-  const { previous, before, carried, daily, doc } = await dayStart(journal, today);
+  const { previous, before, carried, daily, doc, mode } = await dayStart(journal, today);
   if (previous && before) {
     const { ydoc, doc: previousDoc } = before;
     const empty =
@@ -351,16 +389,21 @@ export async function rollJournal(
       (await untouched(previous, previousDoc)) &&
       !(await completedThatDay(user, previous, options.zone));
     if (carried.length) {
+      const isDaily = (task: PMNode) => daily.has(task.textContent.trim());
       await storeDocument(
         previous.id,
         ydoc,
-        withoutOpenTasks(previousDoc, (task) => daily.has(task.textContent.trim())),
+        // Copied (#469): the originals stay, marked as carried over to today.
+        mode === "copy" ? withContinuedTasks(previousDoc, today, isDaily) : withoutOpenTasks(previousDoc, isDaily),
       );
-      // The moved tasks now live in the new day ("Meine Aufgaben").
+      // The moved tasks now live in the new day ("Meine Aufgaben"); copied
+      // ones are only there (continued originals are not indexed).
       await indexPageTasks(previous.id, false);
     }
     // An empty day goes to the trash (restorable like any page, never
-    // deleted for good here) – without the tasks that moved on.
+    // deleted for good here) – without the tasks that moved on. Judged
+    // before the copy marks its originals: a day that only held carried
+    // tasks and passed them on is empty in both modes.
     if (empty) await trashDay(user, previous);
     ydoc.destroy();
   }
@@ -416,7 +459,7 @@ async function storeNewDay(user: Identity, journal: Page, today: string, doc: PM
 // trash stays there – unless the journal put it there itself (an empty day,
 // rollJournal): that one comes back. Days after `today` are not made. It never removes,
 // moves or renames another day: the day before keeps its page even when it
-// only held carried tasks (they move on as usual) – a workflow running
+// only held carried tasks (they move on – or are copied – as usual) – a workflow running
 // just after midnight must not make yesterday disappear.
 export async function ensureJournalDay(user: Identity, journal: Page, date: string, today: string): Promise<{ dayId: string; created: boolean }> {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");

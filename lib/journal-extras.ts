@@ -8,7 +8,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { all, audit, id, lockFor, one, refuseKeeping, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
-import { taskStatusOf } from "./task-status";
+import { isContinuedTask, taskStatusOf } from "./task-status";
 import { ct } from "./content-locale";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
@@ -75,6 +75,10 @@ export const journalOptionsSchema = z.object({
   // template's heading `carriedHeading` (after the template without it).
   carried: z.enum(["top", "end", "heading"]).default("top"),
   carriedHeading: z.string().trim().max(200).default(""),
+  // "Offene Aufgaben" (#469): the open tasks of the day before move to the
+  // new day (move, the default) or are copied there, the originals staying
+  // on their day marked as carried over (copy; lib/journal.ts).
+  carry: z.enum(["move", "copy"]).default("move"),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 async function settingsRow(journalId: string) {
@@ -89,7 +93,7 @@ export async function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers)).map(localizedTracker);
   } catch {}
-  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "" };
+  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "", carry: "move" };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}
@@ -171,7 +175,7 @@ function resetTasks(doc: PMNode): PMNode {
     node.forEach((child) => children.push(walk(child)));
     const attrs =
       node.type.name === "taskItem"
-        ? { ...node.attrs, checked: false, status: null, symbol: null, journalSince: null }
+        ? { ...node.attrs, checked: false, status: null, symbol: null, journalSince: null, journalContinued: null }
         : node.attrs;
     return node.type.create(attrs, children, node.marks);
   };
@@ -210,8 +214,9 @@ export async function templateTaskTexts(journalId: string, nodes?: Awaited<Retur
     });
   return texts;
 }
-// A day that still reads exactly like the template (plus carried tasks):
-// the current one, or the version the day was created from.
+// A day that still reads exactly like the template (plus carried tasks,
+// open or copied on to a later day): the current one, or the version the
+// day was created from.
 export async function onlyTemplate(
   journalId: string,
   doc: PMNode,
@@ -231,6 +236,7 @@ export async function onlyTemplate(
           child.attrs.journalSince < date;
         if (!child.attrs.checked && (carried || tasks.has(child.textContent.trim())))
           return;
+        if (carried && isContinuedTask(child.attrs)) return;
       }
       if (child.type.name === "paragraph" && !child.content.size) return;
       const kept = strip(child);

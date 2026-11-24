@@ -107,3 +107,12 @@ export function statusName(t: T, status: TaskStatus) {
 // A box to put in front of a task's text where no checkbox can be (plain
 // text exports): ☐ ◐ ☑ ☒ ➔.
 export const STATUS_BOX: Record<TaskStatus, string> = { open: "☐", progress: "◐", done: "☑", cancelled: "☒", deferred: "➔" };
+
+// A journal task copied on to a later day (#469, journal option "Offene
+// Aufgaben: kopieren"): the original stays on its day, closed as cancelled
+// (so every count, "My tasks" and an older client see it as not open) and
+// marked with the date of the day it continues on (`journalContinued`).
+// It is shown as carried over, not as cancelled, and never carried again.
+type ContinuedAttrs = ({ checked?: unknown; status?: unknown; symbol?: unknown; journalContinued?: unknown }) | null | undefined;
+export const isContinuedTask = (attrs: ContinuedAttrs) =>
+  typeof attrs?.journalContinued === "string" && !!attrs.journalContinued && taskStatusOf(attrs) === "cancelled";

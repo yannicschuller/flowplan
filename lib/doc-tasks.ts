@@ -25,7 +25,7 @@ import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { validBlockId } from "./block-ids";
 import { userUnassignedTasks } from "./unassigned-tasks-pref";
-import { TASK_STATUSES, isClosedStatus, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
+import { TASK_STATUSES, isClosedStatus, isContinuedTask, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
 
 // The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
 const storedStatus = (status: TaskStatus) => (isStoredStatus(status) ? status : null);
@@ -49,6 +49,10 @@ export type DocTask = {
   // Its block id (lib/block-ids.ts), when it has one: its identity across
   // edits (#249).
   blockId: string | null;
+  // A journal original copied on to a later day (#469, lib/task-status.ts
+  // isContinuedTask): it keeps its position, but is not stored in
+  // doc_tasks – not in My tasks, task counts or widgets (the copy is).
+  continued?: boolean;
 };
 // The task's own line: its first paragraph, with mentions as @Name.
 function lineOf(item: JsonNode) {
@@ -87,7 +91,16 @@ export function extractTasks(json: JsonNode): DocTask[] {
       const { text, assignees } = lineOf(node);
       const due = typeof node.attrs?.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(node.attrs.due) ? node.attrs.due : null;
       const status = taskStatusOf(node.attrs);
-      tasks.push({ index: tasks.length, text, checked: isClosedStatus(status), status, assignees, due, blockId: validBlockId(node.attrs?.blockId) });
+      tasks.push({
+        index: tasks.length,
+        text,
+        checked: isClosedStatus(status),
+        status,
+        assignees,
+        due,
+        blockId: validBlockId(node.attrs?.blockId),
+        ...(isContinuedTask(node.attrs) ? { continued: true } : {}),
+      });
     }
     for (const child of node.content || []) walk(child);
   };
@@ -124,6 +137,7 @@ export async function syncDocTasks(
   const assignees = new Set(tasks.flatMap((task) => task.assignees));
   const now = Date.now();
   for (const task of tasks.slice(0, 2000)) {
+    if (task.continued) continue;
     const people = task.assignees.length ? task.assignees : [null];
     const text = task.text.slice(0, TASK_TEXT_MAX);
     // Ticked off in this change (not a task moved or written already done):
@@ -551,7 +565,7 @@ export async function backfillDocTasks() {
     try {
       Y.applyUpdate(ydoc, state || htmlState(html));
       const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
-      for (const task of tasks.slice(0, 2000))
+      for (const task of tasks.slice(0, 2000).filter((t) => !t.continued))
         for (const assignee of task.assignees.length ? task.assignees : [null])
           await run(
             "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,status,assignee,due,workspace_id,updated_by,updated_at,block_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",

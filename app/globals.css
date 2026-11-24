@@ -1883,6 +1883,25 @@ kbd,
 :root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol) {
   text-decoration: line-through;
 }
+/* A journal task copied on to a later day (#469, data-journal-continued on
+   a cancelled task): carried over, not cancelled – an arrow in a muted box,
+   the text faded without a line, and no "↻" badge of a carried task. */
+.document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > label::after {
+  content: "➔";
+  right: auto;
+  bottom: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+.document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol),
+:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol) {
+  color: var(--muted);
+  text-decoration: none;
+  animation: none;
+  opacity: 0.8;
+}
 /* The state menu: a zero-size anchor on the box, the items with their box. */
 .task-status-anchor {
   position: fixed;
