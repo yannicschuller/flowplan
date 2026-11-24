@@ -54,6 +54,7 @@ import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
 import { BlockGaps } from "@/lib/block-gaps";
+import { TextTurnShortcut, turnIntoText } from "@/lib/block-turn";
 import { EditableCodeBlock } from "./code-block";
 import { BlockCaptions } from "./block-captions-view";
 import { embedProvider } from "@/lib/embed-providers";
@@ -103,6 +104,7 @@ export default function SharedEditor({
     extensions: [
       EditableCodeBlock,
       BlockShortcuts,
+      TextTurnShortcut,
       BlockGaps,
       // Links between published pages show the page's icon (#96).
       PageLinkIcons,
@@ -277,7 +279,7 @@ export default function SharedEditor({
   // The blocks a guest can add: those of the toolbar and the plain blocks
   // of the app's "/" menu (no pages, databases or AI here).
   const commands: SlashItem[] = [
-    { id: "text", group: "text", name: t("Text", "Text"), keywords: ["text", "p", "absatz", "paragraph"], description: t("Einfach losschreiben", "Just start writing"), icon: TextAlignLeft, run: () => chain()?.setParagraph().run() },
+    { id: "text", group: "text", name: t("Text", "Text"), keywords: ["text", "p", "absatz", "paragraph"], description: t("Einfach losschreiben", "Just start writing"), icon: TextAlignLeft, run: () => chain()?.command(turnIntoText).run() },
     ...([1, 2, 3, 4] as const).map((level) => ({
       id: `h${level}`,
       group: "text" as const,

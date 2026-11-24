@@ -3,6 +3,7 @@
 // block equation, columns, and block colours. Plain ProseMirror
 // transactions – one undo step each – shared by the block menu and tests.
 // The toggle helpers of #230 (lib/toggle-commands.ts) stay as they are.
+import { Extension } from "@tiptap/core";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { newBlockId, validBlockId } from "./block-ids";
@@ -10,6 +11,7 @@ import { titleText, turnIntoToggle } from "./toggle-commands";
 import { toggleHeading } from "./document-schema";
 import { BLOCK_COLOR_TYPES, blockColor } from "./block-colors";
 import { MAX_COLUMNS } from "./document-blocks";
+import { beginUndoStep } from "./node-target";
 
 const LIST_ITEMS = ["listItem", "taskItem"];
 
@@ -55,6 +57,101 @@ function textBlock(trn: Transaction, kind: TitleBlock, text: string, blockId?: u
       return paragraph({ blockId: id });
   }
 }
+
+// "Text" on list items and tasks (#464): the items the selection touches
+// leave their list and become what they hold – their line a paragraph,
+// their sub-items a list of their own right below it. The list is split
+// around them; the items before and after keep their states, dates and
+// (numbered) their numbers. A nested item stays under its parent item, as
+// a paragraph without marker. One step, the caret stays in the text.
+// False when the selection is not in a list item (then "Text" is the
+// editor's setParagraph).
+const LISTS = ["bulletList", "orderedList", "taskList"];
+export function itemsToText(trn: Transaction): boolean {
+  const { $from, $to, from, to } = trn.selection;
+  // The innermost list holding both ends of the selection.
+  let depth = $from.sharedDepth(to);
+  while (depth > 0 && !LISTS.includes($from.node(depth).type.name)) depth--;
+  if (depth <= 0 || $to.depth < depth) return false;
+  const list = $from.node(depth),
+    listPos = $from.before(depth);
+  const picked: number[] = [],
+    starts: number[] = [];
+  list.forEach((item, offset, index) => {
+    const start = listPos + 1 + offset,
+      end = start + item.nodeSize;
+    starts.push(start);
+    if (start < Math.max(to, from + 1) && end > from) picked.push(index);
+  });
+  if (!picked.length) return false;
+  const first = picked[0],
+    last = picked[picked.length - 1];
+  const items = (a: number, b: number) => {
+    const out: PMNode[] = [];
+    for (let i = a; i < b; i++) out.push(list.child(i));
+    return out;
+  };
+  const blocks: PMNode[] = [];
+  for (const item of items(first, last + 1)) {
+    if (!LIST_ITEMS.includes(item.type.name)) return false;
+    item.forEach((child, _offset, index) => {
+      // The item's block id and colour go to its line: links to the task
+      // keep working.
+      if (index === 0 && child.type.name === "paragraph") {
+        const attrs = { ...child.attrs };
+        if ("blockId" in attrs && !validBlockId(attrs.blockId) && validBlockId(item.attrs.blockId)) attrs.blockId = item.attrs.blockId;
+        if ("blockColor" in attrs && !attrs.blockColor && item.attrs.blockColor) attrs.blockColor = item.attrs.blockColor;
+        blocks.push(child.type.create(attrs, child.content, child.marks));
+      } else blocks.push(child);
+    });
+  }
+  const parts: PMNode[] = [];
+  if (first > 0) parts.push(list.type.create(list.attrs, items(0, first), list.marks));
+  parts.push(...blocks);
+  if (last < list.childCount - 1) {
+    const attrs = list.type.name === "orderedList" ? { ...list.attrs, start: (Number(list.attrs.start) || 1) + last + 1 } : list.attrs;
+    parts.push(list.type.create(attrs, items(last + 1, list.childCount), list.marks));
+  }
+  const fragment = Fragment.fromArray(parts);
+  if (!canReplace(trn, listPos, listPos + list.nodeSize, fragment)) return false;
+  // Where a position inside the k-th picked item ends up: every item
+  // wrapper before it is gone, and the list's own start when nothing stays
+  // before the items (a list split off before them closes where the first
+  // item opened).
+  const map = (pos: number) => {
+    let k = picked.length - 1;
+    while (k > 0 && pos < starts[picked[k]]) k--;
+    return pos - 2 * k - (first > 0 ? 0 : 2);
+  };
+  trn.replaceWith(listPos, listPos + list.nodeSize, fragment);
+  const size = trn.doc.content.size;
+  const $a = trn.doc.resolve(Math.max(0, Math.min(map(from), size))),
+    $b = trn.doc.resolve(Math.max(0, Math.min(map(to), size)));
+  trn.setSelection($a.parent.inlineContent && $b.parent.inlineContent ? TextSelection.between($a, $b) : Selection.near($a));
+  return true;
+}
+// The "Text" entries (the "/" menu, the toolbar's block style, the block
+// menu, Mod+Alt+0): list items and tasks leave their list, any other
+// block becomes a paragraph. For `chain().command(turnIntoText)`.
+export const turnIntoText = ({ tr, commands }: { tr: Transaction; commands: { setParagraph: () => boolean } }) =>
+  itemsToText(tr) || commands.setParagraph();
+// Mod+Alt+0 the same way, ahead of the paragraph's own shortcut: an undo
+// step of its own, as the "/" menu's commands.
+export const TextTurnShortcut = Extension.create({
+  name: "textTurnShortcut",
+  priority: 101,
+  addKeyboardShortcuts() {
+    return {
+      "Mod-Alt-0": () => {
+        if (!this.editor.isEditable) return false;
+        beginUndoStep(this.editor.state);
+        const done = this.editor.chain().command(turnIntoText).run();
+        beginUndoStep(this.editor.state);
+        return done;
+      },
+    };
+  },
+});
 
 // A toggle becomes another block (#244): its title becomes that block's
 // text, its content follows right after on the same level (an empty

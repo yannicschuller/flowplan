@@ -59,7 +59,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { touchHold } from "./pointer-drag";
-import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors, toggleToBlock, type TitleBlock } from "@/lib/block-turn";
+import { blockToMath, blockToToggle, blocksToColumns, colorable, setBlockColors, toggleToBlock, turnIntoText, type TitleBlock } from "@/lib/block-turn";
 import { blocksToTabs, tabsToBlocks } from "@/lib/tabs-commands";
 import { BLOCK_COLOR_NAMES, blockColor, blockColorLabels, type BlockColorName } from "@/lib/block-colors";
 import type { Editor } from "@tiptap/core";
@@ -1626,7 +1626,7 @@ export function DocumentBlockControls({
     else if (listItems.includes(name)) {
       at = block.pos + 2;
       turns = [
-        { label: t("Text", "Text"), en: "text paragraph", icon: <TextT key="i" />, change: (c) => c.liftListItem(name) },
+        { label: t("Text", "Text"), en: "text paragraph", icon: <TextT key="i" />, change: (c) => c.command(turnIntoText) },
         { label: t("Aufzählung", "Bulleted list"), en: "bulleted list bullet", icon: <ListBullets key="i" />, active: parent === "bulletList", change: (c) => c.toggleBulletList(), shortcut: "Mod+Shift+8" },
         { label: t("Nummerierte Liste", "Numbered list"), en: "numbered list ordered", icon: <ListNumbers key="i" />, active: parent === "orderedList", change: (c) => c.toggleOrderedList(), shortcut: "Mod+Shift+7" },
         { label: t("Aufgabenliste", "Task list"), en: "task list todo", icon: <CheckSquare key="i" />, active: parent === "taskList", change: (c) => c.toggleTaskList(), shortcut: "Mod+Shift+9" },
