@@ -6,10 +6,14 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../components/editor.tsx", import.meta.url), "utf8");
 
-test("saves are throttled when nobody else has the document open (#515)", () => {
+test("alone in a document, a save waits for a pause in typing, at most 10 s (#515)", () => {
   assert.match(source, /const SAVE_SOON_MS = 80;/);
-  assert.match(source, /const SAVE_ALONE_MS = 1000;/);
-  assert.match(source, /audienceOthers\(liveKey\) \? SAVE_SOON_MS : SAVE_ALONE_MS/);
+  assert.match(source, /const SAVE_ALONE_PAUSE_MS = 2000;/);
+  assert.match(source, /const SAVE_ALONE_MAX_MS = 10_000;/);
+  assert.match(source, /if \(audienceOthers\(liveKey\)\) \{/);
+  assert.match(source, /Math\.min\(SAVE_ALONE_PAUSE_MS, firstUnsaved\.current \+ SAVE_ALONE_MAX_MS - now\)/);
+  // The regular check does not send a waiting save early.
+  assert.match(source, /if \(!saveTimer\.current\) void sync\(\);/);
 });
 
 test("a waiting save goes out when someone else joins (#515)", () => {

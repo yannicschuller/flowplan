@@ -291,7 +291,10 @@ import { isSheetName } from "@/lib/sheet-files";
 // their own: they belong in the sentence.
 // Delay of a save after a change: with others in the document, and alone (#515).
 const SAVE_SOON_MS = 80;
-const SAVE_ALONE_MS = 1000;
+// Alone: after a pause in typing, and at the latest this long after the
+// first unsaved change while typing on.
+const SAVE_ALONE_PAUSE_MS = 2000;
+const SAVE_ALONE_MAX_MS = 10_000;
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
 // Text styles turn the current block into that style, as "Aa" does.
 const BLOCKS_IN_PLACE = new Set<ToolbarBlock>(["block:text", "block:h1", "block:h2", "block:h3", "block:h4", "block:quote"]);
@@ -1521,18 +1524,29 @@ export default function DocumentEditor({
   // check with the server turns it into "Gespeichert".
   const checkPending = useRef(false);
   // With others in the document, changes go out at once (80 ms) so they
-  // see the typing live. Alone, at most one save per second (#515): the
-  // text is kept on this device meanwhile, and leaving the page sends it.
+  // see the typing live. Alone (#515), once typing pauses for 2 s, and while
+  // typing on at the latest 10 s after the first unsaved change. Until then
+  // the text is kept on this device (IndexedDB); leaving the page, a tick or
+  // a moved block (below) send it at once.
   const liveKey = `${pageId}:${rowId || ""}:${generation}`;
+  const firstUnsaved = useRef(0);
   saveSoon.current = () => {
-    if (saveTimer.current) return;
-    saveTimer.current = setTimeout(
-      () => {
+    const now = Date.now();
+    if (audienceOthers(liveKey)) {
+      if (saveTimer.current) return;
+      saveTimer.current = setTimeout(() => {
         saveTimer.current = undefined;
         void sync();
-      },
-      audienceOthers(liveKey) ? SAVE_SOON_MS : SAVE_ALONE_MS,
-    );
+      }, SAVE_SOON_MS);
+      return;
+    }
+    if (!saveTimer.current) firstUnsaved.current = now;
+    clearTimeout(saveTimer.current);
+    const wait = Math.max(0, Math.min(SAVE_ALONE_PAUSE_MS, firstUnsaved.current + SAVE_ALONE_MAX_MS - now));
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = undefined;
+      void sync();
+    }, wait);
   };
   useEffect(() => () => clearTimeout(saveTimer.current), []);
   // Someone else opened the document: what waits goes out now.
@@ -1742,7 +1756,11 @@ export default function DocumentEditor({
     persistOnLeave,
   ]);
   useEffect(() => {
-    const interval = setInterval(sync, 1800);
+    // The regular check; a save that waits for a pause in typing (#515)
+    // is not sent early by it.
+    const interval = setInterval(() => {
+      if (!saveTimer.current) void sync();
+    }, 1800);
     const shown = () => {
       if (document.visibilityState !== "hidden") void sync();
     };

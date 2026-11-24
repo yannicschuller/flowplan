@@ -11,5 +11,14 @@
       "de": "„Neu in Flowplan“ passt in der iOS-App wieder in das Fenster.",
       "en": "“New in Flowplan” fits its window in the iOS app again."
     }
+  ],
+  "improvements": [
+    {
+      "de": "Wer allein in einem Dokument schreibt, speichert nach einer kurzen Tipp-Pause (2 s, beim Durchtippen spätestens alle 10 s) statt laufend; Abhaken, Statusänderungen und das Verlassen der Seite speichern sofort.",
+      "en": "Writing alone in a document saves after a short pause in typing (2 s, at the latest every 10 s while typing on) instead of all the time; ticking off, status changes and leaving the page save at once.",
+      "issues": [
+        515
+      ]
+    }
   ]
 }
