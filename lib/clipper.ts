@@ -17,6 +17,7 @@ import { journalLocked, lockedPageIds } from "./journal-extras";
 import { createPage } from "./seed";
 import { cleanHtml, htmlState } from "./document-server";
 import { captureRecord } from "./capture";
+import { unwritableFieldIds } from "./field-access";
 import { addBookmarks, bookmarksDatabase } from "./web-clip";
 import { appendHtmlToPage } from "./mcp";
 import { ct } from "./content-locale";
@@ -165,11 +166,14 @@ async function targetPage(user: Identity, workspaceId: string, pageId: string) {
 
 // Tags into a multi-select (or select) property named "Tags" or
 // "Schlagwörter"; for bookmarks a "Tags" property is added on first use.
-async function tagRecord(pageId: string, rowId: string, tags: string[], create = false) {
+// A tag property the person may not change (lib/field-access.ts) keeps its
+// value and its options; the tags are then only in the text, if anywhere.
+async function tagRecord(user: Identity, page: Page, rowId: string, tags: string[], create = false) {
   if (!tags.length) return;
-  const stored = (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields;
+  const stored = (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields;
   const fields = JSON.parse(stored) as Field[];
   let field = fields.find((f) => ["multiselect", "select"].includes(f.type) && /^(tags?|schlagw(ö|oe)rter|stichw(ö|oe)rter|labels?)$/i.test(f.name.trim()));
+  if (field && (await unwritableFieldIds(user, page, fields)).has(field.id)) return;
   if (!field && create) {
     field = { id: "bm_tags", name: ct("Tags", "Tags"), type: "multiselect", options: [] };
     fields.push(field);
@@ -183,7 +187,7 @@ async function tagRecord(pageId: string, rowId: string, tags: string[], create =
   cells[field.id] = field.type === "select" ? chosen[0] : [...new Set(chosen)];
   // New tags get colours in turn (#242).
   colorOptions(fields, JSON.parse(stored) as Field[]);
-  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), page.id);
   await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rowId);
 }
 
@@ -203,7 +207,10 @@ export async function saveClip(user: Identity, raw: unknown) {
       // there: the rights of page.create in the space, as for page.fromShare.
       if (target && !chosen) await writableSpace(user, workspaceId, target.space_id);
       const db = chosen ? target.id : (await bookmarksDatabase(workspaceId, target?.space_id || space!.id, user.id));
-      await requirePage(user, db, true);
+      // A resolved database passes the same check as a chosen one: not
+      // locked and not behind a journal PIN the person has not entered.
+      const dbPage = await requirePage(user, db, true);
+      if (!(await writable(user, dbPage))) throw new HttpError(403, "In diese Seite kann nicht gespeichert werden.");
       const saved = await addBookmarks(db, user.id, [{ title, url: input.url, note: input.description?.slice(0, 2000) }]);
       if (!saved.added) throw new HttpError(409, "Dieser Link ist schon unter den Lesezeichen.");
       const rowId = saved.ids[0];
@@ -215,10 +222,13 @@ export async function saveClip(user: Identity, raw: unknown) {
           fields.push({ id: "bm_favicon", name: ct("Favicon", "Favicon"), type: "url" });
           await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
         }
-        const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells);
-        await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cells, bm_favicon: favicon }), rowId);
+        // Only when the person may change that property.
+        if (!(await unwritableFieldIds(user, dbPage, fields)).has("bm_favicon")) {
+          const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells);
+          await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cells, bm_favicon: favicon }), rowId);
+        }
       }
-      await tagRecord(db, rowId, tags, true);
+      await tagRecord(user, dbPage, rowId, tags, true);
       return { pageId: db, rowId };
     }
     if (input.mode === "highlight") {
@@ -228,7 +238,7 @@ export async function saveClip(user: Identity, raw: unknown) {
       const body = `<blockquote>${quote || `<p>${esc(text).replace(/\n/g, "<br>")}</p>`}<p>— ${link(input.url, title)}</p></blockquote>`;
       if (target?.kind === "database") {
         const saved = await captureRecord(user, { pageId: target.id, title, url: input.url, article: body });
-        await tagRecord(target.id, saved.rowId, tags);
+        await tagRecord(user, target, saved.rowId, tags);
         return { pageId: target.id, rowId: saved.rowId };
       }
       // A space: a new page for the source, later highlights are appended.
@@ -244,7 +254,7 @@ export async function saveClip(user: Identity, raw: unknown) {
     if (!content) throw new HttpError(400, "Kein Inhalt zum Speichern.");
     if (target?.kind === "database") {
       const saved = await captureRecord(user, { pageId: target.id, title, url: input.url, article: content });
-      await tagRecord(target.id, saved.rowId, tags);
+      await tagRecord(user, target, saved.rowId, tags);
       return { pageId: target.id, rowId: saved.rowId };
     }
     // A new page below the target needs the rights of page.create: full
