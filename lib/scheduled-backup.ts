@@ -80,6 +80,16 @@ async function purgeDeleted(prefix: string, oldest: number | null, now: number) 
   return purged;
 }
 
+// The message with its cause: "fetch failed" alone hides the reset, TLS or
+// timeout below it (#518).
+export function errorText(error: unknown): string {
+  const message = String((error as Error)?.message || error);
+  const cause = (error as { cause?: unknown })?.cause;
+  if (!cause) return message;
+  const detail = String((cause as Error)?.message || (cause as { code?: string })?.code || cause);
+  return detail && !message.includes(detail) ? `${message}: ${detail}` : message;
+}
+
 export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
   const keep = Math.max(1, (await instanceSettings()).backupKeep ?? 14);
   let name = backupName(now, false);
@@ -117,7 +127,7 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
       result = { at: now, target: "local", name, bytes, error: null };
     }
   } catch (error) {
-    result = { at: now, target: config ? "s3" : "local", name, bytes: 0, error: String((error as Error).message || error).slice(0, 300) };
+    result = { at: now, target: config ? "s3" : "local", name, bytes: 0, error: errorText(error).slice(0, 300) };
   }
   try {
     await remember(result);

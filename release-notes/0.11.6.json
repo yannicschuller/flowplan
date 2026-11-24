@@ -1,0 +1,11 @@
+{
+  "fixes": [
+    {
+      "de": "Sicherungen und Markdown-Exporte in S3 werden mit bekannter Größe hochgeladen: S3-Server, die Content-Length verlangen (VersityGW, AWS), lehnten sie mit HTTP 411 ab. Gespeicherte Fehler nennen jetzt auch ihre Ursache.",
+      "en": "Backups and Markdown exports to S3 are uploaded with a known size: S3 servers that require Content-Length (VersityGW, AWS) rejected them with HTTP 411. Stored errors now also name their cause.",
+      "issues": [
+        518
+      ]
+    }
+  ]
+}

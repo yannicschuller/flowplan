@@ -88,7 +88,26 @@ const copySource = (config: StorageConfig, key: string) =>
   `/${encodeURIComponent(config.bucket)}/${[config.prefix, "uploads", key].filter(Boolean).map(encodeURIComponent).join("/")}`;
 const scheduledBackupsOn = async () => (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='backupSchedule'"))?.value !== "false";
 let client: { key: string; aws: AwsClient } | undefined;
+// Signs with aws4fetch, then sends the original body with a plain URL and
+// init (#518). aws4fetch's own fetch() hands fetch a Request object; inside
+// Next.js the patched fetch passes such a body on as a stream of unknown
+// length, so a PUT went out chunked without Content-Length – S3 servers
+// answer 411 (or a proxy hangs). A string or byte body keeps its length.
+async function s3Fetch(signer: AwsClient, url: string, init: RequestInit = {}) {
+  const signed = await signer.sign(url, init);
+  return fetch(signed.url, {
+    method: signed.method,
+    headers: signed.headers,
+    body: init.body ?? null,
+    signal: init.signal ?? null,
+    cache: "no-store",
+  });
+}
 function aws(config: StorageConfig) {
+  const signer = awsSigner(config);
+  return { fetch: (url: string, init?: RequestInit) => s3Fetch(signer, url, init) };
+}
+function awsSigner(config: StorageConfig) {
   const key = `${config.accessKeyId}:${config.region}`;
   if (client?.key !== key)
     client = {
