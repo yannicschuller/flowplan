@@ -117,16 +117,25 @@ export async function detachOccurrence(user: Identity, raw: unknown) {
   }
   const rid = id();
   await run(
-    "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence,access) VALUES(?,?,?,?,?,?,?,?,?,?)",
     rid,
     b.pageId,
     JSON.stringify(copy),
     row.position + 0.5,
-    user.id,
+    // The occurrence keeps the series' creator (its manager) and record
+    // permissions: a grantee who detaches must not become its manager, and
+    // a private series must not turn into a record everyone can see (#486).
+    row.created_by ?? null,
     user.id,
     row.icon || "",
     row.cover || "",
     tail,
+    row.access || "inherit",
+  );
+  await run(
+    "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
+    rid,
+    row.id,
   );
   await replaceRowDocument(
     rid,
