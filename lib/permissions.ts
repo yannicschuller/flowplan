@@ -77,6 +77,26 @@ export async function spaceRole(user: Identity, space: Space): Promise<Role | nu
     ? membership
     : null;
 }
+// Whether joining a group gives the person no read access they do not have
+// already (#473): every space and page the group holds a grant on must be
+// readable without it. A trashed space counts as it will be once restored.
+export async function canJoinGroup(user: Identity, groupId: string, workspace: string) {
+  const grants = await all<{ resource_id: string; resource_kind: string }>(
+    "SELECT resource_id,resource_kind FROM grants WHERE group_id=? AND workspace_id=?",
+    groupId,
+    workspace,
+  );
+  for (const g of grants) {
+    if (g.resource_kind === "space") {
+      const space = await spaceRow(g.resource_id);
+      if (space && !(await spaceRole(user, { ...space, deleted_at: null }))) return false;
+    } else {
+      const page = await pageRow(g.resource_id);
+      if (page && !(await pageRole(user, page))) return false;
+    }
+  }
+  return true;
+}
 // A draft of a saved page template (#461, lib/template-drafts.ts) is read
 // only by whoever opened it – no grant, space or ownership lets anyone else
 // in, and nothing below it either.

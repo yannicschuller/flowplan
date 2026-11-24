@@ -312,6 +312,7 @@ import {
   spaceRole,
   pageRole,
   workspaceRoles,
+  canJoinGroup,
 } from "./permissions";
 import {
   createPage,
@@ -1686,6 +1687,10 @@ async function runCommand(
         const s = await requireSpaceManager(user, sid);
         if (s.deleted_at)
           throw new HttpError(409, "Den Bereich zuerst wiederherstellen.");
+        // Managing a space (#473) never opens it: only someone who can see a
+        // private space makes it visible to the whole team.
+        if (s.visibility === "private" && !b.private && !(await spaceRole(user, s)))
+          throw new HttpError(403, "Nur wer den Bereich sehen darf, kann ihn für das Team öffnen.");
         if (b.version !== undefined && b.version !== s.version)
           throw new HttpError(
             409,
@@ -4018,6 +4023,11 @@ async function runCommand(
         if (!p && !s) throw new HttpError(404, "Ressource fehlt.");
         await lockMembership((p || s)!.workspace_id);
         await requireMember(user, (p || s)!.workspace_id, "owner");
+        // Widening access needs read access, as for page.share (#473):
+        // managing a workspace never opens other members' private spaces.
+        // Removing a grant stays open to every owner.
+        if (b.role !== "remove" && !(p ? await pageRole(user, p) : await spaceRole(user, s!)))
+          throw new HttpError(403, "Rechte vergibt nur, wer die Seite oder den Bereich selbst sehen darf.");
         const uid = b.userId ? uuid.parse(b.userId) : "",
           gid = b.groupId ? uuid.parse(b.groupId) : "";
         if (!uid && !gid)
@@ -4084,6 +4094,11 @@ async function runCommand(
           ))
         )
           throw new HttpError(400, "Mitglied fehlt");
+        // Joining a group that holds grants on private content one cannot
+        // see would open it (#473): owners manage the members of every
+        // group, but add themselves only where it gives no new read access.
+        if (b.enabled && uid === user.id && !(await canJoinGroup(user, gid, g.workspace_id)))
+          throw new HttpError(403, "Diese Gruppe hat Rechte auf private Inhalte, die du nicht sehen darfst. Du kannst dich nicht selbst hinzufügen.");
         if (b.enabled)
           await run("INSERT INTO group_members VALUES(?,?) ON CONFLICT DO NOTHING", gid, uid);
         else

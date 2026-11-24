@@ -28,15 +28,26 @@ function SpaceAccess({ space: s }: { space: Space }) {
       await reload();
     });
   const groups = settings?.groups || [];
+  // Another member's private space you cannot see (#473): you manage it, but
+  // only who can see it opens it or gives groups access.
+  const closed = s.visibility === "private" && s.owner_id !== boot.user.id && !boot.spaces.some((x) => x.id === s.id);
+  const hasGrant = (g: string) => settings?.grants.some((x) => x.resource_id === s.id && x.group_id === g);
   return (
     <div className="ws-space">
       <SettingRow
         label={s.name}
         id={`visibility-${s.id}`}
-        description={s.visibility === "private" ? t("Nur Personen und Gruppen mit Zugriff sehen den Bereich.", "Only people and groups with access see the space.") : t("Alle Mitglieder sehen den Bereich.", "All members see the space.")}
+        description={
+          closed
+            ? t("Privater Bereich eines anderen Mitglieds. Öffnen und Rechte vergeben kann nur, wer ihn sehen darf.", "Another member's private space. Only someone who can see it can open it or give permissions.")
+            : s.visibility === "private"
+              ? t("Nur Personen und Gruppen mit Zugriff sehen den Bereich.", "Only people and groups with access see the space.")
+              : t("Alle Mitglieder sehen den Bereich.", "All members see the space.")
+        }
       >
         <Select
           id={`visibility-${s.id}`}
+          disabled={closed}
           className={CONTROL.md}
           aria-label={t(`Sichtbarkeit ${s.name}`, `Visibility ${s.name}`)}
           value={s.visibility}
@@ -57,6 +68,7 @@ function SpaceAccess({ space: s }: { space: Space }) {
             <Select
               id={`grant-${s.id}-${g.id}`}
               className={CONTROL.md}
+              disabled={closed && !hasGrant(g.id)}
               aria-label={t(`Rechte ${g.name} in ${s.name}`, `Permissions of ${g.name} in ${s.name}`)}
               value={settings?.grants.find((x) => x.resource_id === s.id && x.group_id === g.id)?.role || "remove"}
               onChange={(e) => void save({ action: "grant.set", resourceId: s.id, groupId: g.id, role: e.target.value })}
