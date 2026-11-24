@@ -482,6 +482,19 @@ label.hit-check {
   .main-nav > button {
     min-height: 44px;
   }
+  /* The caret that folds the navigation (#452): 44 × 44 at the right end
+     of the first row ("Suchen", whose shortcut is hidden on touch), or of
+     the folded row of icons, which keeps the room free for it. Its right
+     edge stays where the rows end, clear of the drawer's scroll bar. */
+  .main-nav > .main-nav-toggle {
+    width: 44px;
+    height: 44px;
+    top: 2px;
+    right: 10px;
+  }
+  .main-nav.compact {
+    padding-right: 54px;
+  }
   .page-nav {
     height: 44px;
   }
