@@ -5,7 +5,8 @@
 // property to one of their calendars. Every ten minutes – or on "Jetzt
 // synchronisieren" – the engine pulls what changed in the calendar
 // (Google syncToken, Microsoft Graph deltaLink, CalDAV sync-collection or
-// ctag/etag comparison) and pushes what changed in
+// ctag/etag comparison; CalDAV series expanded into occurrences by
+// lib/ical-recurrence.ts) and pushes what changed in
 // the database: title ↔ title, date range ↔ start/end (all-day or timed,
 // with time zones), record document (plain text) ↔ description with a link
 // back to the record. When both sides changed, the later change wins and an
@@ -39,7 +40,7 @@ import { escaped } from "./document-server";
 import { replaceRowDocument } from "./row-documents";
 import { openSecret, sealSecret } from "./secret-box";
 import { privateAddress, safeSend } from "./safe-fetch";
-import { CalDavClient, DavAuthError, DavChanged, DavFailed, DavTokenInvalid, canonicalUrl, newIcsEvent, parseIcsEvent, patchIcsEvent, type DavRequest } from "./caldav-client";
+import { CalDavClient, DavAuthError, DavChanged, DavFailed, DavTokenInvalid, canonicalUrl, excludeIcsOccurrence, icsOccurrences, newIcsEvent, patchIcsEvent, ridStart, type DavRequest } from "./caldav-client";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { ct } from "./content-locale";
@@ -49,6 +50,7 @@ import { flatMapAsync } from "./each-async";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { allow } from "./action-limits";
+import { hostAllowed } from "./messengers";
 
 // Google and Microsoft sign in with OAuth; CalDAV with an app password.
 export const oauthProviders = ["google", "microsoft"] as const;
@@ -452,7 +454,7 @@ type Adapter = {
   changes(conn: ConnectionRow, calendarId: string, token: string | null, known: Map<string, string | null>, zone: string): Promise<{ events: RemoteEvent[]; token: string }>;
   create(conn: ConnectionRow, calendarId: string, event: EventContent, zone: string, rowId: string, link: string): Promise<RemoteEvent>;
   update(conn: ConnectionRow, calendarId: string, eventId: string, event: EventContent, zone: string, rowId: string, link: string, etag: string | null): Promise<RemoteEvent | null>;
-  remove(conn: ConnectionRow, calendarId: string, eventId: string, etag: string | null): Promise<void>;
+  remove(conn: ConnectionRow, calendarId: string, eventId: string, etag: string | null, zone: string): Promise<void>;
 };
 // The event changed in the calendar while it was being written (CalDAV 412):
 // left as it is; the next run reads the change and applies the conflict rule.
@@ -712,8 +714,19 @@ export function caldavAllowPrivate() {
 // https everywhere; http (and with it Basic auth in the clear) only to a
 // server in the own network and only when allowed. safeSend checks the
 // addresses of https requests itself.
+// FLOWPLAN_CALDAV_ALLOWED_HOSTS: the servers people may connect ("cloud.example.org,
+// *.icloud.com"; "*." for its subdomains); empty for every public server.
+export const caldavAllowedHosts = () =>
+  (process.env.FLOWPLAN_CALDAV_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
 async function checkDavUrl(url: URL) {
   if (url.username || url.password || url.hash) throw new HttpError(400, "Zugangsdaten gehören nicht in die Server-Adresse.");
+  // Checked for every request, also the targets of discovery's redirects.
+  const allowed = caldavAllowedHosts();
+  if (allowed.length && !hostAllowed(url.hostname.replace(/^\[|\]$/g, ""), allowed) && !allowed.includes(url.host.toLowerCase()))
+    throw new HttpError(400, ct(`Der CalDAV-Server „${url.hostname}“ ist auf dieser Instanz nicht freigegeben.`, `The CalDAV server “${url.hostname}” is not allowed on this instance.`));
   if (url.protocol === "https:") return;
   if (url.protocol !== "http:" || !caldavAllowPrivate()) throw new HttpError(400, "Die Server-Adresse muss mit https:// beginnen.");
   const host = url.hostname.replace(/^\[|\]$/g, "");
@@ -801,25 +814,72 @@ function davCalendar(secret: CalDavSecret, calendarId: string) {
 }
 const davTime = (iso: string) => `${iso.slice(0, 19).replace(/[-:]/g, "")}Z`;
 const goneEvent = (id: string): RemoteEvent => ({ id, deleted: true, title: "", allDay: false, start: "", end: "", description: "", attendees: [], updated: new Date(0).toISOString() });
-function davEvent(url: string, ics: string, etag: string, zone: string): RemoteEvent | null {
-  const id = new URL(url).pathname;
-  const parsed = parseIcsEvent(ics, zone);
-  // Series are not synced (as Google's and Microsoft's are, occurrence by
-  // occurrence): an occurrence of a CalDAV series is no resource of its own.
-  if (!parsed || parsed.recurring) return null;
-  if (parsed.cancelled) return goneEvent(id);
-  return {
-    id,
-    deleted: false,
-    title: parsed.title,
-    allDay: parsed.allDay,
-    start: parsed.start,
-    end: parsed.end,
-    description: stripFooter(parsed.description),
-    updated: parsed.updated,
-    attendees: parsed.attendees,
-    etag,
-  };
+// Event ids: the resource's path, and for an occurrence of a series its
+// original start after "#" ("/cal/team.ics#20261006T080000Z") – as Google
+// and Microsoft give each occurrence an id of its own.
+const resourceOf = (eventId: string) => eventId.split("#")[0];
+const ridIn = (eventId: string) => eventId.split("#")[1] || "";
+const MAX_OCCURRENCES = 500;
+// Series this engine cannot expand: said once per resource and process.
+const unsupportedSeries = new Set<string>();
+// Our own writes to a resource: the etag before → after. The occurrences of
+// a series share one resource; the etag stored with one of them is still
+// "ours" after a write to another one in the same run.
+const ownWrites = new Map<string, Map<string, string>>();
+function wrote(url: string, before: string, after: string) {
+  if (!before || !after) return;
+  if (ownWrites.size > 2000) ownWrites.clear();
+  const chain = ownWrites.get(url) || new Map<string, string>();
+  chain.set(before, after);
+  ownWrites.set(url, chain);
+}
+function sameVersion(url: string, stored: string, current: string) {
+  let etag = stored;
+  for (let n = 0; n < 50 && etag; n++) {
+    if (etag === current) return true;
+    etag = ownWrites.get(url)?.get(etag) || "";
+  }
+  return false;
+}
+const davWindow = (now: number) => ({ from: Temporal.Instant.fromEpochMilliseconds(now - WINDOW_PAST_DAYS * DAY_MS), to: Temporal.Instant.fromEpochMilliseconds(now + WINDOW_FUTURE_DAYS * DAY_MS) });
+// The events of one resource: a single event, or the occurrences of a series
+// in the window. Null: a series this engine does not expand (left alone).
+function davEvents(url: string, ics: string, etag: string, zone: string): RemoteEvent[] | null {
+  const path = new URL(url).pathname;
+  const parsed = icsOccurrences(ics, zone, davWindow(Date.now()), MAX_OCCURRENCES);
+  if (!parsed) return [];
+  if (parsed.unsupported) {
+    if (!unsupportedSeries.has(path)) {
+      unsupportedSeries.add(path);
+      console.error(`Calendar sync: CalDAV series not expanded (${parsed.unsupported.slice(0, 40)})`);
+    }
+    return null;
+  }
+  return parsed.occurrences.map((o) => {
+    const id = o.rid ? `${path}#${o.rid}` : path;
+    if (o.cancelled) return goneEvent(id);
+    return {
+      id,
+      deleted: false,
+      title: o.title,
+      allDay: o.allDay,
+      start: o.start,
+      end: o.end,
+      description: stripFooter(o.description),
+      updated: o.updated,
+      attendees: o.attendees,
+      etag,
+    };
+  });
+}
+// Whether the original start of an occurrence id lies in the sync window:
+// only then does its absence mean it was removed.
+function ridInWindow(rid: string) {
+  const o = ridStart(rid);
+  if (!o) return false;
+  const w = davWindow(Date.now());
+  const ms = o.allDay ? Date.parse(`${o.date}T00:00:00Z`) : o.instant.epochMilliseconds;
+  return ms >= w.from.epochMilliseconds - DAY_MS && ms <= w.to.epochMilliseconds;
 }
 const caldav: Adapter = {
   async calendars(conn) {
@@ -832,16 +892,35 @@ const caldav: Adapter = {
   async changes(conn, calendarId, token, known, zone) {
     return withDav(conn, async (client, secret) => {
       const calendar = davCalendar(secret, calendarId);
-      const knownUrls = new Map<string, string | null>();
+      // The linked events by resource, with the etags stored for them.
+      const knownUrls = new Map<string, { ids: string[]; etags: Set<string | null> }>();
       for (const [eventId, etag] of known) {
-        const url = canonicalUrl(eventId, calendar);
-        if (url) knownUrls.set(url, etag);
+        const url = canonicalUrl(resourceOf(eventId), calendar);
+        if (!url) continue;
+        const entry = knownUrls.get(url) || { ids: [], etags: new Set() };
+        entry.ids.push(eventId);
+        entry.etags.add(etag);
+        knownUrls.set(url, entry);
       }
+      const changedSince = (url: string, etag: string) => {
+        const entry = knownUrls.get(url);
+        return !entry || [...entry.etags].some((e) => !e || !sameVersion(url, e, etag));
+      };
       const events: RemoteEvent[] = [];
       const read = (url: string, value: { etag: string; ics: string }) => {
-        if (!value.etag) return void events.push(goneEvent(new URL(url).pathname));
-        const event = davEvent(url, value.ics, value.etag, zone);
-        if (event) events.push(event);
+        const linked = knownUrls.get(url)?.ids || [];
+        if (!value.etag) {
+          // Deleted: the resource, and with it every linked occurrence.
+          for (const id of linked.length ? linked : [new URL(url).pathname]) events.push(goneEvent(id));
+          return;
+        }
+        const found = davEvents(url, value.ics, value.etag, zone);
+        if (!found) return;
+        events.push(...found);
+        // Linked occurrences no longer there (EXDATE, a shorter series) are
+        // removed – those outside the window only moved out of sight.
+        const seen = new Set(found.map((e) => e.id));
+        for (const id of linked) if (!seen.has(id) && (!ridIn(id) || ridInWindow(ridIn(id)))) events.push(goneEvent(id));
       };
       // RFC 6578: only what changed since the token.
       if (token?.startsWith("s:")) {
@@ -856,7 +935,7 @@ const caldav: Adapter = {
           const wanted: string[] = [];
           for (const [url, etag] of changes.changed) {
             if (!etag) read(url, { etag: "", ics: "" });
-            else if (etag === "?" || knownUrls.get(url) !== etag) wanted.push(url);
+            else if (etag === "?" || changedSince(url, etag)) wanted.push(url);
           }
           for (const [url, value] of await client.multiget(calendar, wanted.slice(0, MAX_EVENTS), true)) read(url, value);
           return { events, token: `s:${changes.token}` };
@@ -875,7 +954,7 @@ const caldav: Adapter = {
       const wanted: string[] = [];
       for (const [url, value] of [...listing, ...checked]) {
         if (!value.etag || value.ics) read(url, value);
-        else if (knownUrls.get(url) !== value.etag) wanted.push(url);
+        else if (changedSince(url, value.etag)) wanted.push(url);
         if (events.length + wanted.length >= MAX_EVENTS) break;
       }
       for (const [url, value] of await client.multiget(calendar, wanted, true)) read(url, value);
@@ -891,29 +970,47 @@ const caldav: Adapter = {
       return { ...event, id: new URL(saved.url).pathname, deleted: false, updated: new Date().toISOString(), attendees: [], etag: saved.etag };
     });
   },
-  async update(conn, calendarId, eventId, event, _zone, _rowId, link, etag) {
+  // A single event, or one occurrence of a series (its override; the series
+  // itself is not changed from Flowplan, as with Google and Microsoft).
+  async update(conn, calendarId, eventId, event, zone, _rowId, link, etag) {
     return withDav(conn, async (client, secret) => {
-      const url = canonicalUrl(eventId, davCalendar(secret, calendarId));
+      const url = canonicalUrl(resourceOf(eventId), davCalendar(secret, calendarId));
       if (!url) return null;
+      const rid = ridIn(eventId);
       const current = await client.get(url);
       if (!current) return null;
       // Changed there since it was last read: the next run applies the conflict rule.
-      if (etag && current.etag && current.etag !== etag) throw new DavChanged();
+      if (etag && current.etag && !sameVersion(url, etag, current.etag)) throw new DavChanged();
+      if (rid) {
+        // The occurrence must still be part of the series.
+        const parsed = icsOccurrences(current.ics, zone, davWindow(Date.now()), MAX_OCCURRENCES);
+        const exists = parsed?.occurrences.some((o) => o.rid === rid) || (parsed && !parsed.unsupported && !ridInWindow(rid));
+        if (!exists) return null;
+      }
       let ics: string;
       try {
-        ics = patchIcsEvent(current.ics, { ...event, description: describe(event.description, link) });
+        ics = patchIcsEvent(current.ics, { ...event, description: describe(event.description, link) }, rid, zone);
       } catch {
         return null;
       }
       const saved = await client.put(url, ics, { etag: current.etag || etag || undefined });
       if (!saved) return null;
-      return { ...event, id: new URL(saved.url).pathname, deleted: false, updated: new Date().toISOString(), attendees: [], etag: saved.etag };
+      wrote(url, current.etag, saved.etag);
+      return { ...event, id: rid ? eventId : new URL(saved.url).pathname, deleted: false, updated: new Date().toISOString(), attendees: [], etag: saved.etag };
     });
   },
-  async remove(conn, calendarId, eventId, etag) {
+  // A single event is deleted; an occurrence of a series gets an EXDATE.
+  async remove(conn, calendarId, eventId, etag, zone) {
     await withDav(conn, async (client, secret) => {
-      const url = canonicalUrl(eventId, davCalendar(secret, calendarId));
-      if (url) await client.remove(url, etag || undefined);
+      const url = canonicalUrl(resourceOf(eventId), davCalendar(secret, calendarId));
+      if (!url) return;
+      const rid = ridIn(eventId);
+      if (!rid) return void (await client.remove(url, etag || undefined));
+      const current = await client.get(url);
+      if (!current) return;
+      if (etag && current.etag && !sameVersion(url, etag, current.etag)) throw new DavChanged();
+      const saved = await client.put(url, excludeIcsOccurrence(current.ics, rid, zone), { etag: current.etag || etag || undefined });
+      if (saved) wrote(url, current.etag, saved.etag);
     });
   },
 };
@@ -1351,7 +1448,7 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
       // The date was removed: the event goes.
       if (item) {
         budget--;
-        if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag)))) continue;
+        if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag, ctx.zone)))) continue;
         await dropItem(ctx, row.id);
         result.removed++;
       }
@@ -1388,7 +1485,7 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
       continue;
     }
     budget--;
-    if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag)))) continue;
+    if (!(await meanwhile(result, () => ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id, item.etag, ctx.zone)))) continue;
     await dropItem(ctx, item.row_id);
     result.removed++;
   }

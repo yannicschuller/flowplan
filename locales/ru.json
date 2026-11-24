@@ -12140,6 +12140,7 @@
   "The calculation failed.": "Вычисление не выполнено.",
   "The calculation limit was reached.": "Достигнут предел вычислений.",
   "The calculation refers to an unknown or unsuitable property.": "Вычисление ссылается на неизвестное или неподходящее свойство.",
+  "The CalDAV server “{0}” is not allowed on this instance.": "Сервер CalDAV «{0}» не разрешён на этом экземпляре.",
   "The CalDAV server refused the username or app password. Please connect again.": "Сервер CalDAV отклонил имя пользователя или пароль приложения. Подключитесь заново.",
   "The calendar could not be loaded.": "Не удалось загрузить календарь.",
   "The calendar provider cannot be reached right now.": "Сервис календаря сейчас недоступен.",

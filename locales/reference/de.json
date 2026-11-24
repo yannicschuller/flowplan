@@ -12140,6 +12140,7 @@
   "The calculation failed.": "Die Berechnung ist fehlgeschlagen.",
   "The calculation limit was reached.": "Die Berechnungsgrenze wurde erreicht.",
   "The calculation refers to an unknown or unsuitable property.": "Berechnung verweist auf eine unbekannte oder ungeeignete Eigenschaft.",
+  "The CalDAV server “{0}” is not allowed on this instance.": "Der CalDAV-Server „{0}“ ist auf dieser Instanz nicht freigegeben.",
   "The CalDAV server refused the username or app password. Please connect again.": "Der CalDAV-Server hat Benutzername oder App-Passwort abgelehnt. Bitte neu verbinden.",
   "The calendar could not be loaded.": "Der Kalender konnte nicht geladen werden.",
   "The calendar provider cannot be reached right now.": "Der Kalenderanbieter ist gerade nicht erreichbar.",
