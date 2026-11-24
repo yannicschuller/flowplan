@@ -1,0 +1,160 @@
+{
+  "security": [
+    {
+      "de": "Sicherheitsupdate für Workflows und Datenbankregeln: Auch Probeläufe prüfen private Einträge, geschützte Eigenschaften, Journal-PIN und verschlüsselte Bereiche, Läufe bleiben bei ihrer Person, und Tokens ohne KI-Recht starten keine KI-Schritte. Update empfohlen.",
+      "en": "Security update for workflows and database rules: dry runs also respect private records, protected properties, journal PINs and encrypted spaces, runs stay with their person, and tokens without the AI permission start no AI steps. Updating is recommended.",
+      "issues": [
+        471,
+        482,
+        489,
+        502,
+        503,
+        509
+      ]
+    },
+    {
+      "de": "Abgetrennte und nächste Termine einer Serie behalten Zugriff und Freigaben; Zeitleiste, Kalender, Erinnerungen und zweiseitige Relationen achten auf geschützte Eigenschaften und Einträge.",
+      "en": "Detached and next occurrences of a series keep their access and grants; the timeline, calendar, reminders and two-way relations respect protected properties and records.",
+      "issues": [
+        486,
+        487,
+        488,
+        490,
+        496
+      ]
+    },
+    {
+      "de": "Lernkarten-Exporte, Start-Statistiken, KI-Eigenschaften, KI-Pläne und der Notfallzugriff zeigen nichts mehr aus Einträgen, Eigenschaften oder Datenbanken, die die Person nicht sehen darf.",
+      "en": "Flashcard exports, home statistics, AI properties, AI plans and emergency access no longer show anything from records, properties or databases the person may not see.",
+      "issues": [
+        472,
+        479,
+        483,
+        491,
+        497,
+        498,
+        499
+      ]
+    },
+    {
+      "de": "Web-Clipper und „Seit deinem Besuch geändert“ achten auf geschützte Eigenschaften, gesperrte Lesezeichen-Datenbanken und private Einträge.",
+      "en": "The web clipper and “changed since your visit” respect protected properties, locked bookmark databases and private records.",
+      "issues": [
+        506,
+        507,
+        508
+      ]
+    },
+    {
+      "de": "Workspace-Inhaber verwalten private Bereiche anderer weiter, öffnen sie aber nicht mehr für das Team; Freigabe-Kommentare und Aufnahmen privater Einträge bleiben, wo sie hingehören, und Whiteboard-Zeichnungen übernehmen nur Zahlen als Gerätemaße.",
+      "en": "Workspace owners still manage other members' private spaces but can no longer open them to the team or give themselves rights on them; share-link comments and meeting recordings of private records stay where they belong, and whiteboard drawings take only numbers as device sizes.",
+      "issues": [
+        473,
+        476,
+        480,
+        477
+      ]
+    },
+    {
+      "de": "Anmeldung und Zugang: Ein Instanzumzug verlangt eine frische Anmeldung, das LDAP-Kontaktverzeichnis steht nur von der Organisation Eingeladenen offen, gesperrte Adressen gelten auch für Anfragen mit Inhalt, und jede Abmeldung entfernt die Offline-Kopie.",
+      "en": "Sign-in and access: moving an instance needs a fresh sign-in, the LDAP contacts directory is open only to people the organisation invited, blocked addresses also apply to requests with a body, and every sign-out removes the offline copy.",
+      "issues": [
+        474,
+        475,
+        481,
+        484,
+        501,
+        505
+      ]
+    },
+    {
+      "de": "Stabilität: Office-, Tabellen- und Anki-Dateien werden in linearer Zeit gelesen, Anfragen stoppen an ihrer Größengrenze, höchstens zwei Exporte oder Importe pro Konto und drei offene Aufnahmen pro Person laufen gleichzeitig.",
+      "en": "Stability: Office, spreadsheet and Anki files are read in linear time, requests stop at their size limit, and at most two exports or imports per account and three open recordings per person run at the same time.",
+      "issues": [
+        470,
+        478,
+        485,
+        492,
+        493,
+        494,
+        495,
+        504
+      ]
+    },
+    {
+      "de": "Schnellerfassung vom Telefon, Widget und Desktop schreibt nicht mehr in Bereiche, die in der Administration abgeschaltet sind.",
+      "en": "Quick capture from the phone, widgets and the desktop no longer writes into features switched off in the administration.",
+      "issues": [
+        500
+      ]
+    }
+  ],
+  "features": [
+    {
+      "de": "Kalender mit CalDAV-Servern abgleichen, Serien als einzelne Termine.",
+      "en": "Sync calendars with CalDAV servers, series as single occurrences.",
+      "issues": [
+        460
+      ]
+    },
+    {
+      "de": "KI fragen: Anweisungen werden zu einem geprüften Plan, und Pläne lesen weiter, bis das Kontingent aufgebraucht ist.",
+      "en": "Ask AI: instructions become a checked plan, and plans keep reading until the quota is used up.",
+      "issues": [
+        462
+      ]
+    },
+    {
+      "de": "Vorlagen: Den Inhalt gespeicherter Seitenvorlagen bearbeiten.",
+      "en": "Templates: edit the content of saved page templates.",
+      "issues": [
+        461
+      ]
+    }
+  ],
+  "improvements": [
+    {
+      "de": "Seitenlinks bleiben ein Stück, und angeheftete Tabs behalten ihre Seite.",
+      "en": "Page links stay in one piece, and pinned tabs keep their page.",
+      "issues": [
+        466
+      ]
+    },
+    {
+      "de": "Listenpunkte mit Strg/Cmd+Umschalt+Pfeil über den Rand der Liste verschieben; Text an einer Aufgabe hebt sie sauber aus der Liste.",
+      "en": "Move list items across the edge of a list with Ctrl/Cmd+Shift+Up/Down; text on a task lifts it cleanly out of its list.",
+      "issues": [
+        464,
+        467,
+        468
+      ]
+    },
+    {
+      "de": "Formatierungsleiste mit Knopf für Code im Text.",
+      "en": "Formatting toolbar with an inline code button.",
+      "issues": [
+        465
+      ]
+    },
+    {
+      "de": "Meine Aufgaben: wählen, wohin „Aufgabe hinzufügen“ geht, und erledigte Aufgaben ohne Durchstreichen zeigen.",
+      "en": "My tasks: choose where “Add a task” goes, and show done tasks without strikethrough."
+    }
+  ],
+  "fixes": [
+    {
+      "de": "Die Titeleigenschaft kann keine ID oder andere berechnete Eigenschaft mehr werden; Formel- und Rollup-Titel bleiben möglich.",
+      "en": "The title property can no longer become an ID or another computed property; formula and rollup titles stay possible.",
+      "issues": [
+        463
+      ]
+    },
+    {
+      "de": "Journal: „Heute“ zeigt nicht mehr „offline“, solange die Verbindung steht.",
+      "en": "Journal: “Today” no longer says “offline” while the connection works.",
+      "issues": [
+        456
+      ]
+    }
+  ]
+}
