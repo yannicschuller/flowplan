@@ -160,6 +160,27 @@
     {
       "de": "Meine Aufgaben: wählen, wohin „Aufgabe hinzufügen“ geht, und erledigte Aufgaben ohne Durchstreichen zeigen.",
       "en": "My tasks: choose where “Add a task” goes, and show done tasks without strikethrough."
+    },
+    {
+      "de": "Überwachung: Fehler bei Fremddiensten (KI-Anbieter, Linkvorschau, Bildsuche …) stehen in einem eigenen Abschnitt und zählen nicht mehr als Serverfehler.",
+      "en": "Monitoring: errors from external services (AI provider, link previews, image search …) are listed separately and no longer count as server errors.",
+      "issues": [
+        514
+      ]
+    },
+    {
+      "de": "Weniger Hintergrundverkehr: ein Aktivitätssignal pro Browser statt pro Tab, Wartungs- und Umzugshinweise kommen über die Live-Verbindung.",
+      "en": "Less background traffic: one activity signal per browser instead of per tab, maintenance and move notices arrive over the live connection.",
+      "issues": [
+        515
+      ]
+    },
+    {
+      "de": "Die Empfehlung „KI antwortet langsam“ zählt nur genug vergleichbare Anfragen und misst Zeiten zwischen 10 und 30 s genauer.",
+      "en": "The recommendation “AI answers slowly” counts only enough comparable requests and measures times between 10 and 30 s more precisely.",
+      "issues": [
+        516
+      ]
     }
   ],
   "fixes": [
@@ -187,6 +208,17 @@
     {
       "de": "Russisch: die letzten englischen Texte übersetzt.",
       "en": "Russian: the last English texts translated."
+    },
+    {
+      "de": "Ein abgemeldeter Tab fragt nicht mehr ständig beim Server nach – das löste fälschlich die Warnung „Abtasten von Adressen und IDs“ aus.",
+      "en": "A signed-out tab no longer keeps asking the server – this wrongly triggered the “probing addresses and IDs” alert.",
+      "issues": [
+        513
+      ]
+    },
+    {
+      "de": "Ein unverändertes Dokument zeigt „Gespeichert“ statt dauerhaft „Synchronisieren …“.",
+      "en": "An unchanged document shows “Saved” instead of “Syncing …” for ever."
     }
   ]
 }
