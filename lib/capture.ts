@@ -18,6 +18,7 @@ import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
 import { withDefaults } from "./field-defaults";
+import { parseTitleInput, titleMode } from "./title-input";
 
 const rank: Record<string, number> = { viewer: 1, commenter: 1, editor: 2, owner: 3 };
 export const writable = async (user: Identity, page: Page) =>
@@ -101,11 +102,27 @@ export async function captureRecord(user: Identity, raw: unknown) {
   const title =
     input.title?.trim() || text.split("\n")[0].slice(0, 120) || (link ? new URL(link).hostname : "") || ct("Notiz", "Note");
   const titleId = fields[0]?.id || "title";
-  if (!unwritable.has(titleId)) cells[titleId] = title.slice(0, 1000);
+  // A title of another type than text (#529) – a date, a number, a select …
+  // – takes what reads as its value ("23.11.2026"); anything else stays in
+  // the text, as a title the person may not set does.
+  let titleValue: unknown = title.slice(0, 1000);
+  if (fields[0] && titleMode(fields[0]) !== "text") {
+    const members =
+      fields[0].type === "person"
+        ? await all<{ id: string; name: string; email: string }>(
+            "SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?",
+            page.workspace_id,
+          )
+        : [];
+    const typed = titleMode(fields[0]) === "typed" ? parseTitleInput(fields[0], title, { t: ct, zone: "UTC", members }) : null;
+    titleValue = typed?.ok ? typed.value : undefined;
+  }
+  if (!unwritable.has(titleId) && titleValue !== undefined) cells[titleId] = titleValue;
   const urlField = fields.find((f) => f.type === "url" && !unwritable.has(f.id));
   if (link && urlField) cells[urlField.id] = link;
-  // A title the person may not set stays in the text instead.
-  const lostTitle = unwritable.has(titleId) && input.title?.trim() ? textHtml(input.title.trim()) : "";
+  // A title the person may not set (or that is no value of its type) stays
+  // in the text instead.
+  const lostTitle = (unwritable.has(titleId) || titleValue === undefined) && input.title?.trim() ? textHtml(input.title.trim()) : "";
   const parts = [
     lostTitle,
     textHtml(text),

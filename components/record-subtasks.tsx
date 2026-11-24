@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { cellText } from "@/lib/cell-text";
 import { pageLocationHash } from "@/lib/page-location";
 import { doneRule, isDone } from "@/lib/database-settings-schema";
+import { parseTitleInput, titleDisplayText } from "@/lib/title-input";
 import type { Database, Field, Row } from "@/lib/types";
 
 // The subtasks of a record (records whose parent it is), with their state
@@ -29,7 +30,10 @@ export function RecordSubtasks({
   const t = useT();
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const titleField = database.fields[0];
+  // A title of another type than text (#529) reads as in the table.
+  const titleOf = (r: Row) => titleDisplayText(titleField, r.cells[titleField.id]) || t("Ohne Titel", "Untitled");
   const rule = doneRule(database.fields, database.settings);
   const parentOf = (r: Row) => (Array.isArray(r.cells[parent.id]) ? (r.cells[parent.id] as string[])[0] : undefined);
   const children = rows.filter((r) => parentOf(r) === row.id);
@@ -50,14 +54,14 @@ export function RecordSubtasks({
       </h3>
       {above && (
         <p className="muted">
-          {t("Gehört zu", "Belongs to")} <a href={link(above)}>{cellText(above.cells[titleField.id]) || t("Ohne Titel", "Untitled")}</a>
+          {t("Gehört zu", "Belongs to")} <a href={link(above)}>{titleOf(above)}</a>
         </p>
       )}
       {children.length > 0 && (
         <ul>
           {children.map((c) => (
             <li key={c.id} data-done={isDone(rule, c.cells)}>
-              <a href={link(c)}>{cellText(c.cells[titleField.id]) || t("Ohne Titel", "Untitled")}</a>
+              <a href={link(c)}>{titleOf(c)}</a>
               {rule && <span className="muted">{cellText(c.cells[rule.field.id]) || ""}</span>}
             </li>
           ))}
@@ -69,9 +73,12 @@ export function RecordSubtasks({
           onSubmit={async (e) => {
             e.preventDefault();
             if (!title.trim()) return;
+            // A date or number title is sent as its value (#529).
+            const typed = parseTitleInput(titleField, title, { t });
+            if (!typed.ok) return setError(typed.error);
             setBusy(true);
             try {
-              if (await act({ action: "row.create", cells: { [titleField.id]: title.trim(), [parent.id]: [row.id] } })) setTitle("");
+              if (await act({ action: "row.create", cells: { [titleField.id]: typed.value, [parent.id]: [row.id] } })) setTitle("");
             } finally {
               setBusy(false);
             }
@@ -83,11 +90,20 @@ export function RecordSubtasks({
             value={title}
             maxLength={500}
             disabled={busy}
-            onChange={(e) => setTitle(e.target.value)}
+            aria-invalid={error ? true : undefined}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setError("");
+            }}
           />
           <button className="icon-button" aria-label={t("Hinzufügen", "Add")} disabled={busy || !title.trim()}>
             <Plus />
           </button>
+          {error && (
+            <span className="cell-required-error" role="alert">
+              {error}
+            </span>
+          )}
         </form>
       )}
     </section>
