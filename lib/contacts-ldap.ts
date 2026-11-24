@@ -35,7 +35,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, audit, id, one, run, transaction, onTransactionRollback, nowText } from "./db";
+import { all, audit, id, one, run, transaction, onTransactionRollback, nowText, sql } from "./db";
 import { HttpError, adminUserIds } from "./auth";
 import { requirePage } from "./permissions";
 import { ct } from "./content-locale";
@@ -351,7 +351,7 @@ export async function directoryAccess(user: Identity, workspaceId: string) {
         EXISTS(SELECT 1 FROM members m JOIN workspaces w ON w.id=m.workspace_id
           WHERE m.user_id=c.id AND w.created_by IS NULL
             AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id))
-        OR (c.id<>? AND (c.id IN (SELECT value FROM json_each(?)) OR EXISTS(SELECT 1 FROM ldap_accounts l JOIN users u ON u.id=l.user_id WHERE l.user_id=c.id AND u.disabled=0)))
+        OR (c.id<>? AND (c.id IN ${sql.jsonValues()} OR EXISTS(SELECT 1 FROM ldap_accounts l JOIN users u ON u.id=l.user_id WHERE l.user_id=c.id AND u.disabled=0)))
       LIMIT 1`,
     user.id,
     user.id,
