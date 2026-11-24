@@ -4583,6 +4583,7 @@
   "Empty: {0}": "Пусто: {0}",
   "Empty: api.telegram.org. Otherwise an own Bot API server or a relay/proxy (also in the own network).": "Пусто: api.telegram.org. Иначе собственный сервер Bot API или ретранслятор/прокси (в том числе в собственной сети).",
   "Empty: people may name any public server for Gotify, ntfy, Matrix and own Telegram bots. Otherwise only these hosts, one per line (*.example.org for subdomains); api.telegram.org and ntfy.sh always work.": "Пусто: пользователи могут указать любой публичный сервер для Gotify, ntfy, Matrix и собственных Telegram-ботов. Иначе только эти хосты, по одному в строке (*.example.org для поддоменов); api.telegram.org и ntfy.sh работают всегда.",
+  "Empty: the address": "Пусто: адрес",
   "empty(value)": "empty(значение)",
   "Enable form": "Включить форму",
   "Enable push": "Включить push",
