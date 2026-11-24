@@ -9317,6 +9317,13 @@ body:has(.public-page:not(.public-wide) .public-embed) {
   color: var(--secondary);
   font-size: 13px;
 }
+/* The link's permissions and comments belong to the screen, not to a
+   printout or PDF of the shared page (#525). */
+@media print {
+  .shared-interactions {
+    display: none !important;
+  }
+}
 .shared-comment {
   border-bottom: 1px solid var(--border);
   padding: 14px 0;

@@ -24,6 +24,13 @@
       "issues": [
         524
       ]
+    },
+    {
+      "de": "Geteilte Seiten sagen unten in einem ganzen Satz, was der Link erlaubt („Mit diesem Link kannst du die Seite lesen.“); beim Drucken und im PDF fehlt dieser Teil.",
+      "en": "Shared pages say in a full sentence what the link allows (“With this link you can read this page.”); printouts and PDFs leave that part out.",
+      "issues": [
+        525
+      ]
     }
   ],
   "improvements": [

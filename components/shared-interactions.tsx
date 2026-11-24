@@ -136,14 +136,14 @@ export function SharedInteractions({
   }
   return (
     <section className="shared-interactions">
+      {/* What this share link allows its visitor (#525): a full sentence, not "Your link: Read". */}
       <p className="shared-permission">
-        {t("Dein Link:", "Your link:")}{" "}
         {data.role === "viewer"
-          ? t("Lesen", "Read")
+          ? t("Mit diesem Link kannst du die Seite lesen.", "With this link you can read this page.")
           : data.role === "commenter"
-            ? t("Lesen und kommentieren", "Read and comment")
-            : t("Lesen, kommentieren und bearbeiten", "Read, comment and edit")}
-        {data.locked && t(" · Seite gesperrt", " · page locked")}
+            ? t("Mit diesem Link kannst du die Seite lesen und kommentieren.", "With this link you can read and comment on this page.")
+            : t("Mit diesem Link kannst du die Seite lesen, kommentieren und bearbeiten.", "With this link you can read, comment on and edit this page.")}
+        {data.locked && t(" Die Seite ist gesperrt.", " The page is locked.")}
       </p>
       {data.role === "editor" && !data.locked && !editing && (
         <button className="button" disabled={busy} onClick={startEdit}>

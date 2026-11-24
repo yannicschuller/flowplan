@@ -1190,7 +1190,7 @@ test("independent guest links provide read, comment and edit access with revocat
   try {
     await guest.goto(`${origin}/share/${tokens.viewer}`);
     await expect(
-      guest.getByText("Dein Link: Lesen", { exact: true }),
+      guest.getByText("Mit diesem Link kannst du die Seite lesen.", { exact: true }),
     ).toBeVisible();
     await expect(
       guest.getByRole("button", { name: "Inhalt bearbeiten", exact: true }),
