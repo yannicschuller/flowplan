@@ -25,7 +25,11 @@ test("images are resized by their handle and keep the size", async ({
   });
   const read = async () =>
     (await page.request.get(`/api/pages/${p.id}`)).json();
-  await page.goto("/#home");
+  // The picture is drawn on a blank page: going from the app at "/#home"
+  // to "/#page=…" only changed the hash, which Next.js undid when the app
+  // was still hydrating (it writes the address it was loaded with into the
+  // history) – the start page stayed, without an editor.
+  await page.goto("about:blank");
   const png = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 400;
