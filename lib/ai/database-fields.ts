@@ -164,8 +164,10 @@ export const contentOf = (rowId: string) => async () => await recordContent(rowI
 // who may read that property. So the prompt may only contain what each of
 // them may read as well – never a value of a property with a narrower read
 // rule (lib/field-access.ts), nor the title of a related record some of
-// them cannot see. (AI properties are covered by the field rules already:
-// one that reads a hidden property is hidden itself.)
+// them cannot see. (AI properties are covered by the field rules for
+// properties of the same database – one that reads a hidden property is
+// hidden itself – but not for related records' titles: computed and
+// automatic values use fillRelationTitlesFor as well, lib/ai/database.ts.)
 
 // Properties every reader of `target` may read. Readers are told apart only
 // by their page role and their groups; a reader of the target with several

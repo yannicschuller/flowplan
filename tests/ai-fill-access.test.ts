@@ -17,7 +17,7 @@ const { run, one, id } = await import("../lib/db");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command, database } = await import("../lib/api");
-const { queueAiCells, processAiCellJobs } = await import("../lib/ai/database");
+const { queueAiCells, processAiCellJobs, processAutoDirty } = await import("../lib/ai/database");
 const { fillInputFieldIds } = await import("../lib/ai/database-fields");
 const { hiddenFieldsFor, stripCells } = await import("../lib/field-access");
 const { startOllamaMock } = await import("./helpers/ai-mock");
@@ -101,4 +101,46 @@ test("an owners-only target still sees owners-only inputs", async () => {
   await queueAiCells(owner, { pageId: db, fieldId: "review", mode: "fill", rowIds: [row.id] });
   await processAiCellJobs();
   assert.ok(mock.chats.slice(chats).some((c) => c.prompt.includes("Gehalt: 70000")));
+});
+
+// #472: a computed or automatic value lands in a cell every reader of the
+// database reads as well – so the same rule for related records' titles.
+test("compute and auto mode do not copy titles of related records others cannot see", async () => {
+  const other = (await command(owner, { action: "row.create", pageId: secretDb, cells: { title: "Projekt Adler AG" } })) as { id: string };
+  // Mallory (who cannot open the related database) writes the prompt.
+  {
+    const d = await database(db);
+    await command(mallory, { action: "database.update", pageId: db, version: d.version, fields: [...d.fields, { id: "leak", name: "Leak", type: "text", ai: { prompt: "Gib genau zurück: {Ziel}" } }], views: d.views });
+  }
+  const echo = mock.answer;
+  mock.answer = (req) => JSON.stringify({ value: /Projekt (Falke|Adler)[^"\n<]*/.exec(req.prompt)?.[0] ?? "nichts" });
+  try {
+    const row = (await command(owner, { action: "row.create", pageId: db, cells: { title: "Carol", deal: [target.id] } })) as { id: string };
+    const read = async () => {
+      const hidden = await hiddenFieldsFor(mallory, page, (await database(db)).fields);
+      return JSON.stringify(JSON.parse(stripCells((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id))!.cells, hidden)));
+    };
+    const chats = mock.chats.length;
+    await queueAiCells(owner, { pageId: db, fieldId: "leak", mode: "compute", rowIds: [row.id] });
+    await processAiCellJobs();
+    assert.ok(mock.chats.slice(chats).every((c) => !c.prompt.includes("Projekt Falke")), "compute: the prompt holds no such title");
+    assert.ok(!(await read()).includes("Projekt Falke"), "compute: nor the cell Mallory reads");
+
+    // The owner switches automatic updates on, then the relation changes.
+    {
+      const d = await database(db);
+      await command(owner, { action: "database.update", pageId: db, version: d.version, fields: d.fields.map((f) => (f.id === "leak" ? { ...f, ai: { ...f.ai!, auto: true } } : f)), views: d.views });
+      assert.equal((await database(db)).fields.find((f) => f.id === "leak")!.ai?.autoBy, owner.id);
+    }
+    const rv = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row.id))!.version;
+    await command(owner, { action: "row.update", pageId: db, rowId: row.id, version: rv, cells: { deal: [other.id] } });
+    const before = mock.chats.length;
+    const at = Date.now() + 60_000;
+    await processAutoDirty(0, at);
+    await processAiCellJobs(50, at);
+    assert.ok(mock.chats.slice(before).every((c) => !c.prompt.includes("Projekt Adler")), "auto: the prompt holds no such title");
+    assert.ok(!(await read()).includes("Projekt Adler"), "auto: nor the cell Mallory reads");
+  } finally {
+    mock.answer = echo;
+  }
 });

@@ -232,6 +232,15 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
       workspaceId,
     )).map((member) => [member.id, member.name]),
   );
+  // For the AI and the emergency access no values from other databases:
+  // only the database's own records (subtask progress), never another
+  // database's – it may lie outside the scope (see `options`).
+  const relatedFor = async (page: Page) => {
+    const data = await relatedData(user, page);
+    if (!options.forAi && !options.emergency) return data;
+    const own = <T,>(map: Record<string, T>): Record<string, T> => (page.id in map ? { [page.id]: map[page.id] } : {});
+    return { related: own(data.related), relatedSchemas: own(data.relatedSchemas) };
+  };
   const dbs = new Map(
     await mapAsync(selected
       .filter((page) => page.kind === "database"), async (page) => [
@@ -240,7 +249,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
           // Properties hidden from this person are left out (lib/field-access.ts).
           schema: await readableDatabase(user, page, await database(page.id)),
           rows: (await visibleRows(user, page, await rows(page.id))).filter((row) => !options.rowId || row.id === options.rowId),
-          ...(await relatedData(user, page)),
+          ...(await relatedFor(page)),
         },
       ]),
   );
@@ -467,6 +476,10 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         : value === null || value === undefined
           ? []
           : [value];
+    // As in the frontmatter: relations, rollups and formulas may show data
+    // from outside what the AI or the trusted contact may read.
+    if ((options.forAi || options.emergency) && ["relation", "rollup", "formula"].includes(field.type))
+      return { plain: unavailable(), md: unavailable(), numeric: false };
     if (field.type === "relation") {
       const target = field.relationPage || "",
         available = data.related[target],

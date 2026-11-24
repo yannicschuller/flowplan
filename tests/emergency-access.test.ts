@@ -434,3 +434,40 @@ test("encrypted spaces: keys sealed in the holder's browser, released to the con
   assert.equal((await one<{ rotate_pending: number }>("SELECT rotate_pending FROM spaces WHERE id=?", spaceId))!.rotate_pending, 1);
   await assert.rejects(em.emergencyKeys(w.bob, linkId), /nicht freigegeben/);
 });
+
+// #483: a database in the private space that relates to a team-space
+// database – neither the page nor the ZIP carry the related records'
+// titles or values computed from them.
+test("emergency export: no relation, rollup or formula values from other databases", async () => {
+  const w = await world();
+  const REL = `Teamrecord-Marker-${id().slice(0, 6)}`;
+  const teamDb = String((await act(w.alice, { action: "page.create", workspaceId: w.wid, spaceId: w.team, title: "Team DB", kind: "database" })).id);
+  const teamRow = String((await act(w.dora, { action: "row.create", pageId: teamDb, cells: { title: REL } })).id);
+  const privDb = String((await act(w.alice, { action: "page.create", workspaceId: w.wid, spaceId: w.mine, title: "Privat DB", kind: "database" })).id);
+  const d = (await one<{ fields: string; version: number }>("SELECT fields,version FROM databases WHERE page_id=?", privDb))!;
+  const views = JSON.parse((await one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", privDb))!.views);
+  await act(w.alice, {
+    action: "database.update",
+    pageId: privDb,
+    version: d.version,
+    views,
+    fields: [
+      ...JSON.parse(d.fields),
+      { id: "rel", name: "Bezug", type: "relation", relationPage: teamDb },
+      { id: "roll", name: "Titel", type: "rollup", relationField: "rel", rollupField: "title", aggregate: "show_original" },
+      { id: "calc", name: "Formel", type: "formula", formula: 'prop("Titel")' },
+    ],
+  });
+  await act(w.alice, { action: "row.create", pageId: privDb, cells: { title: "Mein Eintrag", rel: [teamRow] } });
+  const linkId = await granted(w);
+  const page = await em.emergencyPage(w.bob, linkId, privDb);
+  assert.match(page.markdown, /Mein Eintrag/);
+  assert.doesNotMatch(page.markdown, new RegExp(REL));
+  const entries = await readExportZip((await em.emergencyExport(w.bob, linkId, w.mine)).bytes);
+  assert.ok([...entries.keys()].some((k) => k.endsWith(".csv")), "the table is exported");
+  for (const [name, bytes] of entries) assert.doesNotMatch(bytes.toString("utf8"), new RegExp(REL), name);
+  // Control: Alice's own export still shows the related title.
+  const { exportMarkdown } = await import("../lib/markdown-export");
+  const own = await exportMarkdown(w.alice, { pageId: privDb, format: "markdown", includeSubpages: false });
+  assert.match(own.bytes.toString("utf8"), new RegExp(REL));
+});

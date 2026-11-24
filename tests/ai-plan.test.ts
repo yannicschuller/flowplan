@@ -357,3 +357,33 @@ test("a nearly used-up quota only warns: reading goes on", async () => {
     await run("DELETE FROM ai_quota_usage");
   }
 });
+
+// #479: a page shared on its own out of a private space – the read tools
+// name no title of the unreadable page above it, not to the model and not
+// in the progress shown in the browser.
+test("the read tools do not name an unreadable parent page", async () => {
+  const parent = await createPage(wid, privateSpace, admin.id, "DUMMY-PARENT-TITLE", "document");
+  const child = await createPage(wid, privateSpace, admin.id, "Kantinenplan", "document", parent);
+  await run("UPDATE documents SET html=?,state=NULL WHERE page_id=?", "<p>Kantinenplan für die Woche.</p>", child);
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?,?)", child, ben.id, "", "viewer", "page", wid);
+  let round = 0;
+  mock.answer = (request) => {
+    if (request.system !== PLAN_SYSTEM) return "OK";
+    round++;
+    if (round === 1) return JSON.stringify({ kind: "read", calls: [{ tool: "search", query: "Kantinenplan" }] });
+    if (round === 2) {
+      const p = handle(request.prompt, "Kantinenplan");
+      const others = [...request.prompt.matchAll(/\bp\d+\b/g)].map((m) => m[0]).filter((h) => h !== p);
+      return JSON.stringify({ kind: "read", calls: [{ tool: "read_page", page: p }, ...[...new Set(others)].slice(0, 3).map((h) => ({ tool: "read_page", page: h }))] });
+    }
+    return '{"kind":"plan","summary":"Nichts zu tun.","steps":[]}';
+  };
+  const before = mock.chats.length;
+  const events: unknown[] = [];
+  const outcome = await planInstruction(ben, { workspaceId: wid, instruction: "Kantinenplan aktualisieren" }, { onEvent: (e) => events.push(e) });
+  const prompts = mock.chats.slice(before).map((c) => JSON.stringify(c));
+  assert.ok(prompts.some((p) => p.includes("Kantinenplan")), "the shared page itself is found");
+  assert.ok(prompts.every((p) => !p.includes("DUMMY-PARENT-TITLE")), "the model never gets the parent's title");
+  assert.ok(!JSON.stringify(events).includes("DUMMY-PARENT-TITLE"), "nor the progress events");
+  assert.ok(!JSON.stringify(outcome).includes("DUMMY-PARENT-TITLE"), "nor the outcome");
+});
