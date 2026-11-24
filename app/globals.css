@@ -14662,6 +14662,16 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 11h5' stroke='black' stroke-width='1.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+/* A page link as a chip (#466, lib/page-chip.ts): one piece of the text –
+   selected whole (arrows, a click) and dragged whole. */
+:is(.document-editor, .shared-rich-editor) a[data-page-link] {
+  cursor: pointer;
+}
+:is(.document-editor, .shared-rich-editor) a[data-page-link].ProseMirror-selectednode {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  background: var(--blue-light);
+}
 /* A link to a block (#88): a paragraph mark in place of the page. */
 :is(.document-editor, .shared-rich-editor, .inline-comment-panel) a[href*="#page="][href*="block="]::before {
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9 2.5v11M12 2.5v11M13.5 2.5H7a3 3 0 0 0 0 6h2' stroke='black' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")

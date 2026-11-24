@@ -233,10 +233,14 @@ export function LinkPreview({
       // editor select the clicked node: still a link click. A selection
       // elsewhere (a mention clicked before) stays when the click lands on
       // the link's icon, which the editor does not place the caret in.
+      // A page link chip (#466) is one piece: the editor selects it on the
+      // click, which is still a click on it (with Shift: extending the
+      // selection).
+      const chip = target.matches("a[data-page-link]");
       if (
         selection &&
         !selection.isCollapsed &&
-        selection.containsNode(target, true) &&
+        (chip ? event.shiftKey : selection.containsNode(target, true)) &&
         !(event.metaKey || event.ctrlKey)
       )
         return;

@@ -12,6 +12,9 @@ function inline(nodes: JsonNode[] = []): string {
     .map((node) => {
       if (node.type === "hardBreak") return "  \n";
       if (node.type === "encryptedFile") return fileText(node);
+      // A page link as a chip (#466): the link it stands for.
+      if (node.type === "pageLink")
+        return inline([{ type: "text", text: String(node.attrs?.title || ""), marks: [...(node.marks || []), { type: "link", attrs: { href: node.attrs?.href } }] }]);
       if (node.type !== "text") return inline(node.content);
       const marks = node.marks || [];
       const code = marks.some((m) => m.type === "code");

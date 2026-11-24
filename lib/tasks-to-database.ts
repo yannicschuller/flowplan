@@ -27,6 +27,7 @@
 //   records it created to the database's trash.
 // Encrypted spaces: the server cannot read or write their documents, so
 // both commands are refused there (lib/e2ee-server.ts guards them too).
+import { isPageChipHref, pageChipContent } from "./page-chip";
 import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc } from "y-prosemirror";
@@ -185,7 +186,12 @@ export function replaceTasks(
       }
       const paragraph: JsonNode = {
         type: "paragraph",
-        content: [{ type: "text", text: target.title || untitled, marks: [{ type: "link", attrs: { href: target.href } }] }],
+        // A page link chip (#466) where the address is one.
+        content: [
+          isPageChipHref(target.href)
+            ? pageChipContent(target.href, target.title || untitled)
+            : { type: "text", text: target.title || untitled, marks: [{ type: "link", attrs: { href: target.href } }] },
+        ],
       };
       items.push({
         type: "listItem",

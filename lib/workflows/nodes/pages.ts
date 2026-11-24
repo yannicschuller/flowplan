@@ -100,7 +100,9 @@ async function writeBlocks(ctx: NodeRun, page: Page, blocks: Json[], where: { ki
     if (skipIfLinked.length) {
       let linked = false;
       doc.descendants((node) => {
-        if (node.marks.some((m) => m.type.name === "link" && skipIfLinked.some((id) => String(m.attrs.href || "").includes(`#page=${id}`)))) linked = true;
+        const links = (href: unknown) => skipIfLinked.some((id) => String(href || "").includes(`#page=${id}`));
+        // Page links as chips (#466) or link marks.
+        if ((node.type.name === "pageLink" && links(node.attrs.href)) || node.marks.some((m) => m.type.name === "link" && links(m.attrs.href))) linked = true;
         return !linked;
       });
       if (linked) return null;

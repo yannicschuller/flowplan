@@ -311,6 +311,11 @@ export async function linkMention(
     }
     if (!range) return null;
     const { from, to } = range as { from: number; to: number };
+    // A chip (#466) with the text as written and its formatting.
+    const chip = doc.type.schema.nodes.pageLink;
+    const $from = doc.resolve(from);
+    if (chip && $from.parent.type.contentMatch.matchType(chip))
+      return new Transform(doc).replaceWith(from, to, chip.create({ href, title: doc.textBetween(from, to) }, null, doc.nodeAt(from)?.marks ?? [])).doc;
     const link = doc.type.schema.marks.link.create({ href });
     return new Transform(doc).addMark(from, to, link).doc;
   });

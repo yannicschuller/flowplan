@@ -6,8 +6,10 @@ import { focusToggleTitle, titleAbove, toggleBlocksPlugin, toggleNodeView, toggl
 import { nestSelection } from "./toggle-nesting";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange, getAttributesFromExtensions, getRenderedAttributes } from "@tiptap/core";
-import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { NodeSelection, Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { PAGE_CHIP, chipFromElement, chipTitle, isPageChipHref } from "./page-chip";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { AddMarkStep } from "@tiptap/pm/transform";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
@@ -903,6 +905,109 @@ export const Mention = Node.create({
     "@" + node.attrs.label,
   ],
 });
+// A link to a page, record or block as one chip of the text (#466,
+// lib/page-chip.ts): an inline atom that arrows, Shift+arrows, Backspace
+// and dragging treat as a whole. Stored as the <a> it always was, marked
+// with data-page-link. The editors draw its icon (components/page-link-icons.tsx).
+const chipKey = new PluginKey("pageLinkChips");
+export const PageLink = Node.create({
+  name: PAGE_CHIP,
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      href: { default: "", parseHTML: (el) => chipFromElement(el)?.href ?? null, rendered: false },
+      title: { default: "", parseHTML: (el) => chipFromElement(el)?.title ?? null, rendered: false },
+    };
+  },
+  // Before the link mark's "a[href]": page links with plain text are chips.
+  parseHTML: () => [{ tag: "a[href]", priority: 60, getAttrs: (el) => (chipFromElement(el as HTMLElement) ? null : false) }],
+  renderHTML: ({ node }) => [
+    "a",
+    // target and rel as the link mark writes them: read-only views open
+    // the page in place (components/link-preview.tsx), exports keep them.
+    { href: isPageChipHref(node.attrs.href) ? node.attrs.href : "#", "data-page-link": "", target: "_blank", rel: "noopener noreferrer" },
+    chipTitle(String(node.attrs.title || "")) || "\u200b",
+  ],
+  renderText: ({ node }) => String(node.attrs.title || ""),
+  // Its text in textContent and textBetween, as when it was text.
+  extendNodeSchema: (extension) => (extension.name === PAGE_CHIP ? { leafText: (node: PMNode) => String(node.attrs.title || "") } : {}),
+  addKeyboardShortcuts() {
+    // One press passes the chip (no stop on it as a selected node);
+    // Backspace and Delete take it whole.
+    const chipAt = (dir: -1 | 1) => {
+      const { selection } = this.editor.state;
+      if (!(selection instanceof TextSelection) || !selection.empty) return null;
+      const $pos = selection.$head;
+      const node = dir < 0 ? $pos.nodeBefore : $pos.nodeAfter;
+      return node?.type.name === PAGE_CHIP ? { node, pos: dir < 0 ? $pos.pos - node.nodeSize : $pos.pos } : null;
+    };
+    const pass = (dir: -1 | 1) => () => {
+      const { state, view } = this.editor;
+      if (state.selection instanceof NodeSelection && state.selection.node.type.name === PAGE_CHIP) {
+        view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, dir < 0 ? state.selection.from : state.selection.to)).scrollIntoView());
+        return true;
+      }
+      // In right-to-left text the browser knows which way is which.
+      const chip = chipAt(dir);
+      if (!chip || directionAt(view, state.selection.head) === "rtl") return false;
+      view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, dir < 0 ? chip.pos : chip.pos + chip.node.nodeSize)).scrollIntoView());
+      return true;
+    };
+    const remove = (dir: -1 | 1) => () => {
+      const chip = chipAt(dir);
+      if (!chip) return false;
+      const { state, view } = this.editor;
+      view.dispatch(state.tr.delete(chip.pos, chip.pos + chip.node.nodeSize).scrollIntoView());
+      return true;
+    };
+    return { ArrowLeft: pass(-1), ArrowRight: pass(1), Backspace: remove(-1), Delete: remove(1) };
+  },
+  addProseMirrorPlugins() {
+    // A chip carries no link mark of its own (the toolbar's link over a
+    // selection with a chip in it).
+    return [
+      new Plugin({
+        key: chipKey,
+        appendTransaction: (transactions, _old, state) => {
+          const link = state.schema.marks.link;
+          if (!link) return null;
+          // Only where a link was added, mapped to the document now.
+          const ranges: [number, number][] = [];
+          transactions.forEach((tr, i) =>
+            tr.steps.forEach((step, j) => {
+              if (!(step instanceof AddMarkStep) || step.mark.type !== link) return;
+              let from = step.from,
+                to = step.to;
+              for (let k = j + 1; k < tr.steps.length; k++) ((from = tr.steps[k].getMap().map(from, 1)), (to = tr.steps[k].getMap().map(to, -1)));
+              for (const later of transactions.slice(i + 1)) ((from = later.mapping.map(from, 1)), (to = later.mapping.map(to, -1)));
+              if (from < to) ranges.push([from, to]);
+            }),
+          );
+          if (!ranges.length) return null;
+          const tr = state.tr;
+          for (const [from, to] of ranges)
+            state.doc.nodesBetween(from, Math.min(to, state.doc.content.size), (node, pos) => {
+              if (node.type.name === PAGE_CHIP && link.isInSet(node.marks)) tr.removeMark(pos, pos + node.nodeSize, link);
+            });
+          return tr.docChanged ? tr : null;
+        },
+      }),
+    ];
+  },
+});
+function directionAt(view: EditorView, pos: number) {
+  try {
+    const { node } = view.domAtPos(pos);
+    const el = node.nodeType === 1 ? (node as Element) : node.parentElement;
+    return el && typeof getComputedStyle === "function" ? getComputedStyle(el).direction : "ltr";
+  } catch {
+    return "ltr";
+  }
+}
 export const Columns = Node.create({
   name: "columns",
   group: "block",
@@ -1160,4 +1265,4 @@ export const LinkCard = Node.create({
     ];
   },
 });
-documentExtensions.push(Mention, Columns, Column, Tabs, Tab, Media, LinkCard, Citation, Bibliography, ...meetingExtensions);
+documentExtensions.push(Mention, PageLink, Columns, Column, Tabs, Tab, Media, LinkCard, Citation, Bibliography, ...meetingExtensions);

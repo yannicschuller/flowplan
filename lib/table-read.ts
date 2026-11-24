@@ -23,6 +23,11 @@ export function readCell(cell: PMNode): TableCell {
   const links = new Set<string>();
   let unlinked = false;
   cell.descendants((node) => {
+    // A page link as a chip (#466).
+    if (node.type.name === "pageLink") {
+      if (typeof node.attrs.href === "string" && node.attrs.href) links.add(node.attrs.href);
+      return;
+    }
     if (!node.isText || !node.text?.trim()) return;
     const link = node.marks.find((m) => m.type.name === "link");
     if (link && typeof link.attrs.href === "string") links.add(link.attrs.href);
@@ -54,6 +59,15 @@ function cellMarkdown(cell: PMNode): string {
         if (name === "link" && typeof mark.attrs.href === "string") run.href = safeHref(mark.attrs.href);
       }
       runs.push(run);
+    } else if (node.type.name === "pageLink") {
+      const run: InlineRun = { text: String(node.attrs.title || "") };
+      for (const mark of node.marks) {
+        if (mark.type.name === "bold") run.bold = true;
+        if (mark.type.name === "italic") run.italic = true;
+        if (mark.type.name === "strike") run.strike = true;
+      }
+      if (typeof node.attrs.href === "string") run.href = safeHref(node.attrs.href);
+      if (run.text) runs.push(run);
     } else if (node.isLeaf) {
       const text = leafText(node);
       if (text) runs.push({ text });
