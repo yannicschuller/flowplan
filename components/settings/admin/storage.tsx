@@ -19,6 +19,8 @@ import { ago } from "./format";
 import { InstanceMove } from "./instance-move";
 import { SftpBackup } from "./sftp-backup";
 
+import { InstanceStorageChart } from "../previews";
+
 export default function StorageSection() {
   const t = useT();
   const docs = useDocs();
@@ -86,6 +88,12 @@ export default function StorageSection() {
             </FixLink>
           ) : undefined
         }
+      />
+      {/* PROTOTYPE: the instance's storage as a picture. */}
+      <InstanceStorageChart
+        databaseBytes={data.metrics.databaseBytes}
+        uploadBytes={data.metrics.uploadBytes}
+        accounts={(data.userUsage || []).map((u) => ({ name: data.users.find((x) => x.id === u.id)?.name || "–", bytes: u.bytes }))}
       />
       <Backups data={data} storage={storage} onChange={load} />
       <SftpBackup onError={onError} />

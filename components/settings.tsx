@@ -12,12 +12,23 @@ import { setOwnSettingsLevel, useSettingsLevel } from "@/lib/settings-level-clie
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useAiQuota } from "./ai-quota";
 import { quotaPossible } from "@/lib/limits-summary";
+import { combinedSettings, useSettingsVariant } from "@/lib/settings-variant";
+import CombinedSettings, { AdminBridge, useAdminTiles } from "./settings/variants";
 
 const SECTIONS = sectionDefs("settings");
 const GROUPS = groupsOf("settings");
+const ADMIN_SECTIONS = sectionDefs("admin");
 
 export default function Settings(props: UserSettingsProps) {
+  // PROTOTYPE (lib/settings-variant.ts): one screen for both areas.
+  const variant = useSettingsVariant();
+  if (variant && combinedSettings(variant)) return <CombinedSettings {...props} variant={variant} />;
+  return <SeparateSettings {...props} bridge={variant === "d" && !!props.boot.user.isAdmin} />;
+}
+
+function SeparateSettings({ bridge, ...props }: UserSettingsProps & { bridge: boolean }) {
   const t = useT();
+  const adminTiles = useAdminTiles(bridge);
   const { boot } = props;
   // The settings level (#294, lib/settings-level.ts): what Settings shows.
   const level = useSettingsLevel();
@@ -34,6 +45,8 @@ export default function Settings(props: UserSettingsProps) {
         groups={GROUPS}
         groupTitle={(g) => (g.id === "workspace" ? t(`Arbeitsbereich „${boot.workspace.name}“`, `Workspace “${boot.workspace.name}”`) : t(g.title.de, g.title.en))}
         summaries={userTiles(boot, props.theme, t, quota, LOCALE_TAG)}
+        searchSections={bridge ? ADMIN_SECTIONS : undefined}
+        after={bridge ? <AdminBridge summary={adminTiles.monitoring} /> : undefined}
         level={{ value: level, onChange: (next) => void setOwnSettingsLevel(props.mutate, next).catch((e) => props.onError((e as Error).message)) }}
       />
     </UserSettingsProvider>

@@ -95,6 +95,10 @@ type ShellProps = {
   // are left out of the tiles and the side navigation, the search finds
   // them; a section opened above it says so.
   level?: { value: SettingsLevel; onChange: (level: SettingsLevel) => void };
+  // PROTOTYPE (lib/settings-variant.ts, variant d): the search also finds
+  // these (the administration's sections), and `after` follows the groups.
+  searchSections?: SectionDef[];
+  after?: ReactNode;
 };
 
 export function SettingsShell(props: ShellProps) {
@@ -117,7 +121,7 @@ function useText() {
   return (text: Text) => t(text.de, text.en);
 }
 
-function SettingsHome({ area, title, description, HeaderIcon, sections, groups, groupTitle, summaries, status, level }: ShellProps) {
+export function SettingsHome({ area, title, description, HeaderIcon, sections, groups, groupTitle, summaries, status, level, searchSections, after }: ShellProps) {
   const t = useT();
   const tx = useText();
   const [query, setQuery] = useState("");
@@ -133,8 +137,8 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
   const results = useMemo(() => {
     if (!query.trim()) return null;
     // Every level (#294): a setting above the person's carries its mark.
-    return searchSettings(sections, query, tx).map((r) => ({ ...r, entry: r.entry ? tx(r.entry.title) : undefined }));
-  }, [query, sections, tx]);
+    return searchSettings(searchSections ? [...sections, ...searchSections] : sections, query, tx).map((r) => ({ ...r, entry: r.entry ? tx(r.entry.title) : undefined }));
+  }, [query, sections, searchSections, tx]);
   const levelName = useLevelName();
   // Above the person's level: the mark and the level's name.
   const above = (l: SettingsLevel | undefined) => (level && l && !withinLevel(l, level.value) ? l : undefined);
@@ -164,7 +168,7 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
           onKeyDown={(e) => {
             if (e.key === "Enter" && results?.[0]) {
               openedFromHome = true;
-              location.hash = settingsHash({ area, section: results[0].section.id, anchor: results[0].anchor });
+              location.hash = settingsHash({ area: results[0].section.area, section: results[0].section.id, anchor: results[0].anchor });
             }
           }}
         />
@@ -188,9 +192,11 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
                               ? t(`in ${tx(r.section.title)} · Stufe ${levelName(r.level!)}`, `in ${tx(r.section.title)} · ${levelName(r.level!)} level`)
                               : t(`Stufe ${levelName(r.level!)}`, `${levelName(r.level!)} level`),
                           }
-                        : r.entry
-                          ? { line: t(`in ${tx(r.section.title)}`, `in ${tx(r.section.title)}`) }
-                          : summaries[r.section.id]
+                        : r.section.area !== area
+                          ? { line: r.entry ? t(`Administration › ${tx(r.section.title)}`, `Administration › ${tx(r.section.title)}`) : t("in der Administration", "in Administration"), badge: t("Instanz", "Instance"), tone: "off" }
+                          : r.entry
+                            ? { line: t(`in ${tx(r.section.title)}`, `in ${tx(r.section.title)}`) }
+                            : summaries[r.section.id]
                     }
                     title={r.entry || tx(r.section.title)}
                     anchor={r.anchor}
@@ -217,12 +223,13 @@ function SettingsHome({ area, title, description, HeaderIcon, sections, groups, 
               </section>
             ))
         )}
+        {!results && after}
       </div>
     </div>
   );
 }
 
-function Tile({ area, section, summary, title, anchor, level }: { area: SettingsArea; section: SectionDef; summary?: TileSummary; title: string; anchor?: string; level?: SettingsLevel }) {
+export function Tile({ area, section, summary, title, anchor, level }: { area: SettingsArea; section: SectionDef; summary?: TileSummary; title: string; anchor?: string; level?: SettingsLevel }) {
   const tx = useText();
   const { Icon } = section;
   const tone = summary?.tone;
@@ -243,7 +250,7 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
     ) : null;
   if (summary?.bars?.length)
     return (
-      <a className="settings-tile rich bars" href={settingsHash({ area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
+      <a className="settings-tile rich bars" href={settingsHash({ area: section.area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
         <span className="settings-tile-icon" aria-hidden>
           <Icon size={20} />
         </span>
@@ -270,7 +277,7 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
     );
   if (visual || summary?.valueLabel)
     return (
-      <a className={`settings-tile rich${tone === "error" ? " alert" : ""}`} href={settingsHash({ area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
+      <a className={`settings-tile rich${tone === "error" ? " alert" : ""}`} href={settingsHash({ area: section.area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
         <span className="settings-tile-icon" aria-hidden>
           <Icon size={20} />
         </span>
@@ -294,7 +301,7 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
   return (
     <a
       className={`settings-tile${tone === "error" ? " alert" : ""}`}
-      href={settingsHash({ area, section: section.id, anchor })}
+      href={settingsHash({ area: section.area, section: section.id, anchor })}
       data-section={section.id}
       onClick={() => {
         openedFromHome = true;
@@ -321,7 +328,7 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
   );
 }
 
-function SettingsDetail({ area, title, sections, groups, groupTitle, detailActions, section, anchor, Wrap, level }: ShellProps & { section: SectionDef; anchor: string | null }) {
+export function SettingsDetail({ area, title, sections, groups, groupTitle, detailActions, section, anchor, Wrap, level, noRail }: ShellProps & { section: SectionDef; anchor: string | null; noRail?: boolean }) {
   const t = useT();
   const tx = useText();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -412,7 +419,7 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
           )}
           <div className="settings-body">{Wrap ? <Wrap>{body}</Wrap> : body}</div>
         </div>
-        {siblings.length > 1 && (
+        {!noRail && siblings.length > 1 && (
           <nav className="settings-rail" aria-label={t(`Auch in ${groupName}`, `Also in ${groupName}`)}>
             <h2>{groupName}</h2>
             <ul>

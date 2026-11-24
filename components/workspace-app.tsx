@@ -5,6 +5,7 @@ import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice }
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
 import { findSection, parseSettingsHash, settingsHash } from "@/lib/settings-sections";
+import { combinedSettings as combinedVariant, useSettingsVariant } from "@/lib/settings-variant";
 import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
 import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
@@ -2191,6 +2192,8 @@ export default function WorkspaceApp({
   );
   // `keepNav`: the drawer on phones stays open – a workspace switched in
   // the sidebar shows its pages there to pick one (see switchWorkspace).
+  // PROTOTYPE (lib/settings-variant.ts): one screen for settings and administration.
+  const combinedSettings = combinedVariant(useSettingsVariant());
   function go(s: Screen, keepNav = false) {
     screenRef.current = s;
     transitionView(
@@ -2680,12 +2683,12 @@ export default function WorkspaceApp({
     }
     const settings = parseSettingsHash(hash);
     if (settings) {
-      const area = settings.area === "admin" ? t("Administration", "Administration") : t("Einstellungen", "Settings");
+      const area = settings.area === "admin" && !combinedSettings ? t("Administration", "Administration") : t("Einstellungen", "Settings");
       const section = findSection(settings.area, settings.section);
       return {
         title: section ? t(section.title.de, section.title.en) : area,
         detail: section ? area : undefined,
-        icon: settings.area === "admin" ? <ShieldCheck size={16} /> : <GearSix size={16} />,
+        icon: settings.area === "admin" && !combinedSettings ? <ShieldCheck size={16} /> : <GearSix size={16} />,
       };
     }
     const [base, id] = hash.split("/");
@@ -4308,8 +4311,15 @@ export default function WorkspaceApp({
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
     { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => (location.hash = "settings/about") },
     { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
+    // PROTOTYPE (lib/settings-variant.ts): variants a–c have no screen of
+    // its own for the administration – the command opens the instance part
+    // of the settings.
     ...(boot.user.isAdmin
-      ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
+      ? [
+          combinedSettings
+            ? { label: t("Einstellungen: Instanz", "Settings: instance"), keywords: "admin administration instanz betrieb", icon: ShieldCheck, run: () => (location.hash = "admin/general") }
+            : { label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") },
+        ]
       : []),
     { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
     { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
@@ -4507,7 +4517,7 @@ export default function WorkspaceApp({
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
     { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
     { id: "trash", label: t("Papierkorb", "Trash"), icon: Trash, selected: screen === "trash", onSelect: () => go("trash") },
-    { id: "settings", label: t("Einstellungen", "Settings"), icon: GearSix, selected: screen === "settings", onSelect: () => go("settings") },
+    { id: "settings", label: t("Einstellungen", "Settings"), icon: GearSix, selected: screen === "settings" || (screen === "admin" && combinedSettings), onSelect: () => go("settings") },
     {
       id: "shortcuts",
       label: t("Tastenkürzel", "Keyboard shortcuts"),
@@ -4516,7 +4526,7 @@ export default function WorkspaceApp({
       className: "sidebar-help",
       onSelect: () => setShortcuts(true),
     },
-    ...(boot.user.isAdmin
+    ...(boot.user.isAdmin && !combinedSettings
       ? [{ id: "admin", label: t("Administration", "Administration"), icon: ShieldCheck, selected: screen === "admin", onSelect: () => go("admin") }]
       : []),
   ];
@@ -5372,7 +5382,7 @@ export default function WorkspaceApp({
                     media: t("Medien", "Media"),
                     study: t("Lernen", "Study"),
                     settings: t("Einstellungen", "Settings"),
-                    admin: t("Administration", "Administration"),
+                    admin: combinedSettings ? t("Einstellungen", "Settings") : t("Administration", "Administration"),
                     page: missingPage && missingPage.id === pageId && !busy ? t("Seite nicht gefunden", "Page not found") : t("Seite", "Page"),
                   }[screen]
                 }
@@ -6708,7 +6718,7 @@ export default function WorkspaceApp({
               )}
             </div>
           )}
-          {screen === "settings" && (
+          {(screen === "settings" || (screen === "admin" && boot.user.isAdmin && combinedSettings)) && (
             <Settings
               key={boot.workspace.id}
               onWorkspaceExit={(id) => {
@@ -6723,7 +6733,7 @@ export default function WorkspaceApp({
               setTheme={chooseTheme}
             />
           )}
-          {screen === "admin" && boot.user.isAdmin && (
+          {screen === "admin" && boot.user.isAdmin && !combinedSettings && (
             <Admin mutate={mutate} onError={notifyError} />
           )}
         </div>
