@@ -10,6 +10,13 @@
     {
       "de": "„Neu in Flowplan“ passt in der iOS-App wieder in das Fenster.",
       "en": "“New in Flowplan” fits its window in the iOS app again."
+    },
+    {
+      "de": "Datumsspalten in Tabellen sind von Haus aus so breit wie ihr Format; schmaler gezogen endet das Datum mit „…“ statt abgeschnitten.",
+      "en": "Date columns in tables start as wide as their format needs; dragged narrower, the date ends in “…” instead of being cut off.",
+      "issues": [
+        523
+      ]
     }
   ],
   "improvements": [
