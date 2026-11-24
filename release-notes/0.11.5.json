@@ -128,6 +128,13 @@
       ]
     },
     {
+      "de": "Darstellung: eigene Schriftart für Menüs, Texte und Seiten – nur für dich, auf allen Geräten.",
+      "en": "Appearance: your own font for menus, text and pages – only for you, on all devices.",
+      "issues": [
+        512
+      ]
+    },
+    {
       "de": "Seitenlinks bleiben ein Stück, und angeheftete Tabs behalten ihre Seite.",
       "en": "Page links stay in one piece, and pinned tabs keep their page.",
       "issues": [
