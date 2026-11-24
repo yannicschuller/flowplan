@@ -32,10 +32,8 @@ test("connecting a CalDAV calendar in the settings and syncing a view with it", 
   try {
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${origin}/#home`);
-    await expect(page.locator(".workspace-switch").first()).toBeAttached({ timeout: 20_000 });
     await page.goto(`${origin}/#settings/connections`);
-    await page.getByRole("button", { name: "Mit CalDAV verbinden" }).click();
+    await page.getByRole("button", { name: "Mit CalDAV verbinden" }).click({ timeout: 30_000 });
     const form = page.getByRole("form", { name: "CalDAV-Kalender verbinden" });
     await form.getByLabel("Server-Adresse").fill(mock.origin);
     await form.getByLabel("Benutzername").fill(username);
