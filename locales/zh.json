@@ -12140,6 +12140,7 @@
   "The calculation failed.": "计算失败。",
   "The calculation limit was reached.": "计算已达到上限。",
   "The calculation refers to an unknown or unsuitable property.": "该计算涉及未知或不适用的属性。",
+  "The CalDAV server “{0}” is not allowed on this instance.": "此实例不允许使用 CalDAV 服务器“{0}”。",
   "The CalDAV server refused the username or app password. Please connect again.": "CalDAV 服务器拒绝了用户名或应用专用密码。请重新连接。",
   "The calendar could not be loaded.": "无法加载日历。",
   "The calendar provider cannot be reached right now.": "目前无法连接日历提供程序。",

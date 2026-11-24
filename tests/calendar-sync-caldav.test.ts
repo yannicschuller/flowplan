@@ -64,15 +64,9 @@ const password = randomBytes(18).toString("base64url");
 const mock = new CalDavMock(username, password);
 await mock.start();
 after(async () => await mock.stop());
-// Everything the server logs: the password must never be in it.
+// Everything the server logs (console.error mocked per test): the password must never be in it.
 const logged: string[] = [];
-const original = console.error;
-console.error = (...args: unknown[]) => {
-  logged.push(args.map(String).join(" "));
-};
-after(() => {
-  console.error = original;
-});
+const capture = (t: import("node:test").TestContext) => t.mock.method(console, "error", (...args: unknown[]) => void logged.push(args.map(String).join(" ")));
 
 test("iCalendar: time zones, durations, all-day ends, series and attendees", () => {
   const berlin = client.parseIcsEvent(
@@ -159,7 +153,8 @@ test("WebDAV answers: any prefix or default namespace, 404 responses, hrefs in o
   assert.equal(cdata.entries[0].props.get("calendar-data")!.text, "BEGIN:VCALENDAR & more");
 });
 
-test("connecting: discovery from the server address, only writable event calendars, the password sealed", async () => {
+test("connecting: discovery from the server address, only writable event calendars, the password sealed", async (t) => {
+  capture(t);
   // Wrong password: nothing stored.
   await assert.rejects(sync.connectCalDav(owner, { url: mock.origin, username, password: "falsch" }), /abgelehnt/);
   assert.equal(await one("SELECT 1 FROM calendar_connections WHERE provider='caldav'"), undefined);
@@ -212,18 +207,18 @@ test("sync-collection: records go out, events come in, changes and deletions bot
   // Already in the calendar: all-day, and one in a time zone.
   mock.putEvent("work", "holiday.ics", ics(["BEGIN:VEVENT", "UID:holiday", `DTSTAMP:${stamp()}`, `DTSTART;VALUE=DATE:${compact(soon(10))}`, `DTEND;VALUE=DATE:${compact(soon(13))}`, "SUMMARY:Urlaub", "DESCRIPTION:Strand\\n\\nSonne", "END:VEVENT"]));
   mock.putEvent("work", "call.ics", ics(["BEGIN:VEVENT", "UID:call", `DTSTAMP:${stamp()}`, `DTSTART;TZID=Europe/Berlin:${compact(soon(5))}T140000`, `DTEND;TZID=Europe/Berlin:${compact(soon(5))}T150000`, "SUMMARY:Call", "END:VEVENT"]));
-  mock.putEvent("work", "series.ics", ics(["BEGIN:VEVENT", "UID:series", `DTSTART:${compact(soon(2))}T080000Z`, "RRULE:FREQ=DAILY", "SUMMARY:Daily", "END:VEVENT"]));
+  mock.putEvent("work", "series.ics", ics(["BEGIN:VEVENT", "UID:series", `DTSTART:${compact(soon(2))}T080000Z`, "RRULE:FREQ=DAILY;COUNT=3", "SUMMARY:Daily", "END:VEVENT"]));
 
   let result = await sync.syncCalendarMapping(mapping);
-  assert.deepEqual([result.created, result.pushed], [2, 1]);
+  assert.deepEqual([result.created, result.pushed], [5, 1]);
   const holiday = (await one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id=?", `${mock.home}work/holiday.ics`))!.row_id;
   assert.deepEqual([(await cells(holiday)).title, (await cells(holiday)).start, (await cells(holiday)).end], ["Urlaub", soon(10), soon(12)]);
   assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", holiday))!.content, /<p>Strand<\/p><p><\/p><p>Sonne<\/p>/);
   const call = (await one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id=?", `${mock.home}work/call.ics`))!.row_id;
   const berlin = Temporal.PlainDateTime.from(`${soon(5)}T14:00`).toZonedDateTime("Europe/Berlin").toInstant().toString().slice(0, 16);
   assert.equal((await cells(call)).start, `${berlin}Z`);
-  // Series are not imported.
-  assert.equal(await one("SELECT 1 FROM calendar_sync_items WHERE event_id LIKE '%series.ics'"), undefined);
+  // A series: one record per occurrence (tests/calendar-sync-caldav-series.test.ts).
+  assert.equal((await all("SELECT row_id FROM calendar_sync_items WHERE event_id LIKE '%series.ics#%'")).length, 3);
   // The record went out as a new resource (If-None-Match: *) with its link.
   const item = (await one<{ event_id: string; etag: string }>("SELECT event_id,etag FROM calendar_sync_items WHERE row_id=?", planning))!;
   const put = mock.requests.find((r) => r.method === "PUT" && r.path === item.event_id)!;
@@ -304,7 +299,8 @@ test("sync-collection: records go out, events come in, changes and deletions bot
   assert.equal(mock.event("work", fileOf(item.event_id)), undefined);
   const removal = mock.requests.filter((r) => r.method === "DELETE").at(-1)!;
   assert.equal(removal.ifMatch, last);
-  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM calendar_sync_items WHERE mapping_id=?", mapping))!.n, 0);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM calendar_sync_items WHERE mapping_id=? AND event_id NOT LIKE '%series.ics#%'", mapping))!.n, 0);
+  mock.deleteEvent("work", "series.ics");
   await act({ action: "calendarSync.unmap", id: mapping });
 });
 
@@ -358,7 +354,8 @@ test("without sync-collection: ctag first, then etags; an expired token lists ev
   await act({ action: "calendarSync.unmap", id: again });
 });
 
-test("a refused password ends the run with an error on the connection; the password is never logged", async () => {
+test("a refused password ends the run with an error on the connection; the password is never logged", async (t) => {
+  capture(t);
   const pageId = await calendarDatabase("Termine 401");
   const cid = await connection();
   const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: mock.calendarUrl("work") })).id;

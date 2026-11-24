@@ -15,6 +15,7 @@ import type { ChildNode, Element } from "domhandler";
 import { Temporal } from "@js-temporal/polyfill";
 import { validZone } from "./date-values";
 import { fold, icsText, unText } from "./caldav";
+import { expandRule, type Occurrence, type RuleStart } from "./ical-recurrence";
 
 export type DavMethod = "PROPFIND" | "REPORT" | "GET" | "PUT" | "DELETE";
 export type DavRequest = { method: DavMethod; url: string; headers: Record<string, string>; body?: string };
@@ -379,7 +380,7 @@ export type IcsEvent = {
   end: string;
   updated: string;
   cancelled: boolean;
-  // A series (RRULE, RDATE) or one with changed occurrences: not synced.
+  // A series (RRULE, RDATE) or one with changed occurrences (icsOccurrences expands it).
   recurring: boolean;
   // People invited (ATTENDEE with a mailto: address, not rooms or resources).
   attendees: { email: string; name: string }[];
@@ -434,15 +435,13 @@ const stampOf = (p: Property | undefined) => {
   return t ? `${t[1]}-${t[2]}-${t[3]}T${t[4]}:${t[5]}:${t[6]}Z` : "";
 };
 
-// The event of an iCalendar object, or null when it has none (a task) or
-// one this engine cannot read. Floating times are in `zone`.
-export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
-  const lines = unfold(ics);
+type Calendar = { events: Property[][]; locations: Map<string, string> };
+function readCalendar(ics: string): Calendar {
   const locations = new Map<string, string>();
   const events: Property[][] = [];
   const stack: string[] = [];
   let tz = "";
-  for (const line of lines) {
+  for (const line of unfold(ics)) {
     if (!line.trim()) continue;
     const p = property(line);
     if (!p) continue;
@@ -462,15 +461,22 @@ export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
       if (p.name === "X-LIC-LOCATION" && tz) locations.set(tz, p.value.trim());
     }
   }
-  if (!events.length) return null;
-  const master = events.find((e) => !e.some((p) => p.name === "RECURRENCE-ID")) || events[0];
-  const get = (name: string) => master.find((p) => p.name === name);
-  const recurring = events.length > 1 || master.some((p) => p.name === "RRULE" || p.name === "RDATE" || p.name === "RECURRENCE-ID");
+  return { events, locations };
+}
+const isSeries = (cal: Calendar, master: Property[]) =>
+  cal.events.length > 1 || master.some((p) => p.name === "RRULE" || p.name === "RDATE" || p.name === "RECURRENCE-ID");
+const masterOf = (cal: Calendar) => cal.events.find((e) => !e.some((p) => p.name === "RECURRENCE-ID")) || cal.events[0];
+
+// One VEVENT's content; `fallback`: the series' main event, for what an
+// override leaves out.
+function eventOf(props: Property[], cal: Calendar, zone: string, recurring: boolean, fallback?: Property[]): IcsEvent | null {
+  const get = (name: string) => props.find((p) => p.name === name) || fallback?.find((p) => p.name === name);
+  const own = (name: string) => props.find((p) => p.name === name);
   try {
-    const start = when(get("DTSTART"), locations, zone);
+    const start = when(own("DTSTART"), cal.locations, zone);
     if (!start) return null;
-    let end = when(get("DTEND"), locations, zone);
-    const length = get("DURATION") ? duration(get("DURATION")!.value) : null;
+    let end = when(own("DTEND"), cal.locations, zone);
+    const length = own("DURATION") ? duration(own("DURATION")!.value) : null;
     let startText: string, endText: string;
     if (start.allDay) {
       // All-day ends are exclusive in iCalendar; the database keeps the last day.
@@ -482,7 +488,9 @@ export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
       endText = last.toString();
     } else {
       if (!end && length) end = { allDay: false, instant: start.instant.add({ seconds: Math.round(length.total({ unit: "seconds", relativeTo: start.instant.toZonedDateTimeISO("UTC") })) }) };
-      const last = end && !end.allDay && Temporal.Instant.compare(end.instant, start.instant) >= 0 ? end.instant : start.instant;
+      // No length (or none that is positive): an hour, as the Google and
+      // Microsoft adapters read it – a record's timed range cannot be empty.
+      const last = end && !end.allDay && Temporal.Instant.compare(end.instant, start.instant) > 0 ? end.instant : start.instant.add({ hours: 1 });
       startText = minute(start.instant);
       endText = minute(last);
     }
@@ -493,10 +501,10 @@ export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
       allDay: start.allDay,
       start: startText,
       end: endText,
-      updated: stampOf(get("LAST-MODIFIED")) || stampOf(get("DTSTAMP")) || new Date(0).toISOString(),
-      cancelled: (get("STATUS")?.value || "").trim().toUpperCase() === "CANCELLED",
+      updated: stampOf(own("LAST-MODIFIED")) || stampOf(own("DTSTAMP")) || stampOf(fallback?.find((p) => p.name === "LAST-MODIFIED")) || new Date(0).toISOString(),
+      cancelled: (own("STATUS")?.value || "").trim().toUpperCase() === "CANCELLED",
       recurring,
-      attendees: master
+      attendees: (props.some((p) => p.name === "ATTENDEE") ? props : fallback || [])
         .filter((p) => p.name === "ATTENDEE" && /^mailto:/i.test(p.value.trim()) && !["RESOURCE", "ROOM"].includes((p.params.CUTYPE || "").toUpperCase()))
         .map((p) => ({ email: p.value.trim().slice(7).toLowerCase(), name: (p.params.CN || "").slice(0, 200) }))
         .filter((a) => a.email.includes("@"))
@@ -505,6 +513,128 @@ export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
   } catch {
     return null;
   }
+}
+
+// The event of an iCalendar object (for a series: its main event), or null
+// when it has none (a task) or one this engine cannot read. Floating times
+// are in `zone`.
+export function parseIcsEvent(ics: string, zone: string): IcsEvent | null {
+  const cal = readCalendar(ics);
+  if (!cal.events.length) return null;
+  const master = masterOf(cal);
+  return eventOf(master, cal, zone, isSeries(cal, master));
+}
+
+/* Occurrences of a series */
+
+// The id of an occurrence: its original start, "20261006T080000Z" or
+// "20261006" (all-day) – as RECURRENCE-ID names it, in UTC.
+export const ridOf = (w: When | Occurrence) =>
+  w.allDay ? w.date.toString().replace(/-/g, "") : w.instant.round({ smallestUnit: "second", roundingMode: "floor" }).toString().replace(/[-:]/g, "").replace(/\.\d+/, "").slice(0, 15) + "Z";
+export function ridStart(rid: string): Occurrence | null {
+  const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z)?$/.exec(rid);
+  if (!m) return null;
+  if (!m[4]) return { allDay: true, date: Temporal.PlainDate.from(`${m[1]}-${m[2]}-${m[3]}`) };
+  return { allDay: false, instant: Temporal.Instant.from(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`) };
+}
+// The dates of RDATE / EXDATE lines (several values per line; PERIOD values are left out).
+function dateList(props: Property[], name: string, cal: Calendar, zone: string): When[] {
+  return props
+    .filter((p) => p.name === name && p.params.VALUE !== "PERIOD")
+    .flatMap((p) => p.value.split(",").map((value) => when({ ...p, value: value.trim() }, cal.locations, zone)))
+    .filter((w): w is When => !!w);
+}
+
+export type IcsOccurrence = IcsEvent & {
+  // "" for a single event; the original start for an occurrence of a series.
+  rid: string;
+};
+export type IcsWindow = { from: Temporal.Instant; to: Temporal.Instant };
+// The events of an iCalendar object within a window: a single event as it
+// is, a series as its occurrences (RRULE, RDATE, EXDATE and RECURRENCE-ID
+// overrides; at most `max`). `unsupported` names a rule part this engine
+// does not expand – then no occurrences are given.
+export function icsOccurrences(ics: string, zone: string, window: IcsWindow, max = 500): { occurrences: IcsOccurrence[]; series: boolean; unsupported: string | null } | null {
+  const cal = readCalendar(ics);
+  if (!cal.events.length) return null;
+  const master = masterOf(cal);
+  const series = isSeries(cal, master);
+  if (!series) {
+    const event = eventOf(master, cal, zone, false);
+    return event ? { occurrences: [{ ...event, rid: "" }], series, unsupported: null } : null;
+  }
+  const base = master.some((p) => p.name === "RECURRENCE-ID") ? null : eventOf(master, cal, zone, true);
+  let start: When | null = null;
+  try {
+    start = base ? when(master.find((p) => p.name === "DTSTART"), cal.locations, zone) : null;
+  } catch {
+    start = null;
+  }
+  if (master.some((p) => p.name === "EXRULE")) return { occurrences: [], series, unsupported: "EXRULE" };
+  const rules = master.filter((p) => p.name === "RRULE");
+  if (rules.length > 1) return { occurrences: [], series, unsupported: "RRULE twice" };
+  const startProp = master.find((p) => p.name === "DTSTART");
+  // Occurrences reaching into the window from before it.
+  const length =
+    base && start
+      ? start.allDay
+        ? Temporal.PlainDate.from(base.start).until(Temporal.PlainDate.from(base.end))
+        : Temporal.Instant.from(`${base.start.slice(0, 16)}:00Z`).until(Temporal.Instant.from(`${base.end.slice(0, 16)}:00Z`))
+      : null;
+  const starts = new Map<string, Occurrence>();
+  if (base && start && startProp) {
+    const from: Occurrence = start.allDay
+      ? { allDay: true, date: window.from.toZonedDateTimeISO("UTC").toPlainDate().subtract({ days: (length as Temporal.Duration).days + 1 }) }
+      : { allDay: false, instant: window.from.subtract({ milliseconds: (length as Temporal.Duration).total({ unit: "milliseconds" }) }) };
+    const to: Occurrence = start.allDay ? { allDay: true, date: window.to.toZonedDateTimeISO("UTC").toPlainDate() } : { allDay: false, instant: window.to };
+    if (rules.length) {
+      const ruleStart: RuleStart = start.allDay
+        ? { allDay: true, date: start.date }
+        : {
+            allDay: false,
+            zone: /Z$/i.test(startProp.value.trim()) ? "UTC" : zoneOf(startProp.params.TZID, cal.locations, zone),
+            dateTime: Temporal.PlainDateTime.from(startProp.value.trim().replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2}).*$/, "$1-$2-$3T$4:$5:$6")),
+          };
+      const expansion = expandRule(rules[0].value, ruleStart, from, to, max);
+      if (expansion.unsupported) return { occurrences: [], series, unsupported: expansion.unsupported };
+      for (const o of expansion.starts) starts.set(ridOf(o), o);
+    } else {
+      const first: Occurrence = start.allDay ? { allDay: true, date: start.date } : { allDay: false, instant: start.instant };
+      starts.set(ridOf(first), first);
+    }
+    for (const extra of dateList(master, "RDATE", cal, zone)) if (extra.allDay === start.allDay) starts.set(ridOf(extra), extra as Occurrence);
+    for (const gone of dateList(master, "EXDATE", cal, zone)) starts.delete(ridOf(gone));
+  }
+  // Overrides replace their occurrence (and may move one into the window).
+  const overrides = new Map<string, Property[]>();
+  for (const props of cal.events) {
+    const rid = props.find((p) => p.name === "RECURRENCE-ID");
+    if (!rid) continue;
+    try {
+      const w = when(rid, cal.locations, zone);
+      if (w) overrides.set(ridOf(w), props);
+    } catch {}
+  }
+  const inWindow = (e: IcsEvent) =>
+    e.allDay
+      ? e.end >= window.from.toZonedDateTimeISO("UTC").toPlainDate().toString() && e.start <= window.to.toZonedDateTimeISO("UTC").toPlainDate().toString()
+      : Date.parse(e.end) >= window.from.epochMilliseconds && Date.parse(e.start) <= window.to.epochMilliseconds;
+  const out: IcsOccurrence[] = [];
+  for (const [rid, o] of starts) {
+    if (overrides.has(rid) || !base || !length) continue;
+    let event: IcsEvent;
+    if (o.allDay) event = { ...base, start: o.date.toString(), end: o.date.add(length).toString() };
+    else event = { ...base, start: minute(o.instant), end: minute(o.instant.add(length as Temporal.Duration)) };
+    if (inWindow(event)) out.push({ ...event, rid });
+  }
+  for (const [rid, props] of overrides) {
+    // An override of a date EXDATE removed stays removed.
+    if (base && start && !starts.has(rid) && dateList(master, "EXDATE", cal, zone).some((w) => ridOf(w) === rid)) continue;
+    const event = eventOf(props, cal, zone, true, base ? master : undefined);
+    if (event && inWindow(event)) out.push({ ...event, rid });
+  }
+  out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  return { occurrences: out.slice(0, max), series, unsupported: null };
 }
 
 export type IcsContent = { title: string; description: string; allDay: boolean; start: string; end: string };
@@ -542,48 +672,128 @@ export function newIcsEvent(event: IcsContent, extra: { uid?: string; link: stri
   return lines.map(fold).join("\r\n") + "\r\n";
 }
 
-// A change of an existing event: title, description and times of its main
-// VEVENT are replaced; everything else (alarms, attendees, location,
-// categories, a repeat rule, other components) stays as it is.
-const REPLACED = new Set(["SUMMARY", "DESCRIPTION", "DTSTART", "DTEND", "DURATION", "DTSTAMP", "LAST-MODIFIED", "SEQUENCE", "X-ALT-DESC"]);
-export function patchIcsEvent(ics: string, event: IcsContent) {
-  const lines = unfold(ics).filter((l) => l.length);
-  // Which top-level VEVENT is the main one: the first without RECURRENCE-ID.
-  const overrides: boolean[] = [];
-  {
-    const stack: string[] = [];
-    for (const line of lines) {
-      const p = property(line);
-      if (p?.name === "BEGIN") {
-        stack.push(p.value.toUpperCase());
-        if (stack.join("/") === "VCALENDAR/VEVENT") overrides.push(false);
-      } else if (p?.name === "END") stack.pop();
-      else if (p?.name === "RECURRENCE-ID" && stack.join("/") === "VCALENDAR/VEVENT") overrides[overrides.length - 1] = true;
-    }
-  }
-  const master = overrides.indexOf(false);
-  if (master < 0) throw new Error("No VEVENT to change.");
+// Writing into an existing object: its lines with the top-level VEVENT
+// each belongs to (-1: none) and whether it is a property of that VEVENT
+// itself (not of a VALARM inside it).
+type Scanned = { text: string; p: Property | null; event: number; own: boolean; begin: boolean; end: boolean };
+function scan(ics: string) {
+  const out: Scanned[] = [];
   const stack: string[] = [];
-  const out: string[] = [];
-  let index = -1,
-    sequence = 0;
-  for (const line of lines) {
-    const p = property(line);
-    const inMaster = index === master && stack.join("/") === "VCALENDAR/VEVENT";
+  let event = -1,
+    count = 0;
+  for (const text of unfold(ics)) {
+    if (!text.length) continue;
+    const p = property(text);
     if (p?.name === "BEGIN") {
       stack.push(p.value.toUpperCase());
-      if (stack.join("/") === "VCALENDAR/VEVENT") index++;
-    } else if (p?.name === "END") {
-      if (inMaster) {
-        const stamp = nowUtc();
-        out.push(...timeLines(event), `SUMMARY:${icsText(event.title)}`, `DESCRIPTION:${icsText(event.description)}`, `DTSTAMP:${stamp}`, `LAST-MODIFIED:${stamp}`, `SEQUENCE:${sequence + 1}`);
-      }
-      stack.pop();
-    } else if (inMaster && p && REPLACED.has(p.name)) {
-      if (p.name === "SEQUENCE") sequence = Number(p.value) || 0;
+      const top = stack.join("/") === "VCALENDAR/VEVENT";
+      if (top) event = count++;
+      out.push({ text, p, event: stack.length >= 2 && stack[1] === "VEVENT" ? event : -1, own: false, begin: top, end: false });
       continue;
     }
-    out.push(line);
+    if (p?.name === "END") {
+      const top = stack.join("/") === "VCALENDAR/VEVENT";
+      out.push({ text, p, event: stack.length >= 2 && stack[1] === "VEVENT" ? event : -1, own: false, begin: false, end: top });
+      stack.pop();
+      continue;
+    }
+    const inEvent = stack.length >= 2 && stack[1] === "VEVENT";
+    out.push({ text, p, event: inEvent ? event : -1, own: inEvent && stack.length === 2, begin: false, end: false });
   }
-  return out.map(fold).join("\r\n") + "\r\n";
+  return out;
+}
+const join = (lines: string[]) => lines.map(fold).join("\r\n") + "\r\n";
+// The top-level VEVENTs: index → its RECURRENCE-ID as an occurrence id ("" for the main one).
+function eventIds(lines: Scanned[], ics: string, zone: string) {
+  const cal = readCalendar(ics);
+  const ids = new Map<number, string>();
+  for (const l of lines) if (l.begin) ids.set(l.event, "");
+  for (const l of lines)
+    if (l.own && l.p?.name === "RECURRENCE-ID") {
+      try {
+        const w = when(l.p, cal.locations, zone);
+        ids.set(l.event, w ? ridOf(w) : "?");
+      } catch {
+        ids.set(l.event, "?");
+      }
+    }
+  return ids;
+}
+const contentLines = (event: IcsContent, sequence: number) => {
+  const stamp = nowUtc();
+  return [...timeLines(event), `SUMMARY:${icsText(event.title)}`, `DESCRIPTION:${icsText(event.description)}`, `DTSTAMP:${stamp}`, `LAST-MODIFIED:${stamp}`, `SEQUENCE:${sequence + 1}`];
+};
+// A date of the series written the way its DTSTART is (RECURRENCE-ID, EXDATE):
+// a date, UTC, the same TZID, or floating in `zone`.
+function likeStart(name: string, startProp: Property, rid: string, ics: string, zone: string) {
+  const o = ridStart(rid)!;
+  if (o.allDay) return `${name};VALUE=DATE:${rid}`;
+  const value = startProp.value.trim();
+  if (/Z$/i.test(value)) return `${name}:${rid}`;
+  const tzid = startProp.params.TZID;
+  const local = o.instant
+    .toZonedDateTimeISO(zoneOf(tzid, readCalendar(ics).locations, zone))
+    .toPlainDateTime()
+    .toString()
+    .replace(/[-:]/g, "")
+    .slice(0, 15);
+  return tzid ? `${name};TZID=${/[;:,]/.test(tzid) ? `"${tzid}"` : tzid}:${local}` : `${name}:${local}`;
+}
+
+// A change of an existing event: title, description and times of its main
+// VEVENT – or, with `rid`, of that occurrence of the series (its override,
+// written when there is none) – are replaced; everything else (alarms,
+// attendees, location, categories, the repeat rule, other occurrences)
+// stays as it is.
+const REPLACED = new Set(["SUMMARY", "DESCRIPTION", "DTSTART", "DTEND", "DURATION", "DTSTAMP", "LAST-MODIFIED", "SEQUENCE", "X-ALT-DESC"]);
+// Not carried from the main event into a new override.
+const SERIES_ONLY = new Set([...REPLACED, "RRULE", "RDATE", "EXDATE", "EXRULE", "RECURRENCE-ID"]);
+export function patchIcsEvent(ics: string, event: IcsContent, rid = "", zone = "UTC") {
+  const lines = scan(ics);
+  const ids = eventIds(lines, ics, zone);
+  const target = [...ids].find(([, id]) => id === rid)?.[0];
+  const master = [...ids].find(([, id]) => id === "")?.[0];
+  if (target === undefined) {
+    if (!rid || master === undefined) throw new Error("No VEVENT to change.");
+    // A new override: the main event's other properties and alarms, the
+    // occurrence's own times and texts.
+    const main = lines.filter((l) => l.event === master);
+    const startProp = main.find((l) => l.own && l.p?.name === "DTSTART")?.p;
+    if (!startProp) throw new Error("No DTSTART.");
+    const body = main.filter((l) => !l.begin && !l.end && !(l.own && l.p && SERIES_ONLY.has(l.p.name))).map((l) => l.text);
+    const sequence = Number(main.find((l) => l.own && l.p?.name === "SEQUENCE")?.p?.value) || 0;
+    const block = ["BEGIN:VEVENT", likeStart("RECURRENCE-ID", startProp, rid, ics, zone), ...body, ...contentLines(event, sequence), "END:VEVENT"];
+    const out = lines.map((l) => l.text);
+    const close = out.map((t) => t.toUpperCase()).lastIndexOf("END:VCALENDAR");
+    out.splice(close < 0 ? out.length : close, 0, ...block);
+    return join(out);
+  }
+  const out: string[] = [];
+  let sequence = 0;
+  for (const l of lines) {
+    if (l.event === target && l.own && l.p && REPLACED.has(l.p.name)) {
+      if (l.p.name === "SEQUENCE") sequence = Number(l.p.value) || 0;
+      continue;
+    }
+    if (l.event === target && l.end) out.push(...contentLines(event, sequence));
+    out.push(l.text);
+  }
+  return join(out);
+}
+
+// An occurrence of a series removed: an EXDATE on the main event, and its
+// override (if any) gone.
+export function excludeIcsOccurrence(ics: string, rid: string, zone = "UTC") {
+  const lines = scan(ics);
+  const ids = eventIds(lines, ics, zone);
+  const master = [...ids].find(([, id]) => id === "")?.[0];
+  const drop = new Set([...ids].filter(([, id]) => id === rid).map(([index]) => index));
+  const out: string[] = [];
+  const startProp = master === undefined ? null : lines.find((l) => l.event === master && l.own && l.p?.name === "DTSTART")?.p;
+  for (const l of lines) {
+    if (l.event >= 0 && drop.has(l.event)) continue;
+    if (master !== undefined && l.event === master && l.end && startProp) out.push(likeStart("EXDATE", startProp, rid, ics, zone));
+    out.push(l.text);
+  }
+  return join(out);
 }

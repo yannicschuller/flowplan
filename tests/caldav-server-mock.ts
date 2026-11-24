@@ -192,7 +192,8 @@ export class CalDavMock {
       // calendar-query: VEVENTs starting in the range.
       const range = /time-range\s+start="(\d{8})T\d{6}Z"\s+end="(\d{8})T\d{6}Z"/.exec(body);
       const out = [...cal.events]
-        .filter(([, ev]) => /BEGIN:VEVENT/.test(ev.ics) && (!range || (dayOf(ev.ics) >= range[1] && dayOf(ev.ics) < range[2])))
+        // Series: always (a real server expands them; any occurrence may be in the range).
+        .filter(([, ev]) => /BEGIN:VEVENT/.test(ev.ics) && (!range || /^RRULE:/m.test(ev.ics) || (dayOf(ev.ics) >= range[1] && dayOf(ev.ics) < range[2])))
         .map(([f, ev]) => ok(`${collection}${f}`, props(ev)))
         .join("");
       return send(207, multistatus(out));
