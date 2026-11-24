@@ -203,7 +203,10 @@ async function search(ctx: ReadContext, query: string) {
 }
 async function pageLine(ctx: ReadContext, page: Page) {
   const space = await one<Space>("SELECT * FROM spaces WHERE id=?", page.space_id);
-  const parent = page.parent_id ? (await one<Page>("SELECT * FROM pages WHERE id=?", page.parent_id)) : null;
+  // The parent only when this person may read it: a page shared on its own
+  // shows nothing of the pages above it (lib/page-path.ts). The space holds
+  // this readable page, so it is in the person's sidebar anyway.
+  const parent = await readablePage(ctx, page.parent_id || undefined);
   return `${ctx.handles.page(page.id, page.title)} ${KIND[page.kind] || page.kind} ${quote(page.title)} in space ${space ? `${ctx.handles.space(space.id, space.name)} ${quote(space.name)}` : "?"}${parent ? ` below ${ctx.handles.page(parent.id, parent.title)} ${quote(parent.title)}` : ""}`;
 }
 
