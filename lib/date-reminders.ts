@@ -3,6 +3,7 @@ import { all, id, lockFor, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { rowRole } from "./row-access";
+import { hiddenFieldsFor } from "./field-access";
 import { requireRow } from "./row-documents";
 import { cellText } from "./database";
 import {
@@ -53,16 +54,23 @@ async function dateField(pageId: string, fieldId: string) {
 // including viewers and locked pages, without changing the record itself.
 export async function setDateReminder(user: Identity, input: unknown) {
   const parsed = setSchema.parse(input);
-  const { row } = await requireRow(user, parsed.pageId, parsed.rowId);
-  if (!(await dateField(parsed.pageId, parsed.fieldId)))
+  const { row, page } = await requireRow(user, parsed.pageId, parsed.rowId);
+  const field = await dateField(parsed.pageId, parsed.fieldId);
+  // A property hidden from this person by its read rule
+  // (lib/field-access.ts) counts as missing: a reminder would tell its name
+  // and value. An own reminder set before the rule changed can still go.
+  const hidden = !!field && (await hiddenFieldsFor(user, page)).has(field.id);
+  if (!field || (hidden && parsed.offset !== null))
     throw new HttpError(400, "Datumseigenschaft fehlt.");
   if (parsed.offset === null) {
-    await run(
+    const removed = await run(
       "DELETE FROM date_reminders WHERE user_id=? AND row_id=? AND field_id=?",
       user.id,
       row.id,
       parsed.fieldId,
     );
+    if (hidden && !removed.changes)
+      throw new HttpError(400, "Datumseigenschaft fehlt.");
     return { ok: true, reminder: null };
   }
   if (!validZone(parsed.timeZone))
@@ -158,17 +166,47 @@ type Due = {
   disabled: number;
 };
 
+// A round stops after this much time and the next one goes on after the
+// last reminder it handled, so a large or costly set of reminders cannot
+// hold the shared process (#492).
+export const REMINDER_ROUND_BUDGET_MS = 10000;
+// Older occurrences of a repeating entry are looked at only this far back.
+const OLDEST_OCCURRENCE_MS = 366 * 86400000;
+const reminderKey = (r: Pick<Due, "user_id" | "row_id" | "field_id">) =>
+  `${r.user_id}\u0000${r.row_id}\u0000${r.field_id}`;
+const cursor = globalThis as typeof globalThis & {
+  flowplanReminderCursor?: string | null;
+};
+
 // Returns the number of created inbox notifications. Inserting a notification
 // queues push deliveries through the existing trigger.
-export async function processDateReminders(now = Date.now()) {
+export async function processDateReminders(
+  now = Date.now(),
+  budgetMs = REMINDER_ROUND_BUDGET_MS,
+) {
   let fired = 0;
-  const reminders = await all<Due>(
+  const started = performance.now();
+  const reminders = (await all<Due>(
     `SELECT r.*,w.cells,w.recurrence,u.disabled FROM date_reminders r
      JOIN rows w ON w.id=r.row_id AND w.page_id=r.page_id
      JOIN users u ON u.id=r.user_id`,
-  );
+  )).map((r) => ({ ...r, key: reminderKey(r) }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // Go on after the reminder where the last round ran out of time.
+  const after = cursor.flowplanReminderCursor;
+  cursor.flowplanReminderCursor = null;
+  if (after) {
+    const at = reminders.findIndex((r) => r.key > after);
+    if (at > 0) reminders.push(...reminders.splice(0, at));
+  }
   const fields = new Map<string, Field[]>();
-  for (const reminder of reminders) {
+  // Per person and page: the properties hidden from them (read rules).
+  const hiddenFor = new Map<string, Set<string>>();
+  for (const [index, reminder] of reminders.entries()) {
+    if (index && performance.now() - started > budgetMs) {
+      cursor.flowplanReminderCursor = reminders[index - 1].key;
+      break;
+    }
     if (!fields.has(reminder.page_id)) {
       const stored = await one<{ fields: string }>(
         "SELECT fields FROM databases WHERE page_id=?",
@@ -224,8 +262,11 @@ export async function processDateReminders(now = Date.now()) {
       const target = reminderTarget(occurrence, reminder.offset_minutes, reminder.time_zone);
       return !!target && target.epochMilliseconds <= now && target.epochMilliseconds >= armed - ARM_GRACE_MS;
     };
-    if (rule && armed < recent && !candidates.slice(1).some(isDue))
-      candidates = [value, ...occurrences(armed, recent, 20000), ...candidates.slice(1)];
+    // Older ones only from a year back: a series begun long ago (or armed
+    // long ago) costs no more than a new one (#492).
+    const oldest = Math.max(armed, now - OLDEST_OCCURRENCE_MS);
+    if (rule && oldest < recent && !candidates.slice(1).some(isDue))
+      candidates = [value, ...occurrences(oldest, recent, 20000), ...candidates.slice(1)];
     const occurrence = candidates.filter(isDue).at(-1);
     if (!occurrence || occurrence === reminder.fired_value) continue;
     const page = await one<Page>(
@@ -233,14 +274,21 @@ export async function processDateReminders(now = Date.now()) {
       reminder.page_id,
     );
     // Missing access keeps the reminder; it may fire after access returns.
-    if (!page || !(await pageRole({ id: reminder.user_id } as Identity, page)))
-      continue;
+    const person = { id: reminder.user_id } as Identity;
+    const role = page ? await pageRole(person, page) : null;
+    if (!page || !role) continue;
     // Likewise while the record is hidden from the person (made private).
     const target = await one<{ id: string; access: string; created_by: string }>(
       "SELECT id,access,created_by FROM rows WHERE id=?",
       reminder.row_id,
     );
-    if (!target || !(await rowRole({ id: reminder.user_id } as Identity, page, target))) continue;
+    if (!target || !(await rowRole(person, page, target))) continue;
+    // … and while a read rule hides the property from them: the notification
+    // names it and its value (lib/field-access.ts, #490).
+    const hiddenKey = `${reminder.user_id}:${reminder.page_id}`;
+    if (!hiddenFor.has(hiddenKey))
+      hiddenFor.set(hiddenKey, await hiddenFieldsFor(person, page, fields.get(reminder.page_id)!, role));
+    if (hiddenFor.get(hiddenKey)!.has(field.id)) continue;
     const cells = JSON.parse(reminder.cells) as Record<string, unknown>;
     const titleField = fields.get(reminder.page_id)![0];
     const title =
@@ -276,18 +324,28 @@ export async function processDateReminders(now = Date.now()) {
 
 const runtime = globalThis as typeof globalThis & {
   flowplanReminderTimer?: ReturnType<typeof setInterval>;
+  flowplanReminderRound?: boolean;
 };
+// One worker round; false when it was left out because the previous one
+// still runs. In cluster mode leaderDuty already leaves such a tick out;
+// outside it this keeps rounds from piling up (#492).
+export async function dateReminderRound(onFired: () => void = () => {}) {
+  if (runtime.flowplanReminderRound) return false;
+  runtime.flowplanReminderRound = true;
+  try {
+    if (await workersPaused()) return true;
+    if (await processDateReminders()) onFired();
+  } catch (error) {
+    console.error("Date reminders failed", error);
+  } finally {
+    runtime.flowplanReminderRound = false;
+  }
+  return true;
+}
 export async function startReminderWorker(onFired: () => void) {
   if (runtime.flowplanReminderTimer) return;
-  const tick = () => leaderDuty("date-reminders", async () => {
-    // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (await workersPaused()) return;
-    try {
-      if (await processDateReminders()) onFired();
-    } catch (error) {
-      console.error("Date reminders failed", error);
-    }
-  });
+  // Cluster mode: the leader only (lib/cluster/leader.ts).
+  const tick = () => leaderDuty("date-reminders", () => dateReminderRound(onFired));
   runtime.flowplanReminderTimer = setInterval(tick, 30000);
   runtime.flowplanReminderTimer.unref();
   await tick();
