@@ -133,7 +133,8 @@ import {
   type LinkedEditorContext,
 } from "./linked-database";
 import { freshLinkedIds } from "@/lib/linked-paste";
-import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { ReplaceStep } from "@tiptap/pm/transform";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import { CLIP_TYPE, clipFileName, clipHref, getClip, registerClipTarget, trackClipTarget, type PdfClip } from "@/lib/pdf-clip";
 import StarterKit from "@tiptap/starter-kit";
@@ -1546,6 +1547,24 @@ export default function DocumentEditor({
     window.addEventListener(AUDIENCE_EVENT, joined);
     return () => window.removeEventListener(AUDIENCE_EVENT, joined);
   }, [liveKey, sync]);
+  // A change beyond typing (a task ticked off, its status, a block moved):
+  // what was typed before goes out first, in a save of its own. The server
+  // tells "ticked off now" from "written already done" by comparing two
+  // saves (lib/doc-tasks.ts), which one merged save would hide.
+  useEffect(() => {
+    if (!editor) return;
+    const before = ({ transaction }: { transaction: Transaction }) => {
+      if (!transaction.docChanged || !saveTimer.current) return;
+      if (transaction.steps.every((step) => step instanceof ReplaceStep)) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+      void sync();
+    };
+    editor.on("beforeTransaction", before);
+    return () => {
+      editor.off("beforeTransaction", before);
+    };
+  }, [editor, sync]);
   // Uploads of this page done, or the page created (#370): what waited goes out.
   useEffect(
     () =>

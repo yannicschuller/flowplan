@@ -273,7 +273,8 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
   const shown = /page=([^&]+)/.exec(page.url())![1];
   const read = async () => (await page.request.get(`/api/pages/${shown}`)).json();
   await expect.poll(async () => ((await read()).html as string).match(/data-drawio=/g)?.length, { timeout: 20_000 }).toBe(1);
-  expect((await read()).html).toContain("erste");
+  // Saved shortly after (at most once a second while alone, #515).
+  await expect.poll(async () => (await read()).html as string, { timeout: 10_000 }).toContain("erste");
   expect((await read()).page.full_width).toBe(1);
   expect((await read()).page.title).toBe(title);
   // Opening the page again does not open draw.io again.

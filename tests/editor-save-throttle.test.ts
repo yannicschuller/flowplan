@@ -16,3 +16,8 @@ test("a waiting save goes out when someone else joins (#515)", () => {
   assert.match(source, /window\.addEventListener\(AUDIENCE_EVENT, joined\)/);
   assert.match(source, /if \(key !== liveKey \|\| !open \|\| !saveTimer\.current\) return;/);
 });
+
+test("a change beyond typing sends what was typed first, in a save of its own (#515)", () => {
+  assert.match(source, /editor\.on\("beforeTransaction", before\)/);
+  assert.match(source, /transaction\.steps\.every\(\(step\) => step instanceof ReplaceStep\)/);
+});
