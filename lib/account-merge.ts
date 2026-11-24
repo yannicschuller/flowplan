@@ -69,6 +69,9 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "unconfirmed_deletions.user_id": "drop",
   "unconfirmed_deletions.marked_by": "move",
   "auth_challenges.user_id": "drop",
+  // Uploads in flight (#493–#495, lib/staging-quota.ts): their staging
+  // names the source and is swept.
+  "staged_uploads.user_id": "drop",
   "idempotency_keys.user_id": "drop",
   "mobile_devices.user_id": "drop",
   // Device keys of the apps (lib/app-devices.ts): registered again at the next sign-in.

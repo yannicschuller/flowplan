@@ -35,6 +35,7 @@ import { createReadStream, createWriteStream, mkdirSync, renameSync } from "node
 import { mkdir, open, rename, rm, stat, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { staging } from "./staging";
+import { releaseStaged, reserveStaged, sweepStaged } from "./staging-quota";
 import { publishUpload } from "./storage";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
@@ -198,13 +199,12 @@ export async function sweepRecordingUploads(now = Date.now(), force = false) {
   for (const folder of await staged().folders("").catch(() => [])) {
     const meta = await readMeta(folder.name);
     const at = Math.max(meta?.at ?? 0, folder.at);
-    if (now - at > STAGING_TTL_MS) await staged().remove(folder.name);
+    if (now - at > STAGING_TTL_MS) {
+      await staged().remove(folder.name);
+      await releaseStaged("notebook-audio", folder.name);
+    }
   }
-}
-async function stagedByUser(userId: string) {
-  let n = 0;
-  for (const folder of await staged().folders("").catch(() => [])) if ((await readMeta(folder.name))?.userId === userId) n++;
-  return n;
+  await sweepStaged("notebook-audio", now - STAGING_TTL_MS);
 }
 function ownStaging(meta: StagingMeta | null, user: Identity, pageId: string) {
   if (meta && (meta.userId !== user.id || meta.pageId !== pageId)) throw new HttpError(403, "Keine Berechtigung.");
@@ -234,33 +234,55 @@ export async function storeRecordingChunk(user: Identity, pageId: string, input:
   return await serial(rid, async () => {
     if (await recordingOf(page.id, rid)) throw new HttpError(409, "Die Aufnahme ist bereits gespeichert.");
     let meta = ownStaging(await readMeta(rid), user, page.id);
+    let mime = meta?.mime;
     if (!meta) {
       if (offset !== 0) throw new HttpError(409, "Die Aufnahme ist unvollständig.");
-      const mime = recordingMime(input.type, Buffer.from(bytes.subarray(0, 64)));
+      mime = recordingMime(input.type, Buffer.from(bytes.subarray(0, 64))) || undefined;
       if (!mime) throw new HttpError(415, "Dieses Audioformat wird nicht unterstützt.");
-      if ((await stagedByUser(user.id)) >= MAX_STAGED_PER_USER) throw new HttpError(429, "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.");
-      meta = { userId: user.id, pageId: page.id, mime, at: Date.now() };
-      await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify(meta)));
     }
-    const chunks = await stagedChunks(rid);
-    const size = await stagedSize(rid, chunks);
+    const chunks = meta ? await stagedChunks(rid) : [];
+    const size = meta ? await stagedSize(rid, chunks) : 0;
     if (offset > size) throw new HttpError(409, "Die Aufnahme ist unvollständig.");
     const total = offset + bytes.length;
     if (total <= size) return { size };
     if (total > RECORDING_MAX_BYTES) throw new HttpError(413, "Die Aufnahme ist zu lang.");
-    const room = await recordingRoom(user, page);
-    if (room !== null && total > room) throw new HttpError(413, "Der Speicher reicht für diese Aufnahme nicht.");
-    // A retry from inside what is there: what lies behind `offset` goes
-    // (a chunk across it is cut there), then this chunk continues.
-    for (const c of chunks) {
-      if (c.offset >= offset) await staged().removeObject(`${rid}/${c.name}`);
-      else if (c.offset + c.size > offset) {
-        const kept = await staged().get(`${rid}/${c.name}`);
-        if (kept) await staged().put(`${rid}/${c.name}`, kept.subarray(0, offset - c.offset));
+    // The open uploads and the room, counted with everything this person
+    // has staged (all instances take turns per person, #493).
+    const fresh = !meta;
+    await reserveStaged(user, {
+      kind: "notebook-audio",
+      upload: rid,
+      part: "data",
+      bytes: total,
+      maxOpen: MAX_STAGED_PER_USER,
+      staleAfter: STAGING_TTL_MS,
+      room: () => recordingRoom(user, page),
+      noRoom: "Der Speicher reicht für diese Aufnahme nicht.",
+    });
+    try {
+      if (!meta) {
+        meta = { userId: user.id, pageId: page.id, mime: mime!, at: Date.now() };
+        await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify(meta)));
       }
+      // A retry from inside what is there: what lies behind `offset` goes
+      // (a chunk across it is cut there), then this chunk continues.
+      for (const c of chunks) {
+        if (c.offset >= offset) await staged().removeObject(`${rid}/${c.name}`);
+        else if (c.offset + c.size > offset) {
+          const kept = await staged().get(`${rid}/${c.name}`);
+          if (kept) await staged().put(`${rid}/${c.name}`, kept.subarray(0, offset - c.offset));
+        }
+      }
+      await staged().put(`${rid}/${chunkName(offset)}`, bytes);
+      await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify({ ...meta, at: Date.now() })));
+    } catch (error) {
+      // A new upload that could not be written is not left open.
+      if (fresh) {
+        await staged().remove(rid);
+        await releaseStaged("notebook-audio", rid);
+      }
+      throw error;
     }
-    await staged().put(`${rid}/${chunkName(offset)}`, bytes);
-    await staged().put(`${rid}/meta.json`, Buffer.from(JSON.stringify({ ...meta, at: Date.now() })));
     return { size: total };
   });
 }
@@ -272,6 +294,7 @@ export async function discardRecordingUpload(user: Identity, pageId: string, rec
   await serial(rid, async () => {
     if (!ownStaging(await readMeta(rid), user, page.id)) return;
     await staged().remove(rid);
+    await releaseStaged("notebook-audio", rid);
   });
   return { ok: true };
 }
@@ -387,6 +410,7 @@ export async function finishRecording(user: Identity, pageId: string, input: unk
       await rm(source, { force: true }).catch(() => {});
     }
     await staged().remove(b.recId);
+    await releaseStaged("notebook-audio", b.recId);
     return { recording: (await recordingOf(page.id, b.recId))! };
   });
 }

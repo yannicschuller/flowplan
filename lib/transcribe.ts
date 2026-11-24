@@ -24,6 +24,7 @@
 // the recogniser should spell right. WHISPER_VAD=on asks faster-whisper
 // servers (speaches) to skip silence first (`vad_filter=true`).
 import { staging } from "./staging";
+import { releaseStaged, reserveStaged, sweepStaged } from "./staging-quota";
 import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -290,7 +291,11 @@ async function sweep(now = Date.now()) {
   if (runtime.flowplanTranscribeSweep && now - runtime.flowplanTranscribeSweep < 60_000) return;
   runtime.flowplanTranscribeSweep = now;
   for (const folder of await parts().folders("").catch(() => []))
-    if (now - folder.at > UPLOAD_TTL) await parts().remove(folder.name);
+    if (now - folder.at > UPLOAD_TTL) {
+      await parts().remove(folder.name);
+      await releaseStaged("transcribe", folder.name);
+    }
+  await sweepStaged("transcribe", now - UPLOAD_TTL);
 }
 
 // One chunk of a recording, in order of `index` (0, 1, …). The upload id
@@ -300,20 +305,37 @@ export async function storeTranscribeChunk(user: Identity, input: { uploadId: st
   if (!Number.isInteger(input.index) || input.index < 0 || input.index > 999 || !UPLOAD_ID.test(input.uploadId)) throw new HttpError(400, "Ungültige Eingabe.");
   if (!bytes.length || bytes.length > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
   let meta = await readUploadMeta(input.uploadId);
-  if (!meta) {
-    let mine = 0;
-    for (const folder of await parts().folders("")) if ((await readUploadMeta(folder.name))?.userId === user.id) mine++;
-    if (mine >= 3) throw new HttpError(429, "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.");
-    meta = { userId: user.id, pageId: input.pageId, at: Date.now() };
-    await parts().put(`${input.uploadId}/meta`, Buffer.from(JSON.stringify(meta)));
+  if (meta && (meta.userId !== user.id || meta.pageId !== input.pageId)) throw new HttpError(403, "Keine Berechtigung.");
+  // Open uploads per person and the size of this one, checked and recorded
+  // in one step per person (parallel chunks and other instances take
+  // turns, #495). Staged chunks also count against the room of the
+  // person's notebook and meeting recordings (lib/staging-quota.ts).
+  const fresh = !meta;
+  await reserveStaged(user, {
+    kind: "transcribe",
+    upload: input.uploadId,
+    part: String(input.index),
+    bytes: bytes.length,
+    maxOpen: 3,
+    staleAfter: UPLOAD_TTL,
+    uploadMax: transcribeMaxBytes(),
+  });
+  try {
+    if (!meta) {
+      meta = { userId: user.id, pageId: input.pageId, at: Date.now() };
+      await parts().put(`${input.uploadId}/meta`, Buffer.from(JSON.stringify(meta)));
+    }
+    await parts().put(`${input.uploadId}/${input.index}`, bytes);
+  } catch (error) {
+    // A new upload that could not be written is not left open.
+    if (fresh) {
+      await parts().remove(input.uploadId);
+      await releaseStaged("transcribe", input.uploadId);
+    }
+    throw error;
   }
-  if (meta.userId !== user.id || meta.pageId !== input.pageId) throw new HttpError(403, "Keine Berechtigung.");
   const have = await uploadedParts(input.uploadId);
-  const bytesBefore = [...have.values()].reduce((sum, n) => sum + n, 0);
-  const total = bytesBefore - (have.get(input.index) || 0) + bytes.length;
-  if (total > transcribeMaxBytes()) throw new HttpError(413, "Die Aufnahme ist zu lang.");
-  await parts().put(`${input.uploadId}/${input.index}`, bytes);
-  have.set(input.index, bytes.length);
+  const total = [...have.values()].reduce((sum, n) => sum + n, 0);
   return { ok: true, received: have.size, bytes: total };
 }
 
@@ -336,5 +358,6 @@ export async function finishTranscribeUpload(user: Identity, input: { uploadId: 
     return await transcribe(audio, input.name);
   } finally {
     await parts().remove(input.uploadId);
+    await releaseStaged("transcribe", input.uploadId);
   }
 }
