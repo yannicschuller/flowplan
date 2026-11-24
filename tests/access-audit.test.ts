@@ -229,6 +229,45 @@ test("attachments of a trashed private record stay hidden", async () => {
   assert.ok(!(await hiddenFileIds(owner, await requirePage(owner, dbId))).has(trashedFile));
 });
 
+// #476: kept meeting audio of a private record is a file of the database
+// referenced only from meetings.audio; it is hidden with the record, also
+// once the record is in the trash.
+test("kept meeting audio of a private record is hidden", async () => {
+  const { readableFile } = await import("../lib/file-access");
+  const audioOf = async (title: string) => {
+    const row = ((await command(owner, { action: "row.create", pageId: dbId, cells: { title } })) as { id: string }).id;
+    const audio = id();
+    writeFileSync(join(dir, "uploads", audio), "audio");
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", audio, dbId, "Besprechung-1-mixed.webm", "audio/webm", 5, owner.id);
+    await run(
+      "INSERT INTO meetings(id,workspace_id,page_id,row_id,created_by,status,sessions,audio,created_at,updated_at) VALUES(?,?,?,?,?,'done','[]',?,?,?)",
+      id(),
+      wid,
+      dbId,
+      row,
+      owner.id,
+      JSON.stringify([{ session: 1, track: "mixed", fileId: audio, mime: "audio/webm" }]),
+      Date.now(),
+      Date.now(),
+    );
+    return { row, audio };
+  };
+  const open = await audioOf("MEETING-OPEN");
+  const secret = await audioOf("MEETING-PRIVATE");
+  await command(owner, { action: "row.access", pageId: dbId, rowId: secret.row, access: "private", grants: [] });
+  const data = (await pageData(viewer, dbId)) as unknown as { files: { id: string }[] };
+  assert.ok(!data.files.some((f) => f.id === secret.audio));
+  assert.ok(data.files.some((f) => f.id === open.audio));
+  assert.ok((await hiddenFileIds(viewer, await requirePage(viewer, dbId))).has(secret.audio));
+  await assert.rejects(() => readableFile(viewer, secret.audio));
+  assert.equal((await readableFile(viewer, open.audio)).id, open.audio);
+  assert.equal((await readableFile(owner, secret.audio)).id, secret.audio);
+  // In the trash it stays hidden.
+  await command(owner, { action: "row.delete", pageId: dbId, rowId: secret.row });
+  assert.ok((await hiddenFileIds(viewer, await requirePage(viewer, dbId))).has(secret.audio));
+  assert.ok(!(await hiddenFileIds(owner, await requirePage(owner, dbId))).has(secret.audio));
+});
+
 // Password accounts are deleted only after the password check.
 test("an account with a password is not deleted by the bare command", async () => {
   const me = await account("pw-delete");

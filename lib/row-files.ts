@@ -53,14 +53,32 @@ export async function hiddenRowFileIds(user: Identity, page: Pick<Page, "id" | "
     if (!entry) inHidden.set(file, (entry = { users: new Set(), groups: new Set(), always: false }));
     return entry;
   };
+  // Kept audio of a meeting in a record (lib/meetings.ts keepOrDropAudio) is
+  // a file of the database referenced only from meetings.audio: it belongs to
+  // the record and is hidden with it (#476).
+  const meetingFiles = new Map<string, string>();
+  for (const m of await all<{ row_id: string; audio: string }>(
+    "SELECT row_id,audio FROM meetings WHERE page_id=? AND row_id IS NOT NULL AND audio<>'[]'",
+    page.id,
+  )) {
+    let audio: unknown = [];
+    try {
+      audio = JSON.parse(m.audio);
+    } catch {}
+    const refs = (Array.isArray(audio) ? audio : [])
+      .map((a: { fileId?: unknown }) => (typeof a?.fileId === "string" ? ` /api/files/${a.fileId}` : ""))
+      .join("");
+    if (refs) meetingFiles.set(m.row_id, `${meetingFiles.get(m.row_id) || ""}${refs}`);
+  }
   // Records in the trash keep their permissions too.
-  for (const trashed of await all<{ payload: string }>(
-    "SELECT payload FROM row_trash WHERE page_id=? AND payload LIKE '%/api/files/%'",
+  for (const trashed of await all<{ id: string; payload: string }>(
+    "SELECT id,payload FROM row_trash WHERE page_id=? AND (payload LIKE '%/api/files/%' OR id IN (SELECT row_id FROM meetings WHERE page_id=? AND audio<>'[]'))",
+    page.id,
     page.id,
   )) {
     const payload = JSON.parse(trashed.payload) as Parameters<typeof trashedRole>[2];
     if (await trashedRole(user, page as Page, payload)) continue;
-    for (const id of ids(trashed.payload)) {
+    for (const id of ids(`${trashed.payload} ${meetingFiles.get(trashed.id) || ""}`)) {
       const entry = use(id);
       if (payload.row?.created_by) entry.users.add(String(payload.row.created_by));
       for (const grant of payload.grants || []) {
@@ -75,7 +93,7 @@ export async function hiddenRowFileIds(user: Identity, page: Pick<Page, "id" | "
   const hiddenRowsOf = new Map<string, string[]>();
   // Attachments of a record's comments and text comments (#450) belong to
   // the record: hidden with it.
-  const commentFiles = new Map<string, string>();
+  const commentFiles = new Map(meetingFiles);
   for (const c of await all<{ row_id: string; t: string }>(
     `SELECT c.row_id,c.rich_body t FROM comments c WHERE c.page_id=? AND c.row_id IS NOT NULL AND c.rich_body LIKE '%/api/files/%'
      UNION ALL SELECT h.row_id,m.rich_body t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id WHERE h.page_id=? AND h.row_id IS NOT NULL AND m.rich_body LIKE '%/api/files/%'`,
