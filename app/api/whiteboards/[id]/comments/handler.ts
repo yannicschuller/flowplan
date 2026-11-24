@@ -7,6 +7,7 @@
 //                                             hear of it (once)
 //   POST {trash: [fileId, …]}                 files of deleted comments to the
 //                                             file trash when nothing uses them
+import { readTextLimited } from "@/lib/request-body";
 import { requireModule } from "@/lib/instance-modules";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
@@ -60,9 +61,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: Context) 
     // Whiteboards switched off for the instance (#386): read-only.
     await requireModule("whiteboards");
     const pageId = z.uuid().parse((await params).id);
-    if (Number(req.headers.get("content-length") || 0) > 16_384) throw new HttpError(413, "Anfrage zu groß.");
-    const text = await req.text();
-    if (text.length > 16_384) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 16_384);
     let raw: unknown;
     try {
       raw = JSON.parse(text || "{}");

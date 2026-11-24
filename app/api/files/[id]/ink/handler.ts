@@ -5,6 +5,7 @@
 //   PUT or POST {base, doc, recognized?}  saves; `base` is the version the ink was opened at
 //   PUT or POST {version, recognized}     text recognised on the device for that
 //                                         version (page → text), lib/ink/recognition.ts
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -45,12 +46,10 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
 async function save(req: Request, { params }: Context) {
   try {
     await checkOrigin(req);
-    if (Number(req.headers.get("content-length") || 0) > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     const fileId = z.uuid().parse((await params).id);
-    const text = await req.text();
-    if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, INK_LIMITS.bytes * 2);
     const body = JSON.parse(text);
     if (body && typeof body === "object" && body.doc === undefined && body.recognized !== undefined)
       return NextResponse.json(await saveFileRecognized(user, fileId, body), noStore);

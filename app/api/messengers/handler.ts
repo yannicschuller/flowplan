@@ -4,6 +4,7 @@
 // changes, removes, switches on again, sends a test message, changes the
 // person's choices or makes a Telegram connection link. Signed-in people in
 // the browser only; API tokens never (they are about credentials).
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
@@ -48,8 +49,7 @@ export const POST = withRequestLocale(async (req: Request) => {
   try {
     await checkOrigin(req);
     const user = await browserUser();
-    const text = await req.text();
-    if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 10_000);
     const body = JSON.parse(text || "{}") as Record<string, unknown>;
     const { action } = actionSchema.parse(body);
     switch (action) {

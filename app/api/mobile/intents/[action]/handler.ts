@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withDevice } from "@/lib/mobile-device-route";
@@ -39,8 +40,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
   return withDevice(req, async (user) => {
     if (action !== "focus") throw new HttpError(404, "Nicht gefunden");
     limitWidgets(user, "action");
-    const text = await req.text();
-    if (text.length > JSON_LIMIT) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, JSON_LIMIT);
     return NextResponse.json(await setDeviceFocus(user, req.headers.get("authorization"), JSON.parse(text || "{}")), { headers });
   });
 }

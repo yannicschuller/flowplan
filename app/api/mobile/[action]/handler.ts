@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
@@ -82,8 +83,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))
       return NextResponse.json({ ok: await unregisterByDeviceToken(authorization) });
     if (action === "live-activity" || action === "widget-push" || action === "device") {
-      const text = await req.text();
-      if (text.length > 4_000) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, 4_000);
       const body = JSON.parse(text || "{}");
       const answer =
         action === "live-activity" ? await setLiveActivityToken(authorization, body) : action === "widget-push" ? await setWidgetPushToken(authorization, body) : await setDevicePush(authorization, body);
@@ -92,8 +92,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     await checkOrigin(req);
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
-    const text = await req.text();
-    if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 10_000);
     const body = JSON.parse(text || "{}");
     if (action === "register") {
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");

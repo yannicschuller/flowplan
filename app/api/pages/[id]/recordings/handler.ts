@@ -7,6 +7,7 @@
 //   POST { action: "delete", recId }                      { ok } – into the trash with its file
 //   POST { action: "discard", recId }                     { ok } – drops an unfinished upload
 // The audio itself is served by /api/files/{fileId} (range requests).
+import { readJsonLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -68,8 +69,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: Context) 
       const offset = Number(url.searchParams.get("offset"));
       return NextResponse.json(await storeRecordingChunk(user, pageId, { recId: upload, offset, type: url.searchParams.get("type") || "" }, bytes), noStore);
     }
-    if (Number(req.headers.get("content-length") || 0) > 16_000) throw new HttpError(413, "Anfrage zu groß.");
-    const body = z.object({ action: z.enum(["finish", "rename", "delete", "discard"]), recId: z.string().max(64) }).passthrough().parse(await req.json());
+    const body = z.object({ action: z.enum(["finish", "rename", "delete", "discard"]), recId: z.string().max(64) }).passthrough().parse(await readJsonLimited(req, 16_000));
     if (body.action === "finish") return NextResponse.json(await finishRecording(user, pageId, body), noStore);
     if (body.action === "rename") return NextResponse.json(await renameRecording(user, pageId, body.recId, body.name), noStore);
     if (body.action === "delete") return NextResponse.json(await deleteRecording(user, pageId, body.recId), noStore);

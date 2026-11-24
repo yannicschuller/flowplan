@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withDevice } from "@/lib/mobile-device-route";
@@ -39,8 +40,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     if (action !== "save") throw new HttpError(404, "Nicht gefunden");
     limitWidgets(user, "action");
     if (!(req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
-      const text = await req.text();
-      if (text.length > JSON_LIMIT) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, JSON_LIMIT);
       return NextResponse.json(await saveCapture(user, JSON.parse(text || "{}")), { headers });
     }
     // Files: the size is known before anything is read.

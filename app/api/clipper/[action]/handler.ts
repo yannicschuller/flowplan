@@ -2,6 +2,7 @@
 // where the person may save, POST save stores a clip. Bearer tokens only
 // (scope "clipper" or "write"); CORS answers name browser-extension
 // origins only and never allow credentials.
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { z } from "zod";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
@@ -50,9 +51,7 @@ export const POST = withRequestLocale(
       const user = await clipperUser(req.headers);
       // Not while the instance moves (lib/instance-read-only.ts).
       await refuseWhileReadOnly(req);
-      if (Number(req.headers.get("content-length") || 0) > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
-      const text = await req.text();
-      if (text.length > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await readTextLimited(req, MAX_BODY);
       return answer(req, 200, await saveClip(user, JSON.parse(text)));
     } catch (e) {
       return failure(req, e instanceof SyntaxError ? new HttpError(400, "Ungültige Eingabe.") : e);

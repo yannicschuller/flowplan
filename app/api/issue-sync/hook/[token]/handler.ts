@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { after, NextResponse } from "next/server";
 import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
@@ -15,9 +16,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // Not during an instance move (lib/instance-read-only.ts): the sender retries.
     await refuseWhileReadOnly(req);
     const { token } = await params;
-    if (Number(req.headers.get("content-length") || 0) > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
-    const body = await req.text();
-    if (body.length > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
+    const body = await readTextLimited(req, 5_000_000);
     const result = await receiveIssueWebhook(token, req.headers, body);
     if (result.pages.length)
       after(async () => {

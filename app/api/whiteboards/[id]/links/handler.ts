@@ -7,6 +7,7 @@
 // /api/embed). Changes also need the origin check.
 //   POST {url}   → {kind: "card", url, title, site, description?, image?, icon?}
 //                  or {kind: "player", src, provider, image?}
+import { readTextLimited } from "@/lib/request-body";
 import { requireModule } from "@/lib/instance-modules";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
@@ -38,8 +39,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: Context) 
     if (user.twoFactorSetup) throw new HttpError(403, "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.");
     await requireModule("whiteboards");
     const pageId = z.uuid().parse((await params).id);
-    const text = await req.text();
-    if (text.length > 4096) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 4096);
     let raw: unknown;
     try {
       raw = JSON.parse(text || "{}");

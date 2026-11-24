@@ -3,7 +3,7 @@
 // reading little more than the limit, also without Content-Length.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -80,4 +80,92 @@ test("the app's sign-in report stops reading a large body", async () => {
   const res = await auth.POST(req, { params: Promise.resolve({ action: "app-sign-in-report" }) });
   assert.equal(res.status, 204);
   assert.ok(counter.sent <= 16 * 1024 + 3 * CHUNK, `read ${counter.sent} bytes`);
+});
+
+// #485: handlers that checked only Content-Length and then read the whole
+// body. A chunked body (no Content-Length) now stops near the route's cap,
+// before any token or signature is looked at.
+const R = "../app/api";
+const git = await import(`${R}/git/[token]/handler`);
+const slack = await import(`${R}/webhooks/slack/[id]/handler`);
+const issueHook = await import(`${R}/issue-sync/hook/[token]/handler`);
+const share = await import(`${R}/share/[token]/handler`);
+const shareBoard = await import(`${R}/share/[token]/board/handler`);
+const shareNotebook = await import(`${R}/share/[token]/notebook/handler`);
+const shareUnlock = await import(`${R}/share/[token]/unlock/handler`);
+const scim = await import(`${R}/scim/v2/[...path]/handler`);
+const general = await import(`${R}/[...path]/handler`);
+const clipper = await import(`${R}/clipper/[action]/handler`);
+const { limitedRequest } = await import("../lib/request-body");
+const P = (o: object) => ({ params: Promise.resolve(o) });
+
+// [name, path, content type, cap in MB the body may reach at most, call]
+const chunkedCases: [string, string, string, number, (r: Request) => Promise<Response>][] = [
+  ["git webhook", "/api/git/zz", "application/json", 5, (r) => git.POST(r, P({ token: "zz" }))],
+  ["Slack events", "/api/webhooks/slack/zz", "application/json", 1, (r) => slack.POST(r, P({ id: "zz" }))],
+  ["issue webhook", "/api/issue-sync/hook/zz", "application/json", 5, (r) => issueHook.POST(r, P({ token: "zz" }))],
+  ["share", "/api/share/zz", "application/json", 2.1, (r) => share.POST(r, P({ token: "zz" }))],
+  ["share board", "/api/share/zz/board", "application/json", 5.7, (r) => shareBoard.POST(r, P({ token: "zz" }))],
+  ["share notebook", "/api/share/zz/notebook", "application/json", 12, (r) => shareNotebook.POST(r, P({ token: "zz" }))],
+  ["share unlock", "/api/share/zz/unlock", "application/json", 0.01, (r) => shareUnlock.POST(r, P({ token: "zz" }))],
+  ["SCIM", "/api/scim/v2/Users", "application/scim+json", 1.05, (r) => scim.POST(r, P({ path: ["Users"] }))],
+  ["emergency deny", "/api/emergency/deny", "application/x-www-form-urlencoded", 0.02, (r) => general.POST(r, P({ path: ["emergency", "deny"] }))],
+  ["dead man's here", "/api/deadman/here", "application/x-www-form-urlencoded", 0.02, (r) => general.POST(r, P({ path: ["deadman", "here"] }))],
+];
+for (const [name, path, type, capMb, call] of chunkedCases)
+  test(`${name}: a chunked body stops at the route's limit`, async () => {
+    const { req, counter } = streamed(`https://flowplan.example.test${path}`, { length: false, mb: 24 });
+    req.headers.set("content-type", type);
+    const res = await call(req);
+    assert.equal(res.status, 413, `${name} answered ${res.status}`);
+    assert.ok(counter.sent <= capMb * 1024 * 1024 + 4 * CHUNK, `${name} read ${counter.sent} bytes`);
+  });
+
+// Its other routes need the request scope of Next (requireUser); every
+// body other than a multipart upload is limited before any of them runs.
+test("the general handler limits every other body while it is read", () => {
+  const source = readFileSync(join(import.meta.dirname, "../app/api/[...path]/handler.ts"), "utf8");
+  assert.match(source, /else if \(maxBody < Number\.MAX_SAFE_INTEGER\) req = limitedRequest\(req, maxBody\);/);
+});
+
+test("limitedRequest keeps a small body readable and stops a large chunked one", async () => {
+  const small = limitedRequest(new Request("https://flowplan.example.test/x", { method: "POST", body: "a=1&token=t", headers: { "content-type": "application/x-www-form-urlencoded" } }), 100);
+  assert.equal((await small.formData()).get("token"), "t");
+  assert.equal(limitedRequest(new Request("https://flowplan.example.test/x"), 1).body, null);
+  const { req, counter } = streamed("https://flowplan.example.test/x", { length: false });
+  await assert.rejects(limitedRequest(req, 64 * 1024).text(), (e: { status?: number }) => e.status === 413);
+  assert.ok(counter.sent <= 64 * 1024 + 4 * CHUNK, `read ${counter.sent} bytes`);
+  const declared = streamed("https://flowplan.example.test/x");
+  assert.throws(() => limitedRequest(declared.req, 64 * 1024), (e: { status?: number }) => e.status === 413);
+});
+
+test("the clipper's save stops a chunked body at its limit", async () => {
+  const { run, id } = await import("../lib/db");
+  const { createApiToken } = await import("../lib/api-tokens");
+  const uid = id();
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "clip", "clip@example.test");
+  const user = { id: uid, name: "clip", email: "clip@example.test", groups: [], isAdmin: false, disabled: 0, created_at: "" };
+  const token = (await createApiToken(user as never, { name: "Browser", scope: "clipper" })).token;
+  const { req, counter } = streamed("https://flowplan.example.test/api/clipper/save", { length: false, mb: 24 });
+  req.headers.set("authorization", `Bearer ${token}`);
+  const res = await clipper.POST(req, P({ action: "save" }));
+  assert.equal(res.status, 413);
+  assert.ok(counter.sent <= 3_000_000 + 4 * CHUNK, `read ${counter.sent} bytes`);
+});
+
+// Every handler reads its body through lib/request-body.ts or a stream
+// with its own count – never the whole body first.
+test("no API handler reads a whole body without a limit", () => {
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }))
+      if (entry.isDirectory()) walk(join(dir, entry.name));
+      else if (entry.name === "handler.ts") files.push(join(dir, entry.name));
+  };
+  walk(join(import.meta.dirname, "../app/api"));
+  for (const file of files) {
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(source, /req\.text\(\)/, file);
+    assert.doesNotMatch(source, /content-length"\) \|\| 0\) > [^\n]*\n[^\n]*req\.(text|json|formData|arrayBuffer)\(\)/, file);
+  }
 });

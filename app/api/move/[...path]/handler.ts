@@ -10,6 +10,7 @@
 //   GET  env                 configuration: names and keyed hashes only
 //   POST freeze              read-only for the final copy
 //   POST finish              the move is done: banner, token used up
+import { limitedRequest } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { HttpError } from "@/lib/auth";
 import { authorizeMove, envReport, finishSource, freezeSource, moveManifest, movePath, serveMoveFile, serveMoveUpload, snapshotPath } from "@/lib/instance-move";
@@ -62,7 +63,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
   try {
     const { path } = await params;
     const what = path.join("/");
-    if (Number(req.headers.get("content-length") || 0) > 10_000) throw new HttpError(413, "Anfrage zu groß.");
+    // Bodies are small; a larger or chunked one stops at the limit.
+    req = limitedRequest(req, 10_000);
     if (what === "freeze") {
       const { state } = await authorizeMove(req, "freeze");
       return Response.json(await freezeSource(state), { headers });

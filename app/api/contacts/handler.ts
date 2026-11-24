@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
@@ -83,8 +84,7 @@ async function handlePOST(req: Request) {
   try {
     await checkOrigin(req);
     const user = await sessionUser();
-    const text = await req.text();
-    if (text.length > 6 * 1024 * 1024) throw new HttpError(413, "Die Datei ist zu groß (höchstens 5 MB).");
+    const text = await readTextLimited(req, 6 * 1024 * 1024, "Die Datei ist zu groß (höchstens 5 MB).");
     const b = JSON.parse(text || "{}") as Record<string, unknown>;
     const pageId = uuid.parse(b.pageId);
     switch (b.action) {

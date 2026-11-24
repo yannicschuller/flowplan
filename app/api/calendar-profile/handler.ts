@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
@@ -56,8 +57,7 @@ async function handlePOST(req: Request) {
     await checkOrigin(req);
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
-    const text = await req.text();
-    if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 10_000);
     return NextResponse.json(await createProfileLink(user, JSON.parse(text || "{}")), { headers });
   } catch (e) {
     return failure(e);

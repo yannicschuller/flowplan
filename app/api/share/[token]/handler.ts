@@ -1,3 +1,4 @@
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse, after } from "next/server";
 import { z } from "zod";
@@ -70,11 +71,8 @@ export async function POST(
 ) {
   try {
     await checkOrigin(req);
-    if (Number(req.headers.get("content-length") || 0) > 2_100_000)
-      throw new HttpError(413, "Anfrage zu groß.");
     const { token } = await params,
-      text = await req.text();
-    if (text.length > 2_100_000) throw new HttpError(413, "Anfrage zu groß.");
+      text = await readTextLimited(req, 2_100_000);
     const body = JSON.parse(text);
     // Cursor of a guest editor: frequent and small, outside the edit limits.
     if (body?.action === "presence") return NextResponse.json(await withShareRequest(req, async () => await sharePresence(token, body)), { headers });

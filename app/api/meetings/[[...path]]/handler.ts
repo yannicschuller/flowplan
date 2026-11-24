@@ -21,6 +21,7 @@
 //
 // Browser sessions and API tokens; tokens need "KI und Transkription" for
 // everything that records, transcribes or asks the AI.
+import { limitedRequest, readBodyLimited, readJsonLimited } from "@/lib/request-body";
 import { requireModule } from "@/lib/instance-modules";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
@@ -72,9 +73,12 @@ function error(e: unknown) {
   );
 }
 const uuid = z.uuid();
-async function json(req: Request, limit = 100_000) {
-  if (Number(req.headers.get("content-length") || 0) > limit) throw new HttpError(413, "Anfrage zu groß.");
-  return await req.json().catch(() => ({}));
+async function json(req: Request, limit = 100_000): Promise<Record<string, unknown>> {
+  const body = await readJsonLimited(req, limit).catch((e) => {
+    if (e instanceof HttpError) throw e;
+    return {};
+  });
+  return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 }
 
 export const GET = withRequestLocale(async (req: Request, { params }: { params: Promise<{ path?: string[] }> }) => {
@@ -110,9 +114,8 @@ const formText = (form: FormData, name: string) => {
 };
 async function uploadInput(req: Request): Promise<MeetingUpload> {
   const max = transcribeMaxBytes() * 2 + 2 * 1024 * 1024;
-  if (Number(req.headers.get("content-length") || 0) > max) throw new HttpError(413, "Die Aufnahme ist zu lang.");
-  const form = await req.formData().catch(() => {
-    throw new HttpError(400, "Ungültige Eingabe.");
+  const form = await limitedRequest(req, max, "Die Aufnahme ist zu lang.").formData().catch((e) => {
+    throw e instanceof HttpError ? e : new HttpError(400, "Ungültige Eingabe.");
   });
   const audio: MeetingUpload["audio"] = {};
   for (const [field, track] of [
@@ -168,8 +171,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     if (path.length === 2 && action === "start") return NextResponse.json(await startMeetingSession(user, { ...(await json(req)), meetingId }), noStore);
     if (path.length === 2 && action === "chunk") {
       const url = new URL(req.url);
-      if (Number(req.headers.get("content-length") || 0) > MEETING_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
-      const bytes = new Uint8Array(await req.arrayBuffer());
+      const bytes = new Uint8Array(await readBodyLimited(req, MEETING_CHUNK_BYTES));
       return NextResponse.json(
         await storeMeetingChunk(
           user,
@@ -181,7 +183,10 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
       );
     }
     if (path.length === 2 && action === "finish") return NextResponse.json(await finishMeetingSession(user, meetingId, await json(req)), noStore);
-    if (path.length === 2 && action === "retry") return NextResponse.json(await retryMeeting(user, meetingId, (await json(req)).language), noStore);
+    if (path.length === 2 && action === "retry") {
+      const { language } = await json(req);
+      return NextResponse.json(await retryMeeting(user, meetingId, typeof language === "string" ? language : undefined), noStore);
+    }
     if (path.length === 2 && action === "retranscribe") return NextResponse.json(await retranscribeMeeting(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "summarize") return NextResponse.json(await regenerateSummary(user, meetingId, await json(req)), noStore);
     // "Zuständige benachrichtigen": tasks of the AI summary told only now.

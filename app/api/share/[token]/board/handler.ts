@@ -3,6 +3,7 @@
 //   GET ?pageId=P&client=C (text/event-stream)  the others' pointers; a revoked link ends the stream
 //   POST {action:"sync", pageId, generation, update?}   merge and pull, like whiteboard.sync
 //   POST {action:"cursor", pageId, clientId, point}     the guest's pointer
+import { readTextLimited } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -82,9 +83,7 @@ export async function POST(req: Request, { params }: Context) {
   try {
     await checkOrigin(req);
     const { token } = await params;
-    if (Number(req.headers.get("content-length") || 0) > 5_700_000) throw new HttpError(413, "Anfrage zu groß.");
-    const text = await req.text();
-    if (text.length > 5_700_000) throw new HttpError(413, "Anfrage zu groß.");
+    const text = await readTextLimited(req, 5_700_000);
     const body = JSON.parse(text);
     if (body?.action === "cursor") {
       if (text.length > 1024) throw new HttpError(413, "Cursoranfrage zu groß.");
