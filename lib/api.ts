@@ -250,6 +250,7 @@ import {
   validateImportedCells,
   addImportedOptions,
   assertNoNewTimes,
+  assertEditableTitle,
 } from "./database-operations";
 import { cleanNoTime, validZone, withoutNewTimes } from "./date-values";
 import { field, view } from "./database-schema";
@@ -2670,6 +2671,8 @@ async function runCommand(
         );
         if (fields.length > 80)
           throw new HttpError(400, "Zu viele Eigenschaften.");
+        // The title stays a property one can type (#463).
+        assertEditableTitle(fields, d.fields);
         await validateFieldAccess(user, await write(), fields, d.fields);
         // A new option written like another one of its property (case and
         // accents aside) would be a second "Erledigt" (#423).

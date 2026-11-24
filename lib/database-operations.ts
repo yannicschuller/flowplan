@@ -31,6 +31,20 @@ const computed = [
   "progress",
   "time",
 ];
+// The first property is the records' title (#463): typed in the record's
+// heading, the table's first column, the links to the record. It cannot
+// become an ID, formula or other computed property – its value could no
+// longer be typed, and the record dialog's title would refuse every change.
+// A title that already is one (saved before this check) may stay as it is.
+export function assertEditableTitle(next: Field[], before: Field[]) {
+  const title = next[0];
+  if (!title || !computed.includes(title.type)) return;
+  if (before[0]?.id === title.id && before[0].type === title.type) return;
+  throw new HttpError(
+    400,
+    "Die erste Eigenschaft ist der Titel und kann keine ID, Formel oder andere berechnete Eigenschaft sein.",
+  );
+}
 // Most new options one import may add to select properties – a column of
 // free text matched to a select property would otherwise make thousands.
 export const IMPORT_NEW_OPTIONS_LIMIT = 100;
