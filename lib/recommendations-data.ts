@@ -15,7 +15,7 @@ import { all, one, run } from "./db";
 import { database } from "./db-driver";
 import { COMMAND_ROUTE, activeRecently, decodeHist, errorsDay, metricsSetting, percentile, routeStats } from "./metrics";
 import { serverDays, serverNow } from "./server-metrics";
-import { aiStatistics } from "./ai-statistics";
+import { aiLatency, aiStatistics } from "./ai-statistics";
 import { instanceAiSettings } from "./ai/settings";
 import { AI_FEATURES } from "./ai/features";
 import { scheduledBackupStatus } from "./scheduled-backup";
@@ -25,7 +25,7 @@ import { knownUpdate } from "./update-check";
 import { plainHttpInstance } from "./instance-https";
 import { transactionTimes } from "./runtime-metrics";
 import { instanceMetrics } from "./instance-ops";
-import { cleanThresholds, dataGrowthPerDay, evaluate, RECOMMENDATION_IDS, type Recommendation, type RecommendationId, type RecommendationInput, type Thresholds } from "./recommendations";
+import { AI_LATENCY_FEATURES, cleanThresholds, dataGrowthPerDay, evaluate, RECOMMENDATION_IDS, type Recommendation, type RecommendationId, type RecommendationInput, type Thresholds } from "./recommendations";
 
 const MINUTE = 60_000,
   DAY = 86_400_000;
@@ -106,6 +106,9 @@ export async function recommendationInput(now = Date.now()): Promise<Recommendat
   const ai = await instanceAiSettings().catch(() => null);
   const aiOn = !!ai?.enabled && (!!ai.provider || ai.userProviders);
   const stats = aiOn ? await aiStatistics(now, 14, false).catch(() => null) : null;
+  // Response times: only the comparable features, p95 and count over the
+  // same 7 days (#516).
+  const latency = aiOn ? await aiLatency(now, 7, AI_LATENCY_FEATURES).catch(() => null) : null;
   const week = (from: number, to: number) => stats?.perDay.slice(from, to) ?? [];
   const sum = (rows: { cost: number | null }[]) => (rows.some((r) => r.cost !== null) ? rows.reduce((a, r) => a + (r.cost || 0), 0) : null);
   const tokens = (rows: { tokensIn: number; tokensOut: number }[]) => rows.reduce((a, r) => a + r.tokensIn + r.tokensOut, 0);
@@ -161,8 +164,8 @@ export async function recommendationInput(now = Date.now()): Promise<Recommendat
     live: { documents: current.live.documents, connections: current.live.connections, activeNow: activeRecently(now) ?? 0 },
     ai: {
       enabled: aiOn,
-      p95: stats?.total.p95 ?? null,
-      requests: week(7, 14).reduce((a, d) => a + d.requests, 0),
+      p95: latency?.p95 ?? null,
+      requests: latency?.requests ?? 0,
       cost: [sum(week(7, 14)), sum(week(0, 7))],
       tokens: [tokens(week(7, 14)), tokens(week(0, 7))],
       currency: stats?.currency || "EUR",

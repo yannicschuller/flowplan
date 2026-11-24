@@ -1657,6 +1657,7 @@
   "AI and transcription": "AI and transcription",
   "AI and transcription are switched off for API tokens on this instance.": "AI and transcription are switched off for API tokens on this instance.",
   "AI and trigger data may choose recipients and targets": "AI and trigger data may choose recipients and targets",
+  "AI answers in the writing assistant, to questions, in databases and for handwriting took p95 {0} ({1} requests in the last 7 days; summaries, plans and other long tasks not counted).": "AI answers in the writing assistant, to questions, in databases and for handwriting took p95 {0} ({1} requests in the last 7 days; summaries, plans and other long tasks not counted).",
   "ai artificial intelligence provider ollama openai key access": "ai artificial intelligence provider ollama openai key access",
   "AI assistant": "AI assistant",
   "AI assistants (MCP)": "AI assistants (MCP)",

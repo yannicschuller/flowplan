@@ -1657,6 +1657,7 @@
   "AI and transcription": "IA et transcription",
   "AI and transcription are switched off for API tokens on this instance.": "L’IA et la transcription sont désactivées pour les jetons API sur cette instance.",
   "AI and trigger data may choose recipients and targets": "L’IA et les données du déclencheur peuvent choisir les destinataires et les cibles",
+  "AI answers in the writing assistant, to questions, in databases and for handwriting took p95 {0} ({1} requests in the last 7 days; summaries, plans and other long tasks not counted).": "Les réponses de l’IA dans l’assistant d’écriture, aux questions, dans les bases de données et pour l’écriture manuscrite ont pris p95 {0} ({1} requêtes au cours des 7 derniers jours ; résumés, plans et autres tâches longues non comptés).",
   "ai artificial intelligence provider ollama openai key access": "ia intelligence artificielle fournisseur ollama openai clé accès",
   "AI assistant": "Assistant IA",
   "AI assistants (MCP)": "Assistants IA (MCP)",

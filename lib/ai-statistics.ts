@@ -130,6 +130,26 @@ export async function aiStatistics(now = Date.now(), days = 30, people = true) {
 }
 export type AiStatistics = Awaited<ReturnType<typeof aiStatistics>>;
 
+// The response times of the requests of some features over the last days
+// (the recommendation "KI antwortet langsam", lib/recommendations-data.ts):
+// the day histograms of those features merged, so the p95 and the count
+// cover the same requests of the same days. `requests` counts the timed
+// requests – the sample the p95 is taken from.
+export async function aiLatency(now = Date.now(), days = 7, features: readonly string[]) {
+  await flushAi();
+  if (!features.length) return { requests: 0, p95: null };
+  const keys = lastDays(now, days);
+  const rows = await all<{ day: string; hist: string }>(`SELECT day,hist FROM metrics_ai_usage WHERE day>=? AND feature IN (${features.map(() => "?").join(",")})`, keys[0], ...features);
+  const wanted = new Set(keys);
+  let hist: number[] = [];
+  for (const r of rows) {
+    if (!wanted.has(r.day)) continue;
+    const h = decodeHist(r.hist);
+    hist = hist.length ? hist.map((n, i) => n + h[i]) : h;
+  }
+  return { requests: hist.reduce((a, b) => a + b, 0), p95: hist.length ? percentile(hist, 0.95) : null };
+}
+
 // The live strip's AI chart: tokens and cost per day (14 days).
 export async function aiDaily(now = Date.now(), days = 14) {
   const s = await aiStatistics(now, days, false);

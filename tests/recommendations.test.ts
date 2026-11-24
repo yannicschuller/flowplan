@@ -133,13 +133,32 @@ test("slow endpoints name the route, its numbers and a known cause", () => {
   assert.equal(r.slowEndpoints(input({ routes: [route("GET /api/x", 7000)] }), T)!.level, "warn");
 });
 
-test("documents per person, AI latency", () => {
+test("documents per person", () => {
   assert.match(r.documentsPerPerson(input({ live: { documents: 40, connections: 120, activeNow: 4 } }), T)!.reason[0], /40 Dokumente sind live geöffnet bei 4 aktiven Personen \(10 je Person, 120 Verbindungen\)/);
   assert.equal(r.documentsPerPerson(input({ live: { documents: 40, connections: 40, activeNow: 1 } }), T), null);
   assert.equal(r.documentsPerPerson(input({ live: { documents: 20, connections: 20, activeNow: 10 } }), T), null);
-  assert.ok(r.aiLatency(input({ ai: { ...input().ai, p95: 30_000 } }), T));
-  assert.equal(r.aiLatency(input({ ai: { ...input().ai, p95: 30_000, requests: 3 } }), T), null);
-  assert.equal(r.aiLatency(input({ ai: { ...input().ai, p95: 30_000, enabled: false } }), T), null);
+});
+
+test("AI latency: only on enough comparable requests (#516)", () => {
+  const ai = input().ai;
+  // 60 slow chat requests: it fires and says which requests it counted.
+  const slow = r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 60 } }), T)!;
+  assert.equal(slow.id, "ai-latency");
+  assert.match(slow.reason[0], /brauchten p95 30 s \(60 Anfragen in den letzten 7 Tagen; Zusammenfassungen, Pläne und andere lange Aufgaben nicht mitgezählt\)/);
+  assert.match(slow.reason[1], /^AI answers in the writing assistant, to questions, in databases and for handwriting took p95 30 s \(60 requests in the last 7 days;/);
+  // 11 slow requests are no sample: their p95 is just the slowest one.
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 11 } }), T), null);
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 49 } }), T), null);
+  assert.ok(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 50 } }), T));
+  // The sample size is a threshold of its own.
+  assert.ok(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 11 } }), { ...T, aiMinRequests: 10 }));
+  // Fast enough, off, or no timed request.
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 19_000, requests: 500 } }), T), null);
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: 30_000, requests: 60, enabled: false } }), T), null);
+  assert.equal(r.aiLatency(input({ ai: { ...ai, p95: null, requests: 0 } }), T), null);
+  // Long-by-nature features are not compared.
+  assert.deepEqual([...r.AI_LATENCY_FEATURES].sort(), ["ask", "database", "handwriting", "write"]);
+  for (const long of ["actions", "summarize", "flashcards", "whiteboard", "workflows", "embeddings"]) assert.ok(!(r.AI_LATENCY_FEATURES as readonly string[]).includes(long));
 });
 
 test("AI costs: rising sharply, the feature using most; tokens when there are no prices", () => {

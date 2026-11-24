@@ -1657,6 +1657,7 @@
   "AI and transcription": "ИИ и расшифровка",
   "AI and transcription are switched off for API tokens on this instance.": "ИИ и расшифровка отключены для API-токенов на этом экземпляре.",
   "AI and trigger data may choose recipients and targets": "ИИ и данные триггера могут выбирать получателей и цели",
+  "AI answers in the writing assistant, to questions, in databases and for handwriting took p95 {0} ({1} requests in the last 7 days; summaries, plans and other long tasks not counted).": "Ответы ИИ в помощнике по написанию, на вопросы, в базах данных и для рукописного текста заняли p95 {0} ({1} запросов за последние 7 дней; сводки, планы и другие длительные задачи не учитываются).",
   "ai artificial intelligence provider ollama openai key access": "ai artificial intelligence provider ollama openai key access ии искусственный интеллект провайдер ключ доступ",
   "AI assistant": "ИИ-ассистент",
   "AI assistants (MCP)": "ИИ-ассистенты (MCP)",

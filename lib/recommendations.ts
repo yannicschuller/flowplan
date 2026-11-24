@@ -73,8 +73,12 @@ export const DEFAULT_THRESHOLDS = {
   slowRouteMs: 2000,
   // Live documents per active person.
   documentsPerPerson: 8,
-  // AI answers slower than this (p95).
+  // AI answers slower than this (p95 of the comparable requests of the
+  // last 7 days, AI_LATENCY_FEATURES) …
   aiP95Ms: 20_000,
+  // … with at least this many of them: the p95 of a handful of requests is
+  // just the slowest one.
+  aiMinRequests: 50,
   // AI cost (or tokens) of the last 7 days to the 7 before.
   aiGrowth: 2,
   // One feature's share of the AI tokens.
@@ -100,6 +104,7 @@ export const THRESHOLD_LIMITS: Record<keyof Thresholds, [number, number]> = {
   slowRouteMs: [100, 60_000],
   documentsPerPerson: [1, 100],
   aiP95Ms: [1000, 300_000],
+  aiMinRequests: [10, 100_000],
   aiGrowth: [1.1, 20],
   aiFeatureShare: [0.3, 1],
   memGrowth: [0.1, 5],
@@ -157,6 +162,8 @@ export type RecommendationInput = {
   live: { documents: number; connections: number; activeNow: number };
   ai: {
     enabled: boolean;
+    // Response time (p95) and count of the timed requests of the
+    // AI_LATENCY_FEATURES over the last 7 days – the same requests.
     p95: number | null;
     requests: number;
     // The last 7 days and the 7 before: cost (null without prices) and tokens.
@@ -444,10 +451,31 @@ export const documentsPerPerson: Rule = (x, t) => {
   );
 };
 
-export const aiLatency: Rule = (x, t) =>
-  x.ai.enabled && x.ai.p95 !== null && x.ai.requests >= 10 && x.ai.p95 >= t.aiP95Ms
-    ? make("ai-latency", "info", ["KI antwortet langsam", "AI answers slowly"], say(["KI-Antworten brauchen p95 ", seconds(x.ai.p95), " (", n(x.ai.requests), " Anfragen in 7 Tagen)."], ["AI answers take p95 ", seconds(x.ai.p95), " (", n(x.ai.requests), " requests in 7 days)."]), ["Ein kleineres oder schnelleres Modell (oder mehr Leistung für Ollama) hilft.", "A smaller or faster model (or more power for Ollama) helps."], docs("ai"))
-    : null;
+// The features whose requests the AI latency rule compares (#516): one
+// call that answers a person waiting for it, with a bounded answer – so a
+// high p95 means the model or its server is slow. Left out, as long by
+// nature: summaries (whole pages, documents, meetings, digests), "actions"
+// (the multi-round plans of Ask AI and proposals from transcripts),
+// flashcards (from PDFs), whiteboards (board summaries, diagrams),
+// workflows (background runs) and embeddings (not timed).
+export const AI_LATENCY_FEATURES = ["write", "ask", "database", "handwriting"] as const;
+
+export const aiLatency: Rule = (x, t) => {
+  if (!x.ai.enabled || x.ai.p95 === null || x.ai.requests < t.aiMinRequests || x.ai.p95 < t.aiP95Ms) return null;
+  const [p95de, p95en] = seconds(x.ai.p95);
+  const [countDe, countEn] = n(x.ai.requests);
+  return make(
+    "ai-latency",
+    "info",
+    ["KI antwortet langsam", "AI answers slowly"],
+    say(
+      `KI-Antworten im Schreibassistenten, auf Fragen, in Datenbanken und zu Handschrift brauchten p95 ${p95de} (${countDe} Anfragen in den letzten 7 Tagen; Zusammenfassungen, Pläne und andere lange Aufgaben nicht mitgezählt).`,
+      `AI answers in the writing assistant, to questions, in databases and for handwriting took p95 ${p95en} (${countEn} requests in the last 7 days; summaries, plans and other long tasks not counted).`,
+    ),
+    ["Ein kleineres oder schnelleres Modell (oder mehr Leistung für Ollama) hilft.", "A smaller or faster model (or more power for Ollama) helps."],
+    docs("ai"),
+  );
+};
 
 export const aiCosts: Rule = (x, t) => {
   if (!x.ai.enabled) return null;

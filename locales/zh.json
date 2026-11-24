@@ -1657,6 +1657,7 @@
   "AI and transcription": "AI 和转录",
   "AI and transcription are switched off for API tokens on this instance.": "此实例已为 API 令牌关闭 AI 和转录。",
   "AI and trigger data may choose recipients and targets": "AI 和触发器数据可以选择收件人和目标",
+  "AI answers in the writing assistant, to questions, in databases and for handwriting took p95 {0} ({1} requests in the last 7 days; summaries, plans and other long tasks not counted).": "写作助手、问题回答、数据库和手写识别中的 AI 回答 p95 耗时 {0}（过去 7 天内 {1} 次请求；摘要、计划和其他耗时较长的任务不计入）。",
   "ai artificial intelligence provider ollama openai key access": "人工智能提供商 Ollama OpenAI 密钥访问",
   "AI assistant": "AI 助手",
   "AI assistants (MCP)": "AI 助手（MCP）",

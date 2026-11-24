@@ -11,7 +11,7 @@ delete process.env.FLOWPLAN_METRICS;
 const { run, id, one, all } = await import("../lib/db");
 const metrics = await import("../lib/metrics");
 const server = await import("../lib/server-metrics");
-const { aiStatistics, costOf } = await import("../lib/ai-statistics");
+const { aiLatency, aiStatistics, costOf } = await import("../lib/ai-statistics");
 const { runDataSteps, AI_DETAIL_STEP } = await import("../lib/data-steps");
 const { database } = await import("../lib/db-driver");
 // npm run test:db runs this file on PostgreSQL too (DATABASE_URL).
@@ -181,6 +181,50 @@ test("AI calls in detail: per model, workspace and person with errors, timeouts,
   assert.equal(await one("SELECT 1 FROM metrics_ai_usage WHERE user_id=?", uid), undefined);
   assert.equal((await aiStatistics(Date.now(), 30)).models.find((m) => m.model === "gpt-x")!.requests, 3);
   assert.equal(costOf([{ model: "models/gemini-pro", input: 1, output: 1 }], "gemini-pro", 1e6, 0), 1);
+});
+
+test("AI latency for the recommendations: comparable features only, p95 and count over the same 7 days (#516)", async () => {
+  await metrics.clearMetrics();
+  const { AI_LATENCY_FEATURES, aiLatency: rule, DEFAULT_THRESHOLDS } = await import("../lib/recommendations");
+  const now = Date.now(),
+    DAY = 86_400_000;
+  const call = (feature: string, ms: number, at = now) => metrics.noteAiCall({ feature, tokensIn: 500, tokensOut: 300, answered: true, ms, model: "m", source: "instance", userId: "u" }, at);
+  const sample = async () => aiLatency(now, 7, AI_LATENCY_FEATURES);
+  // 60 long Ask AI plan rounds and summaries alone: nothing to compare.
+  for (let i = 0; i < 60; i++) call("actions", 60_000);
+  for (let i = 0; i < 60; i++) call("summarize", 45_000);
+  assert.deepEqual(await sample(), { requests: 0, p95: null });
+  // 11 slow chat requests: counted, but too few for the rule.
+  for (let i = 0; i < 11; i++) call("ask", 30_000);
+  let s = await sample();
+  assert.equal(s.requests, 11);
+  assert.ok(s.p95! >= 20_000);
+  const ai = { enabled: true, cost: [null, null] as [null, null], tokens: [0, 0] as [number, number], currency: "EUR", topFeature: null };
+  const fires = (x: { requests: number; p95: number | null }) => rule({ ai: { ...ai, ...x } } as unknown as Parameters<typeof rule>[0], { ...DEFAULT_THRESHOLDS });
+  assert.equal(fires(s), null);
+  // 60 slow chat requests: it fires.
+  for (let i = 0; i < 49; i++) call("ask", 30_000, now - 3 * DAY);
+  s = await sample();
+  assert.equal(s.requests, 60);
+  assert.ok(fires(s));
+  // Same window for both: 500 fast requests 10 days ago count neither in
+  // the p95 nor in the count …
+  await metrics.clearMetrics();
+  for (let i = 0; i < 500; i++) call("write", 500, now - 10 * DAY);
+  for (let i = 0; i < 60; i++) call("write", 30_000);
+  s = await sample();
+  assert.equal(s.requests, 60);
+  assert.ok(s.p95! >= 20_000);
+  // … and slow ones from back then do not either.
+  await metrics.clearMetrics();
+  for (let i = 0; i < 500; i++) call("write", 60_000, now - 10 * DAY);
+  for (let i = 0; i < 60; i++) call("write", 900);
+  s = await sample();
+  assert.equal(s.requests, 60);
+  assert.ok(s.p95! < 2000);
+  assert.equal(fires(s), null);
+  // The 14-day statistics still see all of them.
+  assert.equal((await aiStatistics(now, 14, false)).total.requests, 560);
 });
 
 test("recommendations: gathered and cached, hidden while they apply, snoozed 30 days, rules switched off", async () => {
