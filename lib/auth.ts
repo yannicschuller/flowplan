@@ -141,6 +141,8 @@ export async function identityFromRequest(req: Request): Promise<Identity | null
 }
 // Only the session cookie of a request (never an API token).
 export async function sessionIdentityFromRequest(req: Request): Promise<Identity | null> {
+  // Blocked addresses are signed out, as in identityFromRequest.
+  if (await blockedRequest(req.headers)) return null;
   for (const part of (req.headers.get("cookie") || "").split(";")) {
     const [name, ...value] = part.trim().split("=");
     if (name !== cookieName) continue;

@@ -273,7 +273,9 @@ export const config = {
     // would buffer uploads in memory (proxyClientMaxBodySize) and cut them
     // off at 10 MB – and are guarded by the origin check and by never
     // carrying cookies there. A body sent in chunks (Transfer-Encoding,
-    // no Content-Length) is one too.
+    // no Content-Length) is one too. The address block applies to them in
+    // app/api/[...path]/route.ts, and handlers read bodies with a limit
+    // (lib/request-body.ts).
     {
       source: "/:path*",
       missing: [
