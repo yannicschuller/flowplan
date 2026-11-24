@@ -2,7 +2,7 @@ import { z } from "zod";
 import { all, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
-import type { Field, Identity } from "./types";
+import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
 export type RelationPair = {
   id: string;
@@ -192,21 +192,42 @@ export async function flushRelationChanges(actor?: Identity) {
     string,
     { id: string; page_id: string; cells: Record<string, unknown> }
   >();
-  const writable = new Set<string>();
+  const writable = new Map<string, Page>();
   async function requireWrite(pageId: string) {
-    if (writable.has(pageId)) return;
+    if (writable.has(pageId)) return writable.get(pageId)!;
     if (!actor)
       throw new HttpError(403, "Relationsänderung erfordert eine Anmeldung.");
     const page = await requirePage(actor, pageId, true);
     if (page.locked)
       throw new HttpError(409, "Eine verknüpfte Datenbank ist gesperrt.");
-    writable.add(pageId);
+    writable.set(pageId, page);
+    return page;
+  }
+  // A link mirrored into a record of the other side needs the same rights
+  // as changing that record's property directly: the record (readonly,
+  // private) and the property's write rule (#496).
+  // Loaded on first use: lib/field-access.ts reaches this module through
+  // lib/page-templates.ts.
+  const resolvers = new Map<string, (row: { id: string; access?: string; created_by?: string | null }) => string | null>();
+  const fieldsChecked = new Set<string>();
+  async function requireRowWrite(row: { id: string; page_id: string; access?: string; created_by?: string | null }, field: string) {
+    const page = await requireWrite(row.page_id);
+    const [{ rowRoleResolver }, { assertFieldsWritable }] = await Promise.all([import("./row-access"), import("./field-access")]);
+    if (!resolvers.has(page.id)) resolvers.set(page.id, await rowRoleResolver(actor!, page));
+    const role = resolvers.get(page.id)!(row);
+    if (!role) throw new HttpError(404, "Datensatz nicht gefunden.");
+    if (role === "viewer")
+      throw new HttpError(403, "Dieser Eintrag ist für dich schreibgeschützt.");
+    const key = page.id + ":" + field;
+    if (fieldsChecked.has(key)) return;
+    await assertFieldsWritable(actor!, page, await relationFields(page.id), [field]);
+    fieldsChecked.add(key);
   }
   async function patchRow(rowId: string, pageId: string) {
     const key = pageId + ":" + rowId;
     if (!patches.has(key)) {
-      const row = await one<{ id: string; page_id: string; cells: string }>(
-        "SELECT id,page_id,cells FROM rows WHERE id=? AND page_id=?",
+      const row = await one<{ id: string; page_id: string; cells: string; access: string; created_by: string | null }>(
+        "SELECT id,page_id,cells,access,created_by FROM rows WHERE id=? AND page_id=?",
         rowId,
         pageId,
       );
@@ -216,9 +237,12 @@ export async function flushRelationChanges(actor?: Identity) {
     return patches.get(key)!;
   }
   for (const pair of pairs) {
+    // `source`: the record whose own change asks for the link (its other
+    // side is checked like a direct edit); none for deletions and the
+    // initialisation of a pair.
     const intents = new Map<
       string,
-      { left: string; right: string; value: boolean }
+      { left: string; right: string; value: boolean; source?: string }
     >();
     if (initializations.has(pair.id) && !invalid.has(pair.id)) {
       await requireWrite(pair.left_page);
@@ -279,7 +303,12 @@ export async function flushRelationChanges(actor?: Identity) {
             const previous = intents.get(key);
             if (previous && previous.value !== value)
               throw new HttpError(409, "Widersprüchliche Relationsänderungen.");
-            intents.set(key, { left, right, value });
+            intents.set(key, {
+              left,
+              right,
+              value,
+              source: change.new_cells !== null ? change.row_id : undefined,
+            });
           }
         }
     for (const intent of intents.values())
@@ -294,6 +323,12 @@ export async function flushRelationChanges(actor?: Identity) {
           continue;
         }
         const values = ids.parse(row.cells[field] || []);
+        if (
+          intent.source !== undefined &&
+          row.id !== intent.source &&
+          values.includes(target) !== intent.value
+        )
+          await requireRowWrite(row, field);
         row.cells[field] = intent.value
           ? [...new Set([...values, target])]
           : values.filter((v) => v !== target);

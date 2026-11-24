@@ -499,3 +499,43 @@ test("archives preserve pairs and remap version/template references, rejecting a
   );
   await cleanQueue();
 });
+
+test("mirrored links respect the record and property write rules of the other side (#496)", async () => {
+  const { source, target, inverse } = await fixture();
+  const cellsOf = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+  const refused = async (p: Promise<unknown>) => await p.then(() => 0, (e: { status?: number }) => e.status ?? -1);
+  const mine = async (title: string, cells = {}) => (await action({ action: "row.create", pageId: source, cells: { title, ...cells } }, editor)).id as string;
+  // A readonly record of the other side.
+  const ro = await row(target, { title: "RO" });
+  await action({ action: "row.access", pageId: target, rowId: ro, access: "readonly", grants: [] });
+  const a1 = await mine("a1");
+  assert.equal(await refused(update(target, ro, { [inverse]: [a1] }, editor)), 403);
+  assert.equal(await refused(update(source, a1, { links: [ro] }, editor)), 403);
+  assert.deepEqual((await cellsOf(ro))[inverse] || [], []);
+  assert.deepEqual((await cellsOf(a1)).links || [], []);
+  // A private record linked from a record the editor may change.
+  const p = await row(target, { title: "P" });
+  const a3 = (await action({ action: "row.create", pageId: source, cells: { title: "a3", links: [p] } })).id as string;
+  await action({ action: "row.access", pageId: target, rowId: p, access: "private", grants: [] });
+  assert.equal(await refused(update(source, a3, { links: [] }, editor)), 404);
+  assert.deepEqual((await cellsOf(p))[inverse], [a3]);
+  // An owners-only back-relation property.
+  const d = await database(target);
+  await schema(target, d.fields.map((f) => (f.id === inverse ? { ...f, access: { write: "owners" as const } } : f)));
+  const b2 = await row(target, { title: "b2" });
+  const a2 = await mine("a2");
+  assert.equal(await refused(update(source, a2, { links: [b2] }, editor)), 403);
+  assert.deepEqual((await cellsOf(b2))[inverse] || [], []);
+  // The owner still links; the editor may delete his own record, which
+  // cleans up the link on the other side.
+  await update(source, a2, { links: [b2] });
+  assert.deepEqual((await cellsOf(b2))[inverse], [a2]);
+  await action({ action: "row.delete", pageId: source, rowId: a2 }, editor);
+  assert.deepEqual((await cellsOf(b2))[inverse], []);
+  // Ordinary records stay linkable for editors once the rule is open again.
+  await schema(target, d.fields);
+  const b3 = await row(target, { title: "b3" });
+  const a4 = await mine("a4");
+  await update(source, a4, { links: [b3] }, editor);
+  assert.deepEqual((await cellsOf(b3))[inverse], [a4]);
+});
