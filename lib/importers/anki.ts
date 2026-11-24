@@ -45,7 +45,7 @@ import { studyZone } from "../study-day";
 import { ARCHIVE_LIMIT } from "../archive";
 import type { Field, Identity, View } from "../types";
 import { ANKI_MAX_DATABASES, ankiOptionsSchema, type AnkiCardType, type AnkiKind, type AnkiOptions, type AnkiPreview, type AnkiRole, type NotetypeMapping } from "../anki-mapping";
-import { ANKI_LIMITS, readAnkiPackage, type AnkiNote, type AnkiNotetype, type AnkiPackage } from "./anki-read";
+import { ANKI_LIMITS, pushTo, readAnkiPackage, type AnkiNote, type AnkiNotetype, type AnkiPackage } from "./anki-read";
 import { esc, fileRef, mimeOf } from "./html";
 import { importReport, maxImportFiles, type ImportFile, type ImportPage, type ImportTree } from "./types";
 import { previewImport, requireSpace, writeImport, type ImportPreview, type ImportResult } from "./write";
@@ -281,9 +281,9 @@ export function planAnki(pkg: AnkiPackage, options: AnkiOptions, title: string, 
   }
   // Each note's deck: that of its first card.
   const cardsOf = new Map<string, AnkiPackage["cards"]>();
-  for (const card of pkg.cards) cardsOf.set(card.nid, [...(cardsOf.get(card.nid) || []), card]);
+  for (const card of pkg.cards) pushTo(cardsOf, card.nid, card);
   const deckOf = (note: AnkiNote) => {
-    const first = [...(cardsOf.get(note.id) || [])].sort((a, b) => a.ord - b.ord)[0];
+    const first = (cardsOf.get(note.id) || []).reduce<AnkiPackage["cards"][number] | undefined>((min, card) => (!min || card.ord < min.ord ? card : min), undefined);
     return (first && pkg.decks.get(first.did)?.name) || "Default";
   };
   // The decks of the notes: a database per top-level deck (sub-decks as
@@ -590,7 +590,7 @@ async function replayAnki(user: Identity, pkg: AnkiPackage, plan: AnkiPlan, zone
   const byCard = new Map<string, { at: number; rating: 1 | 2 | 3 | 4 }[]>();
   for (const r of pkg.reviews)
     if (r.ease >= 1 && r.ease <= 4 && r.type >= 0 && r.type <= 3 && Number.isFinite(r.at) && r.at > 0)
-      byCard.set(r.cid, [...(byCard.get(r.cid) || []), { at: r.at, rating: r.ease as 1 | 2 | 3 | 4 }]);
+      pushTo(byCard, r.cid, { at: r.at, rating: r.ease as 1 | 2 | 3 | 4 });
   const perRow = new Map<string, { rowId: string; sub: string; reviews: { at: number; rating: 1 | 2 | 3 | 4 }[]; suspended: boolean; memory?: { stability: number; difficulty: number } }[]>();
   for (const card of pkg.cards) {
     const row = plan.rows.get(card.nid);
@@ -606,7 +606,7 @@ async function replayAnki(user: Identity, pkg: AnkiPackage, plan: AnkiPlan, zone
   let total = 0;
   const { one } = await import("../db");
   const decks = new Map<number, string[]>();
-  for (const [rowId, row] of [...plan.rows].map(([, r]) => [r.rowId, r] as const)) if (perRow.has(rowId)) decks.set(row.deck, [...(decks.get(row.deck) || []), rowId]);
+  for (const [rowId, row] of [...plan.rows].map(([, r]) => [r.rowId, r] as const)) if (perRow.has(rowId)) pushTo(decks, row.deck, rowId);
   for (const rowIds of decks.values()) {
     const page = await one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", rowIds[0]);
     if (!page) continue;

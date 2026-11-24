@@ -37,10 +37,13 @@ export const decode = (text: string) =>
     }
     return entities[code] ?? match;
   });
-// Text runs of the given element names, joined per paragraph.
+// Text runs of the given element names, joined per paragraph. Attributes
+// end at the next "<" as well as at ">": with "[^>]*" every unclosed start
+// tag scanned on to the end of the part, which made a crafted part
+// quadratic (#470); with "[^<>]*" each scan stops at the next tag.
 function runs(xml: string, tags: string[], breaks: string[]) {
   const pattern = new RegExp(
-    `<(${tags.join("|")})(?:\\s[^>]*)?>([^<]*)<\\/\\1>|<(?:${breaks.join("|")})(?:\\s[^>]*)?\\/?>|<\\/(?:${breaks.join("|")})>`,
+    `<(${tags.join("|")})(?:\\s[^<>]*)?>([^<]*)<\\/\\1>|<(?:${breaks.join("|")})(?:\\s[^<>]*)?\\/?>|<\\/(?:${breaks.join("|")})>`,
     "g",
   );
   let out = "";
@@ -48,11 +51,17 @@ function runs(xml: string, tags: string[], breaks: string[]) {
     out += m[2] !== undefined ? decode(m[2]) : "\n";
   return out;
 }
+// Runs of spaces as one, and every stretch of white space that holds a
+// line break as one line break. Per line instead of /\s*\n\s*/, which
+// rescans a long run of other white space (\r, \f …) from each of its
+// characters (#470).
 const tidy = (text: string) =>
   text
     .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "\n")
-    .trim();
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 const MAX_TEXT = 100_000;
 
 export async function officeText(data: Buffer, kind: string) {
@@ -90,8 +99,8 @@ export async function officeText(data: Buffer, kind: string) {
           /<\/text:(p|h)>|<text:line-break\/>|<\/table:table-row>/g,
           "\n",
         )
-        .replace(/<text:(tab|s)\b[^>]*\/>/g, " ")
-        .replace(/<[^>]+>/g, ""),
+        .replace(/<text:(tab|s)\b[^<>]*\/>/g, " ")
+        .replace(/<[^<>]+>/g, ""),
     );
   }
   return tidy(text).slice(0, MAX_TEXT);
