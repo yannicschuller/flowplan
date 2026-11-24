@@ -7529,7 +7529,11 @@ export default function WorkspaceApp({
         onClose={() => setShare(false)}
         page={data?.page ?? null}
         role={data?.role ?? "viewer"}
-        editable={editable}
+        // Reading mode is only a view: it doesn't stop sharing (#524).
+        editable={mayEdit}
+        blockedBy={
+          !data || mayEdit ? null : kindOff ? "module" : data.page.locked && ["editor", "owner"].includes(data.role) ? "locked" : "rights"
+        }
         shareLinks={data?.shareLinks}
         publication={data?.publication}
         workspaceId={boot.workspace.id}

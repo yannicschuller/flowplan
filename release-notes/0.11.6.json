@@ -17,6 +17,13 @@
       "issues": [
         523
       ]
+    },
+    {
+      "de": "„Im Web veröffentlichen“ geht auch im Lesemodus; ist der Schalter gesperrt, steht der Grund darunter.",
+      "en": "“Publish on the web” also works in reading mode; when the switch is disabled, the reason is shown below it.",
+      "issues": [
+        524
+      ]
     }
   ],
   "improvements": [

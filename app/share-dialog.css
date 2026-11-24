@@ -466,6 +466,13 @@
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+/* Why the switch is greyed out (#524). */
+.sh-publish-reason {
+  margin: 8px 2px 0;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
 .sh-root[data-published] .sh-publish {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
   background: var(--blue-light);

@@ -38,6 +38,7 @@ export function ShareDialog({
   page,
   role,
   editable,
+  blockedBy = null,
   shareLinks,
   publication,
   workspaceId,
@@ -56,6 +57,9 @@ export function ShareDialog({
   page: Page | null;
   role: Role;
   editable: boolean;
+  // Why the page can't be published or changed here (#524); shown under the
+  // switch so a greyed-out switch is never a riddle.
+  blockedBy?: "locked" | "rights" | "module" | null;
   shareLinks?: ShareLink[];
   publication?: SharePublication;
   workspaceId: string;
@@ -255,6 +259,15 @@ export function ShareDialog({
                 <span />
               </button>
             </div>
+            {!editable && blockedBy && (
+              <p className="sh-publish-reason" role="note">
+                {blockedBy === "locked"
+                  ? t("Die Seite ist gesperrt – entsperre sie im Seitenmenü, um sie zu veröffentlichen.", "The page is locked – unlock it in the page menu to publish it.")
+                  : blockedBy === "module"
+                    ? t("Dieser Bereich ist in der Administration abgeschaltet; seine Seiten lassen sich nicht veröffentlichen.", "This feature is switched off in the administration; its pages can't be published.")
+                    : t("Zum Veröffentlichen brauchst du Bearbeitungsrechte auf dieser Seite.", "Publishing needs edit rights on this page.")}
+              </p>
+            )}
             {published && (
               <>
                 <div className="sh-url">
