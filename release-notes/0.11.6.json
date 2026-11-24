@@ -98,6 +98,13 @@
       "issues": [
         522
       ]
+    },
+    {
+      "de": "Veröffentlichte Seiten zeigen in Messengern und sozialen Netzwerken ihren Titel, den Anfang ihres Textes und ihr Cover – hinter einem Passwort nur die allgemeine Vorschau.",
+      "en": "Published pages show their title, the start of their text and their cover in messenger and social network previews – behind a password only the general preview.",
+      "issues": [
+        531
+      ]
     }
   ]
 }
