@@ -38,6 +38,13 @@
       "issues": [
         521
       ]
+    },
+    {
+      "de": "Titel vom Typ Datum, Zahl, Auswahl usw. lassen sich im Eintrag eintippen („23.11.2026“, „1.234,5 kg“); was nicht passt, wird am Feld erklärt.",
+      "en": "Titles of type date, number, select and more can be typed in the record (“23.11.2026”, “1,234.5 kg”); input that doesn't fit is explained at the field.",
+      "issues": [
+        529
+      ]
     }
   ],
   "improvements": [

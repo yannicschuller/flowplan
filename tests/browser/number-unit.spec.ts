@@ -63,8 +63,12 @@ test("a number property with its own unit shows it in cells and the sum", async 
     await expect(table.locator("tbody")).toContainText("10\u202fkg");
     await expect(table.locator("tfoot")).toContainText("Σ 12,5\u202fkg");
     await page.screenshot({ path: `test-results/number-unit-verification/${testInfo.project.name}-table.png` });
-    // The record view: a plain number input with the unit after it.
+    // The record view: the value with its unit (compact rows, #519); a
+    // click opens a plain number input with the unit after it.
     await page.goto(`/#page=${p.id}&row=${box.id}`);
+    const value = page.getByRole("button", { name: /^Gewicht: 10\s?kg, ändern$/ });
+    await expect(value).toBeVisible();
+    await value.click();
     const input = page.getByRole("spinbutton", { name: "Gewicht (kg)" });
     await expect(input).toHaveValue("10");
     await expect(page.locator(".number-unit-input .number-unit")).toHaveText("kg");
