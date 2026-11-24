@@ -16,6 +16,11 @@
 // - "pages": ids of pages whose content changed (records, comments, …),
 //   only those this person may read – nobody learns the id of a page they
 //   cannot see. The tab refetches its open page when it is among them.
+// - "maintenance": the instance's notices changed – a maintenance was
+//   announced or called off (lib/admin-ops.ts), the instance became
+//   read-only for a move, moved or was unfrozen (lib/instance-move.ts) – to
+//   every listener; the banners ask /api/maintenance again (#515), so open
+//   tabs no longer poll it every minute. Older tabs ignore the part.
 // No titles, no content: the answers come from the usual requests with
 // their usual permission checks.
 //
@@ -35,14 +40,15 @@ import { pageRole } from "./permissions";
 import { withReadMemo } from "./read-memo";
 import type { Identity, Page } from "./types";
 
-export type LivePart = "tree" | "notifications" | "pages";
+export type LivePart = "tree" | "notifications" | "pages" | "maintenance";
 export type LiveSignal = { type: "changed"; parts: LivePart[]; pages?: string[] };
 
 type Listener = { user: Identity; workspaceId: string; send: (event: string) => void };
 // What changed since the last delivery: workspaces whose tree changed ("*":
-// all), people whose notifications changed, changed pages.
-type Changes = { trees: Set<string>; people: Set<string>; pages: Set<string> };
-type BusMessage = { trees: string[]; people: string[]; pages: string[]; versions?: Record<string, string> };
+// all), people whose notifications changed, changed pages, the instance's
+// notices.
+type Changes = { trees: Set<string>; people: Set<string>; pages: Set<string>; notices: boolean };
+type BusMessage = { trees: string[]; people: string[]; pages: string[]; versions?: Record<string, string>; notices?: boolean };
 
 const TICK_MS = 250;
 const hub = globalThis as unknown as {
@@ -60,7 +66,7 @@ const hub = globalThis as unknown as {
     bus: boolean;
   };
 };
-const empty = (): Changes => ({ trees: new Set(), people: new Set(), pages: new Set() });
+const empty = (): Changes => ({ trees: new Set(), people: new Set(), pages: new Set(), notices: false });
 const state = (hub.flowplanWorkspaceLive ??= {
   listeners: new Set(),
   local: empty(),
@@ -99,6 +105,14 @@ export function notificationsChanged(userIds: Iterable<string | null | undefined
   ensureTimer();
 }
 
+// The maintenance notice or the move state changed (#515): every open tab
+// asks for them again.
+export function instanceNoticesChanged() {
+  if (!needed()) return;
+  state.local.notices = true;
+  ensureTimer();
+}
+
 // Every new notification, wherever it is inserted (lib/db.ts).
 (globalThis as { flowplanNotificationHook?: (userId: string) => void }).flowplanNotificationHook = (userId) => notificationsChanged([userId]);
 
@@ -106,6 +120,7 @@ function received(message: BusMessage) {
   for (const w of message.trees ?? []) state.remote.trees.add(w);
   for (const u of message.people ?? []) state.remote.people.add(u);
   for (const p of message.pages ?? []) state.remote.pages.add(p);
+  if (message.notices === true) state.remote.notices = true;
   // The versions the other instance saw: the next comparison here does not
   // report the same change again.
   if (message.versions && state.versions) for (const [name, version] of Object.entries(message.versions)) state.versions.set(name, version);
@@ -159,10 +174,21 @@ async function round() {
     }
     const remote = state.remote;
     state.remote = empty();
-    if (hasPeers() && (local.trees.size || local.people.size || local.pages.size || versions))
-      publish("workspace", { trees: [...local.trees], people: [...local.people], pages: [...local.pages], versions } satisfies BusMessage);
-    const merged = { trees: new Set([...local.trees, ...remote.trees]), people: new Set([...local.people, ...remote.people]), pages: new Set([...local.pages, ...remote.pages]) };
-    if (merged.trees.size || merged.people.size || merged.pages.size) await deliver(merged);
+    if (hasPeers() && (local.trees.size || local.people.size || local.pages.size || versions || local.notices))
+      publish("workspace", {
+        trees: [...local.trees],
+        people: [...local.people],
+        pages: [...local.pages],
+        versions,
+        ...(local.notices ? { notices: true } : {}),
+      } satisfies BusMessage);
+    const merged: Changes = {
+      trees: new Set([...local.trees, ...remote.trees]),
+      people: new Set([...local.people, ...remote.people]),
+      pages: new Set([...local.pages, ...remote.pages]),
+      notices: local.notices || remote.notices,
+    };
+    if (merged.trees.size || merged.people.size || merged.pages.size || merged.notices) await deliver(merged);
   } catch (error) {
     console.error("Workspace live signal failed", error);
   } finally {
@@ -189,6 +215,7 @@ async function deliver(changes: Changes) {
     const mine = pages.filter((p) => p.workspace_id === listener.workspaceId);
     const readable = mine.length ? await readablePages(listener.user, mine) : [];
     if (readable.length) parts.push("pages");
+    if (changes.notices) parts.push("maintenance");
     if (!parts.length) continue;
     const signal: LiveSignal = { type: "changed", parts, ...(readable.length ? { pages: readable } : {}) };
     try {

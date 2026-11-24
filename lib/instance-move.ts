@@ -42,6 +42,7 @@ import { sessionStartedAt } from "./step-up";
 import { verifyLdapPassword } from "./ldap-auth";
 import type { Locale } from "./i18n";
 import { INCOMING_KEY, MOVE_KEY, readOnlyState } from "./instance-read-only";
+import { instanceNoticesChanged } from "./workspace-live";
 import {
   INCOMING_DIR,
   MOVE_EXTRAS,
@@ -157,6 +158,7 @@ export async function unfreezeSource(user: Identity) {
   const s = await sourceState();
   if (!s) return await moveSourceStatus();
   await writeSetting(MOVE_KEY, { ...s, readOnlyAt: null, movedTo: null, redirect: false });
+  instanceNoticesChanged();
   await audit(user.id, "instance.move.unfreeze", s.id);
   return await moveSourceStatus();
 }
@@ -164,6 +166,7 @@ export async function setMoveRedirect(user: Identity, on: boolean) {
   const s = await sourceState();
   if (!s?.movedTo) throw new HttpError(409, "Diese Instanz ist noch nicht umgezogen.");
   await writeSetting(MOVE_KEY, { ...s, redirect: on });
+  instanceNoticesChanged();
   await audit(user.id, "instance.move.redirect", s.id, on ? "on" : "off");
   return await moveSourceStatus();
 }
@@ -304,6 +307,7 @@ export function movePath(kind: "file" | "extra", name: string) {
 export async function freezeSource(state: SourceState, now = Date.now()) {
   if (!state.readOnlyAt) {
     await writeSetting(MOVE_KEY, { ...(await sourceState()), readOnlyAt: now });
+    instanceNoticesChanged();
     await audit("", "instance.move.freeze", state.id);
   }
   return { readOnly: true };
@@ -318,6 +322,7 @@ export async function finishSource(state: SourceState, input: unknown, now = Dat
   }
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new HttpError(400, "Ungültige Adresse der neuen Instanz.");
   await writeSetting(MOVE_KEY, { ...(await sourceState()), readOnlyAt: state.readOnlyAt ?? now, movedTo: url.origin, usedAt: now });
+  instanceNoticesChanged();
   removeSnapshots();
   await audit("", "instance.move.finish", state.id, url.origin);
   return { ok: true };

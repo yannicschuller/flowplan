@@ -32,6 +32,7 @@ import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 import { openWebhookUrl } from "./sealed-values";
 import { mapAsync } from "./each-async";
 import { leaderDuty } from "./cluster/leader";
+import { instanceNoticesChanged } from "./workspace-live";
 
 const DAY = 86_400_000;
 
@@ -514,6 +515,8 @@ export async function saveMaintenance(actorId: string, input: unknown, now = Dat
     if (notice.end <= now) throw new HttpError(400, "Das Ende der Wartung liegt in der Vergangenheit.");
   }
   await writeSetting(MAINTENANCE_KEY, notice);
+  // Open tabs show or hide the banner now (#515).
+  instanceNoticesChanged();
   await audit(actorId, "admin.ops.maintenance", "instance", notice ? `${new Date(notice.start).toISOString()} – ${new Date(notice.end).toISOString()}` : "off");
   return await storedMaintenance();
 }

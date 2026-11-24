@@ -167,6 +167,39 @@ test("changes outside commands (documentChanged) and from other instances (bus)"
   otherTab.take();
 });
 
+test("the instance's notices: a maintenance or a move reaches every tab, also from other instances (#515)", async () => {
+  const { saveMaintenance } = await import("../lib/admin-ops");
+  const { freezeSource, prepareMove, unfreezeSource } = await import("../lib/instance-move");
+  await drain();
+  const now = Date.now();
+  await saveMaintenance(owner.id, { message: "Update", start: now + 60_000, end: now + 3_600_000 });
+  await settle();
+  for (const t of [ownerTab, memberTab, otherTab]) assert.deepEqual(t.take(), [{ type: "changed", parts: ["maintenance"] }], "every workspace, every person");
+  await saveMaintenance(owner.id, null);
+  await settle();
+  assert.deepEqual(parts(memberTab.take()), ["maintenance"], "called off");
+  // A move: read-only, then unfrozen.
+  const prepared = await prepareMove(owner);
+  await drain();
+  await freezeSource({ id: prepared.id } as never);
+  await settle();
+  assert.deepEqual(parts(otherTab.take()), ["maintenance"]);
+  await unfreezeSource(owner);
+  await settle();
+  assert.deepEqual(parts(ownerTab.take()), ["maintenance"]);
+  // From another instance, over the bus.
+  await drain();
+  const bus = (globalThis as unknown as { flowplanBus?: { handlers: Map<string, Set<(p: unknown, o: string) => void>> } }).flowplanBus;
+  for (const handler of bus!.handlers.get("workspace")!) handler({ trees: [], people: [], pages: [], notices: true }, "other-instance");
+  await settle();
+  for (const t of [ownerTab, memberTab, otherTab]) assert.deepEqual(parts(t.take()), ["maintenance"]);
+  // Nothing about notices: no part.
+  documentChanged(tasks, null);
+  await settle();
+  assert.ok(memberTab.take().every((s) => !s.parts?.includes("maintenance")));
+  await drain();
+});
+
 test("a stopped tab hears nothing; a deleted page is not named", async () => {
   await drain();
   const t = tab(member);
