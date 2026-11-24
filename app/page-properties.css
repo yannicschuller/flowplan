@@ -496,7 +496,7 @@ button.page-tag:focus-visible,
   }
 }
 /* Phones: 44 px to hit, like every touch target (app/mobile-ux.css). */
-@media (pointer: coarse) and (max-width: 767px) {
+@media (pointer: coarse) and (max-width: 767.98px) {
   .record-properties-toggle,
   .record-properties-summary {
     min-height: 44px;
@@ -845,7 +845,7 @@ button.page-tag:focus-visible,
   color: var(--muted);
 }
 /* Phones: 16px like every field in a dialog, so iOS does not zoom in. */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .search-filters .search-tag-filter > input {
     font-size: 16px;
     width: 150px;

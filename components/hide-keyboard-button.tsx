@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { useT } from "./i18n";
 import { typing, useSoftKeyboard } from "./mobile-tab-bar";
 
-const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
+const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767.98px)";
 // The strip a dialog keeps free for the button (app/globals.css,
 // html.hide-keyboard-fab-shown .modal).
 const STRIP = 56;

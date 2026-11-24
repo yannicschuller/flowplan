@@ -99,7 +99,7 @@
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .admin-users-head .admin-users-tools {
     width: 100%;
     margin-inline-start: 0;
@@ -499,7 +499,7 @@
 }
 
 /* ===== Phones: a card per account ===== */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .ux-sort-bar {
     display: flex;
     flex: 1 1 100%;

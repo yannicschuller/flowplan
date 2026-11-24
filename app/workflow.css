@@ -1581,7 +1581,7 @@ p.wf-warning.small {
   }
 }
 /* Phones: no editor, the list and the runs. */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .page-content.workflow-page-content {
     padding: 24px 16px 40px;
   }
@@ -1701,7 +1701,7 @@ p.wf-warning.small {
 .wf-ai-nodes li.has-gap .wf-gap-mark {
   color: var(--wf-warn);
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .wf-start {
     padding: 16px;
   }

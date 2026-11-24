@@ -292,8 +292,8 @@ const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction"
 // Text styles turn the current block into that style, as "Aa" does.
 const BLOCKS_IN_PLACE = new Set<ToolbarBlock>(["block:text", "block:h1", "block:h2", "block:h3", "block:h4", "block:quote"]);
 // A touch screen as wide as a phone: where the toolbar docks at the bottom,
-// above the on-screen keyboard (app/globals.css, max-width: 767px).
-const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
+// above the on-screen keyboard (app/globals.css, max-width: 767.98px).
+const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767.98px)";
 function useTouchPhone() {
   const [matches, setMatches] = useState(false);
   useEffect(() => {

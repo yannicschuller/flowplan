@@ -696,7 +696,7 @@ button.sh-value:hover {
   height: 15px;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .modal.share-dialog {
     --sh-pad: 20px;
   }

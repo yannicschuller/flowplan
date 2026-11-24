@@ -16,7 +16,7 @@ import { OPEN_EDGE, drawerSwipeApplies, openFrom } from "@/lib/edge-swipe";
 import { edgeSwipePref, onEdgeSwipePref, reportEdgeSwipe } from "@/lib/edge-swipe-pref";
 import { nativeApp } from "@/lib/native-app";
 
-const PHONE = "(max-width: 767px)";
+const PHONE = "(max-width: 767.98px)";
 // Moved this far before deciding: sideways (drawer) or not (scroll).
 const DECIDE = 10;
 const IGNORE =

@@ -282,7 +282,7 @@ label.hit-check {
     inset: min(0px, calc((100% - 44px) / 2)) 0;
   }
 }
-@media (pointer: coarse) and (max-width: 767px) {
+@media (pointer: coarse) and (max-width: 767.98px) {
   /* The sidebar button at the top left: 44 px to hit, drawn where it was.
      The breadcrumb clips its overflow, so it takes the bar's height and
      the room left of the button. */
@@ -538,7 +538,7 @@ label.hit-check {
 .sidebar-more {
   display: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .sidebar-tools {
     display: none;
   }
@@ -640,7 +640,7 @@ label.hit-check {
    `clip`, not `hidden`: no scroll container, so sticky headers and pinned
    columns still stick to .main-scroll, which keeps its vertical (momentum)
    scrolling. ===== */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767.98px), (pointer: coarse) and (max-height: 500px) {
   .main-scroll > * {
     overflow-x: clip;
   }
@@ -649,7 +649,7 @@ label.hit-check {
 /* ===== A page's title wraps on phones instead of being cut off: a journal
    day's "Dienstag, 10. November 2026" is wider than the screen
    (components/page-title-field.tsx grows the field with its lines). ===== */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .page-title {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -659,7 +659,7 @@ label.hit-check {
 /* ===== A database calendar's month on phones: a day is about 90 px wide.
    The entry's time and title take the chip's first line, the drag handle
    and the date button a line below it – beside them only "09:…" was left. ===== */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .calendar-day .calendar-chip {
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -680,7 +680,7 @@ label.hit-check {
 .comments-count {
   display: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .page-top-actions > .topbar-phone-hidden {
     display: none;
   }
@@ -797,7 +797,7 @@ label.hit-check {
 /* ===== Comments on phones (≤ 767 px, the phone layout of app/globals.css):
    the panel covers the page's whole width – a strip of the page beside it
    only showed cut-off words. ===== */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .comments-panel {
     left: 0;
     width: 100%;

@@ -130,7 +130,7 @@ export default function DatabaseCalendar({
     weekends = config.showWeekends !== false,
     // Phones: the month is seven narrow columns and the chosen day's
     // entries are listed below them (#346).
-    phone = useMedia("(max-width: 767px)"),
+    phone = useMedia("(max-width: 767.98px)"),
     compact = phone && config.mode === "month",
     foreignZone = zone !== browserZone(),
     firstDay = calendarWeekStart(config, locale),

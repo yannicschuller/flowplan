@@ -122,7 +122,7 @@
   }
 }
 /* Phones: a sheet above the tab bar; the page above it stays usable. */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .side-panel:not(.side-panel-inline) {
     position: fixed;
     left: 0;
@@ -177,7 +177,7 @@
 :root[data-theme="dark"] .side-panel:not(.side-panel-inline) {
   box-shadow: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   :root[data-theme="dark"] .side-panel:not(.side-panel-inline) {
     box-shadow: 0 -10px 34px #0009;
   }

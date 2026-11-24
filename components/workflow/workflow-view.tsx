@@ -107,7 +107,7 @@ export default function WorkflowView(props: WorkflowViewProps) {
   const t = useStableT();
   const locale = useLocale();
   const { workflow: state, pageId } = props;
-  const phone = useMedia("(max-width: 767px)");
+  const phone = useMedia("(max-width: 767.98px)");
   const [tab, setTab] = useState<"editor" | "runs" | "approvals" | "versions">("editor");
   const [runId, setRunId] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
