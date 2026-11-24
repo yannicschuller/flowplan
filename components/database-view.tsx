@@ -2206,7 +2206,8 @@ export default function DatabaseView({
     const withTemplate = templateId || (templateId !== null && data.rowTemplates?.some((t) => t.is_default));
     const r = (await act({
       action: "row.create",
-      cells: withTemplate ? cells : { [fields[0].id]: newRecordTitle, ...cells },
+      // A computed title (an ID made the title before #463) takes no text.
+      cells: withTemplate || computedTypes.includes(fields[0].type) ? cells : { [fields[0].id]: newRecordTitle, ...cells },
       templateId,
       // Dates of placeholders ({{Heute}}) and of "Heute" defaults (#411)
       // in the person's time zone.
@@ -5401,8 +5402,12 @@ export default function DatabaseView({
                 <option
                   key={k}
                   value={k}
-                  // One aliases property per database.
-                  disabled={k === "aliases" && fields.some((f) => f.type === "aliases" && f.id !== fieldDraft.id)}
+                  // One aliases property per database; the title stays a
+                  // property one can type, not an ID or formula (#463).
+                  disabled={
+                    (k === "aliases" && fields.some((f) => f.type === "aliases" && f.id !== fieldDraft.id)) ||
+                    (computedTypes.includes(k) && k !== fields[0]?.type && (fields[0]?.id === fieldDraft.id || !fields.length))
+                  }
                 >
                   {t(n[0], n[1])}
                 </option>
@@ -6398,7 +6403,11 @@ export default function DatabaseView({
                   className="row-title-icon"
                 />
               )}
-              {selectedEditable ? (
+              {computedTypes.includes(fields[0].type) ? (
+                // A computed title (an ID made the title before #463) is
+                // shown, not typed: the server refuses changes of it.
+                cellText(computedCells(selected, fields, related, data.relatedSchemas)[fields[0].id]) || t("Ohne Titel", "Untitled")
+              ) : selectedEditable ? (
                 <RowTitle
                   key={selected.id}
                   value={cellText(selected.cells[fields[0].id])}

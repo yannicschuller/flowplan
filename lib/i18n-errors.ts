@@ -749,6 +749,7 @@ const exact: Record<string, string> = {
   "Eine Bildeigenschaft auswählen.": "Choose an image property.",
   "Mindestens eine Eigenschaft wählen.": "Choose at least one property.",
   "Eigenschaft kann nicht bearbeitet werden.": "The property cannot be edited.",
+  "Die erste Eigenschaft ist der Titel und kann keine ID, Formel oder andere berechnete Eigenschaft sein.": "The first property is the title and cannot be an ID, formula or other computed property.",
   "Datei gehört nicht zu dieser Datenbank.": "The file does not belong to this database.",
   "Relationsziel fehlt.": "Relation target missing.",
   "Verknüpfter Eintrag fehlt.": "Linked record missing.",

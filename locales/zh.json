@@ -12272,6 +12272,7 @@
   "The first line names the columns": "第一行为列名",
   "The first matching case wins; otherwise it goes on through “otherwise”.": "第一个匹配的分支生效；否则经“否则”继续。",
   "The first property (title) is always visible.": "第一个属性（标题）始终可见。",
+  "The first property is the title and cannot be an ID, formula or other computed property.": "第一个属性是标题，不能是 ID、公式或其他计算属性。",
   "The fishbone helps collect causes systematically instead of stopping at the first one.\n\n- **head**: the problem, described measurably if possible\n- **bones**: the six classic categories – rename them when others fit better\n- **sticky notes** for causes\n\nThen mark the most likely causes and check them with data. Goes well with the incident postmortem.": "鱼骨图有助于系统地收集原因，而不是停留在第一个原因上。\n\n- **鱼头**：问题，尽量以可衡量的方式描述\n- **鱼骨**：六个经典类别——如果其他类别更合适，可以重命名\n- 用于写原因的**便签**\n\n然后标出最可能的原因，并用数据加以验证。与故障复盘搭配使用效果很好。",
   "The fixed bar above the text of pages and records. Hidden, the menu above selected text offers all formatting, as in focus mode. On a phone the bar above the keyboard stays. Applies on all devices.": "页面和记录正文上方的固定工具栏。隐藏后，选中文字上方的菜单会提供全部格式选项，与专注模式相同。在手机上，键盘上方的工具栏仍会保留。适用于所有设备。",
   "The flow as a list": "以列表显示流程",
