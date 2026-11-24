@@ -4235,8 +4235,11 @@ async function runCommand(
         if (b.as === "bookmark") {
           if (!safeLink) throw new HttpError(400, "Ein Lesezeichen braucht einen Link.");
           const db = await bookmarksDatabase(wid(), sid, user.id);
-          // The bookmarks database may lie below a journal with a PIN.
-          await requireUnlocked(user, await requirePage(user, db, true));
+          // The bookmarks database may lie below a journal with a PIN, or
+          // be locked (as for every other write, see write() above).
+          const dbPage = await requirePage(user, db, true);
+          await requireUnlocked(user, dbPage);
+          if (dbPage.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
           const saved = await addBookmarks(db, user.id, [
             { title: title.slice(0, 300), url: safeLink, note: text.slice(0, 2000), content: article },
           ]);
@@ -4283,7 +4286,9 @@ async function runCommand(
         const items = parseBookmarksHtml(z.string().max(20_000_000).parse(b.html));
         if (!items.length) throw new HttpError(400, "In der Datei wurden keine Lesezeichen gefunden.");
         const db = await bookmarksDatabase(wid(), sid, user.id);
-        await requireUnlocked(user, await requirePage(user, db, true));
+        const dbPage = await requirePage(user, db, true);
+        await requireUnlocked(user, dbPage);
+        if (dbPage.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
         const saved = await addBookmarks(db, user.id, items);
         result = { id: db, added: saved.added, skipped: saved.skipped };
         break;

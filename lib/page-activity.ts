@@ -3,6 +3,7 @@
 // look again (and, with e-mail on, it lands in the e-mail summary).
 import { all, id, one, run, nowText } from "./db";
 import { pageRole } from "./permissions";
+import { hiddenRowIds } from "./row-access";
 import { compareParagraphs, type TextChange } from "./text-diff";
 import { htmlParagraphs } from "./version-history";
 import type { Identity, Page } from "./types";
@@ -45,17 +46,18 @@ export async function visitPage(user: Identity, page: Page, html: string | null)
         // Only the changed paragraphs and a little context around them.
         if (changes) changes = trimContext(changes);
       }
-      const rows =
-        page.kind === "database"
-          ? Number(
-              (await one<{ n: number }>(
-                "SELECT COUNT(*) n FROM rows WHERE page_id=? AND updated_by!=? AND updated_at>?",
-                page.id,
-                user.id,
-                new Date(visit.seen_at).toISOString().replace("T", " ").slice(0, 19),
-              ))?.n || 0,
-            )
-          : 0;
+      // Only records this person may see (lib/row-access.ts).
+      let rows = 0;
+      if (page.kind === "database") {
+        const changed = await all<{ id: string }>(
+          "SELECT id FROM rows WHERE page_id=? AND updated_by!=? AND updated_at>?",
+          page.id,
+          user.id,
+          new Date(visit.seen_at).toISOString().replace("T", " ").slice(0, 19),
+        );
+        const hidden = changed.length ? await hiddenRowIds(user, page) : new Set<string>();
+        rows = changed.filter((r) => !hidden.has(r.id)).length;
+      }
       since = { seenAt: visit.seen_at, editors, changes, rows };
     }
   }
