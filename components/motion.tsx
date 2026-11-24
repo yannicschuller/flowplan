@@ -134,7 +134,7 @@ export function useLeaving<T>(items: T[], key: (item: T) => string, ms: number =
  * A small label that cross-fades when `value` changes: the old content
  * fades out while the new fades in, in the same place.
  */
-export function CrossFade({ value, children, className }: { value: string; children: ReactNode; className?: string }) {
+export function CrossFade({ value, children, className, title }: { value: string; children: ReactNode; className?: string; title?: string }) {
   const [shown, setShown] = useState<{ value: string; node: ReactNode }[]>([{ value, node: children }]);
   if (shown[shown.length - 1].value !== value) {
     setShown([...(prefersReducedMotion() ? [] : shown.slice(-1)), { value, node: children }]);
@@ -146,7 +146,7 @@ export function CrossFade({ value, children, className }: { value: string; child
   }, [shown]);
   const current = shown[shown.length - 1];
   return (
-    <span className={`cross-fade${className ? ` ${className}` : ""}`}>
+    <span className={`cross-fade${className ? ` ${className}` : ""}`} title={title}>
       {shown.map((s) =>
         s === current ? (
           <span key={s.value} className={shown.length > 1 ? "cross-fade-in" : undefined}>

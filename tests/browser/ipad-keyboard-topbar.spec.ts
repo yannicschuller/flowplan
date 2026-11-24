@@ -183,8 +183,10 @@ test.describe("the saving state", () => {
       const sample = () => {
         const shown = document.querySelector(".topbar .save-status > span:not(.cross-fade-out)");
         const icon = shown?.querySelector("svg")?.getBoundingClientRect();
-        const text = shown?.querySelector("span")?.getBoundingClientRect();
-        if (shown && icon && text) seen.push({ text: shown.textContent ?? "", iconLeft: Math.round(icon.left), textRight: Math.round(text.right) });
+        // While typing only the cloud shows (#527); its words are for
+        // screen readers only. Text that is visible sits left of it.
+        const text = shown?.querySelector("span:not(.sr-only)")?.getBoundingClientRect();
+        if (shown && icon) seen.push({ text: shown.textContent ?? "", iconLeft: Math.round(icon.left), textRight: text ? Math.round(text.right) : -1 });
         if (seen.length < 3000) requestAnimationFrame(sample);
       };
       sample();

@@ -47,6 +47,13 @@
       "issues": [
         520
       ]
+    },
+    {
+      "de": "Der Speicherstatus oben rechts zeigt beim Tippen nur noch die Wolke (Häkchen gespeichert, Pfeil beim Speichern); Text erscheint nur, wenn etwas Aufmerksamkeit braucht.",
+      "en": "The save status at the top right shows only the cloud while you type (check when saved, arrow while saving); text appears only when something needs attention.",
+      "issues": [
+        527
+      ]
     }
   ],
   "features": [
