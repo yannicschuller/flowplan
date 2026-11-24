@@ -13311,6 +13311,7 @@
   "This restart is not (or no longer) saved.": "此次重启未保存（或已不再保存）。",
   "This rule has already been extended into a workflow.": "此规则已扩展为工作流。",
   "This run is too old to retry.": "该运行太旧，无法重试。",
+  "This run ran as another person. Please start it again.": "此运行以另一个人的身份执行。请重新启动。",
   "This section belongs to the {0} level.": "此部分属于{0}级别。",
   "This series already has 200 exceptions.": "该系列已有200个例外。",
   "This server cannot unpack the new Anki format; the older collection that came along was read instead.": "此服务器无法解压新的 Anki 格式；已改为读取随附的旧版集合。",

@@ -4,6 +4,7 @@
 import { all, one } from "../../db";
 import { computedCells } from "../../database";
 import { hiddenFieldsFor } from "../../field-access";
+import { rowRole } from "../../row-access";
 import { cellText } from "../../cell-text";
 import { recordUrl } from "../../notification-events";
 import { plainText } from "../placeholders";
@@ -82,12 +83,15 @@ export async function pageValue(pageId: string, options: { text?: boolean } = {}
   };
 }
 
-// A record as `who` sees it (computed properties included, hidden ones left out).
+// A record as `who` sees it (computed properties included, hidden ones left
+// out), null when they may not see it.
 export async function recordValue(who: Identity | null, rowId: string, override?: Record<string, unknown>): Promise<RecordValue | null> {
   const raw = await one<Row & { cells: string; number: number | null; created_at: string; updated_at: string }>("SELECT * FROM rows WHERE id=?", rowId);
   if (!raw) return null;
   const db = await one<Page>("SELECT * FROM pages WHERE id=?", raw.page_id);
   if (!db) return null;
+  // A record hidden from `who` (private, no grant) is none for them.
+  if (who && !(await rowRole(who, db, raw))) return null;
   const fields = await databaseFields(db.id);
   const row: Row = { ...raw, cells: { ...JSON.parse(raw.cells), ...(override || {}) } };
   const cells = computedCells(row, fields);

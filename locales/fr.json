@@ -13311,6 +13311,7 @@
   "This restart is not (or no longer) saved.": "Ce redémarrage n’est pas (ou plus) enregistré.",
   "This rule has already been extended into a workflow.": "Cette règle a déjà été étendue en workflow.",
   "This run is too old to retry.": "Cette exécution est trop ancienne pour être relancée.",
+  "This run ran as another person. Please start it again.": "Cette exécution a eu lieu au nom d’une autre personne. Relancez-la.",
   "This section belongs to the {0} level.": "Cette section appartient au niveau {0}.",
   "This series already has 200 exceptions.": "Cette série compte déjà 200 exceptions.",
   "This server cannot unpack the new Anki format; the older collection that came along was read instead.": "Ce serveur ne peut pas décompresser le nouveau format Anki ; la collection plus ancienne fournie a été lue à la place.",

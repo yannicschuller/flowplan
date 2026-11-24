@@ -88,6 +88,11 @@ export async function targetPage(ctx: NodeRun, ref: unknown, write: boolean): Pr
     throw new StepError((e as Error).message, (e as { status?: number }).status === 404 ? "validation" : "permission");
   }
   if (page.workspace_id !== ctx.run.workspaceId) throw new StepError(OTHER_WORKSPACE, "permission");
+  // Encrypted spaces and journals behind a PIN are closed to workflows
+  // (§9.1), also for a page id from a placeholder and in dry runs, before
+  // any of the page's text reaches an output.
+  if (await isEncryptedPage(page)) throw new StepError("Die Seite liegt in einem verschlüsselten Bereich, dort kann der Server nichts schreiben.", "validation");
+  if (await behindJournalPin(page)) throw new StepError("Dieses Journal ist gesperrt.", "permission");
   return page;
 }
 export const OTHER_WORKSPACE = "Die Seite liegt in einem anderen Arbeitsbereich als der Workflow.";

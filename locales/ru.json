@@ -13311,6 +13311,7 @@
   "This restart is not (or no longer) saved.": "Этот перезапуск не сохранён (или больше не сохранён).",
   "This rule has already been extended into a workflow.": "Это правило уже расширено до рабочего процесса.",
   "This run is too old to retry.": "Этот запуск слишком старый для повтора.",
+  "This run ran as another person. Please start it again.": "Этот запуск выполнялся от имени другого человека. Запустите его заново.",
   "This section belongs to the {0} level.": "Этот раздел относится к уровню «{0}».",
   "This series already has 200 exceptions.": "В этой серии уже 200 исключений.",
   "This server cannot unpack the new Anki format; the older collection that came along was read instead.": "Этот сервер не может распаковать новый формат Anki; вместо этого была прочитана приложенная старая коллекция.",

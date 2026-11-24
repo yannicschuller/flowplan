@@ -39,8 +39,11 @@ export async function retryRun(user: Identity, raw: unknown) {
   if (r.status !== "failed") throw new HttpError(409, "Nur fehlgeschlagene Läufe lassen sich wiederholen.");
   const limits = await workflowLimits();
   if (r.finished_at && r.finished_at < Date.now() - limits.runDays * 86_400_000) throw new HttpError(409, "Dieser Lauf ist zu alt zum Wiederholen.");
-  const wf = await one<{ status: string }>("SELECT status FROM workflows WHERE page_id=?", r.page_id);
+  const wf = await one<{ status: string; runner_id: string | null }>("SELECT status,runner_id FROM workflows WHERE page_id=?", r.page_id);
   if (r.mode === "live" && wf?.status !== "active") throw new HttpError(409, "Der Workflow ist nicht aktiv.");
+  // A live run is bound to the person it ran as: once someone else runs the
+  // workflow, it is started anew rather than retried in another name.
+  if (r.mode === "live" && r.runner_id !== wf?.runner_id) throw new HttpError(409, "Dieser Lauf lief als eine andere Person. Bitte starte ihn neu.");
   const failed = await one<{ id: string; node_id: string }>("SELECT id,node_id FROM workflow_steps WHERE run_id=? AND status='failed' ORDER BY finished_at DESC,seq DESC LIMIT 1", r.id);
   if (!failed) throw new HttpError(409, "Kein fehlgeschlagener Schritt zum Wiederholen.");
   if (b.fromNode && b.fromNode !== failed.node_id) throw new HttpError(400, "Wiederholen geht nur ab dem fehlgeschlagenen Knoten.");

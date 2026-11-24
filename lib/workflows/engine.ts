@@ -772,10 +772,22 @@ export async function executeStep(step: StepRow): Promise<void> {
     await transaction(async () => failRun(runRow.id, step.node_id, "Knoten oder Version nicht gefunden.", "validation"));
     return;
   }
-  // Who it runs as, checked before every step (§8.10); test runs as the tester.
-  const runner = await runnerIdentity(runRow.mode === "live" ? workflow.runner_id : runRow.runner_id);
+  // Who it runs as, checked before every step (§8.10): the person the run
+  // started for (workflow_runs.runner_id) – a later activation by someone
+  // else does not lend their rights to runs of a version they did not
+  // approve; test runs as the tester.
+  const runner = await runnerIdentity(runRow.runner_id);
   if (runRow.mode === "live") {
     const problem = await runnerProblem(page, runner);
+    if (problem && runRow.runner_id !== workflow.runner_id) {
+      // A run of an earlier runner who may no longer run it: it ends here,
+      // the workflow (now run by someone else) goes on.
+      await transaction(async () => {
+        await run("UPDATE workflow_steps SET status='failed',error=?,error_kind='permission',finished_at=?,lease_token=NULL WHERE id=? AND lease_token=?", problem, Date.now(), step.id, step.lease_token);
+        await failRun(runRow.id, node.id, problem, "permission");
+      });
+      return;
+    }
     if (problem) {
         await transaction(async () => {
         await pauseWorkflow(page.id, { status: "paused", reason: problem, by: null });

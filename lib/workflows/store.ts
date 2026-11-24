@@ -15,7 +15,9 @@ import { createPage } from "../seed";
 import { databaseSettings, storeSettings } from "../database-settings";
 import type { Identity, Page } from "../types";
 import { contentLocale } from "../content-locale";
-import { isTrigger, nodeSpec, triggerScope } from "./catalog";
+import { AI_TYPES, isTrigger, nodeSpec, triggerScope } from "./catalog";
+import { requireTokenAi, tokenAiAllowed } from "../ai/token-access";
+import { instanceAiSettings } from "../ai/settings";
 import { emptyGraph, graphFingerprint, issueMessage, outgoing, parseGraph, type GraphIssue, type WorkflowGraph } from "./graph";
 import { draftGraph, graphDoc, graphSummary, writeGraph } from "./draft";
 import { automationToGraph } from "./legacy";
@@ -198,6 +200,21 @@ async function checked(user: Identity, page: Page, graph: WorkflowGraph, runner:
 
 /* ---------- Activate, pause ---------- */
 
+// An API token hands its own AI restriction on to the runs it starts
+// (lib/ai/token-access.ts): without "KI und Transkription" – or while the
+// administration switched AI off for tokens – a token activates no AI nodes,
+// as its test run of the same draft is refused (#482).
+async function tokenAiIssues(user: Identity, graph: WorkflowGraph): Promise<GraphIssue[]> {
+  if (!user.apiScope || tokenAiAllowed(user, await instanceAiSettings())) return [];
+  const locale = contentLocale();
+  return graph.nodes
+    .filter((n) => AI_TYPES.has(n.type))
+    .map((n) => {
+      const issue: GraphIssue = { level: "error", code: "ai_unavailable", nodeId: n.id };
+      return { ...issue, message: issueMessage(issue, locale) };
+    });
+}
+
 export const hashGraph = (graph: WorkflowGraph) => createHash("sha256").update(graphFingerprint(graph)).digest("hex");
 
 // The triggers of the active version in the lookup table (§4.1).
@@ -244,7 +261,8 @@ export async function activateWorkflow(user: Identity, raw: unknown) {
   // Messages of notifications are cleaned once more (#330).
   const graph = cleanNotifyGraph(await draftOf(page));
   const runner = { ...user, isAdmin: false, groups: [], apiScope: undefined } as Identity;
-  const issues = await checked(user, page, graph, runner);
+  const found = await checked(user, page, graph, runner);
+  const issues = [...found, ...(await tokenAiIssues(user, graph)).filter((i) => !found.some((f) => f.code === i.code && f.nodeId === i.nodeId))];
   // Not activated: the answer says why (no error, nothing written).
   if (hasErrors(issues)) return { ok: false, issues };
   const wf = await workflowRow(page.id);
@@ -668,7 +686,7 @@ async function startRights(user: Identity, pageId: string, host?: string) {
   const nodes = (graph?.nodes || []).filter((n) => n.type === "trigger.manual" && !n.disabled);
   const may = (node: { config: Record<string, unknown> }) =>
     user.apiScope !== "read" && (node.config.who === "members" ? true : !viaHost && (role === "editor" || role === "owner"));
-  return { page, wf, role, viaHost, nodes, may };
+  return { page, wf, role, viaHost, nodes, may, graph };
 }
 // GET /api/workflows/{id}/start?host=: what the button on a page shows.
 export async function manualStartInfo(user: Identity, pageId: string, host?: string) {
@@ -713,6 +731,8 @@ export async function startManualRun(user: Identity, raw: unknown) {
   const node = r.nodes.find((n) => !b.nodeId || n.id === b.nodeId);
   if (!node) throw new HttpError(400, "Kein manueller Auslöser.");
   if (!r.may(node)) throw new HttpError(403, "Keine Berechtigung, diesen Workflow zu starten.");
+  // A token without the AI permission starts no AI nodes (#482).
+  if (user.apiScope && r.graph?.nodes.some((n) => AI_TYPES.has(n.type) && !n.disabled)) await requireTokenAi(user);
   // Inputs: the trigger's fields, required ones present.
   const inputs: Record<string, unknown> = {};
   for (const field of (node.config.inputs as { name: string; type: string; required: boolean }[]) || []) {

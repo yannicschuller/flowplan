@@ -311,6 +311,7 @@ const exact: Record<string, string> = {
   "Lauf nicht gefunden.": "Run not found.",
   "Regel nicht gefunden.": "Rule not found.",
   "Der Workflow ist nicht aktiv.": "The workflow is not active.",
+  "Dieser Lauf lief als eine andere Person. Bitte starte ihn neu.": "This run ran as another person. Please start it again.",
   "Diese Regel ist schon als Workflow erweitert.": "This rule has already been extended into a workflow.",
   "Eine neue Version des Entwurfs ist verfügbar. Er wird neu geladen.": "A new version of the draft is available. It is being reloaded.",
   "Workflow-Seiten lassen sich nicht veröffentlichen oder per Link teilen.": "Workflow pages cannot be published or shared by link.",
