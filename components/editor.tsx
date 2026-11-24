@@ -119,7 +119,7 @@ import { useHiddenModules } from "@/lib/feature-modules-client";
 import { TOOLBAR_DIVIDER, isToolbarBlock, isToolbarGroup, slashIdOf, toolbarEntries, type GroupableButton, type GroupableItem, type ToolbarBlock, type ToolbarButton, type ToolbarItem } from "@/lib/toolbar-layout";
 import { toolbarGroupLabel } from "@/lib/toolbar-layout-labels";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
-import { CURSOR_EVENT, setAudience, setLiveState, THREADS_EVENT, threadsKey, type LiveCursor } from "@/lib/live-state";
+import { AUDIENCE_EVENT, audienceOthers, CURSOR_EVENT, setAudience, setLiveState, THREADS_EVENT, threadsKey, type LiveCursor, type LiveState } from "@/lib/live-state";
 import { sameAsServer } from "@/lib/yjs-compare";
 import { RemoteSelection } from "@/lib/remote-selection";
 import {
@@ -288,6 +288,9 @@ import { isHtmlName } from "@/lib/html-files";
 import { isSheetName } from "@/lib/sheet-files";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
+// Delay of a save after a change: with others in the document, and alone (#515).
+const SAVE_SOON_MS = 80;
+const SAVE_ALONE_MS = 1000;
 const BLOCKS_AT_CARET = new Set<ToolbarBlock>(["block:mention", "block:fraction", "block:footnote", "block:citation"]);
 // Text styles turn the current block into that style, as "Aa" does.
 const BLOCKS_IN_PLACE = new Set<ToolbarBlock>(["block:text", "block:h1", "block:h2", "block:h3", "block:h4", "block:quote"]);
@@ -1516,14 +1519,33 @@ export default function DocumentEditor({
   // "Synchronisieren …" shows since the document opened: the first save or
   // check with the server turns it into "Gespeichert".
   const checkPending = useRef(false);
+  // With others in the document, changes go out at once (80 ms) so they
+  // see the typing live. Alone, at most one save per second (#515): the
+  // text is kept on this device meanwhile, and leaving the page sends it.
+  const liveKey = `${pageId}:${rowId || ""}:${generation}`;
   saveSoon.current = () => {
     if (saveTimer.current) return;
-    saveTimer.current = setTimeout(() => {
-      saveTimer.current = undefined;
-      void sync();
-    }, 80);
+    saveTimer.current = setTimeout(
+      () => {
+        saveTimer.current = undefined;
+        void sync();
+      },
+      audienceOthers(liveKey) ? SAVE_SOON_MS : SAVE_ALONE_MS,
+    );
   };
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+  // Someone else opened the document: what waits goes out now.
+  useEffect(() => {
+    const joined = (e: Event) => {
+      const { key, open } = (e as CustomEvent<LiveState>).detail;
+      if (key !== liveKey || !open || !saveTimer.current) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+      void sync();
+    };
+    window.addEventListener(AUDIENCE_EVENT, joined);
+    return () => window.removeEventListener(AUDIENCE_EVENT, joined);
+  }, [liveKey, sync]);
   // Uploads of this page done, or the page created (#370): what waited goes out.
   useEffect(
     () =>

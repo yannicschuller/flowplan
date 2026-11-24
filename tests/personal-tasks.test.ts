@@ -183,3 +183,14 @@ test("tasks ticked off show below the journal day, the own page's included; unti
   await act({ action: "task.update", pageId: own.id, rowId: null, index: task.index, text: task.text, status: "cancelled" });
   assert.ok(!(await completedOn(anna, wid, today, "UTC")).items.some((i) => i.title === "Noch eine"));
 });
+
+test("a private space shown as a library is not used for the own page: it would open as a book", async () => {
+  const ben2 = await account("Bena");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, ben2.id, "editor");
+  const shelf = (await act({ action: "space.create", workspaceId: wid, name: "Notizen", private: true }, ben2)).id as string;
+  await act({ action: "space.update", spaceId: shelf, name: "Notizen", private: true, library: true }, ben2);
+  const first = await add("Bücher sortieren", ben2);
+  assert.equal(first.created, true);
+  assert.equal(first.spaceCreated, true);
+  assert.notEqual((await pageOf(first.pageId)).space_id, shelf);
+});

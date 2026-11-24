@@ -169,8 +169,8 @@
       ]
     },
     {
-      "de": "Weniger Hintergrundverkehr: ein Aktivitätssignal pro Browser statt pro Tab, Wartungs- und Umzugshinweise kommen über die Live-Verbindung.",
-      "en": "Less background traffic: one activity signal per browser instead of per tab, maintenance and move notices arrive over the live connection.",
+      "de": "Weniger Hintergrundverkehr: ein Aktivitätssignal pro Browser statt pro Tab, Wartungs- und Umzugshinweise kommen über die Live-Verbindung, und wer allein in einem Dokument schreibt, speichert höchstens einmal pro Sekunde.",
+      "en": "Less background traffic: one activity signal per browser instead of per tab, maintenance and move notices arrive over the live connection, and writing alone in a document saves at most once a second.",
       "issues": [
         515
       ]
@@ -219,6 +219,10 @@
     {
       "de": "Ein unverändertes Dokument zeigt „Gespeichert“ statt dauerhaft „Synchronisieren …“.",
       "en": "An unchanged document shows “Saved” instead of “Syncing …” for ever."
+    },
+    {
+      "de": "Die eigene Seite „Aufgaben“ entsteht nicht mehr in einem privaten Bereich, der als Bibliothek angezeigt wird – dort öffnete sie sich als Buch.",
+      "en": "The own page “Tasks” is no longer created in a private space shown as a library, where it opened as a book."
     }
   ]
 }

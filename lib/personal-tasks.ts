@@ -55,10 +55,11 @@ export async function personalTaskPage(user: Identity, workspaceId: string): Pro
 }
 
 // The person's private space for it: the first one they own that the
-// server can write into, else a new one.
+// server can write into and that is not shown as a library (a page there
+// would open as a book, not as the document), else a new one.
 async function privateSpace(user: Identity, workspaceId: string) {
   const own = await one<{ id: string }>(
-    `SELECT id FROM spaces WHERE workspace_id=? AND owner_id=? AND visibility='private' AND deleted_at IS NULL AND COALESCE(encrypted,0)=0
+    `SELECT id FROM spaces WHERE workspace_id=? AND owner_id=? AND visibility='private' AND deleted_at IS NULL AND COALESCE(encrypted,0)=0 AND COALESCE(library,0)=0
      ORDER BY ${SPACE_ORDER} LIMIT 1`,
     workspaceId,
     user.id,
