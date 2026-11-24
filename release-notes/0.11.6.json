@@ -82,6 +82,13 @@
       "issues": [
         519
       ]
+    },
+    {
+      "de": "Im Link-Fenster lassen sich Text und Adresse eines Links zusammen ändern.",
+      "en": "The link dialog edits a link's text and address together.",
+      "issues": [
+        530
+      ]
     }
   ],
   "features": [
