@@ -9,7 +9,7 @@ import Papa from "papaparse";
 import { CSV_FORMULA, cellText, csvImportText, csvListSplitter } from "./cell-text";
 import { validDateValue } from "./date-values";
 import { sqlTimestampToIso } from "./date-values";
-import { isTimestampType } from "./field-format";
+import { isTimestampType, stripUnit } from "./field-format";
 import { fileIdOf, fileUrls } from "./file-cells";
 import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { foldName } from "./page-properties";
@@ -164,11 +164,12 @@ export function parseCsvFile(text: string) {
     unreadable: result.errors.some((e) => e.type === "Quotes"),
   };
 }
-const numberValue = (text: string): number | string | null => {
-  if (!text.trim()) return null;
+const numberValue = (raw: string, field?: Field): number | string | null => {
+  if (!raw.trim()) return null;
+  const text = stripUnit(raw, field);
   // Also as JavaScript writes very small and large numbers ("1e-7").
   const n = parseNumber(text) ?? (/^[+-]?(?:\d+\.?\d*|\.\d+)e[+-]?\d+$/i.test(text.trim()) ? Number(text.trim()) : null);
-  return n !== null && Number.isFinite(n) ? n : text;
+  return n !== null && Number.isFinite(n) ? n : raw;
 };
 
 // The CSV import: a function from one CSV row (parsed with csvImportText) to
@@ -216,7 +217,8 @@ export function csvImporter(fields: Field[], allFields: Field[], ctx: CsvContext
           // stays empty. What cannot be read stays as written: the server
           // refuses it with the property's name (rows.import).
           case "number":
-            return [f.id, numberValue(text)];
+            // "12 kg" in a property with the unit kg (#522) reads as 12.
+            return [f.id, numberValue(text, f)];
           case "checkbox":
             return [f.id, text.trim() ? (parseCheckbox(text) ?? { "1": true, "0": false }[text.trim()] ?? text) : false];
           case "date":

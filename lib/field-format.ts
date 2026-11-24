@@ -105,6 +105,42 @@ export function formatNumber(value: number, format = "", decimals?: number, tag:
     ...digits,
   }).format(value);
 }
+// Own unit of a number property (#522), e.g. "kg" or "m": shown after the
+// number with a narrow no-break space ("12,5 kg"). Currencies and percent
+// carry their own sign, so they show none. Stored values stay plain numbers.
+export const UNIT_MAX = 12;
+export const UNIT_SPACE = "\u202f";
+export const unitFormat = (format = "") => format !== "percent" && !Object.hasOwn(currencies, format);
+export function fieldUnit(field?: Pick<Field, "format" | "unit">) {
+  const unit = field?.unit?.trim();
+  return unit && unitFormat(field?.format) ? unit : "";
+}
+export function withUnit(text: string, field?: Pick<Field, "format" | "unit">) {
+  const unit = fieldUnit(field);
+  return unit ? `${text}${UNIT_SPACE}${unit}` : text;
+}
+// A number of a number property (or a formula with a number result) in the
+// property's format, decimals and unit.
+export function formatFieldNumber(
+  value: number,
+  field: Pick<Field, "format" | "decimals" | "unit">,
+  decimals = field.decimals,
+  tag: string = LOCALE_TAG,
+) {
+  const text = formatNumber(value, field.format, decimals, tag);
+  return Number.isFinite(value) ? withUnit(text, field) : text;
+}
+// "12 kg" typed or imported into a property with the unit "kg": the number
+// part (the unit matched case-insensitively, with or without a space).
+// Any other text stays as it is.
+export function stripUnit(text: string, field?: Pick<Field, "format" | "unit">) {
+  const unit = fieldUnit(field);
+  if (!unit) return text;
+  const trimmed = text.trim();
+  if (trimmed.length <= unit.length || trimmed.slice(-unit.length).toLowerCase() !== unit.toLowerCase())
+    return text;
+  return trimmed.slice(0, -unit.length).replace(/[\s\u00a0\u202f]+$/, "");
+}
 export function formatFieldDate(
   value: unknown,
   field?: Pick<Field, "format" | "timeFormat">,
@@ -128,12 +164,12 @@ export function formatTimestamp(
 }
 // Plain text of a cell as people see it (public pages, previews).
 export function displayText(
-  field: Pick<Field, "type" | "format" | "timeFormat" | "decimals">,
+  field: Pick<Field, "type" | "format" | "timeFormat" | "decimals" | "unit">,
   value: unknown,
   zone?: string,
 ) {
-  if ((field.type === "number" || (field.type === "formula" && field.format)) && typeof value === "number")
-    return formatNumber(value, field.format, field.decimals);
+  if ((field.type === "number" || (field.type === "formula" && (field.format || fieldUnit(field)))) && typeof value === "number")
+    return formatFieldNumber(value, field);
   if (field.type === "date" && typeof value === "string" && value)
     return formatFieldDate(value, field, zone);
   if (isTimestampType(field.type) && typeof value === "string")

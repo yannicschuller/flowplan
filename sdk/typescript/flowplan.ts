@@ -549,6 +549,7 @@ export type Field = {
   timeFormat?: "12" | "24";
   noTime?: boolean;
   decimals?: number;
+  unit?: string;
   parent?: boolean;
   parentField?: string;
   doneField?: string;
@@ -2945,6 +2946,7 @@ export type CommandDatabaseUpdate = {
     timeFormat?: "12" | "24";
     noTime?: boolean;
     decimals?: number;
+    unit?: string;
     parent?: boolean;
     parentField?: string;
     doneField?: string;

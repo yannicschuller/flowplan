@@ -4,7 +4,7 @@
 // written as people read them in the table – names instead of ids, formatted
 // numbers and dates. Client-safe and pure.
 import { CSV_FORMULA, cellText } from "./cell-text";
-import { formatFieldDate, formatNumber, formatTimestamp } from "./field-format";
+import { fieldUnit, formatFieldDate, formatFieldNumber, formatTimestamp } from "./field-format";
 import { fileLabel, fileUrls } from "./file-cells";
 import { formatDuration } from "./durations";
 import { LOCALE_TAG } from "./locale-tag";
@@ -43,7 +43,7 @@ export function clipboardCell(field: Field, value: unknown, ctx: ClipboardContex
       return value ? ctx.yes : ctx.no;
     case "number":
       if (typeof value !== "number") return cellText(value);
-      return formatNumber(value, field.format, field.decimals);
+      return formatFieldNumber(value, field);
     case "date":
       return value ? formatFieldDate(value, field, ctx.zone) : "";
     case "created_at":
@@ -82,7 +82,7 @@ export function clipboardCell(field: Field, value: unknown, ctx: ClipboardContex
         ...(percentAggregate(field.aggregate) ? { style: "percent" as const } : {}),
       }).format(value);
     case "formula":
-      return typeof value === "number" && field.format ? formatNumber(value, field.format, field.decimals) : cellText(value);
+      return typeof value === "number" && (field.format || fieldUnit(field)) ? formatFieldNumber(value, field) : cellText(value);
     case "checklist":
       return list(value)
         .map((item) =>

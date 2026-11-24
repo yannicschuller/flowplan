@@ -71,6 +71,14 @@ export const field = z.object({
   // Date properties without a time of day (#327).
   noTime: z.boolean().optional(),
   decimals: z.number().int().min(0).max(10).optional(),
+  // Own unit of a number property (#522), e.g. "kg": at most 12 characters,
+  // no control characters.
+  unit: z
+    .string()
+    .trim()
+    .max(12, "Einheit: höchstens 12 Zeichen.")
+    .regex(/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]*$/u, "Einheit: keine Steuerzeichen.")
+    .optional(),
   parent: z.boolean().optional(),
   parentField: z.string().max(500).optional(),
   doneField: z.string().max(500).optional(),

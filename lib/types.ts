@@ -165,6 +165,10 @@ export type Field = {
   // newTimeRefused). Unset: dates may have a time.
   noTime?: boolean;
   decimals?: number;
+  // "number" (and formulas with a number result): an own unit like "kg"
+  // shown after the value (#522, lib/field-format.ts fieldUnit); ignored for
+  // currencies and percent.
+  unit?: string;
   // "id": the ticket prefix, e.g. WEB for WEB-123.
   prefix?: string;
   // "relation" to the own database holding the parent record (subtasks).

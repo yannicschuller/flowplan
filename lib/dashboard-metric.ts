@@ -9,7 +9,7 @@ import { requirePage } from "./permissions";
 import { journalLocked, requireUnlocked } from "./journal-extras";
 import { visibleFields } from "./field-access";
 import { queryDatabaseRows } from "./database-query";
-import { formatNumber } from "./field-format";
+import { formatFieldNumber } from "./field-format";
 import { contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import type { Field, Identity, View } from "./types";
@@ -65,7 +65,7 @@ export async function computeMetric(user: Identity, query: MetricQuery) {
     value === null
       ? "–"
       : query.aggregate !== "count" && field?.type === "number"
-        ? formatNumber(value, field.format, field.decimals)
+        ? formatFieldNumber(value, field)
         : value.toLocaleString(localeTag(contentLocale()), { maximumFractionDigits: 2 });
   return {
     value,

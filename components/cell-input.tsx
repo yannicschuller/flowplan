@@ -6,7 +6,8 @@ import { useState, useEffect, useRef, type ComponentProps, type KeyboardEvent, t
 import { isEmptyValue } from "@/lib/empty-value";
 import { isRequired } from "@/lib/field-required";
 import { InlineText } from "./inline-text";
-import { ratingMax } from "@/lib/field-format";
+import { fieldUnit, ratingMax, stripUnit } from "@/lib/field-format";
+import { parseNumber } from "@/lib/table-database";
 import DateInput from "./date-input";
 import { cellText } from "@/lib/database";
 import {
@@ -421,9 +422,26 @@ function CellInputBody({
         onCancel={onCancel}
       />
     );
-  return (
+  // Own unit of a number property (#522): shown after the input, never
+  // typed; "12 kg" pasted into it reads as 12.
+  const unit = f.type === "number" ? fieldUnit(f) : "";
+  const input = (
     <input
-      aria-label={f.name}
+      aria-label={unit ? `${f.name} (${unit})` : f.name}
+      onPaste={
+        unit
+          ? (e) => {
+              const text = e.clipboardData.getData("text");
+              const stripped = stripUnit(text, f);
+              const n = stripped === text ? null : parseNumber(stripped);
+              if (n === null) return;
+              e.preventDefault();
+              setDraft(String(n));
+              if (commit === "change") onChange(n);
+              else unsaved.current = { value: n };
+            }
+          : undefined
+      }
       type={
         f.type === "number"
           ? "number"
@@ -457,6 +475,15 @@ function CellInputBody({
         )
       }
     />
+  );
+  if (!unit) return input;
+  return (
+    <span className="number-unit-input">
+      {input}
+      <span className="number-unit" aria-hidden="true">
+        {unit}
+      </span>
+    </span>
   );
 }
 

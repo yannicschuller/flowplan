@@ -1,5 +1,5 @@
 import { LOCALE_TAG } from "./locale-tag";
-import { formatFieldDate, formatNumber } from "./field-format";
+import { UNIT_SPACE, fieldUnit, formatFieldDate, formatFieldNumber } from "./field-format";
 import type { Field, Row } from "./types";
 import { isFormulaError } from "./formula";
 import { z } from "zod";
@@ -216,7 +216,7 @@ export function columnSummary(
 }
 export function summaryText(
   result: ColumnSummary,
-  field?: Pick<Field, "type" | "format" | "timeFormat" | "decimals">,
+  field?: Pick<Field, "type" | "format" | "timeFormat" | "decimals" | "unit">,
   // Translates the German labels (useT() of the client).
   tr: (text: string) => string = (text) => text,
 ) {
@@ -226,6 +226,10 @@ export function summaryText(
       : result.calculation === "average"
         ? "Ø"
         : tr(calculationName(result.calculation));
+  // Calculations in the property's own terms: its format and unit (#522);
+  // counts and shares stay plain.
+  const valued = ["sum", "average", "median", "min", "max", "range"].includes(result.calculation);
+  const unit = valued && (field?.type === "number" || field?.type === "formula") ? fieldUnit(field) : "";
   const value = result.overflow
     ? tr("Zahlenbereich überschritten")
     : result.value === null || result.value === undefined
@@ -233,17 +237,15 @@ export function summaryText(
       : typeof result.value === "number" &&
           field?.type === "number" &&
           (field.format || field.decimals !== undefined) &&
-          ["sum", "average", "median", "min", "max", "range"].includes(
-            result.calculation,
-          )
-        ? formatNumber(result.value, field.format, field.decimals)
+          valued
+        ? formatFieldNumber(result.value, field)
         : typeof result.value === "number"
           ? new Intl.NumberFormat(LOCALE_TAG, {
               maximumFractionDigits: 4,
               ...(percentAggregate(result.calculation)
                 ? { style: "percent" as const }
                 : {}),
-            }).format(result.value)
+            }).format(result.value) + (unit && Number.isFinite(result.value) ? UNIT_SPACE + unit : "")
           : field?.type === "date"
             ? formatFieldDate(result.value, field, "UTC")
             : formatDateValue(result.value, "UTC");

@@ -224,10 +224,13 @@ import {
   formatFieldDate,
   formatTimestamp,
   isTimestampType,
-  formatNumber,
+  fieldUnit,
+  formatFieldNumber,
   numberFormats,
   ratingMax,
   timeFormats,
+  UNIT_MAX,
+  unitFormat,
 } from "@/lib/field-format";
 import { IconImagePicker } from "./icon-image-picker";
 import { DraftInput } from "./draft-input";
@@ -2482,11 +2485,11 @@ export default function DatabaseView({
       if (v === null || v === "") return <span className="muted">—</span>;
       if (f.rollupDisplay && f.rollupDisplay !== "number")
         return <RollupValue field={f} value={Number(v)} />;
-      return formatNumber(Number(v), f.format, f.decimals);
+      return formatFieldNumber(Number(v), f);
     }
-    // Formulas with a number result take the chosen number format.
-    if (f.type === "formula" && typeof v === "number" && f.format)
-      return formatNumber(v, f.format, f.decimals);
+    // Formulas with a number result take the chosen number format and unit.
+    if (f.type === "formula" && typeof v === "number" && (f.format || fieldUnit(f)))
+      return formatFieldNumber(v, f);
     return cellText(v) || <span className="muted">—</span>;
   }
   const galleryConfig = view.gallery || defaultGallery;
@@ -5541,6 +5544,19 @@ export default function DatabaseView({
               </Select>
             </label>
           )}
+          {(fieldDraft.type === "number" || fieldDraft.type === "formula") &&
+            unitFormat(fieldDraft.format) && (
+              // Own unit (#522); currencies and percent carry their own sign.
+              <label>
+                {t("Einheit", "Unit")}
+                <input
+                  maxLength={UNIT_MAX}
+                  placeholder={t("z. B. kg, m, h", "e.g. kg, m, h")}
+                  value={fieldDraft.unit || ""}
+                  onChange={(e) => setFieldDraft((f) => ({ ...f, unit: e.target.value || undefined }))}
+                />
+              </label>
+            )}
           {fieldDraft.type === "number" && (
             <>
               <label>

@@ -11,7 +11,7 @@
 // lib/record-template-apply.ts.
 import { cellText } from "./cell-text";
 import { isTimed, localValue, validDateValue, Temporal } from "./date-values";
-import { formatNumber } from "./field-format";
+import { formatFieldNumber, formatNumber } from "./field-format";
 import type { Field } from "./types";
 
 // "{{ Name }}": up to 120 characters, no braces, angle brackets or breaks.
@@ -215,7 +215,9 @@ export function placeholderValue(field: Field, value: unknown, fmt: PlaceholderF
       break;
   }
   if (typeof value === "number")
-    return field.type === "number" || field.type === "formula" || field.type === "rollup"
+    return field.type === "number" || field.type === "formula"
+      ? formatFieldNumber(value, field, field.decimals, fmt.tag)
+      : field.type === "rollup"
       ? formatNumber(value, field.format, field.decimals, fmt.tag)
       : String(value);
   if (typeof value === "boolean") return value ? "✓" : "✗";
