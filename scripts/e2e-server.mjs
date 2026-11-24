@@ -43,6 +43,12 @@ const child = spawn(process.execPath, several ? [join(root, "scripts/processes.m
     FLOWPLAN_IMPORT_ALLOW_PRIVATE: "true",
     // The CalDAV calendar sync's spec connects to a mock on 127.0.0.1 (#460).
     FLOWPLAN_CALDAV_ALLOW_PRIVATE: "true",
+    // Idle connections stay open for 65 s instead of Node's 5 s. The specs'
+    // API requests (page.request) reuse connections; one sent just as the
+    // server closed its connection after 5 s idle failed with "read
+    // ECONNRESET" (page-tabs.spec.ts in CI, a busy runner). No spec's
+    // request context sits idle that long. Read by Next's standalone server.
+    KEEP_ALIVE_TIMEOUT: process.env.KEEP_ALIVE_TIMEOUT || "65000",
   },
   stdio: ["ignore", log, log],
 });
