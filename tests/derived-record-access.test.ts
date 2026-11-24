@@ -137,3 +137,52 @@ test("the next occurrence of a repeating record keeps its creator and grants (#4
     403,
   );
 });
+
+test("timeline and calendar scheduling respect property write rules (#488)", async () => {
+  const { owner, bob, db } = await setup("schedule");
+  const view = {
+    id: "t",
+    name: "Timeline",
+    type: "timeline",
+    filters: [],
+    sorts: [],
+    dateField: "start",
+    endDateField: "end",
+    timeline: { scale: "quarter", showWeekends: false, dependencyField: "deps" },
+  };
+  const fields = (write: "owners" | "editors") => [
+    { id: "title", name: "Name", type: "text" },
+    { id: "start", name: "Beginn", type: "date", access: { write } },
+    { id: "end", name: "Ende", type: "date", access: { write } },
+    { id: "deps", name: "Wartet auf", type: "relation", relationPage: db, access: { write } },
+  ];
+  await command(owner, { action: "database.update", pageId: db, version: (await database(db)).version, fields: fields("owners"), views: [view] });
+  const a = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "A", start: "2026-11-02", end: "2026-11-03" } })) as { id: string }).id;
+  const b = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "B", start: "2026-11-10", end: "2026-11-11", deps: [] } })) as { id: string }).id;
+  const before = { a: (await row(a)).cells, b: (await row(b)).cells };
+  const version = async () => (await database(db)).version;
+  const attempts = async () => [
+    await status(command(bob, { action: "row.schedule", pageId: db, viewId: "t", version: await version(), rowId: a, rowVersion: (await row(a)).version, change: { operation: "move", days: 30 } })),
+    await status(command(bob, { action: "timeline.restore", pageId: db, viewId: "t", rows: [{ rowId: a, rowVersion: (await row(a)).version, start: "2030-01-01", end: "" }] })),
+    await status(command(bob, { action: "timeline.link", pageId: db, viewId: "t", version: await version(), from: a, to: b })),
+  ];
+  assert.deepEqual(await attempts(), [403, 403, 403]);
+  assert.equal((await row(a)).cells, before.a);
+  assert.equal((await row(b)).cells, before.b);
+  // The owner links them; the editor may not unlink nor cascade either.
+  await command(owner, { action: "timeline.link", pageId: db, viewId: "t", version: await version(), from: a, to: b });
+  assert.equal(
+    await status(command(bob, { action: "timeline.unlink", pageId: db, viewId: "t", version: await version(), from: a, to: b })),
+    403,
+  );
+  await command(owner, { action: "row.update", pageId: db, rowId: a, version: (await row(a)).version, cells: { end: "2026-11-20" } });
+  assert.equal(await status(command(bob, { action: "timeline.cascade", pageId: db, viewId: "t", version: await version() })), 403);
+  // With the rules opened to editors, the same commands work.
+  await command(owner, { action: "database.update", pageId: db, version: await version(), fields: fields("editors"), views: [view] });
+  assert.equal(await status(command(bob, { action: "timeline.cascade", pageId: db, viewId: "t", version: await version() })), 0);
+  assert.equal(await status(command(bob, { action: "timeline.unlink", pageId: db, viewId: "t", version: await version(), from: a, to: b })), 0);
+  assert.equal(
+    await status(command(bob, { action: "row.schedule", pageId: db, viewId: "t", version: await version(), rowId: a, rowVersion: (await row(a)).version, change: { operation: "move", days: 1 } })),
+    0,
+  );
+});
