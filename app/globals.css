@@ -7214,15 +7214,13 @@ button.record-value:focus-visible {
     min-height: 44px;
   }
 }
-/* A date with its buttons below, and the reminder, recurrence and
-   repeating-task rows that wrap: the name lines up with the first line of
-   controls, not with the middle of the whole block. */
-.row-property:has(> * > .date-input),
-.row-property:is(.recurrence-property, .record-repeat) {
+/* A date with its buttons below (forms): the name lines up with the first
+   line of controls, not with the middle of the whole block. The record's
+   recurrence and repeating task are compact rows (#521). */
+.row-property:has(> * > .date-input) {
   align-items: start;
 }
-.row-property:has(> * > .date-input) > span:first-child,
-.row-property:is(.recurrence-property, .record-repeat) > span:first-child {
+.row-property:has(> * > .date-input) > span:first-child {
   display: flex;
   align-items: center;
   min-height: calc(1.5em + 22px);

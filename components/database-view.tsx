@@ -42,7 +42,7 @@ import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertyList } from "./record-property-order";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
-import { summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
+import { recordDateExtras, summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
 import { doneRule } from "@/lib/database-settings-schema";
 import type { RecordPropertiesChoice } from "@/lib/page-view-prefs";
 import {
@@ -219,6 +219,7 @@ import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
 import {
   parseRecurrence,
+  parseRepeat,
   recurrenceLabels,
   recurrenceText,
   type Recurrence,
@@ -1197,7 +1198,20 @@ export default function DatabaseView({
   const recordFields = (
     showEmpty ? layoutFields : layoutFields.filter((f) => !emptyFields.has(f.id))
   ).filter((f) => f.id !== fields[0]?.id);
-  const emptyHidden = emptyFields.size;
+  // The recurrence and repeating task below the first date (#521): only
+  // where they apply, hidden like empty properties while nothing is set.
+  const firstDateId = fields.find((f) => f.type === "date")?.id;
+  const dateExtras =
+    selected && firstDateId && layoutFields.some((f) => f.id === firstDateId)
+      ? recordDateExtras({
+          hideEmpty: recordLayout.hideEmpty,
+          showEmpty,
+          hasRecurrence: !!parseRecurrence(selected.recurrence),
+          hasRepeat: !!parseRepeat(selected.repeat),
+          canRepeat: !!doneRule(fields, data.database.settings),
+        })
+      : null;
+  const emptyHidden = emptyFields.size + (dateExtras?.hiddenEmpty ?? 0);
   // The folded properties (#186): a few values as chips, most telling first.
   const recordDevice = useRecordDevice();
   const recordSummary = selected
@@ -2700,104 +2714,122 @@ export default function DatabaseView({
           <RecurrenceIcon size={13} aria-hidden />
           <span className="row-property-label">{t("Wiederholung", "Recurrence")}</span>
         </span>
-        <span className="recurrence-choice">
-          <Select
-            aria-label={t("Wiederholung", "Recurrence")}
-            disabled={!rowEditable(row)}
-            value={rule?.freq || ""}
-            onChange={(e) =>
-              void save(
-                e.target.value
-                  ? { ...base, freq: e.target.value as Recurrence["freq"] }
-                  : null,
-              )
-            }
-          >
-            <option value="">{t("Keine", "None")}</option>
-            {Object.entries(recurrenceLabels).map(([key, [label]]) => (
-              <option key={key} value={key}>
-                {t(label)}
-              </option>
-            ))}
-          </Select>
-          {rule && (
-            <>
-              <label>
-                {t("Alle", "Every")}
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  aria-label={t("Wiederholungsintervall", "Recurrence interval")}
-                  disabled={!rowEditable(row)}
-                  defaultValue={rule.interval}
-                  onBlur={(e) => {
-                    const interval = Math.min(
-                      99,
-                      Math.max(1, Math.round(Number(e.target.value) || 1)),
-                    );
-                    if (interval !== rule.interval)
-                      void save({ ...rule, interval });
-                  }}
-                />
-                {t(recurrenceLabels[rule.freq][1])}
-              </label>
-              <label>
-                {t("Endet", "Ends")}
-                <input
-                  type="date"
-                  aria-label={t("Wiederholung endet am", "Recurrence ends on")}
-                  disabled={!rowEditable(row)}
-                  defaultValue={rule.until || ""}
-                  onBlur={(e) => {
-                    const until = e.target.value || undefined;
-                    if (until !== rule.until)
-                      void save({ ...rule, count: undefined, until });
-                  }}
-                />
-              </label>
-              <label>
-                {t("Termin auslassen", "Skip occurrence")}
-                <input
-                  type="date"
-                  aria-label={t("Termin auslassen am", "Skip occurrence on")}
-                  disabled={!rowEditable(row)}
-                  onChange={(e) => {
-                    const date = e.target.value;
-                    e.target.value = "";
-                    if (date && !rule.exclude?.includes(date))
-                      void save({
-                        ...rule,
-                        exclude: [...(rule.exclude || []), date].sort(),
-                      });
-                  }}
-                />
-              </label>
-              {!!rule.exclude?.length && (
-                <span className="recurrence-exclusions">
-                  {rule.exclude.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      className="chip"
-                      disabled={!rowEditable(row)}
-                      aria-label={t(`${date} wieder einplanen`, `Schedule ${date} again`)}
-                      onClick={() =>
-                        void save({
-                          ...rule,
-                          exclude: rule.exclude!.filter((d) => d !== date),
-                        })
-                      }
-                    >
-                      {date} ×
-                    </button>
-                  ))}
+        {rowEditable(row) ? (
+          // Compact like the properties (#519, #521): the rule as text,
+          // its controls on click.
+          <span className="row-property-value">
+            <RecordPropertyValue
+              name={t("Wiederholung", "Recurrence")}
+              text={rule ? recurrenceText(rule, t) : ""}
+              emptyText={t("Keine", "None")}
+              display={rule ? recurrenceText(rule, t) : null}
+              editor={() => (
+                <span className="recurrence-choice">
+                  <Select
+                    aria-label={t("Wiederholung", "Recurrence")}
+                    disabled={!rowEditable(row)}
+                    value={rule?.freq || ""}
+                    onChange={(e) =>
+                      void save(
+                        e.target.value
+                          ? { ...base, freq: e.target.value as Recurrence["freq"] }
+                          : null,
+                      )
+                    }
+                  >
+                    <option value="">{t("Keine", "None")}</option>
+                    {Object.entries(recurrenceLabels).map(([key, [label]]) => (
+                      <option key={key} value={key}>
+                        {t(label)}
+                      </option>
+                    ))}
+                  </Select>
+                  {rule && (
+                    <>
+                      <label>
+                        {t("Alle", "Every")}
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          aria-label={t("Wiederholungsintervall", "Recurrence interval")}
+                          disabled={!rowEditable(row)}
+                          defaultValue={rule.interval}
+                          onBlur={(e) => {
+                            const interval = Math.min(
+                              99,
+                              Math.max(1, Math.round(Number(e.target.value) || 1)),
+                            );
+                            if (interval !== rule.interval)
+                              void save({ ...rule, interval });
+                          }}
+                        />
+                        {t(recurrenceLabels[rule.freq][1])}
+                      </label>
+                      <label>
+                        {t("Endet", "Ends")}
+                        <input
+                          type="date"
+                          aria-label={t("Wiederholung endet am", "Recurrence ends on")}
+                          disabled={!rowEditable(row)}
+                          defaultValue={rule.until || ""}
+                          onBlur={(e) => {
+                            const until = e.target.value || undefined;
+                            if (until !== rule.until)
+                              void save({ ...rule, count: undefined, until });
+                          }}
+                        />
+                      </label>
+                      <label>
+                        {t("Termin auslassen", "Skip occurrence")}
+                        <input
+                          type="date"
+                          aria-label={t("Termin auslassen am", "Skip occurrence on")}
+                          disabled={!rowEditable(row)}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            e.target.value = "";
+                            if (date && !rule.exclude?.includes(date))
+                              void save({
+                                ...rule,
+                                exclude: [...(rule.exclude || []), date].sort(),
+                              });
+                          }}
+                        />
+                      </label>
+                      {!!rule.exclude?.length && (
+                        <span className="recurrence-exclusions">
+                          {rule.exclude.map((date) => (
+                            <button
+                              key={date}
+                              type="button"
+                              className="chip"
+                              disabled={!rowEditable(row)}
+                              aria-label={t(`${date} wieder einplanen`, `Schedule ${date} again`)}
+                              onClick={() =>
+                                void save({
+                                  ...rule,
+                                  exclude: rule.exclude!.filter((d) => d !== date),
+                                })
+                              }
+                            >
+                              {date} ×
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                      <small className="muted">{recurrenceText(rule, t)}</small>
+                    </>
+                  )}
                 </span>
               )}
-              <small className="muted">{recurrenceText(rule, t)}</small>
-            </>
-          )}
-        </span>
+            />
+          </span>
+        ) : (
+          <span className="record-value readonly">
+            {rule ? recurrenceText(rule, t) : <span className="record-value-empty">{t("Keine", "None")}</span>}
+          </span>
+        )}
       </div>
     );
   }
@@ -6630,10 +6662,8 @@ export default function DatabaseView({
                         />
                       )}
                       {f.type === "date" && reminderControl(selected, f)}
-                      {f.type === "date" &&
-                        f.id === fields.find((x) => x.type === "date")?.id &&
-                        recurrenceControl(selected)}
-                      {f.type === "date" && f.id === fields.find((x) => x.type === "date")?.id && (
+                      {f.id === firstDateId && dateExtras?.recurrence && recurrenceControl(selected)}
+                      {f.id === firstDateId && dateExtras?.repeat && (
                         <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
                       )}
                     </Fragment>

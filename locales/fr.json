@@ -4732,6 +4732,7 @@
   "every": "tous les",
   "Every": "Chaque",
   "Every … (interval)": "Tous les … (intervalle)",
+  "Every {0} {1}": "Intervalle : {0} {1}",
   "Every {0} at {1}": "Chaque {0} à {1}",
   "Every {0} days": "Tous les {0} jours",
   "Every {0} days at {1}": "Tous les {0} jours à {1}",

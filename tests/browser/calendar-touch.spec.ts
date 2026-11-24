@@ -151,17 +151,22 @@ test("weekly repeating entries show occurrences that open the original record", 
   });
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await entry
+  // The recurrence is chosen in its editor, opened on its value (#519).
+  await entry.getByRole("button", { name: "Wiederholung: Keine, ändern" }).click();
+  await page
     .getByLabel("Wiederholung", { exact: true })
     .selectOption("weekly");
   await expect
     .poll(async () => (await read()).rows[0].recurrence)
     .toContain('"weekly"');
-  // The select shows the choice ("Wöchentlich" is also a hidden option of
-  // "Wiederkehrende Aufgabe" further down the record).
+  // The select shows the choice (no "Wiederkehrende Aufgabe" here: the
+  // database has no done rule, #521).
   await expect(
-    entry.getByText("Wöchentlich", { exact: true }).filter({ visible: true }),
+    page.getByText("Wöchentlich", { exact: true }).filter({ visible: true }),
   ).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(entry.getByRole("button", { name: /^Wiederholung: .+, ändern$/ })).not.toHaveAccessibleName("Wiederholung: Keine, ändern");
+  await expect(entry.getByText("Wiederkehrende Aufgabe")).toHaveCount(0);
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   for (const day of ["03", "10", "17", "24"])
     await expect(
@@ -181,10 +186,12 @@ test("weekly repeating entries show occurrences that open the original record", 
   await expect(entry).toBeVisible();
   expect(page.url()).toContain(`row=${row.id}`);
   // Skipping one occurrence removes it from the calendar.
-  await entry.getByLabel("Termin auslassen am").fill(`${month}-17`);
+  await entry.getByRole("button", { name: /^Wiederholung: .+, ändern$/ }).click();
+  await page.getByLabel("Termin auslassen am").fill(`${month}-17`);
   await expect
     .poll(async () => (await read()).rows[0].recurrence)
     .toContain(`${month}-17`);
+  await page.keyboard.press("Escape");
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect(
     page.locator(`.calendar-day[data-day="${month}-17"] .calendar-event`),
