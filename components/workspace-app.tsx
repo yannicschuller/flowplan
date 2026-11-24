@@ -2447,7 +2447,7 @@ export default function WorkspaceApp({
   // "Ton bei neuen Benachrichtigungen" (#401): new notifications make a
   // short sound in one open tab.
   const notificationSoundCheck = useRef<() => void>(() => {});
-  const live = useWorkspaceSignals(boot.user.id, boot.workspace.id, currentId, refresh, notificationSoundCheck);
+  const live = useWorkspaceSignals(boot.user.id, boot.workspace.id, currentId, refresh, notificationSoundCheck, !signedOut);
   useNotificationSoundAlerts(boot.user.id, boot.notifications, live, notificationSoundCheck);
   useEffect(() => {
     let polling = false;

@@ -31,8 +31,14 @@ export type LiveEnv = {
   setTimeout: (fn: () => void, ms: number) => unknown;
   clearTimeout: (t: unknown) => void;
 };
-// A closed stream (an error answer, revoked) is tried again after this.
+// A closed stream (an error answer, revoked) is tried again after this,
+// doubling with every failure in a row up to MAX_RETRY_MS: a tab whose
+// session ended (signed out on another device, expired) must not knock at
+// /api/live every 30 s, which also looked like probing to the security
+// monitor (60 × 401 in 10 minutes). A "ready" starts over.
 export const RETRY_MS = 30_000;
+export const MAX_RETRY_MS = 10 * 60_000;
+export const retryDelay = (failures: number) => Math.min(RETRY_MS * 2 ** Math.max(0, failures - 1), MAX_RETRY_MS);
 const CLOSED = 2;
 
 function browserEnv(): LiveEnv {
@@ -51,7 +57,8 @@ export function openLiveSource(workspaceId: string, handlers: LiveHandlers, env:
   let source: SourceLike | null = null,
     retry: unknown = null,
     stopped = false,
-    live = false;
+    live = false,
+    failures = 0;
   const setLive = (value: boolean) => {
     if (value === live) return;
     live = value;
@@ -61,11 +68,13 @@ export function openLiveSource(workspaceId: string, handlers: LiveHandlers, env:
     source?.close();
     source = null;
     setLive(false);
-    if (!stopped && retry === null)
+    if (!stopped && retry === null) {
+      failures++;
       retry = env.setTimeout(() => {
         retry = null;
         open();
-      }, RETRY_MS);
+      }, retryDelay(failures));
+    }
   };
   const open = () => {
     if (stopped) return;
@@ -80,6 +89,7 @@ export function openLiveSource(workspaceId: string, handlers: LiveHandlers, env:
       }
       if (event.type === "revoked") return again();
       if (event.type === "ready") {
+        failures = 0;
         setLive(true);
         handlers.message({ type: "ready" });
         return;

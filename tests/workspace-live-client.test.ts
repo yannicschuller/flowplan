@@ -6,7 +6,7 @@
 // a tab fetch.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { followWorkspace, openLiveSource, RETRY_MS, type LiveEnv, type LiveEvent } from "../components/workspace-live";
+import { followWorkspace, openLiveSource, MAX_RETRY_MS, RETRY_MS, retryDelay, type LiveEnv, type LiveEvent } from "../components/workspace-live";
 import { BOOT_GAP_MS, LIVE_REFRESH_MS, nextAllowed, PAGE_GAP_MS, POLL_REFRESH_MS, wantedFor } from "../components/use-workspace-signals";
 
 type FakeSource = { url: string; onmessage: ((e: { data: string }) => void) | null; onerror: (() => void) | null; readyState: number; closed: boolean; close(): void };
@@ -174,6 +174,27 @@ test("an error answer, revoked: no signals, tried again later; reconnecting: not
   assert.deepEqual(r.events.at(-1), { type: "changed", parts: ["tree"], pages: ["p"] });
   stop();
   assert.equal(t.closed, true);
+});
+
+test("failures in a row wait longer and longer (up to 10 minutes); a ready starts over", () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 9].map(retryDelay), [30_000, 60_000, 120_000, 240_000, 480_000, MAX_RETRY_MS, MAX_RETRY_MS]);
+  const w = world();
+  const stop = openLiveSource("w1", recorder().handlers, w.env(false));
+  // A session that ended: every stream is answered with an error (CLOSED).
+  for (let i = 0; i < 4; i++) {
+    const s = w.sources.at(-1)!;
+    s.readyState = 2;
+    s.onerror?.();
+    assert.equal(w.timers.at(-1)!.ms, retryDelay(i + 1));
+    w.timers.at(-1)!.fn();
+  }
+  // Signed in again: ready resets the delay.
+  send(w.sources.at(-1)!, { type: "ready" });
+  const s = w.sources.at(-1)!;
+  s.readyState = 2;
+  s.onerror?.();
+  assert.equal(w.timers.at(-1)!.ms, RETRY_MS);
+  stop();
 });
 
 test("what a signal makes a tab fetch", () => {

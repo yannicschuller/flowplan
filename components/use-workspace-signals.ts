@@ -51,11 +51,14 @@ export function useWorkspaceSignals(
   openPage: RefObject<string | null>,
   refresh: (only: { boot?: boolean; page?: boolean }) => Promise<unknown>,
   notified?: RefObject<() => void>,
+  // false while the tab is signed out (the banner): no stream then.
+  enabled = true,
 ) {
   const [live, setLive] = useState(false);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
+    if (!enabled) return;
     // What waits: for the timer below, or for the tab to be shown.
     let pending: Wanted | null = null,
       timer: number | null = null,
@@ -115,6 +118,6 @@ export function useWorkspaceSignals(
       if (timer !== null) window.clearTimeout(timer);
       setLive(false);
     };
-  }, [userId, workspaceId, openPage, notified]);
+  }, [userId, workspaceId, openPage, notified, enabled]);
   return live;
 }
