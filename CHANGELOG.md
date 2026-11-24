@@ -2,6 +2,130 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.5 – 2026-11-24
+
+### Security
+
+- Security update for workflows and database rules: dry runs also respect private records, protected properties, journal PINs and encrypted spaces, runs stay with their person, and tokens without the AI permission start no AI steps. Updating is recommended ([#471](https://github.com/yannicschuller/flowplan/issues/471), [#482](https://github.com/yannicschuller/flowplan/issues/482), [#489](https://github.com/yannicschuller/flowplan/issues/489), [#502](https://github.com/yannicschuller/flowplan/issues/502), [#503](https://github.com/yannicschuller/flowplan/issues/503), [#509](https://github.com/yannicschuller/flowplan/issues/509)).
+- Detached and next occurrences of a series keep their access and grants; the timeline, calendar, reminders and two-way relations respect protected properties and records ([#486](https://github.com/yannicschuller/flowplan/issues/486), [#487](https://github.com/yannicschuller/flowplan/issues/487), [#488](https://github.com/yannicschuller/flowplan/issues/488), [#490](https://github.com/yannicschuller/flowplan/issues/490), [#496](https://github.com/yannicschuller/flowplan/issues/496)).
+- Flashcard exports, home statistics, AI properties, AI plans and emergency access no longer show anything from records, properties or databases the person may not see ([#472](https://github.com/yannicschuller/flowplan/issues/472), [#479](https://github.com/yannicschuller/flowplan/issues/479), [#483](https://github.com/yannicschuller/flowplan/issues/483), [#491](https://github.com/yannicschuller/flowplan/issues/491), [#497](https://github.com/yannicschuller/flowplan/issues/497), [#498](https://github.com/yannicschuller/flowplan/issues/498), [#499](https://github.com/yannicschuller/flowplan/issues/499)).
+- The web clipper and “changed since your visit” respect protected properties, locked bookmark databases and private records ([#506](https://github.com/yannicschuller/flowplan/issues/506), [#507](https://github.com/yannicschuller/flowplan/issues/507), [#508](https://github.com/yannicschuller/flowplan/issues/508)).
+- Workspace owners still manage other members' private spaces but can no longer open them to the team or give themselves rights on them; share-link comments and meeting recordings of private records stay where they belong, and whiteboard drawings take only numbers as device sizes ([#473](https://github.com/yannicschuller/flowplan/issues/473), [#476](https://github.com/yannicschuller/flowplan/issues/476), [#480](https://github.com/yannicschuller/flowplan/issues/480), [#477](https://github.com/yannicschuller/flowplan/issues/477)).
+- Sign-in and access: moving an instance needs a fresh sign-in, the LDAP contacts directory is open only to people the organisation invited, blocked addresses also apply to requests with a body, and every sign-out removes the offline copy ([#474](https://github.com/yannicschuller/flowplan/issues/474), [#475](https://github.com/yannicschuller/flowplan/issues/475), [#481](https://github.com/yannicschuller/flowplan/issues/481), [#484](https://github.com/yannicschuller/flowplan/issues/484), [#501](https://github.com/yannicschuller/flowplan/issues/501), [#505](https://github.com/yannicschuller/flowplan/issues/505)).
+- Stability: Office, spreadsheet and Anki files are read in linear time, requests stop at their size limit, and at most two exports or imports per account and three open recordings per person run at the same time ([#470](https://github.com/yannicschuller/flowplan/issues/470), [#478](https://github.com/yannicschuller/flowplan/issues/478), [#485](https://github.com/yannicschuller/flowplan/issues/485), [#492](https://github.com/yannicschuller/flowplan/issues/492), [#493](https://github.com/yannicschuller/flowplan/issues/493), [#494](https://github.com/yannicschuller/flowplan/issues/494), [#495](https://github.com/yannicschuller/flowplan/issues/495), [#504](https://github.com/yannicschuller/flowplan/issues/504)).
+- Quick capture from the phone, widgets and the desktop no longer writes into features switched off in the administration ([#500](https://github.com/yannicschuller/flowplan/issues/500)).
+
+### New
+
+- Journal: open tasks can be copied to the new day instead of moved – they stay on the day before, marked as carried over ([#469](https://github.com/yannicschuller/flowplan/issues/469)).
+- Sync calendars with CalDAV servers, series as single occurrences ([#460](https://github.com/yannicschuller/flowplan/issues/460)).
+- Ask AI: instructions become a checked plan, and plans keep reading until the quota is used up ([#462](https://github.com/yannicschuller/flowplan/issues/462)).
+- Templates: edit the content of saved page templates ([#461](https://github.com/yannicschuller/flowplan/issues/461)).
+
+### Improved
+
+- My tasks: a switch for unassigned tasks from your own pages, also without a date ([#511](https://github.com/yannicschuller/flowplan/issues/511)).
+- Appearance: your own font for menus, text and pages – only for you, on all devices ([#512](https://github.com/yannicschuller/flowplan/issues/512)).
+- Page links stay in one piece, and pinned tabs keep their page ([#466](https://github.com/yannicschuller/flowplan/issues/466)).
+- Move list items across the edge of a list with Ctrl/Cmd+Shift+Up/Down; text on a task lifts it cleanly out of its list ([#464](https://github.com/yannicschuller/flowplan/issues/464), [#467](https://github.com/yannicschuller/flowplan/issues/467), [#468](https://github.com/yannicschuller/flowplan/issues/468)).
+- Formatting toolbar with an inline code button ([#465](https://github.com/yannicschuller/flowplan/issues/465)).
+- My tasks: choose where “Add a task” goes, and show done tasks without strikethrough.
+- Monitoring: errors from external services (AI provider, link previews, image search …) are listed separately and no longer count as server errors ([#514](https://github.com/yannicschuller/flowplan/issues/514)).
+- Less background traffic: one activity signal per browser instead of per tab, maintenance and move notices arrive over the live connection, and writing alone in a document saves at most once a second ([#515](https://github.com/yannicschuller/flowplan/issues/515)).
+- The recommendation “AI answers slowly” counts only enough comparable requests and measures times between 10 and 30 s more precisely ([#516](https://github.com/yannicschuller/flowplan/issues/516)).
+
+### Bug fixes
+
+- The sidebar can be hidden at every window width, also in half-screen windows with Windows display scaling ([#510](https://github.com/yannicschuller/flowplan/issues/510)).
+- The title property can no longer become an ID or another computed property; formula and rollup titles stay possible ([#463](https://github.com/yannicschuller/flowplan/issues/463)).
+- Journal: “Today” no longer says “offline” while the connection works ([#456](https://github.com/yannicschuller/flowplan/issues/456)).
+- Russian: the last English texts translated.
+- A signed-out tab no longer keeps asking the server – this wrongly triggered the “probing addresses and IDs” alert ([#513](https://github.com/yannicschuller/flowplan/issues/513)).
+- An unchanged document shows “Saved” instead of “Syncing …” for ever.
+- The own page “Tasks” is no longer created in a private space shown as a library, where it opened as a book.
+
+<details>
+<summary>All commits</summary>
+
+- Editor: a tick or other non-typing change sends the typed text first (#515) ([8430afa](https://github.com/yannicschuller/flowplan/commit/8430afa46060c38ddffa26c038a91dc30fdd8a04))
+- Fewer saves when alone in a document (#515); own Tasks page never in a library shelf ([2b1c736](https://github.com/yannicschuller/flowplan/commit/2b1c736cf4f692d39d1947f11c4dc2003e9195d2))
+- Help docs and release notes 0.11.5: #513–#516 ([535f9eb](https://github.com/yannicschuller/flowplan/commit/535f9eb9a4c55ce6c045195ab795a37e80bd6957))
+- Spec: image-resize draws its picture on about:blank ([f9fd2fd](https://github.com/yannicschuller/flowplan/commit/f9fd2fd17e5162d95193858886bcc6c571a5a8f5))
+- Specs' servers keep idle connections for 65 s ([b89616c](https://github.com/yannicschuller/flowplan/commit/b89616c0fa711167122193571754c45198c46fa9))
+- Editor: an unchanged document says "Gespeichert" after the first check ([6925608](https://github.com/yannicschuller/flowplan/commit/6925608e4cdac104647451773242c6cecb253f8d))
+- Dialogs: a notice scrolled into view stays below the sticky heading ([a88111a](https://github.com/yannicschuller/flowplan/commit/a88111ad0aac776b83727bc202f7d8d2db3ceb0d))
+- Monitoring: upstream failures counted apart from server errors (#514) ([940b1b7](https://github.com/yannicschuller/flowplan/commit/940b1b7acde4a62db564512cb08780ebc335d9fe))
+- Less background traffic: one activity ping per browser, notices over the live stream (#515) ([0fcc9a2](https://github.com/yannicschuller/flowplan/commit/0fcc9a212ee762857dce9d326477dc5b16e961d6))
+- Metrics: latency buckets of 15 s and 20 s (#516) ([3b83f01](https://github.com/yannicschuller/flowplan/commit/3b83f017df69652ee2adcc9d8b5dfb8d805399d5))
+- Recommendations: AI latency only on enough comparable requests (#516) ([36625f1](https://github.com/yannicschuller/flowplan/commit/36625f1f300bc57809ebecc731bedc234f78c419))
+- Activity ping: stop after a 401, none while signed out (#513) ([a989c9f](https://github.com/yannicschuller/flowplan/commit/a989c9f2f23ffb5ffb39d82b66b85227693717ce))
+- Live stream: back off after failures, none while signed out (#513) ([11f0820](https://github.com/yannicschuller/flowplan/commit/11f0820aac34a6982fc152d4604189f523a0fb77))
+- Help docs and release notes: personal font choice (#512) ([8898355](https://github.com/yannicschuller/flowplan/commit/8898355de60463d09eba0483beb787822a99f2df))
+- Appearance: personal font choice (#512) ([a3da55c](https://github.com/yannicschuller/flowplan/commit/a3da55cb81da9d5a97b79ffceb1bef8d710fa9c2))
+- Specs: load hash addresses afresh instead of changing only the hash ([f72e8a6](https://github.com/yannicschuller/flowplan/commit/f72e8a61aa775d0f560a8a293e56546c22ffc3aa))
+- Spec: a formula or rollup title stays possible (#463) ([50b76c5](https://github.com/yannicschuller/flowplan/commit/50b76c563261bae5af5db769189084d6e1ab766c))
+- A page opened offline without a kept copy loads once the connection is back (#456) ([aac1776](https://github.com/yannicschuller/flowplan/commit/aac1776a7ee2fbd02866b622f8be488fb5a9aeeb))
+- Phones: the navigation fold caret is a 44 × 44 px touch target (#452) ([aab8fca](https://github.com/yannicschuller/flowplan/commit/aab8fca3e346256df27d0447c567b6a42accb80e))
+- LDAP directory access: dialect-neutral admin id list (Postgres) (#474) ([c425b00](https://github.com/yannicschuller/flowplan/commit/c425b004bd36b1365624a9ea9851528bbf5fb5af))
+- Release notes 0.11.5: #469, #510, #511, Russian ([195f20d](https://github.com/yannicschuller/flowplan/commit/195f20df82a7d661cfdc509d295bde4a1768a24e))
+- Help docs: journal open tasks option (#469), unassigned tasks switch (#511), Russian ([2e1fe7e](https://github.com/yannicschuller/flowplan/commit/2e1fe7e80f55e944303d74cbb87f12c97a33efe5))
+- Sidebar can be hidden at every window width (#510) ([00fa93e](https://github.com/yannicschuller/flowplan/commit/00fa93ea716b364b9fd2a3c3127bab71741e7398))
+- Journal: copy open tasks to the new day instead of moving them (#469) ([b14b26a](https://github.com/yannicschuller/flowplan/commit/b14b26a75c643a4d0c41311e45ef6ee0143f493c))
+- My tasks: switch for unassigned tasks from my pages (#511) ([b9f365d](https://github.com/yannicschuller/flowplan/commit/b9f365d872542d09cdc91371b005676e8240db1e))
+- Language skill: list Russian (web app only) ([3daa672](https://github.com/yannicschuller/flowplan/commit/3daa672859a75ce737d3c7d6cbc1ee4dce1adebe))
+- Russian: translate the remaining English texts ([b7035a6](https://github.com/yannicschuller/flowplan/commit/b7035a6377cc7dcb5d59306231f8849562b2b6f0))
+- Help docs for 0.11.5: behaviour after the security fixes ([df8eff8](https://github.com/yannicschuller/flowplan/commit/df8eff817e80fe244bbcca68143cb066682d9740))
+- French: formal vous and typographic apostrophes in the new private-space messages (#473) ([ea47807](https://github.com/yannicschuller/flowplan/commit/ea47807fd9bbf1b8e434463521f581d2fca53506))
+- Release notes for 0.11.5 (security fixes #470–#509 and the changes since 0.11.4) ([5ddd6de](https://github.com/yannicschuller/flowplan/commit/5ddd6de5bd17e64b512d7b6230516bad6fba4105))
+- Security: since-visit row count skips hidden records (#508) ([b7b725d](https://github.com/yannicschuller/flowplan/commit/b7b725dfbf13e98e40ca28a9ecbf29a9979a20e2))
+- Security: apply the address block to API requests with a body (#484) ([d240e74](https://github.com/yannicschuller/flowplan/commit/d240e74f61c220e91f04a5319b62a4ce27004445))
+- Security: same record, field, PIN and E2EE checks in every workflow run mode (#502, #503, #509) ([e79218b](https://github.com/yannicschuller/flowplan/commit/e79218b68fb90c62767ed40b9914c89f25142c75))
+- Security: read request bodies with a limit, also chunked ones (#485) ([4264162](https://github.com/yannicschuller/flowplan/commit/4264162302d4fd795c59f8843da69bdd63f858e5))
+- Security: bind workflow runs to their runner and token AI rights (#471, #482) ([cc6d358](https://github.com/yannicschuller/flowplan/commit/cc6d358f4727d5a5424c510def936330c56097d5))
+- Security: cap worker-pool jobs per account, drop aborted waiting jobs (#504) ([25eda61](https://github.com/yannicschuller/flowplan/commit/25eda615ab694ee39e11f5e3b4f0c587b998fd06))
+- Security: owners manage private spaces without opening them (#473) ([ac75157](https://github.com/yannicschuller/flowplan/commit/ac7515763c25ed1d46acbc16939152caa10b6157))
+- Security: linear-time Anki protobuf decoding (#478) ([f831bc6](https://github.com/yannicschuller/flowplan/commit/f831bc6a3cd021bd58229ac2ec054903c4e404bc))
+- Security: linear-time Office and spreadsheet XML parsing (#470) ([ea1dfcf](https://github.com/yannicschuller/flowplan/commit/ea1dfcffeeb5997fa89279eeaa784de388ff958f))
+- Security: per-person staging bounds for recordings and transcription (#493, #494, #495) ([36225ff](https://github.com/yannicschuller/flowplan/commit/36225ff72d2fdb8b920bdd2f0c6204ba7b8d057d))
+- Security: date reminders respect field read rules and stay cheap (#490, #492) ([e8c1523](https://github.com/yannicschuller/flowplan/commit/e8c1523564537c444772b8d55f0a3880ed2378c4))
+- Security: clear this device's account data on every sign-out (#501, #505) ([139956d](https://github.com/yannicschuller/flowplan/commit/139956d361d440e5f0ee7033a699f5005b5ebf0d))
+- Security: no guest comments through page publications (#480) ([c5f944b](https://github.com/yannicschuller/flowplan/commit/c5f944b237d690ceddb7cc9fb2aa8a0bc082e882))
+- Security: only numbers for device w/h in whiteboard drawings (#477) ([e3224dc](https://github.com/yannicschuller/flowplan/commit/e3224dca5305c53954a0a9803a05e023a6ed91ee))
+- Security: hide kept meeting audio of private records (#476) ([cd0c15f](https://github.com/yannicschuller/flowplan/commit/cd0c15f9281ce06469ba63fa8d34f065cd5a8954))
+- Security: two-way relation sync respects the other side's write rules (#496) ([9312de6](https://github.com/yannicschuller/flowplan/commit/9312de61aed36e7aea897a36fa80edf8568ecdc4))
+- Security: emergency and AI exports render no values from other databases (#483) ([54efb43](https://github.com/yannicschuller/flowplan/commit/54efb437d32d99a93e2b349395748b14884e0693))
+- Security: anchor LDAP directory access to the organisation, re-check it in the background sync (#474, #481) ([a1217fb](https://github.com/yannicschuller/flowplan/commit/a1217fb8fe4aab61126000d2708e62328a1c224e))
+- Security: stats widget counts only visible done records (#499) ([d050349](https://github.com/yannicschuller/flowplan/commit/d0503499c6ad729ea04022fe63ebaa330b841fe5))
+- Security: respect record and property access in flashcard exports and optimiser counts (#491, #497, #498) ([2ed3fd0](https://github.com/yannicschuller/flowplan/commit/2ed3fd034714f640378690adccb2d3eb4e343d7b))
+- Security: rule tasks only carry what the rule's creator may read (#489) ([77c260e](https://github.com/yannicschuller/flowplan/commit/77c260e493acb92491c1d47abd15e6e0ab0a3757))
+- Security: clipper field write rules and bookmark database locks (#506, #507) ([9b2b321](https://github.com/yannicschuller/flowplan/commit/9b2b321ba2edb9bb9aa3dcf11c70a482e85a6ca0))
+- Security: AI plan read tools name a parent page only when it is readable (#479) ([a3db6d8](https://github.com/yannicschuller/flowplan/commit/a3db6d8b7aa0284abbd8473618cb10d661fa132c))
+- Security: scheduling commands respect property write rules (#488) ([1f9c767](https://github.com/yannicschuller/flowplan/commit/1f9c7673c5f97365c6b55b5a4a5d1da451218839))
+- Security: AI compute and auto values only use related titles every reader sees (#472) ([555fc6d](https://github.com/yannicschuller/flowplan/commit/555fc6d4468567964d84277c9bc52fe55b2c4137))
+- Security: refuse capture into pages of a switched-off feature (#500) ([d8235d9](https://github.com/yannicschuller/flowplan/commit/d8235d9f94a8a06c74451c24d3a7e8154ff833e7))
+- Security: derived records keep creator, access and grants (#486, #487) ([6fbd862](https://github.com/yannicschuller/flowplan/commit/6fbd8626d53f12a10b9a4e60fc04cc0a367ee095))
+- Security: judge the instance-move step-up by the sign-in time (#475) ([7add12b](https://github.com/yannicschuller/flowplan/commit/7add12bf48586283cd38a0d95f7c47b4c73e76c6))
+- Visual baselines from ubuntu-latest ([144746c](https://github.com/yannicschuller/flowplan/commit/144746ce0d59199117eae321107aee12d2eaa63f))
+- Help docs for 0.11.5 (#456–#468) ([489321f](https://github.com/yannicschuller/flowplan/commit/489321fe4ca77f18f67e893737cf42d244dcce37))
+- Fixes from the full test run: formula and rollup titles stay possible (#463), CalDAV form posts, French apostrophes, SDKs regenerated ([edd2d62](https://github.com/yannicschuller/flowplan/commit/edd2d62c689048595301af44381572d2b7be7c3d))
+- Page links as unbreakable chips; pinned tabs keep their page (#466) ([16f0937](https://github.com/yannicschuller/flowplan/commit/16f0937b21ed38b138853385c6c982465dc63c3f))
+- CalDAV calendar sync: series as occurrences, allowed hosts (#460) ([f5322b9](https://github.com/yannicschuller/flowplan/commit/f5322b9621b1d130daf9e6bf7c1ad5be200ff88e))
+- Text on a task or list item lifts it cleanly out of its list (#464) ([3f11136](https://github.com/yannicschuller/flowplan/commit/3f11136cbb95a3a7bf6101a7b17da12d36f1e9be))
+- Move list items across list edges with Ctrl/Cmd+Shift+Up/Down (#467, #468) ([576cee1](https://github.com/yannicschuller/flowplan/commit/576cee10030fe2332bc67be2b4533c136f8bdd12))
+- Ask AI plans: keep reading until the quota is used up (#462) ([4d3fc4d](https://github.com/yannicschuller/flowplan/commit/4d3fc4da249472091be443b08d18d351176d98ad))
+- CalDAV calendar sync spec: open the settings directly (#460) ([90449ea](https://github.com/yannicschuller/flowplan/commit/90449ea2a82188ff279d1150f0eb72cf1849da70))
+- Formatting toolbar: inline code button (#465) ([bd22c06](https://github.com/yannicschuller/flowplan/commit/bd22c06c463a454ad34a374f0e685a4f8f382303))
+- Templates: edit the content of saved page templates (#461) ([3ae4048](https://github.com/yannicschuller/flowplan/commit/3ae40482397d1c092e8d61605464304e35b51d24))
+- The title property cannot become an ID or another computed property (#463) ([792e293](https://github.com/yannicschuller/flowplan/commit/792e2933221cf89f318f3936a1f670195c27bf0b))
+- My tasks: choose where "Add a task" goes; option to show done tasks without strikethrough ([eb36157](https://github.com/yannicschuller/flowplan/commit/eb361579e8ec01dddaac19cc2ddb52a4183aa763))
+- Ask AI: instructions become a checked plan (#462) ([a1e9805](https://github.com/yannicschuller/flowplan/commit/a1e9805bbee1ba53280fc2af6513bb53b1884930))
+- Calendar sync with CalDAV servers (#460) ([dadaace](https://github.com/yannicschuller/flowplan/commit/dadaaceb083909a178e22959b195271c25144623))
+- Help docs: ways to run Flowplan (#459) ([2580bed](https://github.com/yannicschuller/flowplan/commit/2580bed9932cd0becdab266d69b68293a4fa5042))
+- Journal: "Heute" no longer says "offline" while the connection works (#456) ([7bec5e3](https://github.com/yannicschuller/flowplan/commit/7bec5e351e61e7c4df95da29056b3d4d1750ce2a))
+- Docker image: no second build from the release tag ([32272fc](https://github.com/yannicschuller/flowplan/commit/32272fcb454be930715a1aa0915cb1a89cf93ddb))
+
+</details>
+
 ## v0.11.4 – 2026-11-23
 
 ### New
