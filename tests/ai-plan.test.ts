@@ -332,3 +332,28 @@ test("plans are limited", async () => {
   const huge = await previewPlan(ben, wid, [{ tool: "append_text", pageId: notes, markdown: "x".repeat(70_000) }]);
   assert.equal(huge[0].ok, false);
 });
+
+test("a nearly used-up quota only warns: reading goes on", async () => {
+  const { recordQuotaUsage } = await import("../lib/ai/quota");
+  await command(admin, {
+    action: "admin.aiQuotas",
+    settings: { timeZone: "Europe/Berlin", workflowsCountInstance: true, warnAt: 80 },
+    rules: [{ scope: "default", target: "", exempt: false, limits: { day: 1_000_000 } }],
+  });
+  await recordQuotaUsage({ userId: ben.id, kind: "person", model: "chat", tokensIn: 850_000, tokensOut: 0 });
+  try {
+    let round = 0;
+    mock.answer = (request) => {
+      if (request.system !== PLAN_SYSTEM) return "OK";
+      round++;
+      return round < 3 ? '{"kind":"read","calls":[{"tool":"search","query":"Alpha"}]}' : '{"kind":"plan","summary":"Nichts.","steps":[]}';
+    };
+    const outcome = (await planInstruction(ben, { workspaceId: wid, instruction: "Lege etwas an" })) as Extract<PlanOutcome, { kind: "plan" }>;
+    assert.equal(outcome.rounds, 3, "read on past the warning");
+    assert.equal(outcome.stopped, undefined);
+    assert.equal(outcome.quotaLow, true);
+  } finally {
+    await command(admin, { action: "admin.aiQuotas", settings: { timeZone: "Europe/Berlin", workflowsCountInstance: true, warnAt: 80 }, rules: [] });
+    await run("DELETE FROM ai_quota_usage");
+  }
+});

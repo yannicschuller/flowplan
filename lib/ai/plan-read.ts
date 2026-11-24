@@ -13,7 +13,7 @@
 //   {"kind":"answer"}                                    a question after all
 // The server runs the read calls and sends the results back as the next
 // user message. At most PLAN_LIMITS.rounds rounds and callsPerRound calls
-// each; reading also stops when the person's AI quota is low or the
+// each; reading also stops when the person's AI quota is used up or the
 // material reaches its size budget – then the model plans with what it has.
 //
 // What the model reads: only what the person may read and the AI may read
@@ -452,11 +452,12 @@ export async function planInstruction(
   const read: PlanReadItem[] = [];
   let size = messages[0].content.length;
   let stopped: "rounds" | "quota" | "size" | undefined;
+  let quotaLow = false;
   for (let round = 1; ; round++) {
     const final = round > PLAN_LIMITS.rounds || !!stopped;
     if (final) {
       stopped ||= "rounds";
-      messages[messages.length - 1].content += `\n\nReading is over (${stopped === "quota" ? "the AI quota is nearly used up" : stopped === "size" ? "enough material" : "round limit"}). Answer now with {"kind":"plan",…} using what you have, or {"kind":"answer"}.`;
+      messages[messages.length - 1].content += `\n\nReading is over (${stopped === "quota" ? "the AI quota is used up" : stopped === "size" ? "enough material" : "round limit"}). Answer now with {"kind":"plan",…} using what you have, or {"kind":"answer"}.`;
     }
     emit({ type: "thinking", round });
     let answer: z.infer<typeof roundSchema>;
@@ -487,7 +488,17 @@ export async function planInstruction(
       const recordRefs = new Map<string, string>();
       const steps = answer.steps.slice(0, PLAN_LIMITS.steps).map((s) => toStep(s, handles, recordRefs));
       const previews = await previewPlan(user, input.workspaceId, steps, { instruction: input.instruction, currentPageId: open?.id ?? null });
-      return { kind: "plan", summary: answer.summary.slice(0, 500), steps: previews, read, tokens, rounds: round, ...(stopped && stopped !== "rounds" ? { stopped } : {}) };
+      if (!quotaLow && stopped !== "quota" && resolved.source === "instance") quotaLow = (await quotaStatus(user, "instance")).low;
+      return {
+        kind: "plan",
+        summary: answer.summary.slice(0, 500),
+        steps: previews,
+        read,
+        tokens,
+        rounds: round,
+        ...(stopped && stopped !== "rounds" ? { stopped } : {}),
+        ...(quotaLow && stopped !== "quota" ? { quotaLow: true } : {}),
+      };
     }
     // Read calls: checked, at most a few, each result within its budget.
     const calls = answer.calls
@@ -511,7 +522,10 @@ export async function planInstruction(
     if (size > budget) stopped = "size";
     if (!stopped && resolved.source === "instance") {
       const quota = await quotaStatus(user, "instance");
-      if (quota.low || quota.blocked) stopped = "quota";
+      // Reading goes on while anything is left; used up, the model plans
+      // with what it has. Nearly used up only warns (on the plan card).
+      if (quota.blocked) stopped = "quota";
+      else if (quota.low) quotaLow = true;
     }
   }
 }

@@ -104,7 +104,7 @@ export type PlanUndoResult = { index: number; ok: boolean; error?: string };
 // What a planning request ends with.
 export type PlanOutcome =
   | { kind: "question"; tokens: PlanTokens }
-  | { kind: "plan"; summary: string; steps: PlanPreview[]; read: PlanReadItem[]; tokens: PlanTokens; rounds: number; stopped?: "rounds" | "quota" | "size" };
+  | { kind: "plan"; summary: string; steps: PlanPreview[]; read: PlanReadItem[]; tokens: PlanTokens; rounds: number; stopped?: "rounds" | "quota" | "size"; quotaLow?: boolean };
 // What the model read before planning (shown while reading and with the plan).
 export type PlanReadItem = { kind: "search" | "page" | "list" | "database"; title: string };
 export type PlanTokens = { input: number; output: number };

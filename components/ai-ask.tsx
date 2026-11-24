@@ -338,6 +338,7 @@ export function AskPanel({
               read: outcome.read,
               tokens: outcome.tokens,
               ...(outcome.stopped ? { stopped: outcome.stopped } : {}),
+              ...(outcome.quotaLow ? { quotaLow: true } : {}),
               chosen: outcome.steps.filter((s) => s.ok).map((s) => s.index),
               phase: "preview",
             },

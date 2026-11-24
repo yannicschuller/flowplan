@@ -43,6 +43,8 @@ export type PlanState = {
   read: PlanReadItem[];
   tokens: PlanTokens;
   stopped?: "rounds" | "quota" | "size";
+  // The AI quota is nearly used up (reading went on).
+  quotaLow?: boolean;
   // What the person ticked (a dependent step shows unticked while what it needs is not).
   chosen: number[];
   phase: "preview" | "running" | "done" | "undoing" | "undone";
@@ -172,8 +174,9 @@ export function AiPlanCard({
           </ul>
         )}
         {plan.stopped === "quota" && (
-          <p className="ai-plan-note">{t("Dein KI-Kontingent ist fast aufgebraucht – die KI hat mit dem geplant, was sie bis dahin gelesen hatte.", "Your AI quota is nearly used up – the AI planned with what it had read so far.")}</p>
+          <p className="ai-plan-note">{t("Dein KI-Kontingent ist aufgebraucht – die KI hat mit dem geplant, was sie bis dahin gelesen hatte.", "Your AI quota is used up – the AI planned with what it had read so far.")}</p>
         )}
+        {plan.quotaLow && plan.stopped !== "quota" && <p className="ai-plan-note">{t("Dein KI-Kontingent ist fast aufgebraucht", "Your AI quota is almost used up")}</p>}
         {editing && plan.steps.length > 0 && (
           <p className="ai-plan-note">{t("Erst „Ausführen“ ändert etwas – mit deinen Rechten. Prüfe die Schritte und wähle ab, was nicht passieren soll.", "Nothing changes before “Run” – and only with your permissions. Check the steps and untick what should not happen.")}</p>
         )}
