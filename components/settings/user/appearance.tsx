@@ -9,7 +9,7 @@
 // groups (#292, profile, all devices), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
-// "Animationen" (#260, profile, all devices), in the app for iPhone and
+// "Schriftart" (#512, profile, all devices), "Animationen" (#260, profile, all devices), in the app for iPhone and
 // iPad what the swipe from the left edge does (#285, this device), pages at full width (#257,
 // profile, all devices),
 // keyboard shortcuts, the introduction and "Neuigkeiten nach Updates" with
@@ -52,6 +52,9 @@ import type { UpdateNotesLevel } from "@/lib/update-notes-pref";
 import type { StartScreen } from "@/lib/start-screen";
 import { setStartScreenLocal, startScreen as startScreenNow, useStartScreen } from "@/lib/start-screen-client";
 import { openWhatsNew, setUpdateNotesLevelLocal, updateNotesLevel, useUpdateNotesLevel } from "@/lib/update-notes-client";
+import { PERSONAL_FONTS, personalFontOf } from "@/lib/personal-font";
+import { DEFAULT_FONTS, SYSTEM_FONT, bundledFont, bundledFontFaces, customFontId, fontStack } from "@/lib/theme-fonts";
+import type { Bootstrap } from "@/lib/types";
 
 export default function AppearanceSection() {
   const t = useT();
@@ -61,6 +64,7 @@ export default function AppearanceSection() {
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
   const [lookStatus, runLook] = useSaveState();
+  const [fontStatus, runFont] = useSaveState();
   const lineNumbers = useLineNumbersByDefault();
   const handlesAlways = useBlockHandlesAlways();
   const discoveryPanels = useDiscoveryPanelsShown();
@@ -339,6 +343,17 @@ export default function AppearanceSection() {
             label={t("Darstellung des Arbeitsbereichs verwenden", "Use the workspace's appearance")}
             onChange={(on) => void runLook(async () => await mutate({ action: "profile.plainLook", plain: !on }))}
           />
+        </SettingRow>
+        <SettingRow
+          anchor="font"
+          label={t("Schriftart", "Font")}
+          description={t(
+            "Die Schrift von Menüs, Texten und Seiten, auch in Einträgen und Kommentaren. Große Überschriften, Code und Seiten in Serif oder Mono behalten ihre Schrift. Standard: die Schrift des Arbeitsbereichs oder Flowplans eigene. Nur für dich. Gilt auf allen Geräten.",
+            "The typeface of menus, text and pages, also in records and comments. Large headings, code and pages set in serif or mono keep theirs. Default: the workspace's typeface or Flowplan's own. Only for you. Applies on all devices.",
+          )}
+        >
+          <SaveState status={fontStatus} />
+          <PersonalFontSelect boot={boot} onChange={(font) => void runFont(async () => await mutate({ action: "profile.font", font }))} />
         </SettingRow>
         <SettingRow
           anchor="page-icon"
@@ -662,6 +677,59 @@ export default function AppearanceSection() {
           </button>
         </SettingRow>
       </SettingGroup>
+    </>
+  );
+}
+
+// "Schriftart" (#512, lib/personal-font.ts): each choice shown in its own
+// face, as in a workspace's look (components/settings/user/workspace-look.tsx).
+// The @font-face rules are only declared here; a browser downloads a face
+// when the open list shows text in it.
+function PersonalFontSelect({ boot, onChange }: { boot: Bootstrap; onChange: (font: string | null) => void }) {
+  const t = useT();
+  const value = personalFontOf(boot.uiFont) ?? "";
+  // What "Standard" means for this person: the workspace's interface font
+  // (unless they chose Flowplan's own look), else Flowplan's.
+  const workspaceUi = boot.plainLook ? undefined : boot.look?.theme?.fonts?.ui;
+  const custom = customFontId(workspaceUi);
+  const customFont = custom ? boot.look?.fonts.find((f) => f.id === custom) : undefined;
+  const standardRef = workspaceUi && (!custom || customFont) ? workspaceUi : DEFAULT_FONTS.ui;
+  const standardName =
+    standardRef === SYSTEM_FONT ? t("Systemschrift", "System font") : customFont && standardRef === workspaceUi ? customFont.name : (bundledFont(standardRef)?.name ?? standardRef);
+  const faces = PERSONAL_FONTS.map(bundledFontFaces).filter(Boolean).join("\n");
+  // Flowplan's own face is a choice of its own only where "Standard" means
+  // another (a workspace's) – or when it was chosen.
+  const group = (category: "sans" | "serif") =>
+    PERSONAL_FONTS.filter((id) => id !== SYSTEM_FONT && bundledFont(id)?.category === category && (id !== DEFAULT_FONTS.ui || standardRef !== DEFAULT_FONTS.ui || id === value));
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: faces }} />
+      <Select
+        className={CONTROL.lg}
+        name="profile-font"
+        aria-label={t("Schriftart", "Font")}
+        value={value}
+        onChange={(e) => onChange(personalFontOf(e.target.value))}
+      >
+        <option value="" data-font={fontStack("ui", standardRef, customFont) ?? undefined}>{`${t("Standard", "Default")} (${standardName})`}</option>
+        <option value={SYSTEM_FONT} data-font={fontStack("ui", SYSTEM_FONT) ?? undefined}>
+          {t("Systemschrift", "System font")}
+        </option>
+        {(
+          [
+            ["sans", t("Serifenlos", "Sans serif")],
+            ["serif", t("Mit Serifen", "Serif")],
+          ] as const
+        ).map(([category, label]) => (
+          <optgroup key={category} label={label}>
+            {group(category).map((id) => (
+              <option key={id} value={id} data-font={fontStack("ui", id) ?? undefined}>
+                {bundledFont(id)!.name}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
     </>
   );
 }

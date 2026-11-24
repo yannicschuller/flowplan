@@ -15,6 +15,7 @@ import { setUserFullWidthPages, userFullWidthPages } from "./user-page-width";
 import { setUserCommentMargin, userCommentMargin } from "./user-comment-margin";
 import { setUserStrikeDoneTasks, userStrikeDoneTasks } from "./user-done-strike";
 import { setUserWhiteboardCanvas, userWhiteboardCanvas } from "./user-whiteboard-canvas";
+import { setUserFont, userFont } from "./user-font";
 import { setUserNotificationSound, userNotificationSound } from "./user-notification-sound";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
@@ -435,6 +436,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // person chose Flowplan's own look instead.
     look: await workspaceLook(workspace.id),
     plainLook: await plainLook(user.id),
+    // "Schriftart" (#512, lib/personal-font.ts): this person's typeface,
+    // over the workspace's interface font.
+    uiFont: await userFont(user.id),
     // Automatic links (#202, lib/auto-link.ts) for the editors.
     linkRules: await workspaceLinkRules(workspace.id),
     // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
@@ -1149,6 +1153,10 @@ async function runCommand(
       // Flowplan's own look instead of the workspaces' (#196).
       case "profile.plainLook":
         result = await setPlainLook(user, b.plain);
+        break;
+      // The typeface this person reads Flowplan in (#512, lib/personal-font.ts).
+      case "profile.font":
+        result = await setUserFont(user, b.font);
         break;
       // The text menu on selecting text (#200, lib/text-menu-pref.ts).
       case "profile.textMenu":
