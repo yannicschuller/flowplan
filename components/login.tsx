@@ -31,6 +31,7 @@ import {
   type SignInWay,
 } from "@/lib/sign-in-ways";
 import { PasswordInput } from "./password-input";
+import { isAccountTabKey } from "@/lib/tab-storage";
 
 // Restoring a backup at setup is rare: its code (and the table of server
 // messages it uses) loads only when chosen.
@@ -190,11 +191,14 @@ export default function Login({
     </label>
   );
   // Signed out (or the session ended): nothing of the last person stays in
-  // the tab's cache of recent pages (lib/swr-cache.ts).
+  // the tab – recent pages, the Ask-AI conversation, history titles
+  // (lib/tab-storage.ts).
   useEffect(() => {
     try {
-      for (let i = sessionStorage.length - 1; i >= 0; i--)
-        if (sessionStorage.key(i)?.startsWith("flowplan:swr:")) sessionStorage.removeItem(sessionStorage.key(i)!);
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key && isAccountTabKey(key)) sessionStorage.removeItem(key);
+      }
     } catch {}
   }, []);
   useEffect(() => {

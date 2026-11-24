@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
 import { api, Modal } from "./ui";
+import { clearAccountData } from "./sign-out";
 import { Select } from "./select";
 
 type Plan = {
@@ -48,7 +49,9 @@ export function DeleteOwnAccount() {
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(serverMessage(data.error) || response.statusText);
-      // Signed out: the sign-in page.
+      // Signed out: nothing of the account stays here (#501), then the
+      // sign-in page.
+      await clearAccountData();
       window.location.replace("/");
     } catch (e) {
       setError((e as Error).message);

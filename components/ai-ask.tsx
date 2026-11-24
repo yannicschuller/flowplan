@@ -42,6 +42,7 @@ import type { PlanState } from "./ai-plan";
 import { AI_PROVIDER_NAMES, AI_PROVIDER_NAMES_EN, type AiStatus } from "@/lib/ai/features";
 import { askSuggestions, firstName, modelDisplayName, recentAskPages, type AskSuggestion } from "@/lib/ai/ask-suggestions";
 import type { Page, Space } from "@/lib/types";
+import { ASK_STORAGE_PREFIX } from "@/lib/tab-storage";
 
 type Message = {
   role: "user" | "assistant";
@@ -63,7 +64,7 @@ const AiPlanCard = lazy(() => import("./ai-plan").then((m) => ({ default: m.AiPl
 // The open page as the panel knows it.
 export type AskCurrentPage = { id: string; title: string; kind?: string; editable?: boolean; encrypted?: boolean; hasDate?: boolean };
 type Stored = { messages: Message[]; scope: string; across?: boolean; onlyAnswer?: boolean };
-const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
+const storageKey = (workspaceId: string) => `${ASK_STORAGE_PREFIX}${workspaceId}`;
 const MAX_TURNS = 20;
 
 // Up to this width the panel is a bottom sheet (the phone layout of

@@ -90,6 +90,7 @@ const live = (live: Live) => live.acc + (live.since !== null ? performance.now()
 
 export function useNotebookAudio({
   pageId,
+  userId,
   editor,
   canEdit,
   scroller,
@@ -97,6 +98,8 @@ export function useNotebookAudio({
   off = false,
 }: {
   pageId: string;
+  // The signed-in person: recordings on this device are theirs only (#505).
+  userId: string;
   editor: InkEditor;
   canEdit: boolean;
   // Guests of an edit link (#280): no recordings.
@@ -144,11 +147,11 @@ export function useNotebookAudio({
   // Recordings left on this device (a reload, a crash, no connection);
   // one written to in the last moments is still running in another tab.
   const refreshPending = useCallback(async () => {
-    if (!canEdit) return;
+    if (!canEdit || !userId) return;
     const active = liveRef.current?.session.id;
-    const list = await pendingSessions(pageId);
+    const list = await pendingSessions(userId, pageId);
     setPending(list.filter((s) => s.id !== active && !(s.state === "recording" && Date.now() - s.updatedAt < 20_000) && s.bytes > 0));
-  }, [canEdit, pageId]);
+  }, [canEdit, pageId, userId]);
   useEffect(() => {
     void refreshPending();
   }, [refreshPending]);
@@ -311,6 +314,7 @@ export function useNotebookAudio({
     const stamp = new Date(startedAt).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" });
     const session: StoredSession = {
       id: crypto.randomUUID(),
+      userId,
       pageId,
       mime: format.mime,
       name: t(`Aufnahme ${stamp}`, `Recording ${stamp}`),

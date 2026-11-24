@@ -23,6 +23,7 @@
 // the workspace.
 import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
+import { HISTORY_TITLES_KEY } from "./tab-storage";
 
 // At most this many places in the list of a long press or right click.
 export const LIST_SIZE = 10;
@@ -149,7 +150,7 @@ const navigationApi = (): NavigationLike | null => {
 };
 
 const TRAIL_KEY = "flowplan-history-trail";
-const TITLES_KEY = "flowplan-history-titles";
+const TITLES_KEY = HISTORY_TITLES_KEY;
 const hereUrl = () => `${location.pathname}${location.hash}`;
 function readTrail(): Trail | null {
   try {

@@ -5,8 +5,12 @@
 // connection costs at most the last few seconds. Removed once the upload is
 // finished or discarded. Without IndexedDB (private windows of some
 // browsers) the pieces stay in memory only – `durable` says which.
+// A recording belongs to the account that made it (#505): only that
+// account is offered to save or discard it on a shared device.
 export type StoredSession = {
   id: string;
+  // The account that recorded it; missing on recordings kept before #505.
+  userId?: string;
   pageId: string;
   mime: string;
   name: string;
@@ -97,15 +101,22 @@ export async function addChunk(session: StoredSession, blob: Blob) {
   return next;
 }
 
-// Sessions of a notebook that are still on this device (newest first).
-export async function pendingSessions(pageId: string): Promise<StoredSession[]> {
+// Whose a kept recording is. One kept before #505 carries no account: it
+// is still offered (as before) rather than hidden for good, so no unsaved
+// recording is lost with the update.
+const recordedBy = (session: StoredSession, userId: string) => !session.userId || session.userId === userId;
+
+// The person's sessions of a notebook that are still on this device
+// (newest first).
+export async function pendingSessions(userId: string, pageId: string): Promise<StoredSession[]> {
   const found = new Map<string, StoredSession>();
-  for (const s of memory.sessions.values()) if (s.pageId === pageId) found.set(s.id, s);
+  const wanted = (s: StoredSession) => s.pageId === pageId && recordedBy(s, userId);
+  for (const s of memory.sessions.values()) if (wanted(s)) found.set(s.id, s);
   const db = await openDb();
   if (db) {
     try {
       const all = (await result(db.transaction(SESSIONS).objectStore(SESSIONS).getAll())) as StoredSession[] | undefined;
-      for (const s of all || []) if (s.pageId === pageId) found.set(s.id, s);
+      for (const s of all || []) if (wanted(s)) found.set(s.id, s);
     } catch {}
   }
   return [...found.values()].sort((a, b) => b.startedAt - a.startedAt);

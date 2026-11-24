@@ -527,6 +527,8 @@ export function TwoFactorRequired({
           type="button"
           className="text-button"
           onClick={async () => {
+            // As every sign-out on this device (#501, components/sign-out.ts).
+            await import("./sign-out").then((m) => m.clearAccountData()).catch(() => undefined);
             const done = await fetch("/api/auth/logout", { method: "POST" })
               .then((r) => r.json() as Promise<{ redirect?: string }>)
               .catch(() => ({}) as { redirect?: string });

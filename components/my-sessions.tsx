@@ -9,6 +9,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { StatusBadge } from "./settings-ui";
 import { api } from "./ui";
+import { clearAccountData } from "./sign-out";
 
 type Session = {
   id: string;
@@ -53,8 +54,11 @@ export function MySessions({ onError }: { onError: (message: string) => void }) 
   const signOut = async (body: { id?: string; others?: boolean }) => {
     try {
       const result = await end(body);
-      if (result.current) location.reload();
-      else void load();
+      if (result.current) {
+        // This device signed out: as with the account menu (#501).
+        await clearAccountData();
+        location.reload();
+      } else void load();
     } catch (e) {
       onError((e as Error).message);
     }
