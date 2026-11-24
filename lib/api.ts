@@ -259,6 +259,7 @@ import {
 import { cleanNoTime, validZone, withoutNewTimes } from "./date-values";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
+import { publicAppearanceSchema } from "./public-appearance";
 import { protectionChanges } from "./share-access";
 import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
@@ -3691,6 +3692,8 @@ async function runCommand(
           z.boolean().optional().parse(b.allowCopy) ?? true,
           z.boolean().optional().parse(b.autoChildren) ?? false,
           z.boolean().optional().parse(b.externalLinkIcon),
+          // Page icon, font and done tasks for visitors (#526).
+          b.appearance === undefined ? undefined : publicAppearanceSchema.parse(b.appearance),
         );
         if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? (b.autoChildren === true ? " with subpages, new ones automatically" : " with subpages") : ""}` });
         break;

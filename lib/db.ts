@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 134;
+export const SCHEMA_VERSION = 135;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1700,11 +1700,26 @@ function migrate(d: DatabaseSync) {
   // Schema 134 – failures of third-party services, counted apart from the
   // server errors (#514, lib/error-details.ts).
   migrateUpstreamFailures(d);
+  // Schema 135 – the appearance a shared or published page shows its
+  // visitors (#526, lib/public-appearance.ts).
+  migratePublicAppearance(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 135 – publications.appearance, share_links.appearance and
+// record_shares.appearance (#526, lib/public-appearance.ts): the page icon
+// placement, font and struck-through done tasks visitors see – the
+// publisher's or link creator's settings when made, a publication's
+// changeable in the share dialog (JSON; NULL: made before #526, the
+// creator's current settings apply). An older version would show its
+// visitors the defaults again, hence the number.
+function migratePublicAppearance(d: DatabaseSync) {
+  for (const table of ["publications", "share_links", "record_shares"])
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "appearance"))
+      d.exec(`ALTER TABLE ${table} ADD COLUMN appearance TEXT`);
 }
 // Schema 134 – upstream_failures (#514, lib/error-details.ts): 5xx answers
 // that report a failing third-party service (an HttpError marked

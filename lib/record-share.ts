@@ -43,6 +43,8 @@ import { fileIdOf, fileUrls } from "./file-cells";
 import { isEncryptedPage } from "./e2ee-server";
 import { dropLiveProjections } from "./shared-live";
 import { securityEvent } from "./security-events";
+import { publicAppearanceJson } from "./public-appearance";
+import { userPublicAppearance } from "./user-public-appearance";
 import { behindJournalPin, runnerIdentity } from "./workflows/runner";
 import type { Field, Identity, Page, Row } from "./types";
 
@@ -414,7 +416,7 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
         throw new HttpError(400, "Maximal 50 aktive Links pro Eintrag.");
       const token = id();
       await run(
-        "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,password_hash,expires_at,created_by,created_at) VALUES(?,?,?,'link',?,?,?,?,?,?,?)",
+        "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,password_hash,expires_at,created_by,created_at,appearance) VALUES(?,?,?,'link',?,?,?,?,?,?,?,?)",
         token,
         page.id,
         row.id,
@@ -425,6 +427,8 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
         protection.expires_at ?? null,
         user.id,
         Date.now(),
+        // The creator's page icon, font and done tasks (#526).
+        publicAppearanceJson(await userPublicAppearance(user.id)),
       );
       await audit(user.id, "record.share", page.id, `${row.id}:${role}`);
       return { token, ...(await sharesOf(page, row.id, row.access)) };
@@ -462,13 +466,14 @@ export async function recordShareCommand(user: Identity, action: string, raw: un
         if (includeChildren) await requireSubPagesShareable(user, page, row.id);
         if (!existing) {
           await run(
-            "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,created_by,created_at) VALUES(?,?,?,'publication','','viewer',?,?,?)",
+            "INSERT INTO record_shares(token,page_id,row_id,kind,name,role,include_children,created_by,created_at,appearance) VALUES(?,?,?,'publication','','viewer',?,?,?,?)",
             id(),
             page.id,
             row.id,
             includeChildren ? 1 : 0,
             user.id,
             Date.now(),
+            publicAppearanceJson(await userPublicAppearance(user.id)),
           );
           securityEvent("share.public", { actorId: user.id, detail: `record ${row.id} of page ${page.id}` });
         } else if (includeChildren !== undefined) {

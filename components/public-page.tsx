@@ -20,7 +20,8 @@ import { SHARE_COOKIE, shareState, withShareCookie } from "@/lib/share-access";
 import { SharePasswordForm } from "./share-password-form";
 import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
-import { publicPage, publishedHtml, publicFile, publishedLinkPages, publicationNotice } from "@/lib/publication";
+import { publicPage, publishedHtml, publicFile, publishedLinkPages, publicationNotice, shareAppearance } from "@/lib/publication";
+import { PersonalFontStyle } from "./personal-font-style";
 import { renderedTheme } from "@/lib/custom-domains";
 import { workspaceLook } from "@/lib/workspace-fonts";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
@@ -281,6 +282,9 @@ async function renderPublishedPage({
   const crumbFull = record && d && crumb ? recordCrumb(record.cells, d.fields, publicFieldIds(d.fields), Infinity) : null;
   // The look an owner chose for the publication (logo, accent, footer).
   const theme = publication ? (await renderedTheme(token, root.id)) : null;
+  // Page icon placement, font and done tasks as the person who shared or
+  // published the page sees them (#526, lib/public-appearance.ts).
+  const look = await shareAppearance(token);
   // Blocks of block extensions their owners did not allow on published
   // pages keep only their text.
   const shownPlugins = await publicPluginIds(root.workspace_id);
@@ -317,11 +321,13 @@ async function renderPublishedPage({
     );
   return (
     <main
-      className={publicPageClass({ wide: !!page.full_width, database: page.kind === "database", themed: !!theme?.accent, externalLinkIcon: !publication || !!publication.external_link_icon })}
+      className={publicPageClass({ wide: !!page.full_width, database: page.kind === "database", themed: !!theme?.accent, externalLinkIcon: !publication || !!publication.external_link_icon, appearance: look })}
       style={theme?.accent ? ({ "--blue": theme.accent, "--accent-strong": theme.accent } as React.CSSProperties) : undefined}
     >
       {/* The look of the workspace (#196); the publication's own accent above wins. */}
       <WorkspaceThemeStyle look={await workspaceLook(root.workspace_id)} fontUrl={(id) => `/api/share/${token}/fonts/${id}`} />
+      {/* The sharer's font over it (#512, #526): only the bundled faces. */}
+      <PersonalFontStyle font={look.font} />
       <header className="public-header">
         {theme?.logo ? (
           <a href={href(root.id)} className="public-brand public-logo">
@@ -388,8 +394,20 @@ async function renderPublishedPage({
           )}
         </div>
       )}
-      {!record && <PageIcon name={shownPageIcon(iconUrl, page.kind)} size={40} />}
-      <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
+      {!record && look.pageIcon === "inline" ? (
+        // "Neben dem Titel" (#214, #526, app/page-icon-inline.css).
+        <div className="public-title">
+          <span className="public-title-icon">
+            <PageIcon name={shownPageIcon(iconUrl, page.kind)} size={40} />
+          </span>
+          <h1>{page.title}</h1>
+        </div>
+      ) : (
+        <>
+          {!record && <PageIcon name={shownPageIcon(iconUrl, page.kind)} size={40} />}
+          <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
+        </>
+      )}
       {d && !record && publicViews.length > 1 && (
         <nav className="public-views" aria-label={t("Ansichten", "Views")}>
           {publicViews.map((v) => (

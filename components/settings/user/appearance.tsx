@@ -348,8 +348,8 @@ export default function AppearanceSection() {
           anchor="font"
           label={t("Schriftart", "Font")}
           description={t(
-            "Die Schrift von Menüs, Texten und Seiten, auch in Einträgen und Kommentaren. Große Überschriften, Code und Seiten in Serif oder Mono behalten ihre Schrift. Standard: die Schrift des Arbeitsbereichs oder Flowplans eigene. Nur für dich. Gilt auf allen Geräten.",
-            "The typeface of menus, text and pages, also in records and comments. Large headings, code and pages set in serif or mono keep theirs. Default: the workspace's typeface or Flowplan's own. Only for you. Applies on all devices.",
+            "Die Schrift von Menüs, Texten und Seiten, auch in Einträgen und Kommentaren. Große Überschriften, Code und Seiten in Serif oder Mono behalten ihre Schrift. Standard: die Schrift des Arbeitsbereichs oder Flowplans eigene. Seiten, die du teilst oder veröffentlichst, sehen andere ebenso. Gilt auf allen Geräten.",
+            "The typeface of menus, text and pages, also in records and comments. Large headings, code and pages set in serif or mono keep theirs. Default: the workspace's typeface or Flowplan's own. Pages you share or publish look the same to others. Applies on all devices.",
           )}
         >
           <SaveState status={fontStatus} />
@@ -359,8 +359,8 @@ export default function AppearanceSection() {
           anchor="page-icon"
           label={t("Seitensymbol", "Page icon")}
           description={t(
-            "Groß über dem Titel oder klein neben dem Titel in seiner ersten Zeile – weniger Platz über dem Text. Ein Cover bleibt darüber. Nur deine Ansicht: Titel und Symbol der Seite ändern sich nicht. Gilt auf allen Geräten.",
-            "Large above the title or small next to the title on its first line – less space above the text. A cover stays above it. Only how you see pages: the page's title and icon do not change. Applies on all devices.",
+            "Groß über dem Titel oder klein neben dem Titel in seiner ersten Zeile – weniger Platz über dem Text. Ein Cover bleibt darüber. Titel und Symbol der Seite ändern sich nicht; Seiten, die du teilst oder veröffentlichst, sehen andere ebenso. Gilt auf allen Geräten.",
+            "Large above the title or small next to the title on its first line – less space above the text. A cover stays above it. The page's title and icon do not change; pages you share or publish look the same to others. Applies on all devices.",
           )}
         >
           <SaveState status={pageIconStatus} />
@@ -512,8 +512,8 @@ export default function AppearanceSection() {
           anchor="strike-done-tasks"
           label={t("Erledigte Aufgaben durchstreichen", "Strike through done tasks")}
           description={t(
-            "Der Text erledigter Aufgaben wird durchgestrichen – in Dokumenten, Journalen, Einträgen, Meine Aufgaben und den Widgets der Startseite. Aus: Erledigte Aufgaben zeigen nur das Häkchen und blassere Schrift. Nur deine Ansicht, das Dokument bleibt, wie es ist. Gilt auf allen Geräten.",
-            "The text of done tasks is struck through – in documents, journals, records, My tasks and the start page's widgets. Off: done tasks show only the tick and fainter text. Only how you see them; the document stays as it is. Applies on all devices.",
+            "Der Text erledigter Aufgaben wird durchgestrichen – in Dokumenten, Journalen, Einträgen, Meine Aufgaben und den Widgets der Startseite. Aus: Erledigte Aufgaben zeigen nur das Häkchen und blassere Schrift. Das Dokument bleibt, wie es ist; Seiten, die du teilst oder veröffentlichst, sehen andere ebenso. Gilt auf allen Geräten.",
+            "The text of done tasks is struck through – in documents, journals, records, My tasks and the start page's widgets. Off: done tasks show only the tick and fainter text. The document stays as it is; pages you share or publish look the same to others. Applies on all devices.",
           )}
         >
           <SaveState status={strikeStatus} />

@@ -7,8 +7,9 @@ import { z } from "zod";
 //            a classic document; less space above the text
 // Stored per person on the server (users.page_icon, NULL = the default), so
 // the choice follows the person to every device. Only how the reader sees
-// the page – the page, its title and its icon stay as they are, and
-// published pages keep the default for their visitors.
+// the page – the page, its title and its icon stay as they are. Pages the
+// person shares or publishes show their visitors the same (#526,
+// lib/public-appearance.ts).
 export const PAGE_ICON_PREFS = ["above", "inline"] as const;
 export type PageIconPref = (typeof PAGE_ICON_PREFS)[number];
 export const DEFAULT_PAGE_ICON_PREF: PageIconPref = "above";
