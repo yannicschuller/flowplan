@@ -2534,7 +2534,7 @@ export default function DatabaseView({
         })
         .join(", ");
     else if (f.type === "date") text = typeof v === "string" ? formatFieldDate(v, f) : "";
-    else if (f.type === "number") text = typeof v === "number" ? formatNumber(v, f.format, f.decimals) : cellText(v);
+    else if (f.type === "number") text = typeof v === "number" ? formatFieldNumber(v, f) : cellText(v);
     else if (f.type === "sprint") text = data.database.settings?.sprints?.find((s) => s.id === v)?.name || "";
     else if (f.type === "files") {
       const names = new Map((data.files || []).map((x) => [x.url, x.name]));
