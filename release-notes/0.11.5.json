@@ -91,6 +91,13 @@
   ],
   "features": [
     {
+      "de": "Journal: Offene Aufgaben lassen sich in den neuen Tag kopieren statt verschieben – sie bleiben am Vortag als übernommen stehen.",
+      "en": "Journal: open tasks can be copied to the new day instead of moved – they stay on the day before, marked as carried over.",
+      "issues": [
+        469
+      ]
+    },
+    {
       "de": "Kalender mit CalDAV-Servern abgleichen, Serien als einzelne Termine.",
       "en": "Sync calendars with CalDAV servers, series as single occurrences.",
       "issues": [
@@ -113,6 +120,13 @@
     }
   ],
   "improvements": [
+    {
+      "de": "Meine Aufgaben: Schalter für Aufgaben ohne Person aus deinen eigenen Seiten, auch ohne Datum.",
+      "en": "My tasks: a switch for unassigned tasks from your own pages, also without a date.",
+      "issues": [
+        511
+      ]
+    },
     {
       "de": "Seitenlinks bleiben ein Stück, und angeheftete Tabs behalten ihre Seite.",
       "en": "Page links stay in one piece, and pinned tabs keep their page.",
@@ -143,6 +157,13 @@
   ],
   "fixes": [
     {
+      "de": "Die Seitenleiste lässt sich in jeder Fensterbreite ausblenden, auch bei halbem Bildschirm mit Windows-Skalierung.",
+      "en": "The sidebar can be hidden at every window width, also in half-screen windows with Windows display scaling.",
+      "issues": [
+        510
+      ]
+    },
+    {
       "de": "Die Titeleigenschaft kann keine ID oder andere berechnete Eigenschaft mehr werden; Formel- und Rollup-Titel bleiben möglich.",
       "en": "The title property can no longer become an ID or another computed property; formula and rollup titles stay possible.",
       "issues": [
@@ -155,6 +176,10 @@
       "issues": [
         456
       ]
+    },
+    {
+      "de": "Russisch: die letzten englischen Texte übersetzt.",
+      "en": "Russian: the last English texts translated."
     }
   ]
 }
