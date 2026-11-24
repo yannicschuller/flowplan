@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 127;
+export const SCHEMA_VERSION = 129;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1680,6 +1680,10 @@ function migrate(d: DatabaseSync) {
   // Schema 127 – who heard of a whiteboard comment's mention (#455,
   // lib/whiteboard-comments-server.ts).
   migrateBoardMentionNotices(d);
+  // Schema 129 – where "Aufgabe hinzufügen" of My tasks writes (#457,
+  // lib/my-task-target.ts) and "Erledigte Aufgaben durchstreichen" (#458,
+  // lib/done-strike-pref.ts).
+  migrateMyTaskTarget(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1737,6 +1741,20 @@ function migrateDirectoryGroupMembers(d: DatabaseSync) {
 // Rows go with the board's page and the person, and after 400 days
 // (BOARD_MENTION_KEEP_DAYS). An older version would ignore the table and
 // keep its own memory, hence the number.
+// Schema 129 – two personal choices:
+// - my_task_targets (#457, lib/my-task-target.ts): the task database a
+//   person's "Aufgabe hinzufügen" in My tasks writes into, per workspace.
+//   No row: the own page "Aufgaben" (personal_task_pages), as before. A
+//   database purged from the trash takes its row with it (back to the page).
+// - users.strike_done_tasks (#458, lib/done-strike-pref.ts): whether done
+//   tasks are struck through (NULL: never chosen, on; 0: off; 1: on).
+// An older version would ignore both, hence the number.
+function migrateMyTaskTarget(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS my_task_targets(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,database_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
+    CREATE INDEX IF NOT EXISTS my_task_targets_database ON my_task_targets(database_id);`);
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "strike_done_tasks"))
+    d.exec("ALTER TABLE users ADD COLUMN strike_done_tasks INTEGER");
+}
 function migrateBoardMentionNotices(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_mention_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,message_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,notified_at INTEGER NOT NULL,PRIMARY KEY(page_id,message_id,user_id));
     CREATE INDEX IF NOT EXISTS whiteboard_mention_notices_at ON whiteboard_mention_notices(notified_at);

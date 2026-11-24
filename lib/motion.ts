@@ -7,6 +7,7 @@
 
 import { unfoldElement } from "./heading-folds";
 import { effectiveMotion, motionPrefOf, type MotionPref } from "./motion-pref";
+import { DONE_TASKS_PLAIN_CLASS } from "./done-strike-pref";
 
 export const EASE_OUT = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 /** Durations in ms: UI changes stay short, camera moves may take longer. */
@@ -392,6 +393,8 @@ export function installTaskFeedback() {
     (e) => {
       const box = e.target as HTMLInputElement | null;
       if (!box || box.type !== "checkbox" || !box.checked || prefersReducedMotion()) return;
+      // "Erledigte Aufgaben durchstreichen" off (#458): no line to draw.
+      const plain = document.documentElement.classList.contains(DONE_TASKS_PLAIN_CLASS);
       const text =
         box.closest(".document-editor li[data-checked]")?.querySelector(":scope > div > :not(ul, ol)") ||
         box.closest(".my-tasks-group li")?.querySelector(".my-task-text");
@@ -400,7 +403,7 @@ export function installTaskFeedback() {
         duration: DURATION.slow,
         easing: EASE_OUT,
       });
-      drawStrike(text);
+      if (!plain) drawStrike(text);
     },
     true,
   );

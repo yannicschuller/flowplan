@@ -364,6 +364,8 @@ export type Bootstrap = {
   fullWidthPages?: boolean;
   // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
   commentMargin?: boolean;
+  // "Erledigte Aufgaben durchstreichen" (#458, lib/done-strike-pref.ts).
+  strikeDoneTasks?: boolean;
   // "Whiteboard-Fläche" (#399, lib/whiteboard-canvas-pref.ts).
   whiteboardCanvas?: import("./whiteboard-canvas-pref").WhiteboardCanvasPref;
   // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).

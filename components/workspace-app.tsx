@@ -356,6 +356,8 @@ import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
 import { setCommentMarginLocal } from "@/lib/comment-margin-pref-client";
+import { setStrikeDoneTasksLocal, useStrikeDoneTasks } from "@/lib/done-strike-pref-client";
+import { DONE_TASKS_PLAIN_CLASS } from "@/lib/done-strike-pref";
 import { setWhiteboardCanvasLocal } from "@/lib/whiteboard-canvas-pref-client";
 import { setNotificationSoundLocal } from "@/lib/notification-sound-client";
 import { setStartScreenLocal } from "@/lib/start-screen-client";
@@ -785,6 +787,7 @@ export default function WorkspaceApp({
   const allPagesWide = useFullWidthPages(fullWidthPagesOf(boot.fullWidthPages));
   // "Textkommentare: am Rand / unter dem Dokument" (#387, lib/comment-margin-pref.ts).
   useEffect(() => setCommentMarginLocal(boot.commentMargin), [boot.commentMargin]);
+  useEffect(() => setStrikeDoneTasksLocal(boot.strikeDoneTasks), [boot.strikeDoneTasks]);
   // "Whiteboard-Fläche: folgt dem Farbschema / immer hell" (#399, lib/whiteboard-canvas-pref.ts).
   useEffect(() => setWhiteboardCanvasLocal(boot.whiteboardCanvas), [boot.whiteboardCanvas]);
   // "Ton bei neuen Benachrichtigungen" (#401, lib/notification-sound.ts).
@@ -812,6 +815,13 @@ export default function WorkspaceApp({
     root.classList.toggle(HIDE_EXTERNAL_LINK_ICON_CLASS, !linkIcon);
     return () => root.classList.remove(HIDE_EXTERNAL_LINK_ICON_CLASS);
   }, [linkIcon]);
+  // "Erledigte Aufgaben durchstreichen" off (#458): done tasks only ticked.
+  const strikeDone = useStrikeDoneTasks();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle(DONE_TASKS_PLAIN_CLASS, !strikeDone);
+    return () => root.classList.remove(DONE_TASKS_PLAIN_CLASS);
+  }, [strikeDone]);
   // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
   setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(

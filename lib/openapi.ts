@@ -17,6 +17,7 @@ import { TOOLBAR_BLOCKS, TOOLBAR_BUTTONS, TOOLBAR_DIVIDER, TOOLBAR_ORDER_MAX, to
 import { motionPrefSchema } from "./motion-pref";
 import { fullWidthPagesSchema } from "./page-width-pref";
 import { commentMarginSchema } from "./comment-margin-pref";
+import { strikeDoneTasksSchema } from "./done-strike-pref";
 import { whiteboardCanvasSchema } from "./whiteboard-canvas-pref";
 import { notificationSoundSchema } from "./notification-sound";
 import { startScreenSchema } from "./start-screen";
@@ -66,6 +67,17 @@ export function jsonSchema(schema: z.ZodType): Json {
   return out;
 }
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
+// Where "Add a task" in My tasks writes (#457, lib/my-task-target.ts).
+const taskTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("page") }),
+  z.object({
+    kind: z.literal("database"),
+    id: z.uuid(),
+    title: z.string().describe("Empty when you can no longer open it"),
+    icon: z.string(),
+    problem: z.enum(["missing", "readonly", "untracked"]).nullable().describe("Why tasks go to your own page instead: deleted, read-only for you, no status or done checkbox"),
+  }),
+]);
 
 // ---- Command actions (POST /api/command) ----
 
@@ -78,14 +90,14 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.strikeDoneTasks", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete", "account.keepLink",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
   "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "file.delete", "files.deleteUnused", "file.restore", "file.purge", "page.duplicate", "page.move", "page.moveCheck", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "database.collapseRecordProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
-  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "task.add", "tasks.seen", "synced.create", "table.toDatabase", "page.tasksToDatabase", "page.tasksToDatabase.undo", "mention.link",
+  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "task.add", "task.target", "tasks.seen", "synced.create", "table.toDatabase", "page.tasksToDatabase", "page.tasksToDatabase.undo", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "journal.completedMine", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
@@ -444,6 +456,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, on all devices: true (the default) shows open text comments on wide screens as cards in a margin beside their passage; false keeps them in the panel below the document. Narrow screens and phones always use the panel.",
     input: z.object({ action: z.literal("profile.commentMargin"), commentMargin: commentMarginSchema }),
     result: z.object({ commentMargin: commentMarginSchema }),
+  },
+  {
+    action: "profile.strikeDoneTasks",
+    summary: "Strike through done tasks, or show them only ticked",
+    description: "For the caller, on all devices: true (the default) strikes through the text of done tasks in the web app; false shows done tasks only with their ticked box and a faded text colour – in documents, journals, records, My tasks and the start page's widgets. Cancelled tasks stay struck through. Display only: documents, exports and published pages are unchanged. Delivered with the bootstrap as `strikeDoneTasks`.",
+    input: z.object({ action: z.literal("profile.strikeDoneTasks"), strikeDoneTasks: strikeDoneTasksSchema }),
+    result: z.object({ strikeDoneTasks: strikeDoneTasksSchema }),
   },
   {
     action: "profile.whiteboardCanvas",
@@ -1027,9 +1046,9 @@ export const commandActions: ActionDoc[] = [
   },
   {
     action: "task.add",
-    summary: "Add a task to your own task page (\"Add a task\" in My tasks)",
+    summary: "Add a task to your own task page or your task database (\"Add a task\" in My tasks)",
     description:
-      "Writes an open task into your own page \"Aufgaben\"/\"Tasks\" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date (\"tomorrow\", \"Friday\", \"24.12.\" – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. Needs full membership with edit rights (not guests or readers).",
+      "Writes an open task where you chose with `task.target`: by default into your own page \"Aufgaben\"/\"Tasks\" of the workspace, a normal document made on first use in your first private space (a new private space when you have none; not an encrypted one). The page is remembered by id; when it was deleted or you can no longer edit it, the next task makes a new one. The shorthand of quick capture applies to `text`: a date (\"tomorrow\", \"Friday\", \"24.12.\" – relative to `today`, read in `locale`) becomes the due date, `@name` gives the task to that member only when they may open the page (otherwise the name stays in the text and `unassigned` names them). `due` wins over a date in the text. With a task database chosen the task becomes a record of it (`target: \"database\"`, `pageId` the database, `rowId` the record): the text without the shorthand is its title, the date goes into its due date property, `@name` into its person property (only someone who may open the database), #tag and !priority into their properties; without `@name` the person property gets you. A select status gets the database's first \"open\" option unless a default value or the default record template sets one; default values, the default record template and the database's automations apply. When the chosen database can no longer take tasks (`fallback`: `missing` – deleted, `readonly` – you may no longer add records, `untracked` – it has no status or done checkbox any more) the task goes to your own page instead. Needs full membership with edit rights (not guests or readers).",
     input: z.object({
       action: z.literal("task.add"),
       workspaceId: uuid,
@@ -1039,13 +1058,25 @@ export const commandActions: ActionDoc[] = [
       due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     }),
     result: z.object({
-      pageId: uuid,
+      pageId: uuid.describe("Your own task page, or the task database"),
       title: z.string(),
       created: z.boolean().describe("Whether the page was made now"),
       spaceCreated: z.boolean().describe("Whether a private space was made for it"),
+      target: z.enum(["page", "database"]).describe("Where the task went"),
+      rowId: uuid.nullable().describe("The new record in the task database; null for the page"),
       task: z.object({ text: z.string(), due: z.string().nullable(), assignee: z.string().nullable() }),
-      unassigned: z.string().nullable().describe("The member `@name` named who cannot open the page: the task is not given to them, the name stays in the text"),
+      unassigned: z.string().nullable().describe("The member `@name` named who did not get the task: the name stays in the text"),
+      unassignedReason: z.enum(["access", "property"]).nullable().describe("`access`: they cannot open the page or database; `property`: the database has no person property you may fill"),
+      fallback: z.enum(["missing", "readonly", "untracked"]).nullable().describe("Your chosen task database could not take the task, so it went to your own page"),
     }),
+  },
+  {
+    action: "task.target",
+    summary: "Choose where \"Add a task\" in My tasks writes",
+    description:
+      "Per workspace: `databaseId` null for your own page \"Aufgaben\"/\"Tasks\" (the default), or a task database you may add records to that counts for My tasks – one with a status or a done checkbox you can see, outside end-to-end encrypted spaces (GET /api/tasks/targets lists them). `task.add` follows the choice. Only for you; the answer is the choice as it is now.",
+    input: z.object({ action: z.literal("task.target"), workspaceId: uuid, databaseId: uuid.nullable() }),
+    result: z.object({ target: taskTargetSchema }),
   },
   {
     action: "tasks.seen",
@@ -2167,7 +2198,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/spaces/{spaceId}/library", method: "get", op: { id: "spaceLibrary", tag: "Workspace", summary: "A space as a library", description: `The space's top-level pages as books, their sub-pages as chapters and the chapters' sub-pages as pages, in the order of the page tree – only pages you may read (journals behind a PIN not entered, encrypted spaces and journal days left out). \`pages\` counts a book's pages including the book's own page, \`below\` the pages under a chapter or page, \`updatedAt\` of a book is the latest change in it. \`space.library\` says whether the space is shown as a library (“Show as library” in the space's settings; \`library\` of \`space.update\`); the answer is the same either way. ${noStore}`, params: [p("spaceId", "Space ID")], ok: { schema: ref("Library"), description: "Books with chapters and pages" }, errors: [401, 403, 404] } },
   { path: "/api/search/recent", method: "get", op: { id: "searchRecent", tag: "Workspace", summary: "Your recently visited pages and records", description: `The pages and records you opened last in the workspace, newest first – what the quick search shows with nothing typed. Only your own visits (never other people's), only what you may still read; visits through API tokens are not recorded. ${noStore}`, params: [workspace, q("kind", "Only this kind", { type: "string", enum: ["all", "document", "database", "whiteboard", "row"], default: "all" }), q("space", "Only in this space", { type: "string", format: "uuid" }), q("limit", "At most this many (1–50)", { type: "integer", default: 20 })], ok: { schema: { type: "array", items: ref("RecentVisit") }, description: "Visited pages and records" }, errors: [400, 401, 403] } },
   { path: "/api/notifications", method: "get", op: { id: "notifications", tag: "Workspace", summary: "My newest notifications", description: "What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command.", params: [q("since", "Server time (ISO 8601 or milliseconds)")], ok: { schema: { type: "object", properties: { now: { type: "string", format: "date-time" }, unread: { type: "integer", minimum: 0 }, notifications: { type: "array", items: { type: "object", properties: { id: { type: "string" }, kind: { type: ["string", "null"] }, text: { type: "string" }, detail: { type: "string" }, url: { type: "string", description: "Path on this instance, e.g. `/#page=…`" }, createdAt: { type: "string", format: "date-time" }, read: { type: "boolean" }, push: { type: "boolean" } }, required: ["id", "kind", "text", "detail", "url", "createdAt", "read", "push"] } } }, required: ["now", "unread", "notifications"] }, description: "Notifications" }, errors: [400, 401] } },
-  { path: "/api/tasks", method: "get", op: { id: "tasks", tag: "Workspace", summary: "My tasks", description: "Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task) and whether you may add tasks here.", params: [workspace, q("done", "`1` for completed tasks", { type: "string", enum: ["0", "1"] })], ok: { schema: { type: "object", properties: { tasks: { type: "array", items: ref("Task") }, others: { type: "array", items: ref("Task") }, personal: { type: "object", properties: { pageId: { type: ["string", "null"], format: "uuid" }, canAdd: { type: "boolean" } } } }, required: ["tasks", "others"] }, description: "Tasks" }, errors: [400, 401, 403] } },
+  { path: "/api/tasks", method: "get", op: { id: "tasks", tag: "Workspace", summary: "My tasks", description: "Tasks in documents assigned to you, your own dated ones, those of your journals and of your own task page (`tasks`, command `task.add`), and yours in your other workspaces (`others`). `own` marks tasks of your own task page, `fresh` tasks given to you by others since you last opened My tasks (command `tasks.seen`). `personal` says which page is your own task page (null until the first task), whether you may add tasks here and where `task.add` writes (`target`: `{ kind: \"page\" }` or `{ kind: \"database\", id, title, icon, problem }`, command `task.target`).", params: [workspace, q("done", "`1` for completed tasks", { type: "string", enum: ["0", "1"] })], ok: { schema: { type: "object", properties: { tasks: { type: "array", items: ref("Task") }, others: { type: "array", items: ref("Task") }, personal: { type: "object", properties: { pageId: { type: ["string", "null"], format: "uuid" }, canAdd: { type: "boolean" }, target: { type: "object", additionalProperties: true } } } }, required: ["tasks", "others"] }, description: "Tasks" }, errors: [400, 401, 403] } },
+  { path: "/api/tasks/targets", method: "get", op: { id: "taskTargets", tag: "Workspace", summary: "Task databases for \"Add a task\"", description: "The databases `task.target` accepts: those you may add records to that count for My tasks (a status or done checkbox you can see), outside end-to-end encrypted spaces – `databases` (id, title, icon, space) – and the current choice (`target`, as in GET /api/tasks). Full members with edit rights only.", params: [workspace], ok: { schema: { type: "object", properties: { databases: { type: "array", items: { type: "object", additionalProperties: true } }, target: { type: "object", additionalProperties: true } }, required: ["databases", "target"] }, description: "Targets" }, errors: [400, 401, 403] } },
   { path: "/api/records", method: "get", op: { id: "records", tag: "Workspace", summary: "Records across all databases", description: "With an optional filter (JSON, same shape as a view filter group) and the saved record views.", params: [workspace, q("filter", "Filter as JSON")], ok: { schema: { type: "object", additionalProperties: true }, description: "Records with their databases and views" }, errors: [400, 401, 403] } },
   { path: "/api/export", method: "get", op: { id: "exportWorkspace", tag: "Workspace", summary: "Whole workspace as JSON", description: "Every readable page outside the trash with its content; records only as far as you may see them.", params: [workspace], ok: { schema: ref("WorkspaceExport"), description: "The export (Content-Disposition: attachment)" }, errors: [401, 403] } },
   { path: "/api/offline/changes", method: "get", op: { id: "offlineChanges", tag: "Workspace", summary: "What changed for an offline copy", description: "Every page you may read now (outside the trash, no journal behind a PIN) and, since `since`, the pages and visible records whose content changed. Without `since` (or one older than the change log) `full` is true and every page counts as changed. Pass `now` as the next `since`.", params: [workspace, q("since", "Server time of the previous answer (ISO 8601 or milliseconds)")], ok: { schema: { type: "object", properties: { now: { type: "string", format: "date-time" }, full: { type: "boolean" }, pages: { type: "array", items: { type: "string", format: "uuid" } }, changed: { type: "array", items: { type: "string", format: "uuid" } }, rows: { type: "object", additionalProperties: { type: "array", items: { type: "string", format: "uuid" } } } }, required: ["now", "full", "pages", "changed", "rows"] }, description: "Readable and changed pages" }, errors: [400, 401, 403] } },

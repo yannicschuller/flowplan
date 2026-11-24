@@ -1864,6 +1864,25 @@ kbd,
   text-decoration-color: var(--muted);
   opacity: 0.8;
 }
+/* "Erledigte Aufgaben durchstreichen" off (#458, lib/done-strike-pref.ts):
+   done tasks keep their ticked box and the faded colour, without the line –
+   in documents, journals and records (the editor), My tasks, the start
+   page's task widget, a record's subtasks, sprint rows and the date chip of
+   a done task. Cancelled tasks keep their line: it tells them from done. */
+:root.done-tasks-plain .document-editor li[data-checked="true"] > div > :not(ul, ol),
+:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-checked="true"] > div > :not(ul, ol),
+:root.done-tasks-plain .my-tasks-group li .my-task-text,
+:root.done-tasks-plain .my-tasks-group li.checked .my-task-text,
+:root.done-tasks-plain .home-tasks li.checked .home-task-text span,
+:root.done-tasks-plain .record-subtasks li[data-done="true"] a,
+:root.done-tasks-plain .sprint-rows li[data-done="true"] .sprint-row-title,
+:root.done-tasks-plain .task-due-done {
+  text-decoration: none;
+  animation: none;
+}
+:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol) {
+  text-decoration: line-through;
+}
 /* The state menu: a zero-size anchor on the box, the items with their box. */
 .task-status-anchor {
   position: fixed;
@@ -18881,6 +18900,36 @@ label.task-due {
   border-radius: 10px;
   background: var(--surface);
   color: var(--muted);
+}
+/* Where the field writes (#457): a chip at its end. */
+.my-tasks-add:has(.my-tasks-target) {
+  grid-template-columns: auto 1fr auto;
+  padding-right: 6px;
+}
+.my-tasks-target .toolbar-chip {
+  max-width: 200px;
+}
+.my-tasks-target .toolbar-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-tasks-target-panel {
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: min(60dvh, 480px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.my-tasks-target-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.my-tasks-targets-note {
+  margin: 4px 10px 6px;
+  font-size: 12px;
 }
 .my-tasks-add:focus-within {
   border-color: var(--blue);
