@@ -70,7 +70,7 @@
     --page-title-size: 31px;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .document-header.icon-inline {
     --page-title-size: 31px;
   }

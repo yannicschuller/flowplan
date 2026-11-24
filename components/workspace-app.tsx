@@ -586,7 +586,7 @@ export default function WorkspaceApp({
   const setStatus = saveStatus.set;
   // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
   // follow, favourite, share and reading mode move into its ⋯ menu.
-  const phone = useMedia("(max-width: 767px)");
+  const phone = useMedia("(max-width: 767.98px)");
   // Up to 600 px the page's ⋯ menu is a bottom sheet (components/page-menu.tsx).
   const sheetMenus = useMedia(SHEET_MEDIA);
   const locale = useLocale();
@@ -856,7 +856,16 @@ export default function WorkspaceApp({
     setDesktopCollapsed(collapsed);
     if (matchMedia("(min-width: 768px)").matches) setCollapsedChoice(collapsed);
   };
-  const toggleCollapsed = () => chooseCollapsed(!desktopCollapsedRef.current);
+  // In the phone layout (a narrow window too, e.g. half a screen at 150 %)
+  // the sidebar is the drawer: its buttons, the shortcut and the command
+  // palette open and close it and leave the docked sidebar as the person
+  // chose it – collapsing there would change nothing visible and hide or
+  // show the sidebar once the window gets wider again (#510).
+  const phoneLayout = () => matchMedia("(max-width: 767.98px)").matches;
+  const toggleCollapsed = () => {
+    if (phoneLayout()) setMobile((open) => !open);
+    else chooseCollapsed(!desktopCollapsedRef.current);
+  };
   // The sidebar's width on wide screens, dragged at its right edge (null:
   // the default from the stylesheet), the width of the "KI fragen" panel the
   // same way (dragged at its left edge; the stylesheet keeps it within
@@ -4583,7 +4592,7 @@ export default function WorkspaceApp({
             title={t("Navigation schließen", "Close navigation")}
             onClick={() => {
               setMobile(false);
-              chooseCollapsed(true);
+              if (!phoneLayout()) chooseCollapsed(true);
             }}
           >
             <SidebarSimple size={19} />
@@ -5286,7 +5295,7 @@ export default function WorkspaceApp({
               aria-label={t("Navigation öffnen", "Open navigation")}
               onClick={() => {
                 setMobile(true);
-                chooseCollapsed(false);
+                if (!phoneLayout()) chooseCollapsed(false);
               }}
             >
               <SidebarSimple size={21} />
@@ -8387,10 +8396,7 @@ export default function WorkspaceApp({
             : undefined
         }
         onInbox={() => go("inbox")}
-        onMenu={() => {
-          setDesktopCollapsed(false);
-          setMobile((open) => !open);
-        }}
+        onMenu={() => setMobile((open) => !open)}
       />
       <Toaster />
     </div>

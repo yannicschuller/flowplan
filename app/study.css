@@ -2073,7 +2073,7 @@ polyline.occlusion-draft {
    The database toolbar takes one line (filter and view settings left, the
    record tools right; sorting and search do not exist in a study view), so
    "Lernen starten" comes up, as a full-width main action. */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .database.study-view .database-toolbar {
     flex-direction: row;
     align-items: center;

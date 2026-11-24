@@ -502,7 +502,7 @@ span.book-nav-step {
   text-overflow: ellipsis;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .library-books {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -543,7 +543,7 @@ span.book-nav-step {
     grid-column: 1;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   /* Phones: the library as its symbol only, the book and chapter in full. */
   .book-nav-library {
     display: none;
@@ -790,7 +790,7 @@ span.book-nav-step {
   flex-wrap: wrap;
   row-gap: 2px;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .library-shelf {
     padding: 12px 12px 4px;
   }

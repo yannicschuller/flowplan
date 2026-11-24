@@ -648,7 +648,7 @@ kbd,
   font-weight: 600;
 }
 /* Phones: "←" and "×" big enough for a finger. */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .tree-branch-bar .icon-button {
     width: 34px;
     height: 34px;
@@ -3665,7 +3665,7 @@ tr:hover .row-open,
 .calendar-options-toggle {
   display: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .calendar-options-toggle {
     display: grid;
     place-items: center;
@@ -3695,7 +3695,7 @@ tr:hover .row-open,
 }
 /* A phone's week shows three days at a time and scrolls sideways to the
    others (#346). */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .calendar-hours-scroll.week .calendar-hours {
     grid-template-columns: repeat(var(--calendar-columns), minmax(108px, 1fr));
     min-width: calc(var(--calendar-columns) * 108px);
@@ -4949,7 +4949,7 @@ tr:hover .row-open,
   flex: 1;
   min-width: 0;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .feed-edit-property {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -7218,7 +7218,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   text-overflow: ellipsis;
   max-width: 45%;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .history-nav {
     display: none;
   }
@@ -7443,7 +7443,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     display: none;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   body {
     font-size: 15px;
   }
@@ -7870,7 +7870,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 }
 /* The content of the main area as on phones whenever it is that narrow
    (the phone shell itself stays above: drawer, top bar, docked toolbar). */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .breadcrumb-workspace,
   .breadcrumb-divider {
     display: none;
@@ -8380,7 +8380,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   padding-right: 0;
 }
 /* A narrow text column: the button stays inside the page's edge. */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .outline-toggle {
     margin-right: -6px;
   }
@@ -8397,7 +8397,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding-right: 261px;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .outline-toggle {
     position: fixed;
     z-index: 31;
@@ -8476,7 +8476,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .math-block .katex-display {
   margin: 0;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .editor-columns {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -8485,7 +8485,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     max-width: 230px;
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .editor-columns {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -8755,7 +8755,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .row-template-item .checkbox-label {
   font-size: 12px;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .row-document-heading > .button {
     font-size: 11px;
   }
@@ -15492,7 +15492,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .settings-body .data-table td:first-child {
   padding-left: 24px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .settings-body > .settings-section,
   .settings-body > section,
   .settings-body > div > .settings-section {
@@ -15983,7 +15983,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     display: none;
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .settings-shell {
     padding: 16px 16px 72px;
   }
@@ -16619,7 +16619,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   outline-offset: -2px;
 }
 /* Phones: swipe and the dots; the arrows only take room from the title. */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .strip-carousel-nav {
     display: none;
   }
@@ -16683,7 +16683,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 28px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .mon-server-columns {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -16865,7 +16865,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 #ai-statistics > .empty-state {
   margin: 0 22px 18px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .ai-price-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
@@ -17409,7 +17409,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .live-strip-state,
   .live-strip-chart {
     padding: 14px 16px;
@@ -17491,7 +17491,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .live-strip-items a {
     display: inline-flex;
     align-items: center;
@@ -26871,7 +26871,7 @@ h3 .block-reactions {
   min-height: 57px;
   padding-top: 0;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .main {
     padding-left: var(--safe-left);
   }
@@ -26888,7 +26888,7 @@ h3 .block-reactions {
     padding-bottom: var(--safe-bottom);
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .outline-toggle {
     bottom: calc(88px + var(--safe-bottom));
   }
@@ -26931,7 +26931,7 @@ h3 .block-reactions {
     right: calc(270px + 20px + var(--safe-right));
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .page-layout:has(> .comments-panel) .document-outline {
     display: none;
   }
@@ -26962,7 +26962,7 @@ h3 .block-reactions {
   max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 2 * var(--modal-margin));
   max-height: min(85dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--modal-margin)));
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   :root {
     --modal-margin: 12px;
   }
@@ -26981,7 +26981,7 @@ h3 .block-reactions {
   inset: 0;
   padding-left: calc(23px + var(--safe-left));
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .modal.modal-full,
   .modal.modal-side {
     --modal-pad-top: calc(20px + var(--safe-top));
@@ -27770,7 +27770,7 @@ h3 .block-reactions {
     flex: 1 1 140px;
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .settings-body .copy-field {
     flex-wrap: wrap;
   }
@@ -30088,7 +30088,7 @@ h3 .block-reactions {
   background: var(--blue-light);
   color: var(--accent-strong);
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .ask-panel {
     position: fixed;
     left: 0;
@@ -30878,7 +30878,7 @@ td.ai-filled {
 .palette-date-inline {
   display: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .palette-list .palette-option > .palette-date {
     display: none;
   }
@@ -30959,7 +30959,7 @@ td.ai-filled {
   padding-inline: 0;
   padding-bottom: 0;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .modal.shortcuts-dialog {
     --shortcuts-pad: 20px;
   }
@@ -31143,7 +31143,7 @@ td.ai-filled {
   cursor: col-resize !important;
   user-select: none !important;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .sidebar-resize {
     display: none;
   }
@@ -31213,7 +31213,7 @@ td.ai-filled {
 .app-shell > .sidebar:focus {
   outline: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .tree-toggle,
   .nav-add,
   .nav-drag,
@@ -31638,7 +31638,7 @@ td.ai-filled {
    too little of them in portrait, design review). The title column is cut
    short with an ellipsis (its width, lib/pinned-column.ts) and the
    selection column scrolls away. */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767.98px), (pointer: coarse) and (max-height: 500px) {
   .pinned-table-scroll {
     container-type: inline-size;
   }
@@ -32240,7 +32240,7 @@ tr:hover .row-open-mark,
     grid-column: 1 / -1;
   }
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -32402,7 +32402,7 @@ tr:hover .row-open-mark,
 .mobile-tab-bar {
   display: none;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .app-shell {
     --tab-bar-space: calc(56px + var(--safe-bottom));
   }
@@ -32723,7 +32723,7 @@ html.hide-keyboard-fab-shown .modal {
   height: 11px;
   margin-top: -3px;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .toast {
     bottom: calc(12px + var(--tab-bar-space));
   }
@@ -32742,7 +32742,7 @@ html.hide-keyboard-fab-shown .modal {
     flex-wrap: wrap;
   }
 }
-@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
   .mobile-tab:active .mobile-tab-new-icon,
   .mobile-tab:active > svg,
   .mobile-tab:active .mobile-tab-icon {
@@ -34477,7 +34477,7 @@ html.split-resizing * {
   align-items: center;
   gap: 6px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .admin-status {
     padding: 12px 14px;
   }
@@ -34806,7 +34806,7 @@ html.split-resizing * {
   width: 32px;
   height: 32px;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .ws-order-buttons .icon-button {
     width: 44px;
     height: 44px;
@@ -35102,7 +35102,7 @@ label.ws-search input {
   color: var(--muted);
 }
 /* Below 860 px the table is a list of cards (settings-ui ResponsiveTable). */
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .sso-mapping-list .responsive-table tr {
     padding: 10px 22px;
   }
@@ -38192,7 +38192,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   flex: none;
   border-radius: 999px;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .sk-board {
     grid-template-columns: repeat(4, 72vw);
   }
@@ -38730,7 +38730,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 }
 /* Shared and published pages have no tab bar: the outline's round button
    and its list sit at the bottom edge. */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .public-page .outline-toggle {
     bottom: calc(20px + var(--safe-bottom, 0px));
   }
@@ -39179,7 +39179,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   flex-wrap: wrap;
   gap: 4px 14px;
 }
-@container main (max-width: 767px) {
+@container main (max-width: 767.98px) {
   .security-incident-columns {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -41743,7 +41743,7 @@ sup.meeting-cite:hover,
 }
 /* On phones a segment is a touch target of the bar's full 44px height
    (no negative margin: the path clips what reaches beyond it). */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .breadcrumb-link,
   .breadcrumb-more-button {
     min-height: 44px;
