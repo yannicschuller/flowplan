@@ -1421,6 +1421,17 @@ const exact: Record<string, string> = {
   "Ungültige Antwort des Kalenderanbieters.": "Invalid answer from the calendar provider.",
   "Die Verbindung wurde beim Kalenderanbieter beendet. Bitte neu verbinden.": "The connection was ended at the calendar provider. Please connect again.",
   "Die Synchronisierung ist fehlgeschlagen.": "The sync failed.",
+  // CalDAV calendar sync (#460)
+  "Der CalDAV-Server hat Benutzername oder App-Passwort abgelehnt. Bitte neu verbinden.": "The CalDAV server refused the username or app password. Please connect again.",
+  "Zugangsdaten gehören nicht in die Server-Adresse.": "Credentials do not belong in the server address.",
+  "Die Server-Adresse muss mit https:// beginnen.": "The server address must start with https://.",
+  "Unverschlüsselt (http://) nur zu einem Server im eigenen Netz – sonst bitte https:// verwenden.": "Unencrypted (http://) only to a server in your own network – otherwise please use https://.",
+  "Ungültige Server-Adresse.": "Invalid server address.",
+  "Der Kalenderserver ist nicht erreichbar.": "The calendar server cannot be reached.",
+  "Die Antwort des Kalenderservers ist zu groß.": "The calendar server's answer is too large.",
+  "Der Kalenderserver erlaubt diese Änderung nicht.": "The calendar server does not allow this change.",
+  "Unter dieser Adresse wurde kein CalDAV-Kalender gefunden.": "No CalDAV calendar was found at this address.",
+  "Dieses Konto hat keinen Kalender, in den Flowplan schreiben darf.": "This account has no calendar Flowplan may write to.",
   // time reports (lib/time-reports.ts)
   "Bitte Start- und Enddatum angeben.": "Please enter a start and an end date.",
   "Das Startdatum liegt nach dem Enddatum.": "The start date is after the end date.",

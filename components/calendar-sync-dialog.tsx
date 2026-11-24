@@ -1,7 +1,7 @@
 "use client";
-// "Kalender-Sync" of a database: which of the person's Google or Microsoft
-// 365 calendars a view with a date property is synced with (lib/calendar-
-// sync.ts). Personal: everyone maps their own calendar.
+// "Kalender-Sync" of a database: which of the person's Google, Microsoft
+// 365 or CalDAV calendars a view with a date property is synced with
+// (lib/calendar-sync.ts). Personal: everyone maps their own calendar.
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/server-message";
@@ -87,8 +87,8 @@ function CalendarSyncDialog({ pageId, fields, views }: { pageId: string; fields:
       <div className="calendar-subscribe">
         <p className="muted">
           {t(
-            "Verbinde zuerst dein Google- oder Microsoft-Konto unter Einstellungen → Kalender & Issues.",
-            "First connect your Google or Microsoft account under Settings → Calendars & issues.",
+            "Verbinde zuerst dein Google-, Microsoft- oder CalDAV-Konto (Nextcloud, iCloud, Fastmail …) unter Einstellungen → Kalender & Issues.",
+            "First connect your Google, Microsoft or CalDAV account (Nextcloud, iCloud, Fastmail …) under Settings → Calendars & issues.",
           )}
         </p>
         <a className="button" href="/#settings/connections">

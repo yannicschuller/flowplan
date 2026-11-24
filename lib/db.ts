@@ -1680,6 +1680,8 @@ function migrate(d: DatabaseSync) {
   // Schema 127 – who heard of a whiteboard comment's mention (#455,
   // lib/whiteboard-comments-server.ts).
   migrateBoardMentionNotices(d);
+  // Schema 128 – the CalDAV version of a synced event (#460, lib/calendar-sync.ts).
+  migrateCalendarSyncEtags(d);
   // Schema 129 – where "Aufgabe hinzufügen" of My tasks writes (#457,
   // lib/my-task-target.ts) and "Erledigte Aufgaben durchstreichen" (#458,
   // lib/done-strike-pref.ts).
@@ -1773,6 +1775,16 @@ function migrateMyTaskTarget(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS my_task_targets_database ON my_task_targets(database_id);`);
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "strike_done_tasks"))
     d.exec("ALTER TABLE users ADD COLUMN strike_done_tasks INTEGER");
+}
+// Schema 128 – calendar sync with CalDAV servers (#460, lib/calendar-sync.ts):
+// calendar_sync_items.etag is the version of the event last read or written,
+// sent as If-Match when Flowplan changes or deletes it, so a change made in
+// the calendar meanwhile is not overwritten. NULL for Google and Microsoft
+// (their APIs need none) and for every item synced before. An older version
+// would leave it stale, hence the number.
+function migrateCalendarSyncEtags(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(calendar_sync_items)").all() as { name: string }[]).some((c) => c.name === "etag"))
+    d.exec("ALTER TABLE calendar_sync_items ADD COLUMN etag TEXT");
 }
 function migrateBoardMentionNotices(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_mention_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,message_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,notified_at INTEGER NOT NULL,PRIMARY KEY(page_id,message_id,user_id));
