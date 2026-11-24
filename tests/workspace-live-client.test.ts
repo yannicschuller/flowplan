@@ -214,3 +214,13 @@ test("what a signal makes a tab fetch", () => {
   assert.ok(LIVE_REFRESH_MS >= 60_000);
   assert.equal(POLL_REFRESH_MS, 10_000);
 });
+
+test("a signed-out tab stops its background requests (#513)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const ping = readFileSync(new URL("../components/activity-ping.tsx", import.meta.url), "utf8");
+  assert.match(ping, /res\.status !== 401/, "the activity ping notices a 401");
+  assert.match(ping, /clearInterval\(timer\)/, "and stops its timer");
+  const app = readFileSync(new URL("../components/workspace-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /\{!signedOut && <ActivityPing /, "no ping behind the signed-out banner");
+  assert.match(app, /useWorkspaceSignals\([^)]*!signedOut\)/, "no live stream behind the banner");
+});

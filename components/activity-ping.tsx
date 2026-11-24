@@ -5,6 +5,7 @@
 // open, for the inactivity message "only this workspace" (#282). Nothing
 // else is sent.
 import { useEffect } from "react";
+import { endedSession } from "./ui";
 
 const EVERY_MS = 60_000;
 const USE_EVENTS = [
@@ -19,7 +20,11 @@ export function ActivityPing({ workspaceId }: { workspaceId?: string }) {
   useEffect(() => {
     let usedAt = Date.now();
     let sentAt = 0;
+    // A session that ended (signed out elsewhere, expired): no more pings –
+    // a tab left open would otherwise send a 401 every minute for ever (#513).
+    let ended = false;
     const send = () => {
+      if (ended) return;
       sentAt = Date.now();
       // A tab in the background is open, but nobody is using it.
       const idleMs =
@@ -31,7 +36,14 @@ export function ActivityPing({ workspaceId }: { workspaceId?: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ idleMs, workspaceId }),
         keepalive: true,
-      }).catch(() => {});
+      })
+        .then((res) => {
+          if (res.status !== 401) return;
+          ended = true;
+          window.clearInterval(timer);
+          endedSession("/api/activity", 401);
+        })
+        .catch(() => {});
     };
     const used = () => {
       const quiet = Date.now() - usedAt > EVERY_MS;
