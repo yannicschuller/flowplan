@@ -6,7 +6,7 @@
 // Writing it stays on the request thread (one transaction, lib/importers/write.ts).
 // A workspace file on disk (AFFiNE) is opened where it lies, on this thread.
 import { closeSync, openSync, readSync } from "node:fs";
-import { offThread } from "../worker-pool";
+import { offThread, type PoolJobOptions } from "../worker-pool";
 import { parseImport } from "./index";
 import { isSqlite } from "./affine-read";
 import { importFileData, importReport, type ImportReport, type ImportSource, type ImportTree, type ReportEntry, type ReportKind } from "./types";
@@ -60,8 +60,8 @@ function fileHead(path: string) {
   }
 }
 
-export async function parseImportOffThread(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}): Promise<ImportTree> {
+export async function parseImportOffThread(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}, job: PoolJobOptions = {}): Promise<ImportTree> {
   // An AFFiNE workspace file on disk is read page by page where it lies.
   if (!Buffer.isBuffer(input) && isSqlite(fileHead(input.path))) return await parseImport(name, input, chosen, affine);
-  return revived(await offThread("import.parse", [name, input, chosen, affine], () => parseImportData(name, input, chosen, affine)));
+  return revived(await offThread("import.parse", [name, input, chosen, affine], () => parseImportData(name, input, chosen, affine), job));
 }

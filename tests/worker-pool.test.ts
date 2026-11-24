@@ -375,3 +375,65 @@ test("MCP query_database gives in a worker thread what it gives on the request t
   assert.ok(here);
   assert.deepEqual(await refusal(() => query(stranger, { databaseId: table })), here);
 });
+
+// #504: one account cannot fill the queue for everyone. Its jobs (running
+// or waiting) are capped at MAX_PER_OWNER with 429; others still get in,
+// work of the instance (no owner) is not counted, and a waiting job whose
+// request was aborted leaves the queue.
+test("one account's jobs are capped; others, the instance and aborted requests", async (t) => {
+  await pool.resetWorkerPool(fake);
+  process.env.FLOWPLAN_WORKERS = "1";
+  t.after(async () => {
+    process.env.FLOWPLAN_WORKERS = "2";
+    await pool.resetWorkerPool();
+  });
+  const mine = (what: object, options: { owner?: string; signal?: AbortSignal } = {}) => pool.offThread<unknown>("export.docx", [what], async () => "here", options);
+  const flooding = Array.from({ length: pool.MAX_PER_OWNER }, (_, i) => mine({ sleep: 150, echo: i }, { owner: stranger.id }));
+  await assert.rejects(mine({ echo: "zu viel" }, { owner: stranger.id }), (e: unknown) => e instanceof HttpError && e.status === 429 && e.message === pool.OWNER_BUSY_MESSAGE);
+  // Another account, and the instance's own work, are still accepted.
+  const other = mine({ echo: "andere" }, { owner: owner.id });
+  const instance = mine({ echo: "Instanz" });
+  assert.equal(pool.workerPoolState().queued, pool.MAX_PER_OWNER + 1);
+  assert.deepEqual(((await Promise.all([...flooding, other, instance])) as { echo: unknown }[]).map((r) => r.echo), [...Array(pool.MAX_PER_OWNER).keys(), "andere", "Instanz"]);
+  // Once done, the account may export again.
+  assert.equal(((await mine({ echo: "wieder" }, { owner: stranger.id })) as { echo: string }).echo, "wieder");
+
+  // Aborted while waiting: out of the queue (499), not run, not counted.
+  const running = mine({ sleep: 150, echo: "läuft" }, { owner: owner.id });
+  const controller = new AbortController();
+  const waiting = mine({ echo: "wartet" }, { owner: stranger.id, signal: controller.signal });
+  assert.equal(pool.workerPoolState().queued, 1);
+  const completed = pool.workerPoolState().completed;
+  controller.abort();
+  await assert.rejects(waiting, (e: unknown) => e instanceof HttpError && e.status === 499);
+  assert.equal(pool.workerPoolState().queued, 0);
+  await assert.rejects(mine({ echo: "x" }, { signal: controller.signal }), (e: unknown) => e instanceof HttpError && e.status === 499);
+  assert.equal(((await running) as { echo: string }).echo, "läuft");
+  assert.equal(pool.workerPoolState().completed, completed + 1);
+
+  // The real exports and imports pass their owner: a flood of one person's
+  // Word exports gets 429 while another person's export and the queue stay usable.
+  const exports = Array.from({ length: pool.MAX_PER_OWNER }, () => mine({ sleep: 150 }, { owner: owner.id }));
+  await assert.rejects(exportDocx(owner, { pageId: root }, { owner: owner.id }), (e: unknown) => e instanceof HttpError && e.status === 429);
+  await assert.rejects(parseImportOffThread("notes.md", Buffer.from("# x"), "auto", {}, { owner: owner.id }), (e: unknown) => e instanceof HttpError && e.status === 429);
+  await Promise.all(exports);
+});
+
+test("the instance's scheduled work waits out a full queue (retryWhenBusy)", async () => {
+  let calls = 0;
+  const value = await pool.retryWhenBusy(
+    async () => {
+      if (++calls < 3) throw new HttpError(503, pool.BUSY_MESSAGE);
+      return "fertig";
+    },
+    { delayMs: 5 },
+  );
+  assert.deepEqual([value, calls], ["fertig", 3]);
+  calls = 0;
+  await assert.rejects(pool.retryWhenBusy(async () => { calls++; throw new HttpError(503, pool.BUSY_MESSAGE); }, { attempts: 2, delayMs: 5 }), (e: unknown) => e instanceof HttpError && e.status === 503);
+  assert.equal(calls, 2);
+  // Other errors are not retried.
+  calls = 0;
+  await assert.rejects(pool.retryWhenBusy(async () => { calls++; throw new HttpError(404, "Seite nicht gefunden."); }, { delayMs: 5 }));
+  assert.equal(calls, 1);
+});

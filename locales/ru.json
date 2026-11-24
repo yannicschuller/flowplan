@@ -14608,6 +14608,7 @@
   "you (when saving)": "вы (при сохранении)",
   "You already have access.": "У вас уже есть доступ.",
   "You already have an account": "У вас уже есть учётная запись",
+  "You already have several exports or imports running. Please wait until one has finished.": "У вас уже выполняется несколько экспортов или импортов. Подождите, пока один из них завершится.",
   "You are all caught up": "Всё просмотрено",
   "You are an administrator. This is where the basics of this instance stand – tackle red first, yellow is optional or worth a look. You find this overview again in the command palette (“Set up the instance”).": "Вы администратор. Здесь показано состояние основных параметров этого экземпляра – сначала займитесь красным, жёлтое необязательно или стоит посмотреть. Этот обзор снова можно найти в палитре команд («Настроить экземпляр»).",
   "You are invited to “{0}”. Sign in or sign up to join.": "Вас пригласили в «{0}». Войдите или зарегистрируйтесь, чтобы присоединиться.",

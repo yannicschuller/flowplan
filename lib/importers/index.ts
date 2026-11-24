@@ -29,6 +29,7 @@ import { previewImport, requireSpace, writeImport, type ImportMode, type ImportP
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
 import { parseImportOffThread } from "./parse-transfer";
 import type { Identity } from "../types";
+import type { PoolJobOptions } from "../worker-pool";
 
 const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine|pdf)$/i, "") || "Import";
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
@@ -164,6 +165,9 @@ type ImportOptions = {
   // and the time zone of the person for the learning state.
   anki?: unknown;
   zone?: string;
+  // The worker queue (lib/worker-pool.ts, #504): whose job, and the
+  // request's abort signal while it waits.
+  job?: PoolJobOptions;
 };
 // The upload: its bytes, or (large files) its path on disk.
 type ImportFile = { name: string; bytes: Buffer } | { name: string; path: string };
@@ -187,7 +191,7 @@ export async function importFromSource(
   // Read in a worker thread (lib/importers/parse-transfer.ts).
   const tree = await parseImportOffThread(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
     nestLinked: options.nestLinked !== false && options.mode !== "database",
-  });
+  }, options.job);
   try {
     // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
     await jobProgress(0.5);

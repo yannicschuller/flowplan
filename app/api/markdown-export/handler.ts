@@ -45,7 +45,7 @@ async function exportPost(req: Request) {
       reader.releaseLock();
     }
     const chosen = options.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-    const result = await trackJob(user, "export", "Markdown", () => exportMarkdown(user, chosen));
+    const result = await trackJob(user, "export", "Markdown", () => exportMarkdown(user, chosen, { owner: user.id, signal: req.signal }));
     const name = encodeURIComponent(result.name).replace(
       /[!'()*]/g,
       (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),

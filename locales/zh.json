@@ -14608,6 +14608,7 @@
   "you (when saving)": "你（在保存时）",
   "You already have access.": "你已经有访问权限。",
   "You already have an account": "你已经有一个账户",
+  "You already have several exports or imports running. Please wait until one has finished.": "你已有多个导出或导入正在进行。请等待其中一个完成。",
   "You are all caught up": "你已看完所有内容",
   "You are an administrator. This is where the basics of this instance stand – tackle red first, yellow is optional or worth a look. You find this overview again in the command palette (“Set up the instance”).": "你是管理员。这里显示了此实例基础设置的状态——先处理红色项，黄色项为可选或值得一看。你可以在命令面板中再次打开此概览（“设置实例”）。",
   "You are invited to “{0}”. Sign in or sign up to join.": "你被邀请加入“{0}”。请登录或注册以加入。",

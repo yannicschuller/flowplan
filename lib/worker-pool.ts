@@ -12,6 +12,10 @@
 // as before). Threads start on first use and end after IDLE_MS without
 // work. Each runs one job at a time; further jobs wait in a bounded queue
 // (QUEUE_PER_WORKER per thread), beyond it the request is answered with 503.
+// One account may have at most MAX_PER_OWNER jobs running or waiting
+// (#504, `owner`): beyond it 429, so that nobody fills the queue for the
+// whole instance. A waiting job whose request was aborted (`signal`)
+// leaves the queue.
 //
 // A worker thread reads the database on a connection of its own
 // (lib/db-driver/context.ts readerThread: SQLite read-only as a WAL reader,
@@ -42,6 +46,9 @@ const MAX_WORKERS = 32;
 // Exports of large spaces take minutes on slow machines; the limit only
 // ends work that hangs.
 export const DEFAULT_JOB_MS = 15 * 60_000;
+export const MAX_PER_OWNER = 2;
+export const OWNER_BUSY_MESSAGE = "Bei dir laufen schon mehrere Exporte oder Importe. Bitte warte, bis einer fertig ist.";
+export const ABORTED_MESSAGE = "Abgebrochen.";
 export const BUSY_MESSAGE = "Der Server ist gerade ausgelastet. Bitte versuche es gleich noch einmal.";
 export const TIMEOUT_MESSAGE = "Zeitüberschreitung bei der Hintergrundarbeit.";
 export const STOPPING_MESSAGE = "Der Server wird gerade neu gestartet. Bitte versuche es gleich noch einmal.";
@@ -118,6 +125,8 @@ type Job = {
   reject: (error: Error) => void;
   here: () => Promise<unknown>;
   quiet?: boolean;
+  // Whose job it is (#504): counted against MAX_PER_OWNER.
+  owner?: string;
 };
 type Slot = { worker: Worker; job: Job | null; ready: boolean; timer: ReturnType<typeof setTimeout> | null; idle: ReturnType<typeof setTimeout> | null };
 type Pool = {
@@ -287,7 +296,19 @@ function pump(p: Pool) {
 // here at once, and while this thread is busy (loopBusy) a thread is
 // started for the next time. No request waits for a thread to start or
 // behind a long export.
-export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => Promise<T>, options: { timeoutMs?: number; ifFree?: boolean } = {}): Promise<T> {
+//
+// `owner` (#504): the account the job works for (its id). It may have at
+// most MAX_PER_OWNER jobs running or waiting, beyond that 429. Work of the
+// instance itself (scheduled exports) has none and is not counted.
+// `signal`: the request's abort signal – a waiting job whose request was
+// aborted leaves the queue (a running one finishes).
+export type PoolJobOptions = { owner?: string; signal?: AbortSignal };
+export function offThread<T>(
+  name: WorkerJobName,
+  args: unknown[],
+  here: () => Promise<T>,
+  options: { timeoutMs?: number; ifFree?: boolean } & PoolJobOptions = {},
+): Promise<T> {
   const p = pool();
   if (!isMainThread || p.broken || currentTx() || workerCount() === 0) return here();
   if (p.stopping) return options.ifFree ? here() : Promise.reject(new HttpError(503, STOPPING_MESSAGE));
@@ -302,6 +323,7 @@ export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => P
     reject,
     here: here as () => Promise<unknown>,
     quiet: options.ifFree,
+    owner: options.owner,
   });
   if (options.ifFree) {
     const free = p.queue.length ? undefined : [...p.slots].find((slot) => slot.ready && !slot.job);
@@ -315,12 +337,49 @@ export function offThread<T>(name: WorkerJobName, args: unknown[], here: () => P
     }
     return new Promise<T>((resolve, reject) => start(p, free, job(resolve, reject)));
   }
+  const { owner, signal } = options;
+  if (signal?.aborted) return Promise.reject(new HttpError(499, ABORTED_MESSAGE));
+  if (owner && ownerJobs(p, owner) >= MAX_PER_OWNER) return Promise.reject(new HttpError(429, OWNER_BUSY_MESSAGE));
   const busy = [...p.slots].filter((slot) => slot.job).length;
   if (busy >= limit && p.queue.length >= limit * QUEUE_PER_WORKER) return Promise.reject(new HttpError(503, BUSY_MESSAGE));
   return new Promise<T>((resolve, reject) => {
-    p.queue.push(job(resolve, reject));
+    const settled = <V>(fn: (value: V) => void) => (value: V) => {
+      signal?.removeEventListener("abort", abort);
+      fn(value);
+    };
+    const queued = job(settled(resolve), settled(reject));
+    function abort() {
+      const at = p.queue.indexOf(queued);
+      if (at < 0) return;
+      p.queue.splice(at, 1);
+      queued.reject(new HttpError(499, ABORTED_MESSAGE));
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    p.queue.push(queued);
     pump(p);
   });
+}
+// The jobs of one account, running or waiting.
+function ownerJobs(p: Pool, owner: string) {
+  let count = 0;
+  for (const slot of p.slots) if (slot.job?.owner === owner) count++;
+  for (const job of p.queue) if (job.owner === owner) count++;
+  return count;
+}
+
+// Work of the instance itself (the scheduled Markdown export) that found the
+// pool full (503 BUSY_MESSAGE): tried again after a pause, a few times,
+// instead of failing until the next schedule (#504).
+export async function retryWhenBusy<T>(work: () => Promise<T>, { attempts = 5, delayMs = 30_000 }: { attempts?: number; delayMs?: number } = {}): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await work();
+    } catch (error) {
+      const busy = error instanceof HttpError && error.status === 503 && error.message === BUSY_MESSAGE;
+      if (!busy || attempt >= attempts || pool().stopping) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
 }
 
 // Whether the request thread was busy lately: its event loop utilisation
