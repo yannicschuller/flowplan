@@ -32,7 +32,7 @@ import { priorityField, priorityRank, sortTasks, type OrderedTask } from "./task
 import { rewriteStoredDocument } from "./document-rewrite";
 import { unwritableFieldIds, visibleFields } from "./field-access";
 import { assignedTo } from "./cross-records";
-import { formatNumber } from "./field-format";
+import { formatFieldNumber } from "./field-format";
 import { localizedMessage } from "./i18n-errors";
 import { isLocale, localeTag, pickLocale, type Locale } from "./i18n";
 import { hasEntryData, journalLocked, journalSettings, lockedPageIds, dayEntry } from "./journal-extras";
@@ -227,7 +227,7 @@ export async function valueText(field: Field, value: unknown): Promise<string> {
     case "checkbox":
       return value === true ? "✓" : "";
     case "number":
-      return typeof value === "number" ? formatNumber(value, field.format, field.decimals) : cellText(value);
+      return typeof value === "number" ? formatFieldNumber(value, field) : cellText(value);
     case "time":
       return typeof value === "number" ? `${Math.round((value / 3600) * 10) / 10} h` : "";
     case "relation":
@@ -814,7 +814,7 @@ async function counterData(ctx: Context, config: WidgetConfig<"counter">) {
     v === null
       ? "–"
       : field?.type === "number" && config.aggregate !== "count"
-        ? formatNumber(v, field.format, field.decimals)
+        ? formatFieldNumber(v, field)
         : v.toLocaleString(localeTag(contentLocale()), { maximumFractionDigits: 2 });
   let history: { day: string; value: number | null; estimated?: true }[] | undefined;
   if (config.history) {

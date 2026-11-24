@@ -18,7 +18,7 @@ export type RowCardProp = {
   value: string;
   // Dates and numbers: the stored value and how the property formats it.
   raw?: string | number;
-  format?: Pick<Field, "type" | "format" | "timeFormat" | "decimals">;
+  format?: Pick<Field, "type" | "format" | "timeFormat" | "decimals" | "unit">;
 };
 export type RowCardData = { title: string; database: string; props: RowCardProp[] };
 
@@ -53,8 +53,8 @@ export async function whiteboardRowCards(user: Identity, refs: { pageId: string;
       const value = cells[field.id];
       if (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)) continue;
       if ((field.type === "date" && typeof value === "string") || (field.type === "number" && typeof value === "number")) {
-        const { type, format, timeFormat, decimals } = field;
-        props.push({ name: field.name, value: cellText(value), raw: value, format: { type, format, timeFormat, decimals } });
+        const { type, format, timeFormat, decimals, unit } = field;
+        props.push({ name: field.name, value: cellText(value), raw: value, format: { type, format, timeFormat, decimals, ...(unit ? { unit } : {}) } });
         continue;
       }
       const text =

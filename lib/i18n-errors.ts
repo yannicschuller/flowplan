@@ -33,6 +33,9 @@ const exact: Record<string, string> = {
   "Gruppenname fehlt.": "Group name missing.",
   "Der Gruppenname darf höchstens 200 Zeichen haben.": "The group name may have at most 200 characters.",
   "Der Gruppenname enthält Steuerzeichen.": "The group name contains control characters.",
+  // Own units of number properties (lib/database-schema.ts, #522).
+  "Einheit: höchstens 12 Zeichen.": "Unit: at most 12 characters.",
+  "Einheit: keine Steuerzeichen.": "Unit: no control characters.",
   "Diese Person gibt es nicht.": "This person does not exist.",
   "Diese Person ist nicht in der Gruppe.": "This person is not in the group.",
   "Ein Add-on braucht mindestens 1 MB.": "An add-on needs at least 1 MB.",

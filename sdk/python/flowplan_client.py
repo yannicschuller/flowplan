@@ -362,6 +362,7 @@ Field = TypedDict("Field", {
     "timeFormat": Literal["12", "24"],
     "noTime": bool,
     "decimals": int,
+    "unit": str,
     "parent": bool,
     "parentField": str,
     "doneField": str,

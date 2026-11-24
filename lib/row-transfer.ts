@@ -160,7 +160,7 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
     if (NOT_COPIED.has(f.type) || f.parent || hidden.has(f.id)) return;
     let to = match(f, targetFields, i === 0);
     if (!to && b.addMissing && !["relation", "time"].includes(f.type) && targetFields.length < 80) {
-      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(isTagField(f) ? { tagOptions: true } : {}), ...(f.optionColors ? { optionColors: { ...f.optionColors } } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
+      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(isTagField(f) ? { tagOptions: true } : {}), ...(f.optionColors ? { optionColors: { ...f.optionColors } } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}), ...(f.unit ? { unit: f.unit } : {}) };
       targetFields.push(to);
       // A copy looks like its source: its options count as known (#242).
       targetBefore.push(structuredClone(to));

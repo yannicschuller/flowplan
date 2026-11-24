@@ -4,6 +4,7 @@ import { tr } from "./locale-tag";
 import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
 import { isRequired } from "./field-required";
+import { withUnit } from "./field-format";
 export type DatabaseGroup = {
   key: string;
   label: string;
@@ -49,6 +50,9 @@ export function databaseGroups(
                 // id "title", never grouped in practice) stay as they are.
                 field?.type === "text" && field.id !== "title"
                 ? toPlain(cellText(value))
+                : // Numbers with their own unit (#522), e.g. "12 kg".
+                  field?.type === "number" && typeof value === "number"
+                  ? withUnit(cellText(value), field)
                 : cellText(value);
       groups.set(key, { key, label, value: empty ? null : value, rows: [], ...(empty && required ? { missing: true } : {}) });
     }

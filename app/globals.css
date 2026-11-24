@@ -3139,6 +3139,22 @@ tr:hover .row-open,
   font-size: 11px;
   color: var(--secondary);
 }
+/* A number property's own unit (#522) after its input: never typed. */
+.number-unit-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.number-unit-input > input {
+  flex: 1;
+  min-width: 0;
+}
+.number-unit {
+  flex: none;
+  color: var(--secondary);
+  white-space: nowrap;
+}
 .person-cell {
   display: inline-flex;
   align-items: center;

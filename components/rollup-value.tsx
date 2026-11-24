@@ -3,7 +3,7 @@ import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
-import { formatNumber, ratingMax } from "@/lib/field-format";
+import { formatFieldNumber, ratingMax } from "@/lib/field-format";
 import { formatDateValue, hasOffset, isTimed, validDateValue } from "@/lib/date-values";
 const errors: Record<string, string> = {
   "#ACCESS": tr("Kein Zugriff auf die verknüpfte Datenbank", "No access to the linked database"),
@@ -37,7 +37,7 @@ export function RollupValue({
   const percent = field.type === "rollup" && percentAggregate(field.aggregate);
   const label =
     field.type === "number"
-      ? formatNumber(value, field.format, field.decimals)
+      ? formatFieldNumber(value, field)
       : new Intl.NumberFormat(LOCALE_TAG, {
           maximumFractionDigits: 2,
           ...(percent ? { style: "percent" as const } : {}),
