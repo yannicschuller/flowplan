@@ -22,7 +22,9 @@ import { cellText } from "./cell-text";
 import { ct } from "./content-locale";
 import { myTasks, taskKey } from "./doc-tasks";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
-import { visibleFields } from "./field-access";
+import { hiddenFieldsFor, visibleFields } from "./field-access";
+import { databaseSettings } from "./database-settings";
+import { doneRule } from "./database-settings-schema";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { recordPageEdit } from "./page-activity";
 import { myActivity as myActivityData } from "./my-activity";
@@ -300,12 +302,27 @@ const stats: Builder<"stats"> = async (ctx, scope) => {
     workspaceId,
     from,
   ), async (e) => await canRead(e.page_id));
-  // Records that became done this week (lib/automations.ts writes the log).
+  // Records that became done this week (lib/automations.ts writes the log):
+  // only records the person may see, and only in databases whose done
+  // property they may read (as lib/journal-completed.ts).
+  const hiddenRows = new Map<string, Set<string> | null>();
+  const countable = async (pageId: string, rowId: string) => {
+    if (!(await canRead(pageId))) return false;
+    if (!hiddenRows.has(pageId)) {
+      const p = (await one<Page & { fields: string | null }>("SELECT p.*,d.fields FROM pages p LEFT JOIN databases d ON d.page_id=p.id WHERE p.id=?", pageId))!;
+      const fields = JSON.parse(p.fields || "[]") as Field[];
+      const rule = doneRule(fields, await databaseSettings(pageId));
+      const statusHidden = !rule || (await hiddenFieldsFor(user, p, fields)).has(rule.field.id);
+      hiddenRows.set(pageId, statusHidden ? null : await hiddenRowIds(user, p));
+    }
+    const hiddenHere = hiddenRows.get(pageId);
+    return !!hiddenHere && !hiddenHere.has(rowId);
+  };
   const done = await filterAsync(await all<{ page_id: string; row_id: string }>(
     "SELECT l.page_id,l.row_id FROM row_status_log l JOIN pages p ON p.id=l.page_id WHERE p.workspace_id=? AND l.done=1 AND l.at>=? LIMIT 5000",
     workspaceId,
     from,
-  ), async (l) => await canRead(l.page_id));
+  ), async (l) => await countable(l.page_id, l.row_id));
   const open = await myTasks(user, workspaceId);
   const time = (await widgetData(ctx, "time", {}, HOME_WIDGET_BYTES)) as { week?: number };
   return {

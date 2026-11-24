@@ -21,6 +21,7 @@ import { requireUnlocked } from "./journal-extras";
 import { databaseSettings, storeSettings } from "./database-settings";
 import { hiddenFieldsFor } from "./field-access";
 import { rowRoleResolver } from "./row-access";
+import { hiddenFileIds } from "./row-files";
 import { cleanHtml, escaped } from "./document-server";
 import { effectiveFilterGroup, filterCount, matchesFilterGroup } from "./database-filters";
 import { allow } from "./action-limits";
@@ -300,15 +301,19 @@ const memoryOf = (s: Omit<StateRow, "row_id" | "sub" | "position">): Memory | nu
         lastReview: Number(s.last_review),
       }
     : null;
+// Records of the deck hidden from the person (others' private records).
+async function invisibleRows(user: Identity, deck: Deck) {
+  const resolve = await rowRoleResolver(user, deck.page);
+  const restricted = await all<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE page_id=? AND access='private'", deck.page.id);
+  return new Set(restricted.filter((r) => !resolve(r)).map((r) => r.id));
+}
 // Cards the person may study in this deck (and view): readable records,
 // the view's filters (sub-decks), not suspended.
 async function studyable(user: Identity, deck: Deck, settings: StudySettings, viewId?: string, withSuspended = false) {
   const hidden = await hiddenFieldsFor(user, deck.page, deck.fields);
   // A side the person may not read: no cards at all (rather none than half).
   if (studyFieldIds(settings).some((id) => hidden.has(id) || !deck.fields.some((f) => f.id === id))) return { cards: [] as QueueCard[], blocked: "hidden" as const };
-  const resolve = await rowRoleResolver(user, deck.page);
-  const restricted = await all<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE page_id=? AND access='private'", deck.page.id);
-  const invisible = new Set(restricted.filter((r) => !resolve(r)).map((r) => r.id));
+  const invisible = await invisibleRows(user, deck);
   const view = viewId ? deck.views.find((v) => v.id === viewId) : undefined;
   const group = view ? effectiveFilterGroup(view) : null;
   let matching: Set<string> | null = null;
@@ -1083,12 +1088,14 @@ async function historyRows(userId: string, scope: ParamsScope, pageId: string) {
 export type DeckGroup = { key: string; kind: "subdeck" | "type"; value: string; cards: number };
 async function deckGroups(user: Identity, deck: Deck, settings: StudySettings): Promise<DeckGroup[]> {
   const out: DeckGroup[] = [];
+  // Only cards of records the person may see count (#498).
+  const invisible = await invisibleRows(user, deck);
   const field = settings.subdeck?.field;
   if (field && deck.fields.some((f) => f.id === field && f.type === "select") && !(await hiddenFieldsFor(user, deck.page, deck.fields)).has(field)) {
     const counts = new Map<string, number>();
     const perRow = new Map((await all<{ row_id: string; n: number }>("SELECT row_id,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY row_id", deck.page.id)).map((r) => [r.row_id, Number(r.n)]));
     for (const r of await rowsOf(deck.page.id)) {
-      if (!perRow.has(r.id)) continue;
+      if (!perRow.has(r.id) || invisible.has(r.id)) continue;
       let cells: Record<string, unknown> = {};
       try {
         cells = JSON.parse(r.cells || "{}");
@@ -1100,8 +1107,11 @@ async function deckGroups(user: Identity, deck: Deck, settings: StudySettings): 
     }
     for (const [value, cards] of [...counts].sort(([a], [b]) => a.localeCompare(b))) out.push({ key: `subdeck:${value}`, kind: "subdeck", value, cards });
   }
-  const kinds = await all<{ kind: string; n: number }>("SELECT kind,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY kind ORDER BY kind", deck.page.id);
-  if (kinds.length > 1) for (const k of kinds) out.push({ key: `type:${k.kind}`, kind: "type", value: k.kind, cards: Number(k.n) });
+  const perKind = new Map<string, number>();
+  for (const k of await all<{ row_id: string; kind: string; n: number }>("SELECT row_id,kind,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY row_id,kind", deck.page.id))
+    if (!invisible.has(k.row_id)) perKind.set(k.kind, (perKind.get(k.kind) || 0) + Number(k.n));
+  const kinds = [...perKind].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (kinds.length > 1) for (const [kind, n] of kinds) out.push({ key: `type:${kind}`, kind: "type", value: kind, cards: n });
   return out.slice(0, MAX_GROUPS);
 }
 // The deck as the workload simulation needs it (lib/fsrs/optimize.ts
@@ -1110,14 +1120,17 @@ async function deckGroups(user: Identity, deck: Deck, settings: StudySettings): 
 // new cards and the limits of a day (without "Heute mehr lernen").
 async function simulationDeck(user: Identity, deck: Deck, mine: Mine, clock: { zone: string; dayStart: number }) {
   const today = studyDay(Date.now(), clock.zone, clock.dayStart);
-  const states = await all<{ state: number; stability: number; difficulty: number; last_review: number; due_day: string | null }>(
-    `SELECT s.state,s.stability,s.difficulty,s.last_review,s.due_day FROM card_states s JOIN study_cards c ON c.page_id=s.page_id AND c.row_id=s.row_id AND c.sub=s.sub
+  // Only cards of records the person may see count (#498).
+  const invisible = await invisibleRows(user, deck);
+  const states = (await all<{ row_id: string; state: number; stability: number; difficulty: number; last_review: number; due_day: string | null }>(
+    `SELECT s.row_id,s.state,s.stability,s.difficulty,s.last_review,s.due_day FROM card_states s JOIN study_cards c ON c.page_id=s.page_id AND c.row_id=s.row_id AND c.sub=s.sub
       WHERE s.user_id=? AND s.page_id=? AND s.suspended=0 AND s.orphaned_at IS NULL AND s.state>0`,
     user.id,
     deck.page.id,
-  );
-  const total = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM study_cards WHERE page_id=?", deck.page.id))?.n || 0);
-  const suspended = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM card_states WHERE user_id=? AND page_id=? AND (suspended=1 OR orphaned_at IS NOT NULL)", user.id, deck.page.id))?.n || 0);
+  )).filter((s) => !invisible.has(s.row_id));
+  const visibleCount = (rows: { row_id: string; n: number }[]) => rows.reduce((sum, r) => sum + (invisible.has(r.row_id) ? 0 : Number(r.n)), 0);
+  const total = visibleCount(await all<{ row_id: string; n: number }>("SELECT row_id,COUNT(*) n FROM study_cards WHERE page_id=? GROUP BY row_id", deck.page.id));
+  const suspended = visibleCount(await all<{ row_id: string; n: number }>("SELECT row_id,COUNT(*) n FROM card_states WHERE user_id=? AND page_id=? AND (suspended=1 OR orphaned_at IS NOT NULL) GROUP BY row_id", user.id, deck.page.id));
   const round = (x: number) => Math.round(x * 100) / 100;
   return {
     cards: states.map((s) => ({
@@ -1469,6 +1482,13 @@ const csvLinks: MarkdownContext = {
 // the person's own learning state; nobody else's is ever read. The import
 // wizard (lib/study-import.ts) reads the file back, one record per line
 // with the same front and back.
+// The tags of a card as an export may show them: none when the property
+// the mapping takes them from is hidden from the person (#491).
+async function exportTags(user: Identity, deck: Deck, settings: StudySettings, hidden?: Set<string>) {
+  hidden ??= await hiddenFieldsFor(user, deck.page, deck.fields);
+  const blocked = !!settings.tags && hidden.has(settings.tags.field);
+  return (card: DerivedCard) => (blocked ? [] : card.tags || []);
+}
 export async function studyExport(user: Identity, raw: unknown) {
   const input = exportInput.parse(raw);
   const deck = await deckOf(user, input.pageId);
@@ -1476,6 +1496,7 @@ export async function studyExport(user: Identity, raw: unknown) {
   await drainStudyCards(deck.page.id);
   const clock = await zoneFor(user, input.zone);
   const { cards } = await studyable(user, deck, settings, input.viewId, true);
+  const tagsOf = await exportTags(user, deck, settings);
   const suspended = new Set(
     (await all<{ row_id: string; sub: string }>("SELECT row_id,sub FROM card_states WHERE user_id=? AND page_id=? AND suspended=1", user.id, deck.page.id)).map((r) => `${r.row_id}\u0000${r.sub}`),
   );
@@ -1496,7 +1517,7 @@ export async function studyExport(user: Identity, raw: unknown) {
       // The record's sides as written (a reverse card names them as the
       // record does, so the file reads back as one record per line).
       const record = card.sub === "r" ? { front: card.back, back: card.front } : card;
-      const line = [text(record.front), text(record.back), text(card.hint), text(card.extra), (card.tags || []).join(", "), types[card.kind] || card.kind, card.sub];
+      const line = [text(record.front), text(record.back), text(card.hint), text(card.extra), tagsOf(card).join(", "), types[card.kind] || card.kind, card.sub];
       if (input.state) {
         const m = c.memory;
         line.push(
@@ -1545,7 +1566,9 @@ export async function studyAnkiExport(user: Identity, raw: unknown) {
   const position = new Map<string, number>();
   for (const c of cards) position.set(c.rowId, Math.min(position.get(c.rowId) ?? Infinity, c.position));
   const rowIds = [...position.keys()].sort((a, b) => position.get(a)! - position.get(b)! || (a < b ? -1 : 1));
-  const deckField = deck.fields.find((f) => f.type === "select" && /^deck$/i.test(f.name.trim()));
+  const hiddenProps = await hiddenFieldsFor(user, deck.page, deck.fields);
+  const tagsOf = await exportTags(user, deck, settings, hiddenProps);
+  const deckField = deck.fields.find((f) => f.type === "select" && /^deck$/i.test(f.name.trim()) && !hiddenProps.has(f.id));
   const files = new Map<string, string>();
   const fileName = (fileId: string) => {
     const key = fileId.toLowerCase();
@@ -1567,7 +1590,7 @@ export async function studyAnkiExport(user: Identity, raw: unknown) {
       const first = list.find((c) => c.sub === "") || list[0];
       const subdeckValue = deckField ? cellsOf.get(rowId)?.[deckField.id] : undefined;
       const subdeck = typeof subdeckValue === "string" && subdeckValue.trim() ? subdeckValue.trim().slice(0, 200) : undefined;
-      const tags = first.tags || [];
+      const tags = tagsOf(first);
       const hint = html(first.hint),
         extra = html(first.extra);
       if (first.kind === "occlusion") {
@@ -1610,10 +1633,13 @@ export async function studyAnkiExport(user: Identity, raw: unknown) {
   const taken = new Set<string>();
   let bytes = 0,
     skipped = 0;
-  const ids = [...files.keys()];
+  // Not the files hidden from the person (#497): those of records they may
+  // not see (lib/row-files.ts) and those in the trash.
+  const hiddenFiles = new Set([...(await hiddenFileIds(user, deck.page))].map((h) => h.toLowerCase()));
+  const ids = [...files.keys()].filter((fid) => !hiddenFiles.has(fid));
   for (let i = 0; i < ids.length; i += 500) {
     const part = ids.slice(i, i + 500);
-    for (const f of await all<{ id: string; name: string; size: number }>(`SELECT id,name,size FROM files WHERE page_id=? AND id IN (${part.map(() => "?").join(",")})`, deck.page.id, ...part)) {
+    for (const f of await all<{ id: string; name: string; size: number }>(`SELECT id,name,size FROM files WHERE page_id=? AND deleted_at IS NULL AND id IN (${part.map(() => "?").join(",")})`, deck.page.id, ...part)) {
       if (bytes + Number(f.size) > ANKI_EXPORT_MEDIA_BYTES) {
         skipped++;
         continue;
