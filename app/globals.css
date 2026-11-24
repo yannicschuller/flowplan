@@ -3139,6 +3139,20 @@ tr:hover .row-open,
   font-size: 11px;
   color: var(--secondary);
 }
+/* In a table the date stays inside its column however narrow it is dragged
+   (#523): the icon keeps its size, the date (and its time) ends in "…". */
+.data-table td .date-cell {
+  max-width: 100%;
+}
+.date-cell > svg {
+  flex: none;
+}
+.data-table td .date-cell-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* A number property's own unit (#522) after its input: never typed. */
 .number-unit-input {
   display: flex;
