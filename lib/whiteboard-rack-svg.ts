@@ -35,6 +35,7 @@ import {
 type T = (de: string, en: string) => string;
 const esc = (value: string) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const f = (n: number) => Math.round(n * 10) / 10;
+const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif";
 
 // What the drawings need to know about the whole board, worked out once
@@ -161,7 +162,10 @@ export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardIte
   const rackItem = item.rackId ? items.get(item.rackId) : undefined;
   const rack = rackItem ? rackOf(rackItem) || undefined : undefined;
   const face = visibleFace(device, rack);
-  const { w, h } = item;
+  // Numbers only: the markup goes into innerHTML, and a stored item may carry
+  // anything in w/h (#477).
+  const w = num(item.w),
+    h = num(item.h);
   const color = deviceColor(item);
   const ink = textOn(color);
   const name = (item.text || "").trim() || t("Gerät", "Device");

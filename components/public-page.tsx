@@ -652,6 +652,7 @@ async function renderPublishedPage({
         key={`${page.id}:${rowId || ""}`}
         token={token}
         initial={await sharedContent(token, page.id, rowId)}
+        guestComments={root.public_token !== token}
       />
       {theme?.footer && <footer className="public-theme-footer">{theme.footer}</footer>}
       {!theme?.hideBranding && (

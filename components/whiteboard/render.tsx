@@ -24,7 +24,7 @@ import { BoardColors, DARK_CANVAS_CLASS, useBoardColors } from "./board-colors";
 import { boardPalette } from "@/lib/whiteboard-display-colors";
 import { useDarkCanvas } from "@/lib/whiteboard-canvas-pref-client";
 // Racks, devices and cables (#90): the same drawing as the exports.
-import { cableStyle, isCable } from "@/lib/whiteboard-rack";
+import { applyRackLayout, cableStyle, isCable } from "@/lib/whiteboard-rack";
 import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "@/lib/whiteboard-rack-svg";
 // Pen opacity, highlighter, collapsed frames and own colours (#455).
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
@@ -617,8 +617,10 @@ export function WhiteboardStatic({
   // Documents, shared pages and the template gallery show boards on the
   // dark canvas too (#399), by the reader's setting.
   const dark = useDarkCanvas();
+  // Racks and devices get their size and place from the rack layout, as on
+  // the board and in the exports: never from the stored w/h (#477).
   // Collapsed frames show their bar only, as on the board (#455).
-  items = foldView(items).items;
+  items = foldView(applyRackLayout(items)).items;
   const map = new Map(items.map((i) => [i.id, i]));
   const box = contentBounds(items, map);
   const pad = 40;

@@ -601,3 +601,20 @@ test("cables across free units go straight unless a device is in the way (#111)"
   // A server at U10 sits in the way: around through the side channel.
   assert.match(d([device("srv", srv, { rackId: "r", u: 10 })]), /^M( [\d.]+){2} V [\d.]+ H [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
 });
+
+// #477: a stored device may carry anything in w/h (guest or editor edits);
+// the drawing goes into innerHTML, so only numbers reach the markup, and the
+// static view (documents, shared pages) lays devices out like the board.
+test("drawings: a device's stored w/h never become markup", () => {
+  const payload = '1"/><style>:root body{background:red}</style><rect x="0" width="1';
+  for (const face of [{}, { mount: "left" as const }]) {
+    const raw = device("x", { ...template("server-1u"), ...face }, { w: payload as unknown as number, h: "<b>" as unknown as number, text: "S" });
+    const map = new Map([[raw.id, raw]]);
+    const markup = deviceSvg(raw, map, rackContext([raw]), en);
+    assert.ok(!markup.includes("<style"), markup);
+    assert.ok(!markup.includes("<b>"));
+    assert.ok(!markup.includes(payload));
+  }
+  const laid = applyRackLayout([device("y", template("server-1u"), { w: payload as unknown as number })]);
+  assert.equal(typeof laid[0].w, "number");
+});

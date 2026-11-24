@@ -30,9 +30,12 @@ type Content = {
 export function SharedInteractions({
   token,
   initial,
+  guestComments = true,
 }: {
   token: string;
   initial: Content;
+  // Publications show no guest comments (#480): those stay with the links.
+  guestComments?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -298,19 +301,23 @@ export function SharedInteractions({
           </button>
         </form>
       )}
-      <h2>{t("Kommentare zur Freigabe", "Comments on this share")}</h2>
-      {data.comments.length === 0 && (
-        <p className="muted">{t("Noch keine Gastkommentare.", "No guest comments yet.")}</p>
+      {guestComments && (
+        <>
+          <h2>{t("Kommentare zur Freigabe", "Comments on this share")}</h2>
+          {data.comments.length === 0 && (
+            <p className="muted">{t("Noch keine Gastkommentare.", "No guest comments yet.")}</p>
+          )}
+          {data.comments.map((c) => (
+            <article className="shared-comment" key={c.id}>
+              <strong>
+                {c.name} <small>(Gast)</small>
+              </strong>
+              {!!c.resolved && <span> · Erledigt</span>}
+              <p>{c.body}</p>
+            </article>
+          ))}
+        </>
       )}
-      {data.comments.map((c) => (
-        <article className="shared-comment" key={c.id}>
-          <strong>
-            {c.name} <small>(Gast)</small>
-          </strong>
-          {!!c.resolved && <span> · Erledigt</span>}
-          <p>{c.body}</p>
-        </article>
-      ))}
       {data.role !== "viewer" && !data.locked && (
         <form
           onSubmit={async (e) => {
