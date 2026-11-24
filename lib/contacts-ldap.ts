@@ -36,7 +36,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { all, audit, id, one, run, transaction, onTransactionRollback, nowText } from "./db";
-import { HttpError } from "./auth";
+import { HttpError, adminUserIds } from "./auth";
 import { requirePage } from "./permissions";
 import { ct } from "./content-locale";
 import { enforceQuota } from "./instance-ops";
@@ -326,20 +326,36 @@ export function syncedFieldIds(mapping: Mapping, fields: Field[]) {
 
 // Who may read the instance's directory through a contacts database of a
 // workspace: never a guest of that workspace; otherwise administrators,
-// accounts that sign in with LDAP, and full members (not guests) of at
-// least one workspace somebody else created – an account that only has
-// workspaces of its own (anyone may create one) does not.
+// accounts that sign in with LDAP, and people invited by the organisation:
+// full members (not guests) of a workspace the instance provisioned or that
+// an organisation member created. An account that only has workspaces of
+// its own (anyone may create one) does not, nor one invited only by such
+// accounts (#474): the invitation chain has to lead back to the instance,
+// an administrator or an LDAP account.
 export async function directoryAccess(user: Identity, workspaceId: string) {
   if (user.apiScope) return false;
   if (await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", workspaceId, user.id)) return false;
   if (user.isAdmin) return true;
   if (await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id)) return true;
+  // The person and, step by step, the creators of the workspaces they are
+  // full members of (other than their own).
   return !!(await one(
-    `SELECT 1 FROM members m JOIN workspaces w ON w.id=m.workspace_id
-      WHERE m.user_id=? AND (w.created_by IS NULL OR w.created_by<>?)
-        AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id)`,
+    `WITH RECURSIVE chain(id) AS (
+        SELECT ?
+        UNION
+        SELECT w.created_by FROM chain c JOIN members m ON m.user_id=c.id JOIN workspaces w ON w.id=m.workspace_id
+          WHERE w.created_by IS NOT NULL AND w.created_by<>c.id
+            AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id)
+      )
+      SELECT 1 FROM chain c WHERE
+        EXISTS(SELECT 1 FROM members m JOIN workspaces w ON w.id=m.workspace_id
+          WHERE m.user_id=c.id AND w.created_by IS NULL
+            AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id))
+        OR (c.id<>? AND (c.id IN (SELECT value FROM json_each(?)) OR EXISTS(SELECT 1 FROM ldap_accounts l JOIN users u ON u.id=l.user_id WHERE l.user_id=c.id AND u.disabled=0)))
+      LIMIT 1`,
     user.id,
     user.id,
+    JSON.stringify(await adminUserIds()),
   ));
 }
 export const DIRECTORY_REFUSED = "Das LDAP-Verzeichnis ist nur für Mitglieder der Organisation da: Administratoren, Konten mit LDAP-Anmeldung und Mitglieder, die in einen Arbeitsbereich eingeladen wurden.";
@@ -520,6 +536,23 @@ export async function contactsSourceStatus(pageId: string, user?: Identity) {
   };
 }
 
+// Whether the person who subscribed a database still may read the
+// directory through it: an enabled account that can edit the database and
+// passes directoryAccess for its workspace.
+async function subscriberEntitled(userId: string | null, pageId: string, workspaceId: string) {
+  if (!userId) return false;
+  const account = await one<{ id: string; name: string; email: string; disabled: number; created_at: string }>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
+  if (!account) return false;
+  const person = { ...account, groups: [], isAdmin: (await adminUserIds()).includes(account.id) } as unknown as Identity;
+  try {
+    await requirePage(person, pageId, true);
+  } catch (e) {
+    if (e instanceof HttpError) return false;
+    throw e;
+  }
+  return directoryAccess(person, workspaceId);
+}
+
 type Link = { row_id: string; dn: string; uuid: string; ou: string; hash: string; photo_hash: string; missing_at: number | null };
 type Found = { entry: LdapEntry; ou: string };
 
@@ -539,6 +572,16 @@ export async function syncContactsSource(
   running.add(pageId);
   try {
     if (!config) throw new LdapError("LDAP for contacts is not configured");
+    if (options.actor) {
+      // An interactive import or sync (directoryContext checked the person):
+      // they now stand behind the subscription.
+      await run("UPDATE contact_ldap_sources SET created_by=? WHERE page_id=?", options.actor, pageId);
+    } else if (!(await subscriberEntitled(source.created_by, pageId, page.workspace_id))) {
+      // The background sync (#481): only while the person behind the
+      // subscription may still edit the database and use the directory in
+      // its workspace; otherwise it waits for an entitled editor to sync.
+      throw new LdapError("Directory access of the subscription ended; an editor with directory access has to sync again");
+    }
     const mapping = parseMapping(source.mapping, await allowedAttributes());
     const units = parseOus(source.ous).filter((u) => withinBase(u, config.baseDn));
     const links = await all<Link>("SELECT row_id,dn,uuid,ou,hash,photo_hash,missing_at FROM contact_ldap_links WHERE page_id=? LIMIT ?", pageId, MAX_LINKS);

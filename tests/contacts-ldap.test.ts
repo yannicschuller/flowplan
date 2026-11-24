@@ -359,6 +359,75 @@ test("accounts that sign in with LDAP and administrators reach the directory", a
   assert.equal(await directoryAccess({ ...admin, apiScope: "write" }, theirs.workspace), false);
 });
 
+test("an account invited only by accounts outside the organisation does not reach the directory (#474)", async () => {
+  // Two loners: one invites the other into a workspace of their own.
+  const inviter = await user("loner-a"),
+    invited = await user("loner-b");
+  const theirs = await ownContacts(inviter);
+  const own = await ownContacts(invited);
+  await run("INSERT INTO members VALUES(?,?,?)", theirs.workspace, invited.id, "viewer");
+  const before = fake.searches.length;
+  await refusedEverywhere(invited, own.page);
+  // A longer chain of loners does not help either.
+  const third = await user("loner-c");
+  const thirds = await ownContacts(third);
+  await run("INSERT INTO members VALUES(?,?,?)", own.workspace, third.id, "viewer");
+  await refusedEverywhere(third, thirds.page);
+  assert.equal(fake.searches.length, before, "not a single directory search");
+  // Once the inviter is invited by the organisation, the chain counts.
+  await run("INSERT INTO members VALUES(?,?,?)", wid, inviter.id, "viewer");
+  assert.equal(await directoryAccess(invited, own.workspace), true);
+  assert.equal(await directoryAccess(third, thirds.workspace), true);
+  // So does a workspace the instance provisioned (no creator).
+  const fresh = await user("loner-d");
+  const freshOwn = await ownContacts(fresh);
+  assert.equal(await directoryAccess(fresh, freshOwn.workspace), false);
+  await run("UPDATE workspaces SET created_by=NULL WHERE id=?", theirs.workspace);
+  await run("INSERT INTO members VALUES(?,?,?)", theirs.workspace, fresh.id, "viewer");
+  assert.equal(await directoryAccess(fresh, freshOwn.workspace), true);
+});
+
+test("the background sync stops once the subscriber lost directory access (#481)", async () => {
+  const leaver = await user("leaver");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, leaver.id, "editor");
+  const own = await ownContacts(leaver);
+  const imported = await importContacts(leaver, own.page, { units: [`ou=dev,${PEOPLE}`] });
+  assert.equal(imported.ok, true, imported.error || "");
+  const rows = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", own.page))!.n);
+  const count = await rows();
+  // She leaves the company workspace; the directory gains a person.
+  await run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, leaver.id);
+  assert.equal(await directoryAccess(leaver, own.workspace), false);
+  const eve = `uid=eve,ou=dev,${PEOPLE}`;
+  person(eve, "Eve", "Neu");
+  try {
+    const before = fake.searches.length;
+    const results = await ldapContacts.syncAllContactSources();
+    const mine = results.find((r) => r.at && !r.ok && /Directory access/.test(r.error || ""));
+    assert.ok(mine, "the subscription is reported as refused");
+    assert.equal(await rows(), count, "no new records");
+    assert.equal(await rowOf(eve), undefined);
+    const status = await contactsSourceStatus(own.page);
+    assert.equal(status.lastSync?.ok, false);
+    assert.match(status.lastSync?.error || "", /Directory access/);
+    // The company database of the owner (an LDAP account) still syncs.
+    assert.ok(results.some((r) => r.ok));
+    assert.ok(fake.searches.length > before);
+    // An editor of the database who has directory access takes it over.
+    const colleague = await user("colleague");
+    await run("INSERT INTO members VALUES(?,?,?)", wid, colleague.id, "viewer");
+    await run("INSERT INTO members VALUES(?,?,?)", own.workspace, colleague.id, "editor");
+    assert.equal((await syncContactsNow(colleague, own.page)).ok, true);
+    assert.ok(await rowOf(eve));
+    assert.equal((await syncContactsSource(own.page, {})).ok, true, "the background sync follows the colleague now");
+    // Disabled subscribers do not count.
+    await run("UPDATE users SET disabled=1 WHERE id=?", colleague.id);
+    assert.equal((await syncContactsSource(own.page, {})).ok, false);
+  } finally {
+    entries.delete(eve);
+  }
+});
+
 test("attributes: only those of the allow-list, which administrators extend", async () => {
   const page = (await act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Erlaubt" })).id as string;
   const status = await contactsSourceStatus(page, owner);
