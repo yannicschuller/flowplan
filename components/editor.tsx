@@ -178,6 +178,7 @@ import {
   CheckSquare,
   Quotes,
   Code,
+  CodeSimple,
   Image as ImageIcon,
   Table as TableIcon,
   PresentationChart,
@@ -2835,6 +2836,13 @@ export default function DocumentEditor({
         ? Number(current.getAttributes("media").width || 100)
         : null,
   });
+  // Inline code at the selection (#465): pressed on code, off in a code
+  // block (it takes no marks) – followed per selection, as the toolbar does
+  // not re-render on every transaction.
+  const inlineCode = useEditorState({
+    editor,
+    selector: ({ editor: current }) => (current?.isActive("codeBlock") ? "block" : current?.isActive("code") ? "on" : "off"),
+  });
   // Whether the toolbar's indent and outdent apply at the selection (only
   // worked out while the toolbar shows them).
   const shiftShown = !layout.hidden.includes("indent") || !layout.hidden.includes("outdent");
@@ -3263,6 +3271,21 @@ export default function DocumentEditor({
                     <TextStrikethrough />
                   </button>
                 ),
+                // Inline code (#465, ⌘E): on a phone this toolbar is the
+                // only way to it. A code block takes no marks, so there it
+                // is off.
+                code: () => (
+                  <button
+                    title={t("Inline-Code", "Inline code") + keyHints.suffix("Mod+E")}
+                    aria-label={t("Inline-Code", "Inline code")}
+                    aria-pressed={inlineCode === "on"}
+                    className={inlineCode === "on" ? "active" : ""}
+                    disabled={inlineCode === "block"}
+                    onClick={() => editor?.chain().focus().toggleCode().run()}
+                  >
+                    <CodeSimple />
+                  </button>
+                ),
                 highlight: () => (
                   <button
                     title={t("Markieren", "Highlight")}
@@ -3548,6 +3571,7 @@ export default function DocumentEditor({
                 italic: { label: t("Kursiv", "Italic"), icon: <TextItalic />, run: () => chain()?.toggleItalic().run(), active: !!editor?.isActive("italic") },
                 underline: { label: t("Unterstrichen", "Underline"), icon: <TextUnderline />, run: () => chain()?.toggleUnderline().run(), active: !!editor?.isActive("underline") },
                 strike: { label: t("Durchgestrichen", "Strikethrough"), icon: <TextStrikethrough />, run: () => chain()?.toggleStrike().run(), active: !!editor?.isActive("strike") },
+                code: { label: t("Inline-Code", "Inline code"), icon: <CodeSimple />, run: () => chain()?.toggleCode().run(), active: inlineCode === "on", disabled: inlineCode === "block" },
                 highlight: { label: t("Markieren", "Highlight"), icon: <Highlighter />, run: () => chain()?.toggleHighlight().run(), active: !!editor?.isActive("highlight") },
                 comment: { label: t("Kommentieren", "Comment"), icon: <ChatCircle />, run: () => editor?.view.dom.dispatchEvent(new CustomEvent("comment-create")) },
                 superscript: { label: t("Hochgestellt", "Superscript"), icon: <TextSuperscript />, run: () => chain()?.toggleSuperscript().run(), active: !!editor?.isActive("superscript") },

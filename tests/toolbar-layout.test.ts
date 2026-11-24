@@ -65,6 +65,34 @@ test("buttons missing from a stored layout (added in a later version) appear at 
   assert.equal(moved.order[moved.order.indexOf("subscript") + 1], "spoiler");
 });
 
+test("inline code (#465): right after strikethrough, shown, also in a layout stored before it", () => {
+  const layout = L.defaultToolbarLayout();
+  assert.equal(layout.order[layout.order.indexOf("strike") + 1], "code", "after strikethrough by default");
+  assert.ok(!layout.hidden.includes("code"), "shown by default");
+  assert.ok(L.isGroupableItem("code"), "it can share a group");
+  assert.ok(L.isToolbarItem("block:code") && !L.isToolbarBlock("code"), "not the code block of the \"/\" menu");
+  // A layout saved before it: the button comes in after strikethrough,
+  // shown; the person's order and hidden buttons stay.
+  const before = { order: [...L.DEFAULT_TOOLBAR_ORDER.filter((e) => e !== "code" && e !== "bold"), "bold"], hidden: ["underline"] };
+  assert.ok(L.toolbarLayoutSchema.safeParse(before).success, "still a valid layout to save");
+  const read = L.toolbarLayoutOf(before);
+  assert.equal(read.order[read.order.indexOf("strike") + 1], "code");
+  assert.equal(read.order[read.order.length - 1], "bold");
+  assert.deepEqual(read.hidden, ["underline"]);
+  assert.ok(L.toolbarEntries(read).includes("code"));
+  // Strikethrough in a group: after the group. Strikethrough hidden: still
+  // after it, shown.
+  const grouped = L.toolbarLayoutOf({ order: ["bold", ["strike", "superscript", "subscript"], "spoiler", "cloze", "suggest", "authors", "link"], hidden: ["strike"] });
+  assert.equal(grouped.order[L.entryIndexOf(grouped.order, "strike") + 1], "code");
+  assert.ok(!grouped.hidden.includes("code"));
+  // The instance's default (stored the same way) gets it too.
+  const instance = L.toolbarLayoutOf(null, L.toolbarLayoutOf({ order: ["undo", "strike", "link"], hidden: [] }));
+  assert.equal(instance.order[instance.order.indexOf("strike") + 1], "code");
+  // Hidden on request; grouped with strikethrough.
+  assert.deepEqual(L.setToolbarItemShown(layout, "code", false).hidden.includes("code"), true);
+  assert.ok(L.toolbarLayoutSchema.safeParse({ order: [["strike", "code"], "bold"], hidden: [] }).success);
+});
+
 test("indent and outdent (#302): a layout stored before them stays valid and renders as before", () => {
   const before = { order: L.DEFAULT_TOOLBAR_ORDER.filter((e) => e !== "indent" && e !== "outdent"), hidden: ["italic"] };
   assert.ok(L.toolbarLayoutSchema.safeParse(before).success, "still a valid layout to save");
