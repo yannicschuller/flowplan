@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, QrCode, SquaresFour, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
+import { useDatabaseEntries } from "./database-picker";
 
 type Target = { id: string; title: string; icon: string };
+const NONE: Target[] = [];
 
 // Right-click on a record (or several selected ones): open, duplicate,
 // copy or move into another database, turn into a page, its QR code or the
@@ -92,7 +94,11 @@ export function TransferDialog({
       })
       .catch(() => setTargets([]));
   }, [pageId]);
-  const shown = (targets || []).filter((x) => x.title.toLowerCase().includes(query.trim().toLowerCase()));
+  // Sorted by space, then title; twins named apart (#520).
+  const entries = useDatabaseEntries(targets || NONE);
+  const icons = useMemo(() => new Map((targets || []).map((x) => [x.id, x.icon])), [targets]);
+  const needle = query.trim().toLowerCase();
+  const shown = entries.filter((x) => `${x.label} ${x.space}`.toLowerCase().includes(needle));
   const n = rowIds.length;
   return (
     <Modal open onClose={onClose} title={n > 1 ? (mode === "move" ? t(`${n} Einträge verschieben`, `Move ${n} records`) : t(`${n} Einträge kopieren`, `Copy ${n} records`)) : mode === "move" ? t("Eintrag verschieben", "Move record") : t("Eintrag kopieren", "Copy record")}>
@@ -105,7 +111,7 @@ export function TransferDialog({
           try {
             const result = (await act({ action: "rows.transfer", rowIds, targetPageId: target, mode, addMissing })) as { count: number; created: string[] } | null;
             if (!result) return;
-            const name = targets?.find((x) => x.id === target)?.title || "";
+            const name = entries.find((x) => x.id === target)?.fullLabel || "";
             const what = result.count === 1 ? t("1 Eintrag", "1 record") : t(`${result.count} Einträge`, `${result.count} records`);
             onDone(
               mode === "move" ? t(`${what} nach „${name}“ verschoben.`, `${what} moved to “${name}”.`) : t(`${what} nach „${name}“ kopiert.`, `${what} copied to “${name}”.`),
@@ -144,9 +150,12 @@ export function TransferDialog({
           ) : (
             shown.map((x) => (
               <label key={x.id} className="transfer-target" data-active={target === x.id}>
-                <input type="radio" name="transfer-target" checked={target === x.id} onChange={() => setTarget(x.id)} />
-                <PageIcon name={x.icon} size={16} />
-                <span>{x.title || t("Ohne Titel", "Untitled")}</span>
+                <input type="radio" name="transfer-target" aria-description={x.space || undefined} checked={target === x.id} onChange={() => setTarget(x.id)} />
+                <PageIcon name={icons.get(x.id) || ""} size={16} />
+                <span className="transfer-target-name">
+                  <span>{x.label}</span>
+                  {x.space && <small aria-hidden="true">{x.space}</small>}
+                </span>
               </label>
             ))
           )}

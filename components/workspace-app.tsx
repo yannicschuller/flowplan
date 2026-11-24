@@ -75,6 +75,7 @@ import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
+import { DatabaseLabelsContext } from "./database-picker";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
@@ -2772,6 +2773,8 @@ export default function WorkspaceApp({
   // Drafts of saved templates (#461) are opened from the templates only:
   // not in the tree, the pickers or the lists.
   const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at && !p.template_draft), [titledPages]),
+    // Database pickers group by space and name twins apart (#520).
+    databaseLabels = useMemo(() => ({ spaces: boot.spaces.filter((sp) => !sp.deleted_at).map((sp) => ({ id: sp.id, name: sp.name })), pages: activePages }), [boot.spaces, activePages]),
     // The tree's levels in one pass: sub pages per parent, top-level pages
     // per space ("space:<id>") – no search through all pages per row.
     treeIndex = useMemo(() => {
@@ -4539,6 +4542,7 @@ export default function WorkspaceApp({
   return (
     <AiProvider status={uiAi || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
+    <DatabaseLabelsContext.Provider value={databaseLabels}>
     <div
       data-motion={motionAttribute(motion)}
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}${dock?.docked ? " side-dock-open" : ""}`}
@@ -8425,6 +8429,7 @@ export default function WorkspaceApp({
         }}
       />
     )}
+    </DatabaseLabelsContext.Provider>
     </TagOptionsContext.Provider>
     </AiProvider>
   );

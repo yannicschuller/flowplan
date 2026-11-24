@@ -287,6 +287,7 @@ import { shortcutLetter } from "@/lib/keymap";
 import { isModelName } from "@/lib/model-formats";
 import { isHtmlName } from "@/lib/html-files";
 import { isSheetName } from "@/lib/sheet-files";
+import { useDatabaseEntries } from "./database-picker";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
 // Delay of a save after a change: with others in the document, and alone (#515).
@@ -578,6 +579,9 @@ export default function DocumentEditor({
   const [linkedPicker, setLinkedPicker] = useState(false),
     [linking, setLinking] = useState(false),
     [linkedSearch, setLinkedSearch] = useState("");
+  // The linked view's sources, sorted by space, twins named apart (#520).
+  const linkedSources = useDatabaseEntries(useMemo(() => pages.filter((p) => p.kind === "database" && !p.deleted_at), [pages]), { pages });
+  const linkedShown = linkedSources.filter((d) => `${d.label} ${d.space}`.toLowerCase().includes(linkedSearch.trim().toLowerCase()));
   const colorSelection = useRef<{ from: number; to: number } | null>(null);
   const colorChain = () => {
     const saved = colorSelection.current,
@@ -4141,17 +4145,11 @@ export default function DocumentEditor({
           placeholder={t("Datenbank suchen …", "Search databases …")}
         />
         <div className="linked-source-list">
-          {pages
-            .filter(
-              (p) =>
-                p.kind === "database" &&
-                !p.deleted_at &&
-                p.title.toLowerCase().includes(linkedSearch.toLowerCase()),
-            )
-            .map((source) => (
+          {linkedShown.map((source) => (
               <button
                 className="button"
                 key={source.id}
+                aria-description={source.space || undefined}
                 disabled={linking}
                 onClick={async () => {
                   setLinking(true);
@@ -4193,15 +4191,13 @@ export default function DocumentEditor({
                   }
                 }}
               >
-                {source.title}
+                <span className="transfer-target-name">
+                  <span>{source.label}</span>
+                  {source.space && <small aria-hidden="true">{source.space}</small>}
+                </span>
               </button>
             ))}
-          {!pages.some(
-            (p) =>
-              p.kind === "database" &&
-              !p.deleted_at &&
-              p.title.toLowerCase().includes(linkedSearch.toLowerCase()),
-          ) && <p className="muted">{t("Keine passende Datenbank.", "No matching database.")}</p>}
+          {!linkedShown.length && <p className="muted">{t("Keine passende Datenbank.", "No matching database.")}</p>}
         </div>
       </Modal>
       <Modal open={link} onClose={() => setLink(false)} title={t("Link einfügen", "Insert link")}>

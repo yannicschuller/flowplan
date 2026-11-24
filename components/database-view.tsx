@@ -280,6 +280,7 @@ import {
   type DateReminder,
 } from "@/lib/date-reminder-options";
 import { recordPart } from "@/lib/record-context-client";
+import { DatabaseOptions, useDatabaseGroups } from "./database-picker";
 export type DatabaseData = {
   images?: PageImage[];
   relationPairs?: RelationPair[];
@@ -467,6 +468,9 @@ export default function DatabaseView({
     () => ({ ...data.related, [page.id]: data.rows }),
     [data.related, data.rows, page.id],
   );
+  // The databases a relation can link, grouped by space (#520).
+  const linkableDatabases = useMemo(() => pages.filter((p) => p.kind === "database" && !p.deleted_at), [pages]);
+  const linkableGroups = useDatabaseGroups(linkableDatabases, { pages });
   const [viewId, setViewId] = useState((data.database.views.find((v) => v.default) || data.database.views[0]).id),
     [query, setQuery] = useState(""),
     // Large databases: rows are drawn in steps (see MoreRows).
@@ -3597,7 +3601,7 @@ export default function DatabaseView({
                 act={act}
                 onTemplates={() => setManageTemplates(true)}
                 templates={data.rowTemplates}
-                databases={pages.filter((p) => p.kind === "database" && !p.deleted_at && p.workspace_id === page.workspace_id).map((p) => ({ id: p.id, title: p.title }))}
+                databases={pages.filter((p) => p.kind === "database" && !p.deleted_at && p.workspace_id === page.workspace_id).map((p) => ({ id: p.id, title: p.title, space_id: p.space_id, parent_id: p.parent_id }))}
               />
             </>
           )}
@@ -5774,13 +5778,7 @@ export default function DatabaseView({
                   }
                 >
                   <option value="">{t("Auswählen …", "Select …")}</option>
-                  {pages
-                    .filter((p) => p.kind === "database" && !p.deleted_at)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.title}
-                      </option>
-                    ))}
+                  <DatabaseOptions groups={linkableGroups} selected={fieldDraft.relationPage} />
                 </Select>
               </label>
               <label className="checkbox-label">
