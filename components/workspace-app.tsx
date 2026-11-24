@@ -341,6 +341,7 @@ import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } 
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { Books, CalendarX, CloudCheck, Compass, ListChecks, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
+import { PersonalFontStyle } from "./personal-font-style";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
 import { setAutoLinkRules } from "@/lib/auto-link-active";
@@ -4547,6 +4548,8 @@ export default function WorkspaceApp({
       {/* The workspace's look (#196), unless this person chose Flowplan's own. */}
       <WorkspaceThemeStyle look={boot.plainLook ? null : boot.look} />
       <WorkspaceFavicon theme={boot.plainLook ? null : boot.look?.theme} />
+      {/* This person's typeface (#512), over the look's interface font. */}
+      <PersonalFontStyle font={boot.uiFont} />
       {focusMode && screen === "page" && data && (
         <FocusBar
           pageId={data.page.id}

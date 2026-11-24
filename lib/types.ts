@@ -335,6 +335,9 @@ export type Bootstrap = {
   // chose Flowplan's own look instead.
   look?: import("./workspace-theme").WorkspaceLook;
   plainLook?: boolean;
+  // "Schriftart" (#512, lib/personal-font.ts): this person's typeface
+  // for the interface and text, null: the default.
+  uiFont?: import("./personal-font").PersonalFont;
   // The workspace's automatic link rules (#202, lib/auto-link.ts).
   linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).

@@ -20,6 +20,7 @@ import { commentMarginSchema } from "./comment-margin-pref";
 import { strikeDoneTasksSchema } from "./done-strike-pref";
 import { unassignedTasksSchema } from "./unassigned-tasks-pref";
 import { whiteboardCanvasSchema } from "./whiteboard-canvas-pref";
+import { PERSONAL_FONTS, personalFontSchema } from "./personal-font";
 import { notificationSoundSchema } from "./notification-sound";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
@@ -91,7 +92,7 @@ const taskTargetSchema = z.discriminatedUnion("kind", [
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.strikeDoneTasks", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.font", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.strikeDoneTasks", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete", "account.keepLink",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -394,6 +395,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, in every workspace and on all devices; light or dark stays a choice per device.",
     input: z.object({ action: z.literal("profile.plainLook"), plain: z.boolean() }),
     result: z.object({ plainLook: z.boolean() }),
+  },
+  {
+    action: "profile.font",
+    summary: "Choose the typeface you read Flowplan in",
+    description: `For the caller, in every workspace and on all devices (#512): the face of the interface and of the text of pages, records and comments, over the workspace's interface font; headings, code and pages set in serif or mono keep theirs. One of ${PERSONAL_FONTS.map((f) => "`" + f + "`").join(", ")} (\`system\`: the device's own interface font); null for the default – the workspace's interface font, or Flowplan's own. Published pages and forms are not affected. The bootstrap returns it as \`uiFont\`.`,
+    input: z.object({ action: z.literal("profile.font"), font: personalFontSchema }),
+    result: z.object({ font: personalFontSchema }),
   },
   {
     action: "profile.textMenu",

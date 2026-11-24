@@ -182,6 +182,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
         level: "normal",
       },
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look", level: "normal" },
+      { title: { de: "Schriftart", en: "Font" }, keywords: { de: "schrift schriftart typografie lesbarkeit systemschrift serifen", en: "font typeface typography readability system font serif" }, anchor: "font", level: "normal" },
       {
         title: { de: "Funktionen", en: "Features" },
         keywords: {

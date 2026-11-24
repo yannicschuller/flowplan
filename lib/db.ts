@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 132;
+export const SCHEMA_VERSION = 133;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1695,11 +1695,21 @@ function migrate(d: DatabaseSync) {
   // Schema 132 – "Auch Aufgaben ohne Person aus meinen Seiten" in My tasks
   // (#511, lib/unassigned-tasks-pref.ts).
   migrateUnassignedTasksPref(d);
+  // Schema 133 – "Schriftart" per person (#512, lib/personal-font.ts).
+  migratePersonalFont(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 133 – users.ui_font (#512, lib/personal-font.ts): the typeface
+// this person reads Flowplan in (NULL: the default – the workspace's
+// interface font or Flowplan's own –, otherwise an id of PERSONAL_FONTS).
+// An older version would ignore it, hence the number.
+function migratePersonalFont(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "ui_font"))
+    d.exec("ALTER TABLE users ADD COLUMN ui_font TEXT");
 }
 // Schema 132 – users.my_tasks_unassigned (#511, lib/unassigned-tasks-pref.ts):
 // whether My tasks also lists the unassigned tasks without a date in pages
