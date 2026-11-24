@@ -796,3 +796,18 @@ button.sh-value:hover {
   padding-inline-start: 23px;
   font-size: 12px;
 }
+/* The published page's look for visitors (#526): page icon placement, font
+   and done tasks – compact rows like the switches above; on narrow screens
+   the control moves under its label. */
+.sh-look .sh-opt {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.sh-look-icon,
+.sh-look-font {
+  flex-shrink: 0;
+}
+.sh-root .fp-select.sh-look-font {
+  width: 200px;
+  max-width: 100%;
+}

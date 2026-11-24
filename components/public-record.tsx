@@ -10,7 +10,9 @@ import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
 import { PublicOutline } from "./document-outline";
 import { PageIcon } from "./ui";
-import { publicFile, publishedHtml, publishedLinkPages } from "@/lib/publication";
+import { publicFile, publishedHtml, publishedLinkPages, shareAppearance } from "@/lib/publication";
+import { publicAppearanceClasses } from "@/lib/public-appearance";
+import { PersonalFontStyle } from "./personal-font-style";
 import { recordHtml, recordReferenceNames, recordSharePages, recordSubPagesPlace, recordTitle, type RecordScope } from "@/lib/record-share";
 import { publicHiddenFieldIds, stripCells } from "@/lib/field-access";
 import { computedCells } from "@/lib/database";
@@ -91,6 +93,7 @@ export async function renderPublicRecord(scope: RecordScope) {
         })
       : value;
   const tag = localeTag(await requestLocale());
+  const look = await shareAppearance(token);
   const date = (value: number | string | null | undefined) =>
     value
       ? new Date(typeof value === "number" ? value : value.replace(" ", "T") + "Z").toLocaleDateString(tag, {
@@ -101,8 +104,10 @@ export async function renderPublicRecord(scope: RecordScope) {
         })
       : "";
   return (
-    <main className={`public-page public-record ${page.full_width ? "public-wide" : ""}`}>
+    <main className={["public-page", "public-record", page.full_width && "public-wide", ...publicAppearanceClasses(look)].filter(Boolean).join(" ")}>
       <WorkspaceThemeStyle look={await workspaceLook(page.workspace_id)} fontUrl={(id) => `/api/share/${token}/fonts/${id}`} />
+      {/* The sharer's font, icon placement and done tasks (#526). */}
+      <PersonalFontStyle font={look.font} />
       <header className="public-header">
         <a href="/" className="public-brand">
           flowplan{" "}
@@ -134,8 +139,19 @@ export async function renderPublicRecord(scope: RecordScope) {
           )}
         </div>
       )}
-      {iconUrl && <PageIcon name={iconUrl} size={40} />}
-      <h1>{title}</h1>
+      {iconUrl && look.pageIcon === "inline" ? (
+        <div className="public-title">
+          <span className="public-title-icon">
+            <PageIcon name={iconUrl} size={40} />
+          </span>
+          <h1>{title}</h1>
+        </div>
+      ) : (
+        <>
+          {iconUrl && <PageIcon name={iconUrl} size={40} />}
+          <h1>{title}</h1>
+        </>
+      )}
       {shown.length > 0 && (
         <dl className="public-properties">
           {await mapAsync(shown, async (f) => (

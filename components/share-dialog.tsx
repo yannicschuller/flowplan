@@ -8,6 +8,10 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowSquareOut, CaretRight, Check, Copy, FolderSimple, Globe, Link as LinkIcon, Users } from "@phosphor-icons/react";
 import type { Page, Role, Space } from "@/lib/types";
 import type { ShareLink } from "@/lib/share-links";
+import type { PublicAppearance, PublicAppearanceChange } from "@/lib/public-appearance";
+import { PERSONAL_FONTS, personalFontOf } from "@/lib/personal-font";
+import { SYSTEM_FONT, bundledFont } from "@/lib/theme-fonts";
+import { Select } from "./select";
 import { pageLocationHash } from "@/lib/page-location";
 import { AiBlockToggle } from "./ai-settings";
 import { useT } from "./i18n";
@@ -28,6 +32,9 @@ export type SharePublication = {
   // The arrow after links to the web (#217), preset from the publisher's
   // own setting when publishing.
   externalLinkIcon?: boolean;
+  // Page icon placement, font and done tasks for visitors (#526), preset
+  // from the publisher's own settings when publishing.
+  appearance?: PublicAppearance;
   password?: boolean;
   expiresAt?: number | null;
 };
@@ -120,7 +127,7 @@ export function ShareDialog({
       onError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
     }
   };
-  const publish = (patch: { enabled: boolean; includeChildren?: boolean; autoChildren?: boolean; allowCopy?: boolean; externalLinkIcon?: boolean }) => {
+  const publish = (patch: { enabled: boolean; includeChildren?: boolean; autoChildren?: boolean; allowCopy?: boolean; externalLinkIcon?: boolean; appearance?: PublicAppearanceChange }) => {
     const includeChildren = patch.includeChildren ?? !!publication?.includeChildren;
     return act({
       action: "page.publish",
@@ -137,6 +144,8 @@ export function ShareDialog({
             ...(published || patch.externalLinkIcon !== undefined
               ? { externalLinkIcon: patch.externalLinkIcon ?? publication?.externalLinkIcon !== false }
               : {}),
+            // Only what was changed; the rest stays (lib/publication.ts).
+            ...(patch.appearance ? { appearance: patch.appearance } : {}),
           }
         : { enabled: false }),
     });
@@ -363,6 +372,7 @@ export function ShareDialog({
                       <span />
                     </button>
                   </div>
+                  <PublicationLook appearance={publication?.appearance} editable={editable} onChange={(appearance) => void publish({ enabled: true, appearance })} />
                   {(
                     [
                       ["password", t("Passwort", "Password"), publication?.password ? t("Festgelegt", "Set||state") : t("Ohne", "None||password")],
@@ -439,5 +449,99 @@ export function ShareDialog({
         </div>
       )}
     </Modal>
+  );
+}
+
+// How the published page looks to visitors (#526, lib/public-appearance.ts):
+// where the page icon sits, the font and whether done tasks are struck
+// through – preset from the publisher's appearance settings, changed here
+// for this publication only.
+function PublicationLook({
+  appearance,
+  editable,
+  onChange,
+}: {
+  appearance?: PublicAppearance;
+  editable: boolean;
+  onChange: (change: PublicAppearanceChange) => void;
+}) {
+  const t = useT();
+  const id = useId();
+  const icon = appearance?.pageIcon ?? "above";
+  const font = personalFontOf(appearance?.font) ?? "";
+  const fonts = (category: "sans" | "serif") => PERSONAL_FONTS.filter((f) => f !== SYSTEM_FONT && bundledFont(f)?.category === category);
+  return (
+    <div className="sh-opt-block sh-look">
+      <div className="sh-opt">
+        <span className="sh-opt-label">
+          <span id={`${id}-icon`}>{t("Seitensymbol", "Page icon")}</span>
+          <Hint text={t("Seitensymbol, Schrift und erledigte Aufgaben sind voreingestellt wie in deinen Einstellungen unter Darstellung und gelten nur für diese Veröffentlichung.", "Page icon, font and done tasks are preset from your appearance settings and apply to this publication only.")} />
+        </span>
+        <div className="segmented sh-look-icon" role="radiogroup" aria-labelledby={`${id}-icon`}>
+          {(
+            [
+              ["above", t("Über dem Titel", "Above the title")],
+              ["inline", t("Neben dem Titel", "Next to the title")],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} data-active={icon === value}>
+              <input
+                type="radio"
+                name={`${id}-icon`}
+                checked={icon === value}
+                disabled={!editable}
+                onChange={() => onChange({ pageIcon: value })}
+              />{" "}
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="sh-opt">
+        <span className="sh-opt-label" id={`${id}-font`}>
+          {t("Schriftart", "Font")}
+        </span>
+        <Select
+          className="sh-look-font"
+          aria-labelledby={`${id}-font`}
+          value={font}
+          disabled={!editable}
+          onChange={(e) => onChange({ font: personalFontOf(e.target.value) })}
+        >
+          <option value="">{t("Standard", "Default")}</option>
+          <option value={SYSTEM_FONT}>{t("Systemschrift", "System font")}</option>
+          {(
+            [
+              ["sans", t("Serifenlos", "Sans serif")],
+              ["serif", t("Mit Serifen", "Serif")],
+            ] as const
+          ).map(([category, label]) => (
+            <optgroup key={category} label={label}>
+              {fonts(category).map((f) => (
+                <option key={f} value={f}>
+                  {bundledFont(f)!.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </Select>
+      </div>
+      <div className="sh-opt">
+        <span className="sh-opt-label" id={`${id}-strike`}>
+          {t("Erledigte Aufgaben durchstreichen", "Strike through done tasks")}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          className="switch"
+          aria-checked={appearance?.strikeDoneTasks !== false}
+          aria-labelledby={`${id}-strike`}
+          disabled={!editable}
+          onClick={() => onChange({ strikeDoneTasks: appearance?.strikeDoneTasks === false })}
+        >
+          <span />
+        </button>
+      </div>
+    </div>
   );
 }

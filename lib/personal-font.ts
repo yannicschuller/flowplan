@@ -4,8 +4,9 @@
 // of the look (--font-ui, lib/workspace-theme.ts), which is also the text
 // of documents, records and comments; headings (--font-display), code
 // (--font-mono) and pages switched to "Serif" or "Mono" keep their faces.
-// Only for this person and only in the app: a workspace's look still
-// applies to everyone else, to published pages and to forms.
+// Only for this person in the app: a workspace's look still applies to
+// everyone else and to forms. Pages the person shares or publishes show
+// their visitors the same face (#526, lib/public-appearance.ts).
 // Stored per person on the server (users.ui_font: NULL = the default, the
 // workspace's interface font or Flowplan's own), delivered with the
 // bootstrap and rendered with the page, so the first paint has it.

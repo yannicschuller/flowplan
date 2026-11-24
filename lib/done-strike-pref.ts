@@ -7,8 +7,9 @@ import { z } from "zod";
 // records' content, My tasks, the start page's task widget, a record's
 // subtasks and sprint rows: a done task shows only its ticked box and the
 // faded text colour. Cancelled tasks keep their line (it is what tells them
-// from done ones). Display only: documents, exports and published pages are
-// unchanged. Stored per person on the server (users.strike_done_tasks:
+// from done ones). Display only: documents and exports are unchanged; pages
+// the person shares or publishes show their visitors the same (#526,
+// lib/public-appearance.ts). Stored per person on the server (users.strike_done_tasks:
 // NULL = the default, 0 = off, 1 = on), delivered with the bootstrap.
 export const DEFAULT_STRIKE_DONE_TASKS = true;
 export const strikeDoneTasksSchema = z.boolean();

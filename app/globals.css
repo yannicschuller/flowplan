@@ -1868,7 +1868,9 @@ kbd,
    done tasks keep their ticked box and the faded colour, without the line –
    in documents, journals and records (the editor), My tasks, the start
    page's task widget, a record's subtasks, sprint rows and the date chip of
-   a done task. Cancelled tasks keep their line: it tells them from done. */
+   a done task. Cancelled tasks keep their line: it tells them from done.
+   On a shared or published page the class sits on its root and follows the
+   person who shared or published it (#526, lib/public-appearance.ts). */
 :root.done-tasks-plain .document-editor li[data-checked="true"] > div > :not(ul, ol),
 :root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-checked="true"] > div > :not(ul, ol),
 :root.done-tasks-plain .my-tasks-group li .my-task-text,
@@ -1876,11 +1878,13 @@ kbd,
 :root.done-tasks-plain .home-tasks li.checked .home-task-text span,
 :root.done-tasks-plain .record-subtasks li[data-done="true"] a,
 :root.done-tasks-plain .sprint-rows li[data-done="true"] .sprint-row-title,
-:root.done-tasks-plain .task-due-done {
+:root.done-tasks-plain .task-due-done,
+.public-page.done-tasks-plain :is(.document-editor, .shared-rich-editor) li[data-checked="true"] > div > :not(ul, ol) {
   text-decoration: none;
   animation: none;
 }
-:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol) {
+:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol),
+.public-page.done-tasks-plain :is(.document-editor, .shared-rich-editor) ul[data-type="taskList"] > li[data-status="cancelled"] > div > :not(ul, ol) {
   text-decoration: line-through;
 }
 /* A journal task copied on to a later day (#469, data-journal-continued on
@@ -1896,7 +1900,8 @@ kbd,
   font-size: 10px;
 }
 .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol),
-:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol) {
+:root.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol),
+.public-page.done-tasks-plain .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued] > div > :not(ul, ol) {
   color: var(--muted);
   text-decoration: none;
   animation: none;

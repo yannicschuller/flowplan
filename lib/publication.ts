@@ -14,6 +14,8 @@ import { recordFile, recordScope, recordSharePages, recordSubPage } from "./reco
 import { privateRecordPageIds, readonlyRecordPageIds } from "./record-pages";
 import { parsePageLocation } from "./page-location";
 import { userExternalLinkIcon } from "./user-external-link-icon";
+import { DEFAULT_PUBLIC_APPEARANCE, publicAppearanceJson, type PublicAppearance, type PublicAppearanceChange } from "./public-appearance";
+import { storedPublicAppearance, userPublicAppearance } from "./user-public-appearance";
 
 export async function publicationSettings(pageId: string) {
   const row = await one<{
@@ -21,11 +23,13 @@ export async function publicationSettings(pageId: string) {
     auto_children: number;
     allow_copy: number;
     external_link_icon: number;
+    appearance: string | null;
+    published_by: string | null;
     published_at: string | null;
     password: number;
     expires_at: number | null;
   }>(
-    "SELECT include_children,auto_children,allow_copy,external_link_icon,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
+    "SELECT include_children,auto_children,allow_copy,external_link_icon,appearance,published_by,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
     pageId,
   );
   const autoChildren = !!row?.include_children && !!row.auto_children;
@@ -35,6 +39,8 @@ export async function publicationSettings(pageId: string) {
     allowCopy: row ? !!row.allow_copy : true,
     // The arrow after links to the web on the published page (#217).
     externalLinkIcon: row ? !!row.external_link_icon : true,
+    // Page icon placement, font and struck-through done tasks (#526).
+    appearance: row ? await storedPublicAppearance(row.appearance, row.published_by) : undefined,
     publishedAt: row?.published_at || null,
     password: !!row?.password,
     expiresAt: row?.expires_at ?? null,
@@ -71,6 +77,19 @@ export async function publicationNotice(pageId: string) {
     ? { published_at: row.published_at, allow_copy: row.allow_copy && !row.password ? 1 : 0, external_link_icon: row.external_link_icon ? 1 : 0 }
     : undefined;
 }
+// The look visitors of a share or publication get (#526,
+// lib/public-appearance.ts): a page's publication, a page link or a
+// record's link or publication, by its token. Unknown: the defaults.
+export async function shareAppearance(token: string): Promise<PublicAppearance> {
+  const row =
+    (await one<{ appearance: string | null; creator: string | null }>(
+      "SELECT p.appearance,p.published_by creator FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=?",
+      token,
+    )) ||
+    (await one<{ appearance: string | null; creator: string | null }>("SELECT appearance,created_by creator FROM share_links WHERE token=?", token)) ||
+    (await one<{ appearance: string | null; creator: string | null }>("SELECT appearance,created_by creator FROM record_shares WHERE token=?", token));
+  return row ? await storedPublicAppearance(row.appearance, row.creator) : { ...DEFAULT_PUBLIC_APPEARANCE };
+}
 export async function publishPage(
   user: Identity,
   page: Page,
@@ -82,6 +101,10 @@ export async function publishPage(
   // The arrow after links to the web (#217). Not given: what the
   // publication had, or for a new one the publisher's own setting.
   externalLinkIcon?: boolean,
+  // The look of the page for visitors (#526, lib/public-appearance.ts): the
+  // fields given; the others what the publication had, or for a new one
+  // the publisher's own settings.
+  appearance?: PublicAppearanceChange,
 ) {
   // A journal with a PIN is never published (setting the PIN ended its
   // publications, lib/journal-extras.ts); below a published page it stays
@@ -109,13 +132,19 @@ export async function publishPage(
   }
   // Password and end date stay while the page remains published.
   // So does the arrow choice when none is given.
-  const kept = await one<{ password_hash: string | null; expires_at: number | null; external_link_icon: number }>(
-    "SELECT password_hash,expires_at,external_link_icon FROM publications WHERE page_id=?",
+  const kept = await one<{ password_hash: string | null; expires_at: number | null; external_link_icon: number; appearance: string | null; published_by: string | null }>(
+    "SELECT password_hash,expires_at,external_link_icon,appearance,published_by FROM publications WHERE page_id=?",
     page.id,
   );
   const linkIcon = enabled
     ? externalLinkIcon ?? (kept ? !!kept.external_link_icon : await userExternalLinkIcon(user.id))
     : true;
+  let look: PublicAppearance | null = null;
+  if (enabled) {
+    look = kept ? await storedPublicAppearance(kept.appearance, kept.published_by) : await userPublicAppearance(user.id);
+    for (const [key, value] of Object.entries(appearance || {}))
+      if (value !== undefined) (look as Record<string, unknown>)[key] = value;
+  }
   await run("DELETE FROM publication_pages WHERE root_id=?", page.id);
   await run("DELETE FROM publications WHERE page_id=?", page.id);
   await run(
@@ -125,12 +154,13 @@ export async function publishPage(
   );
   if (enabled) {
     await run(
-      "INSERT INTO publications(page_id,include_children,auto_children,published_at,published_by,allow_copy,external_link_icon,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO publications(page_id,include_children,auto_children,published_at,published_by,allow_copy,external_link_icon,appearance,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       page.id,
       includeChildren ? 1 : 0, includeChildren && autoChildren ? 1 : 0, nowText(),
       user.id,
       allowCopy ? 1 : 0,
       linkIcon ? 1 : 0,
+      publicAppearanceJson(look!),
       kept?.password_hash ?? null,
       kept?.expires_at ?? null,
     );

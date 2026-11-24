@@ -92,3 +92,51 @@
     background: none;
   }
 }
+
+/* ===== The same on shared and published pages (#526, lib/public-appearance.ts):
+   when the person who shared or published the page chose "Neben dem Titel"
+   (components/public-page.tsx, components/public-record.tsx render icon and
+   title together in .public-title). The icon is one line of the title high
+   (h1: 34 px), whatever size it was given above the title. ===== */
+.public-page.public-icon-inline .public-title {
+  --page-title-size: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  font-size: var(--page-title-size);
+}
+.public-page.public-icon-inline .public-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.3em;
+  margin-inline-end: 0.3em;
+}
+.public-page.public-icon-inline .public-title-icon > svg,
+.public-page.public-icon-inline .public-title-icon > img,
+.public-page.public-icon-inline .public-title-icon > .page-emoji {
+  width: 0.95em !important;
+  height: 0.95em !important;
+}
+.public-page.public-icon-inline .public-title-icon > .page-emoji {
+  font-size: 0.85em !important;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.public-page.public-icon-inline .public-title h1 {
+  min-width: 0;
+  font-size: var(--page-title-size);
+}
+@media (max-width: 767.98px) {
+  .public-page.public-icon-inline .public-title h1 {
+    hyphens: auto;
+  }
+}
+@media print {
+  .public-page.public-icon-inline .public-title {
+    --page-title-size: 24pt;
+  }
+}

@@ -7,6 +7,8 @@ import { HttpError } from "./auth";
 import { protectionChanges } from "./share-access";
 import type { Identity, Page } from "./types";
 import { dropLiveProjections } from "./shared-live";
+import { publicAppearanceJson } from "./public-appearance";
+import { userPublicAppearance } from "./user-public-appearance";
 
 export type ShareLink = {
   token: string;
@@ -91,7 +93,7 @@ export async function manageShareLink(
   }
   const token = id();
   await run(
-    "INSERT INTO share_links(token,root_id,name,role,include_children,created_by,password_hash,expires_at) VALUES(?,?,?,?,?,?,?,?)",
+    "INSERT INTO share_links(token,root_id,name,role,include_children,created_by,password_hash,expires_at,appearance) VALUES(?,?,?,?,?,?,?,?,?)",
     token,
     pageId,
     name,
@@ -100,6 +102,8 @@ export async function manageShareLink(
     user.id,
     protection.password_hash ?? null,
     protection.expires_at ?? null,
+    // The creator's page icon, font and done tasks (#526, lib/public-appearance.ts).
+    publicAppearanceJson(await userPublicAppearance(user.id)),
   );
   // Workflow pages are never shared by link (#168).
   for (const page of pages)
