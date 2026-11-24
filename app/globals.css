@@ -26776,6 +26776,18 @@ h3 .block-reactions {
   border-radius: 9px;
   cursor: pointer;
 }
+/* Title, and the space as a muted second line (#520). */
+.transfer-target-name {
+  display: grid;
+  min-width: 0;
+}
+.transfer-target-name > span {
+  overflow-wrap: anywhere;
+}
+.transfer-target-name small {
+  font-size: 12px;
+  color: var(--muted);
+}
 .transfer-target[data-active="true"] {
   border-color: var(--blue);
   background: var(--blue-light);
@@ -27095,9 +27107,6 @@ h3 .block-reactions {
 }
 .tasks-to-database-mode .checkbox-label {
   margin: 0;
-}
-.tasks-to-database .transfer-target small {
-  margin-left: auto;
 }
 .tasks-to-database-preview {
   margin: 0;

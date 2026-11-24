@@ -9,12 +9,13 @@ import { Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { Select } from "./select";
+import { DatabaseOptions, useDatabaseGroups } from "./database-picker";
 import { RuleTextInput } from "./rule-text-input";
 import { dueField, type DatabaseSettings, type TaskAction } from "@/lib/database-settings-schema";
 import { serverMessage } from "@/lib/i18n-errors";
 import type { Database, Field, Page, User } from "@/lib/types";
 
-export type DatabaseRef = { id: string; title: string };
+export type DatabaseRef = { id: string; title: string; space_id?: string | null; parent_id?: string | null };
 type T = (de: string, en: string) => string;
 type TaskSchema = { fields: Field[]; settings?: DatabaseSettings; problem?: string };
 
@@ -110,6 +111,8 @@ export function TaskActionFields({
 }) {
   const t = useT();
   const intoDatabase = action.target === "database";
+  // Grouped by space, twins named apart (#520).
+  const databaseGroups = useDatabaseGroups(databases);
   const schema = useTaskSchema(intoDatabase ? action.database : "", t);
   const people = fields.filter((f) => f.type === "person");
   const taskFields = schema?.fields || [];
@@ -214,11 +217,7 @@ export function TaskActionFields({
               onChange={(e) => onChange({ ...action, database: e.target.value, personField: "", dueField: "", values: {}, relation: "" })}
             >
               <option value="">{t("Auswählen …", "Select …")}</option>
-              {databases.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.title || t("Ohne Titel", "Untitled")}
-                </option>
-              ))}
+              <DatabaseOptions groups={databaseGroups} selected={action.database} />
             </Select>
           </label>
           {schema?.problem && (

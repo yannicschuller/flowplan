@@ -19,6 +19,7 @@ import { isUuid, recipientName, displayContext, type Credential, type Resources,
 import { api, Modal } from "../ui";
 import type { DatabaseInfo } from "./use-databases";
 import { useLocale } from "../i18n";
+import { DatabaseOptions, useDatabaseGroups } from "../database-picker";
 
 type Schema = {
   type?: string | string[];
@@ -629,12 +630,14 @@ function CheckList({ label, options, value, disabled, onChange }: { label: strin
 }
 
 export function DatabaseSelect({ id, value, ws, disabled, onChange, t }: { id: string; value: string; ws: Workspace; disabled: boolean; onChange: (v: string) => void; t: T }) {
-  const dbs = ws.pages.filter((p) => p.kind === "database");
+  const dbs = useMemo(() => ws.pages.filter((p) => p.kind === "database"), [ws.pages]);
+  // Grouped by space, twins named apart (#520).
+  const groups = useDatabaseGroups(dbs, { pages: ws.pages, spaces: ws.spaces });
   return (
     <Select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       <option value="">{t("Datenbank wählen …", "Choose a database …")}</option>
       {value && !dbs.some((d) => d.id === value) && <option value={value}>{t("Datenbank ohne Zugriff", "Database without access")}</option>}
-      {dbs.map((d) => <option key={d.id} value={d.id}>{d.title || t("Ohne Titel", "Untitled")}</option>)}
+      <DatabaseOptions groups={groups} selected={value} />
     </Select>
   );
 }

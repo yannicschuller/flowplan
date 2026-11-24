@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { Select } from "./select";
+import { useDatabaseEntries } from "./database-picker";
 import { taskFields } from "@/lib/task-database-fields";
 import { serverMessage } from "@/lib/i18n-errors";
 import type { Database, Field, Page } from "@/lib/types";
@@ -25,6 +26,7 @@ type Plan = {
   nested: number;
   databases: { id: string; title: string; icon: string; space: string }[];
 };
+const NONE: Plan["databases"] = [];
 type Schema = { id: string; fields: Field[]; problem?: string };
 type Mapping = { statusField: string; doneValue: string; openValue: string; dueField: string; personField: string; parentField: string };
 
@@ -90,7 +92,10 @@ export default function TasksToDatabase({
       active = false;
     };
   }, [target, t]);
-  const shown = useMemo(() => (plan?.databases || []).filter((d) => d.title.toLowerCase().includes(query.trim().toLowerCase())), [plan, query]);
+  // Sorted by space, then title; twins named apart (#520).
+  const entries = useDatabaseEntries(plan?.databases || NONE);
+  const icons = useMemo(() => new Map((plan?.databases || []).map((d) => [d.id, d.icon])), [plan]);
+  const shown = useMemo(() => entries.filter((d) => `${d.label} ${d.space}`.toLowerCase().includes(query.trim().toLowerCase())), [entries, query]);
   const current = schema?.id === target ? schema : null;
   const fields = current?.fields || [];
   const statusFields = fields.filter((f) => f.type === "checkbox" || (f.type === "select" && f.options?.length));
@@ -98,7 +103,7 @@ export default function TasksToDatabase({
   const dates = fields.filter((f) => f.type === "date");
   const people = fields.filter((f) => f.type === "person");
   const parent = fields.find((f) => f.type === "relation" && f.parent && f.relationPage === target);
-  const name = plan?.databases.find((d) => d.id === target)?.title || t("Ohne Titel", "Untitled");
+  const name = entries.find((d) => d.id === target)?.fullLabel || t("Ohne Titel", "Untitled");
   const set = (patch: Partial<Mapping>) => setMapping((m) => (m ? { ...m, ...patch } : m));
   const options = (field: Field | undefined) =>
     (field?.options || []).map((o) => (
@@ -144,10 +149,12 @@ export default function TasksToDatabase({
           <div className="transfer-targets" role="radiogroup" aria-label={t("Ziel-Datenbank", "Target database")}>
             {shown.map((d) => (
               <label key={d.id} className="transfer-target" data-active={target === d.id}>
-                <input type="radio" name="tasks-target" checked={target === d.id} onChange={() => setTarget(d.id)} />
-                <PageIcon name={d.icon} size={16} />
-                <span>{d.title || t("Ohne Titel", "Untitled")}</span>
-                {d.space && <small className="muted">{d.space}</small>}
+                <input type="radio" name="tasks-target" aria-description={d.space || undefined} checked={target === d.id} onChange={() => setTarget(d.id)} />
+                <PageIcon name={icons.get(d.id) || ""} size={16} />
+                <span className="transfer-target-name">
+                  <span>{d.label}</span>
+                  {d.space && <small aria-hidden="true">{d.space}</small>}
+                </span>
               </label>
             ))}
             {!shown.length && <p className="muted">{t("Keine Datenbank gefunden.", "No database found.")}</p>}
