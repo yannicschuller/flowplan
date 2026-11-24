@@ -152,8 +152,9 @@ test("the title cannot become an ID or another computed property (#463)", async 
   const d = await database(pageId);
   const update = async (fields: Field[]) => act({ action: "database.update", pageId, version: (await database(pageId)).version, fields, views: d.views });
   const refused = /Die erste Eigenschaft ist der Titel/;
-  // The title's type changed to an ID, a formula or "Erstellt am": refused.
-  for (const type of ["id", "formula", "created_at"] as const)
+  // The title's type changed to an ID or "Erstellt am": refused (a formula
+  // title is allowed: a title derived from other properties).
+  for (const type of ["id", "created_at"] as const)
     await assert.rejects(update([{ ...d.fields[0], type, ...(type === "id" ? { prefix: "TTL" } : {}) }]), refused);
   // A computed property moved to the front, or the title deleted before one.
   const ticket: Field = { id: "nr", name: "Nr.", type: "id", prefix: "TTM" };

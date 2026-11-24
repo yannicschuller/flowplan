@@ -5403,10 +5403,10 @@ export default function DatabaseView({
                   key={k}
                   value={k}
                   // One aliases property per database; the title stays a
-                  // property one can type, not an ID or formula (#463).
+                  // property one can type or derive, not an ID (#463).
                   disabled={
                     (k === "aliases" && fields.some((f) => f.type === "aliases" && f.id !== fieldDraft.id)) ||
-                    (computedTypes.includes(k) && k !== fields[0]?.type && (fields[0]?.id === fieldDraft.id || !fields.length))
+                    (computedTypes.includes(k) && k !== "formula" && k !== "rollup" && k !== fields[0]?.type && (fields[0]?.id === fieldDraft.id || !fields.length))
                   }
                 >
                   {t(n[0], n[1])}

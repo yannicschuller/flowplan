@@ -164,6 +164,8 @@ export function CalendarConnections({ onError }: { onError: (message: string) =>
       )}
       {caldav && (
         <form
+          method="post"
+          action="/api/auth/no-script"
           className="setting-row wide calendar-caldav-form"
           aria-label={t("CalDAV-Kalender verbinden", "Connect CalDAV calendar")}
           onSubmit={(e) => {
