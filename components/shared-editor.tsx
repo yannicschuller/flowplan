@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   CheckSquare,
   Code,
+  CodeSimple,
   FileArrowUp,
   Function as FunctionIcon,
   Graph,
@@ -375,6 +376,7 @@ export default function SharedEditor({
         {tool(t("Kursiv", "Italic"), <TextItalic />, () => chain()?.toggleItalic().run(), on("italic"))}
         {tool(t("Unterstrichen", "Underline"), <TextUnderline />, () => chain()?.toggleUnderline().run(), on("underline"))}
         {tool(t("Durchgestrichen", "Strikethrough"), <TextStrikethrough />, () => chain()?.toggleStrike().run(), on("strike"))}
+        {tool(t("Inline-Code", "Inline code"), <CodeSimple />, () => chain()?.toggleCode().run(), on("code"))}
         {tool(t("Markieren", "Highlight"), <Highlighter />, () => chain()?.toggleHighlight().run(), on("highlight"))}
         <span className="toolbar-separator" />
         {tool(t("Aufzählung", "Bulleted list"), <ListBullets />, () => chain()?.toggleBulletList().run(), on("bulletList"))}

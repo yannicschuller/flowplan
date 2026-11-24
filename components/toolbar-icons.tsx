@@ -16,6 +16,7 @@ import {
   ChatCircle,
   CheckSquare,
   Code,
+  CodeSimple,
   CopySimple,
   Cards,
   EyeSlash,
@@ -70,6 +71,8 @@ export const TOOLBAR_BUTTON_ICONS: Record<Exclude<ToolbarButton, "heading" | "al
   italic: () => <TextItalic />,
   underline: () => <TextUnderline />,
   strike: () => <TextStrikethrough />,
+  // Inline code (#465): the simple brackets, the code block has </>.
+  code: () => <CodeSimple />,
   highlight: () => <Highlighter />,
   comment: () => <ChatCircle />,
   color: () => <Palette />,

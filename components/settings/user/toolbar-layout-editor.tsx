@@ -54,7 +54,7 @@ import { SaveState, SettingRow, useSaveState } from "../../settings-ui";
 // Rows dragged here carry their index under a type of their own.
 const DRAG_TYPE = "application/x-flowplan-toolbar-entry";
 // Buttons that toggle (checkbox entries in a group's menu, as in the editor).
-const TOGGLES = new Set<string>(["bold", "italic", "underline", "strike", "highlight", "superscript", "subscript", "spoiler", "suggest", "authors", "bulletList", "orderedList", "taskList"]);
+const TOGGLES = new Set<string>(["bold", "italic", "underline", "strike", "code", "highlight", "superscript", "subscript", "spoiler", "suggest", "authors", "bulletList", "orderedList", "taskList"]);
 
 // The person's own layout: the editor on the client store, saved with
 // profile.toolbarLayout. Reset goes back to the instance's default.
