@@ -94,12 +94,19 @@ export async function spawnNextRecord(
     pageId,
     JSON.stringify(cells),
     Date.now(),
-    author,
+    // The successor keeps the original's creator (its manager) and record
+    // grants; whoever completed it is only the last editor (#487).
+    row.created_by ?? null,
     author,
     row.icon,
     row.cover,
     row.access,
     row.repeat,
+  );
+  await run(
+    "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
+    rid,
+    rowId,
   );
   await run("UPDATE rows SET repeat='' WHERE id=?", rowId);
   const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId))?.html;

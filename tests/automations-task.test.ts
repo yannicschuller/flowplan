@@ -252,3 +252,36 @@ test("rules with tasks: no graph node, and not opened in the canvas", async () =
   await assert.rejects(act({ action: "workflow.fromRule", pageId: tickets, automationId: "g" }), /noch nicht im Canvas/);
   await rules([]);
 });
+
+test("a rule's task carries only what its creator may read: no private records, no hidden related titles (#489)", async () => {
+  const deals = await makeDatabase("Deals", [{ id: "title", name: "Title", type: "text" }]);
+  const desk = await makeDatabase("Desk", [
+    { id: "title", name: "Title", type: "text" },
+    { id: "status", name: "Status", type: "select", options: ["Open", "Done"] },
+    { id: "deal", name: "Deal", type: "relation", relationPage: deals },
+  ]);
+  const before = (await taskRows()).length;
+  // Emil (editor) sets up a rule that copies titles into To-dos, which he reads.
+  await rules([{ id: "leak", name: "Copy", trigger: { type: "changed", field: "status", to: "Done" }, actions: [task({ target: "database", database: tasks, text: "T {{Title}} | D {{Deal}}", due: null })] }], editor, desk);
+  // Otto's private record: no task.
+  const secret = (await act({ action: "row.create", pageId: desk, cells: { title: "SECRET-TICKET", status: "Open" } }, other)).id;
+  await act({ action: "row.access", pageId: desk, rowId: secret, access: "private", grants: [] }, other);
+  await act({ action: "row.update", pageId: desk, rowId: secret, version: await version(secret), cells: { status: "Done" } }, other);
+  assert.equal((await taskRows()).length, before);
+  // A related record hidden from Emil: the task leaves its title out.
+  const deal = (await act({ action: "row.create", pageId: deals, cells: { title: "SECRET-DEAL" } }, other)).id;
+  await act({ action: "row.access", pageId: deals, rowId: deal, access: "private", grants: [] }, other);
+  const open = (await act({ action: "row.create", pageId: desk, cells: { title: "Normal", status: "Open", deal: [deal] } })).id;
+  await act({ action: "row.update", pageId: desk, rowId: open, version: await version(open), cells: { status: "Done" } });
+  const made = (await taskRows()).slice(before);
+  assert.equal(made.length, 1);
+  assert.equal(made[0].created_by, editor.id);
+  assert.equal(made[0].cells.name, "T Normal | D");
+  assert.doesNotMatch(JSON.stringify(made), /SECRET/);
+  // Once the deal is shared with him, its title shows.
+  await act({ action: "row.access", pageId: deals, rowId: deal, access: "private", grants: [{ userId: editor.id, role: "viewer" }] }, other);
+  const shared = (await act({ action: "row.create", pageId: desk, cells: { title: "Shared", status: "Open", deal: [deal] } })).id;
+  await act({ action: "row.update", pageId: desk, rowId: shared, version: await version(shared), cells: { status: "Done" } });
+  assert.equal((await taskRows()).at(-1)!.cells.name, "T Shared | D SECRET-DEAL");
+  await rules([], owner, desk);
+});

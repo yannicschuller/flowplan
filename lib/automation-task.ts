@@ -76,6 +76,16 @@ export async function runTaskActions(input: TaskRun): Promise<number> {
   const raw = input.rowId ? await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", input.rowId, input.page.id) : undefined;
   if (input.rowId && !raw) return 0;
   const record = raw ? { ...raw, cells: JSON.parse(raw.cells) as Record<string, unknown> } : null;
+  // The task carries the record's values: only for a record the rule's
+  // creator may read (record access, journal PIN). Otherwise no task – the
+  // change of whoever may see it is still saved (#489).
+  if (record)
+    try {
+      await requireRow(owner, input.page.id, record.id);
+    } catch (e) {
+      if (e instanceof HttpError) return 0;
+      throw e;
+    }
   let made = 0;
   for (const { action, index } of actions) {
     if (action.target === "document" && !record) continue;
@@ -84,10 +94,10 @@ export async function runTaskActions(input: TaskRun): Promise<number> {
       const fresh = await run("INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", rule.id, record.id, `task:${index}`, Date.now());
       if (!fresh.changes) continue;
     }
-    const text = (await taskText(input, action, record)) || ruleName(rule);
+    const text = (await taskText(input, owner, action, record)) || ruleName(rule);
     const assignee = await assigneeOf(input, action, record);
     const due = action.due === null ? null : Temporal.PlainDate.from(input.day || new Date().toISOString().slice(0, 10)).add({ days: action.due }).toString();
-    if (action.target === "document") await intoDocument(input, owner, record!, text, assignee, due, await taskHeading(input, action, record));
+    if (action.target === "document") await intoDocument(input, owner, record!, text, assignee, due, await taskHeading(input, owner, action, record));
     else await intoDatabase(input, owner, action, text, assignee, due);
     made++;
   }
@@ -99,14 +109,17 @@ export async function runTaskActions(input: TaskRun): Promise<number> {
 // The heading the task goes below takes them as well (#413): "{{Status}}"
 // files each task below the heading of the record's status.
 // A heading without placeholders stays exactly as written.
-const taskText = (input: TaskRun, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) => filled(input, action.text, record, 300);
-const taskHeading = async (input: TaskRun, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) =>
-  action.heading.includes("{{") ? await filled(input, action.heading, record, 200) : action.heading;
-async function filled(input: TaskRun, template: string, record: (Row & { cells: Record<string, unknown> }) | null, max: number) {
+const taskText = (input: TaskRun, owner: Identity, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) =>
+  filled(input, owner, action.text, record, 300);
+const taskHeading = async (input: TaskRun, owner: Identity, action: TaskAction, record: (Row & { cells: Record<string, unknown> }) | null) =>
+  action.heading.includes("{{") ? await filled(input, owner, action.heading, record, 200) : action.heading;
+// Related records' titles as the rule's creator may see them (#489);
+// {{Ich}} stays the person who triggered it.
+async function filled(input: TaskRun, owner: Identity, template: string, record: (Row & { cells: Record<string, unknown> }) | null, max: number) {
   if (!template.includes("{{")) return template.replace(/\s+/g, " ").trim();
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
   const source = record || { id: "", page_id: input.page.id, created_by: "", updated_by: "", created_at: now, updated_at: now, cells: {} };
-  const text = await withPlaceholders(input.page, input.fields, source, input.actor, input.zone, (resolve) => mapPlaceholders(template, resolve));
+  const text = await withPlaceholders(input.page, input.fields, source, input.actor, input.zone, (resolve) => mapPlaceholders(template, resolve), owner);
   return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
 

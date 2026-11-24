@@ -131,9 +131,12 @@ export function withPlaceholders<T>(
   actor: Identity | null,
   zone: string | undefined,
   render: (resolve: (key: string) => string | undefined) => T,
+  // Whose rights decide which related records' titles show; by default
+  // the actor's (an automation's task: its rule's creator, #489).
+  reader: Identity | null = actor,
 ): Promise<T> {
   const tz = zone && validZone(zone) ? zone : browserZone();
-  return withLookups<PlaceholderFormat, T>(formatFor(actor, tz), (fmt) => render(placeholderResolver(page, fields, record, actor, tz, fmt)));
+  return withLookups<PlaceholderFormat, T>(formatFor(reader, tz), (fmt) => render(placeholderResolver(page, fields, record, actor, tz, fmt)));
 }
 function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, tz: string, fmt: PlaceholderFormat) {
   const row = { ...record, number: record.number ?? null } as Row;

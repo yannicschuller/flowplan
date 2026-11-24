@@ -14,8 +14,13 @@ import {
 import { followShifts, linkedDelta, planInputs, planShifts, rangePatch, shiftModeOf } from "./timeline-plan";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
 import { assertNoNewTimes } from "./database-operations";
+import { assertFieldsWritable } from "./field-access";
 import type { Field, Identity, View } from "./types";
 import { rowChanged } from "./automations";
+// The properties a write changes: property write rules apply to them as
+// they do for row.update (lib/field-access.ts, #488).
+const changedKeys = (before: Record<string, unknown>, after: Record<string, unknown>) =>
+  Object.keys(after).filter((k) => JSON.stringify(before[k] ?? null) !== JSON.stringify(after[k] ?? null));
 const changeSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("set"),
@@ -81,6 +86,7 @@ export async function scheduleRow(
   }
   // A date property without time gets no new time here either (#327).
   assertNoNewTimes(db.fields, patch, cells);
+  await assertFieldsWritable(user, page, db.fields, changedKeys(cells, patch));
   const nextCells = JSON.stringify({ ...cells, ...patch });
   if (nextCells.length > 200000) throw new HttpError(413, "Datensatz zu groß.");
   // What waits for the record follows it under the view's shift mode
@@ -110,6 +116,7 @@ export async function scheduleRow(
       for (const [sid, target] of shifts) {
         const successor = rows.find((r) => r.id === sid)!;
         const next = { ...successor.cells, ...rangePatch(successor, db.fields, view, rowRange(successor, start, end)!, target) };
+        await assertFieldsWritable(user, page, db.fields, changedKeys(successor.cells, next));
         await run(
           "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
           JSON.stringify(next), nowText(),
@@ -170,6 +177,7 @@ export async function linkTimeline(
   const current = Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : [];
   if (current.includes(from)) return { ok: true, added: false };
   if (current.length >= 500) throw new HttpError(413, "Zu viele Abhängigkeiten.");
+  await assertFieldsWritable(user, page, fields, [field.id]);
   const next = { ...cells, [field.id]: [...current, from] };
   await run(
     "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
@@ -205,6 +213,7 @@ export async function unlinkTimeline(user: Identity, pageId: string, input: Reco
   const cells = JSON.parse(target.cells) as Record<string, unknown>;
   const current = Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : [];
   if (!current.includes(from)) return { ok: true, removed: false };
+  await assertFieldsWritable(user, page, fields, [field.id]);
   const next = { ...cells, [field.id]: current.filter((v) => v !== from) };
   await run(
     "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
@@ -265,6 +274,7 @@ export async function restoreTimeline(user: Identity, pageId: string, input: Rec
     const cells = JSON.parse(row.cells) as Record<string, unknown>;
     const next = { ...cells, [start.id]: value(entry.start), ...(end ? { [end.id]: value(entry.end) } : {}) };
     assertNoNewTimes(fields, { [start.id]: next[start.id], ...(end ? { [end.id]: next[end.id] } : {}) }, cells);
+    await assertFieldsWritable(user, page, fields, changedKeys(cells, next));
     await run(
       "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
       JSON.stringify(next),
@@ -331,6 +341,7 @@ export async function cascadeTimeline(
   for (const [rid, target] of shifts) {
     const row = rows.find((r) => r.id === rid)!;
     const next = { ...row.cells, ...rangePatch(row, fields, view, ranges.get(rid)!, target) };
+    await assertFieldsWritable(user, page, fields, changedKeys(row.cells, next));
     await run(
       "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
       JSON.stringify(next), nowText(),
