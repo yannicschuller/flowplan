@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 130;
+export const SCHEMA_VERSION = 131;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1689,11 +1689,25 @@ function migrate(d: DatabaseSync) {
   // Schema 130 – drafts of saved page templates (#461,
   // lib/template-drafts.ts).
   migrateTemplateDrafts(d);
+  // Schema 131 – what each person has staged in unfinished uploads
+  // (#493–#495, lib/staging-quota.ts).
+  migrateStagedUploads(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 131 – the staged parts of unfinished uploads per person (#493–#495,
+// lib/staging-quota.ts): notebook recordings, meeting pieces and
+// transcription chunks, one row per part with its size. The per-person
+// limits (open uploads, bytes against the storage room) are checked and
+// reserved here in one transaction under a lock per person, so parallel
+// requests and other instances see each other. An older version would not
+// keep it up to date, hence the number.
+function migrateStagedUploads(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS staged_uploads(kind TEXT NOT NULL,upload_id TEXT NOT NULL,part TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,bytes INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1,at INTEGER NOT NULL,PRIMARY KEY(kind,upload_id,part));
+    CREATE INDEX IF NOT EXISTS staged_uploads_user ON staged_uploads(user_id,kind);`);
 }
 // Schema 130 – drafts of saved page templates (#461, lib/template-drafts.ts):
 // pages.template_draft names the template whose content a page holds while

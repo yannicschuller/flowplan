@@ -81,6 +81,7 @@ import { readableDatabase } from "./field-access";
 import { writableFields } from "./ai/actions";
 import { validateCellPatch } from "./database-operations";
 import { recordingRoom } from "./notebook-audio";
+import { closeStaged, releaseStaged, reserveStaged, sweepStaged } from "./staging-quota";
 import { htmlToMarkdown } from "./markdown";
 import { meetingHtml } from "./meeting-schema";
 import {
@@ -456,7 +457,11 @@ export async function startMeetingSession(user: Identity, input: unknown, kind: 
     if (row.status === "transcribing" || row.status === "summarizing") throw new HttpError(409, "Die Besprechung wird gerade verarbeitet.");
     // Sessions that never finished (closed tab) are given up.
     const sessions = sessionsOf(row).filter((s) => s.state !== "recording");
-    for (const s of sessionsOf(row)) if (s.state === "recording") await staged().remove(stagingDir(row.id, s.n));
+    for (const s of sessionsOf(row))
+      if (s.state === "recording") {
+        await staged().remove(stagingDir(row.id, s.n));
+        await releaseStaged("meetings", row.id, `${s.n}/`);
+      }
     const offsetMs = sessions.reduce((sum, s) => sum + (s.state === "failed" && !s.durationMs ? 0 : s.durationMs), 0);
     if (offsetMs >= MEETING_MAX_SECONDS * 1000) throw new HttpError(413, "Die Besprechung hat die Höchstlänge erreicht.");
     const n = sessions.reduce((max, s) => Math.max(max, s.n), 0) + 1;
@@ -494,9 +499,9 @@ async function stagedParts(meetingId: string, session: number, track: MeetingTra
     .map(Number)
     .sort((a, b) => a - b);
 }
-async function stagedBytes(meetingId: string) {
-  return (await staged().walk(meetingId)).reduce((sum, o) => sum + o.size, 0);
-}
+// Meetings one person records at the same time (a session not added to
+// for the longest meeting plus an hour no longer counts).
+const MAX_OPEN_MEETINGS = 3;
 function ownSession(row: MeetingRow, user: Identity, n: number) {
   const session = sessionsOf(row).find((s) => s.n === n);
   if (!session) throw new HttpError(404, "Aufnahme nicht gefunden.");
@@ -513,11 +518,21 @@ export async function storeMeetingChunk(user: Identity, meetingId: string, input
   if (session.state !== "recording" || !session.tracks.includes(track)) throw new HttpError(409, "Diese Aufnahme ist bereits abgeschlossen.");
   if (!Number.isInteger(input.index) || input.index < 0 || input.index >= MAX_PARTS) throw new HttpError(400, "Ungültige Eingabe.");
   if (!bytes.length || bytes.length > MEETING_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
-  const stagedNow = await stagedBytes(row.id);
-  if (stagedNow + bytes.length > transcribeMaxBytes() * session.tracks.length) throw new HttpError(413, "Die Aufnahme ist zu lang.");
-  // The audio may stay (retention): it has to fit the storage.
-  const room = await recordingRoom(user, page);
-  if (room !== null && stagedNow + bytes.length > room) throw new HttpError(413, "Der Speicherplatz reicht für diese Aufnahme nicht aus.");
+  // The meeting's length, the person's open recordings and the room (the
+  // audio may stay, retention): counted with everything this person has
+  // staged and recorded in one step per person, so parallel pieces and
+  // other instances take turns (#494).
+  await reserveStaged(user, {
+    kind: "meetings",
+    upload: row.id,
+    part: `${session.n}/${track}/${input.index}`,
+    bytes: bytes.length,
+    maxOpen: MAX_OPEN_MEETINGS,
+    staleAfter: MEETING_MAX_SECONDS * 1000 + 60 * 60_000,
+    uploadMax: transcribeMaxBytes() * session.tracks.length,
+    room: () => recordingRoom(user, page),
+    noRoom: "Der Speicherplatz reicht für diese Aufnahme nicht aus.",
+  });
   await staged().put(`${trackDir(row.id, session.n, track)}/${input.index}`, bytes);
   if (session.live && session.mime === "audio/webm" && liveEnabled()) scheduleLive(row.id, session.n, track, whisperPrompt((await meetingSettings(row.workspace_id)).glossary));
   return { ok: true, received: (await stagedParts(row.id, session.n, track)).length };
@@ -558,6 +573,7 @@ export async function finishMeetingSession(user: Identity, meetingId: string, in
     own.parts = Object.fromEntries(own.tracks.map((t) => [t, b.parts[t]!]));
     own.durationMs = Math.round(Math.min(b.durationMs, MEETING_MAX_SECONDS * 1000 - own.offsetMs));
     own.state = "uploaded";
+    await closeStaged("meetings", row.id, `${session.n}/`);
     await run(
       "UPDATE meetings SET sessions=?,duration_ms=?,status='transcribing',error=NULL,error_detail=NULL,updated_at=? WHERE id=?",
       JSON.stringify(sessions),
@@ -1037,6 +1053,7 @@ async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: Meetin
     });
   } finally {
     await staged().remove(stagingDir(row.id, session.n));
+    await releaseStaged("meetings", row.id, `${session.n}/`);
     // The meeting's folder once no session is staged any more.
     if (!(await staged().walk(row.id).catch(() => [1])).length) await staged().remove(row.id);
   }
@@ -1373,7 +1390,11 @@ export async function sweepMeetingAudio(now = Date.now()) {
   }
   // Staged pieces older than a week (the browser keeps its own copy).
   for (const folder of await staged().folders("").catch(() => []))
-    if (now - folder.at > 7 * 86_400_000 && !running().has(folder.name)) await staged().remove(folder.name);
+    if (now - folder.at > 7 * 86_400_000 && !running().has(folder.name)) {
+      await staged().remove(folder.name);
+      await releaseStaged("meetings", folder.name);
+    }
+  await sweepStaged("meetings", now - 7 * 86_400_000);
   return due.length;
 }
 // Removes the kept audio of a meeting now (the block's settings).

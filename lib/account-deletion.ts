@@ -44,6 +44,8 @@ const PERSONAL = [
   // A pending deletion for an unconfirmed address (#436).
   "unconfirmed_deletions",
   "auth_challenges",
+  // Uploads in flight (#493–#495, lib/staging-quota.ts).
+  "staged_uploads",
   "caldav_accesses",
   "carddav_accesses",
   "calendar_feeds",
