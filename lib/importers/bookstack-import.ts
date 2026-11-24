@@ -31,7 +31,7 @@ async function scrubbed<T>(credentials: Pick<BookStackCredentials, "tokenId" | "
   try {
     return await work();
   } catch (error) {
-    if (error instanceof HttpError) throw new HttpError(error.status, scrubToken(error.message, credentials));
+    if (error instanceof HttpError) throw new HttpError(error.status, scrubToken(error.message, credentials), error.upstream);
     throw new HttpError(500, "Der BookStack-Import ist fehlgeschlagen.");
   }
 }

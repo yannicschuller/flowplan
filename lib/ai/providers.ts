@@ -71,22 +71,22 @@ async function failure(config: AiConfig, response: AiResponse): Promise<never> {
   detail = redactSecrets(detail, [config.apiKey]).replace(/\s+/g, " ").trim().slice(0, 300);
   const status = response.status;
   if (status === 401 || status === 403)
-    throw new AiError(502, "Der KI-Anbieter lehnt den Zugang ab – API-Schlüssel fehlt oder ist ungültig.");
+    throw new AiError(502, "Der KI-Anbieter lehnt den Zugang ab – API-Schlüssel fehlt oder ist ungültig.", base(config));
   if (status === 429) throw new AiError(429, "Der KI-Anbieter meldet zu viele Anfragen. Bitte später erneut versuchen.");
-  if (detail) throw new AiError(502, `Der KI-Anbieter meldet: ${detail}`);
-  if (status === 404) throw new AiError(502, "Modell oder Adresse beim KI-Anbieter nicht gefunden.");
-  throw new AiError(502, `Der KI-Anbieter meldet einen Fehler (HTTP ${status}).`);
+  if (detail) throw new AiError(502, `Der KI-Anbieter meldet: ${detail}`, base(config));
+  if (status === 404) throw new AiError(502, "Modell oder Adresse beim KI-Anbieter nicht gefunden.", base(config));
+  throw new AiError(502, `Der KI-Anbieter meldet einen Fehler (HTTP ${status}).`, base(config));
 }
 function streamError(config: AiConfig, error: unknown): never {
   const message = typeof error === "string" ? error : typeof (error as { message?: unknown })?.message === "string" ? (error as { message: string }).message : "";
   const clean = redactSecrets(message, [config.apiKey]).replace(/\s+/g, " ").trim().slice(0, 300);
-  throw new AiError(502, clean ? `Der KI-Anbieter meldet: ${clean}` : AI_MESSAGES.garbled);
+  throw new AiError(502, clean ? `Der KI-Anbieter meldet: ${clean}` : AI_MESSAGES.garbled, base(config));
 }
 const parse = (config: AiConfig, text: string) => {
   try {
     return JSON.parse(text);
   } catch {
-    throw new AiError(502, AI_MESSAGES.garbled);
+    throw new AiError(502, AI_MESSAGES.garbled, base(config));
   }
 };
 

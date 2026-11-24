@@ -52,7 +52,7 @@ import { ago, bytes, clock, compact, dateTime, dayAt, longDay, ms, num, percent,
 import { pushTile, relayHost } from "./push-format";
 import { ServerCard } from "./monitoring-server";
 import { Recommendations } from "./monitoring-advice";
-import { ErrorDetailsCard, type ErrorSlot } from "./monitoring-errors";
+import { ErrorDetailsCard, UpstreamFailuresCard, type ErrorSlot } from "./monitoring-errors";
 import { useDocs } from "./parts";
 import { restartTitle } from "./restart-labels";
 
@@ -106,6 +106,7 @@ export default function MonitoringSection() {
           <Recommendations data={d.advice} onChange={() => void live.reload()} />
           <Traffic d={d} onPick={(at) => setSlot({ from: at, to: at + d.requests.bucketMs })} />
           <ErrorDetailsCard range={range} refreshKey={d.errorsDay.errors} slot={slot} onSlot={setSlot} />
+          <UpstreamFailuresCard range={range} refreshKey={d.errorsDay.errors} />
           <ServerCard s={d.server} range={range} />
           <RestartsWhenVisible />
           {/* Two stacks of cards that never leave holes (one stack on narrow

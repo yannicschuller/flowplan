@@ -96,7 +96,7 @@ export async function resolveEmbed(raw: string): Promise<ResolvedEmbed> {
   if (known) return { kind: "player", ...known };
   const page = await safeFetch(raw, { maxBytes: 1_500_000 });
   if (page.status >= 400)
-    throw new HttpError(502, "Die Seite antwortet mit einem Fehler.");
+    throw new HttpError(502, "Die Seite antwortet mit einem Fehler.", { service: "oembed", host: page.url || raw });
   const head = readHead(page.type.includes("html") ? page.body : "");
   let oembed: Record<string, unknown> = {};
   const endpoint = head.oembed ? httpsUrl(head.oembed, page.url) : "";

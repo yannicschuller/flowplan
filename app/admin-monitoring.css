@@ -170,7 +170,8 @@
 }
 
 /* ---------- Errors in detail: one row per kind, opened in place ---------- */
-.mon .mon-card#errors {
+.mon .mon-card#errors,
+.mon .mon-card#upstream {
   margin-bottom: 14px;
 }
 .mon [data-pickable] {

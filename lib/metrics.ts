@@ -166,17 +166,20 @@ function minuteFor(s: State, now: number) {
 
 // One finished HTTP request: its status and duration (null: not measured,
 // e.g. an event stream that stayed open), and its route (routeKey) for the
-// time per endpoint.
-export function noteRequest(status: number, ms: number | null, now = Date.now(), route: string | null = null) {
+// time per endpoint. `upstream`: the 5xx reports a failing third-party
+// service (#514, lib/error-details.ts "Fehler bei Fremddiensten") – a
+// request, but no server error and no client error.
+export function noteRequest(status: number, ms: number | null, now = Date.now(), route: string | null = null, upstream = false) {
   const s = state();
   if (!s.enabled) return;
   const m = minuteFor(s, now);
   m.requests++;
-  if (status >= 500) m.errors++;
-  else if (status >= 400) m.clientErrors++;
+  const error = status >= 500 && !upstream;
+  if (error) m.errors++;
+  else if (status >= 400 && status < 500) m.clientErrors++;
   if (ms === null || !Number.isFinite(ms) || ms < 0) return;
   m.hist[bucketOf(ms)]++;
-  if (route) noteRoute(s, route, status, ms, now);
+  if (route) noteRoute(s, route, error, ms, now);
 }
 
 /* ---------- Time per route ---------- */
@@ -207,13 +210,13 @@ export function routeKey(method: string | undefined, url: string | undefined): s
 export const COMMAND_ROUTE = "POST /api/command";
 export const commandRoute = (action: string) => `${COMMAND_ROUTE} · ${/^[a-z][A-Za-z0-9.]{1,47}$/.test(action) ? action : "other"}`;
 
-function noteRoute(s: State, route: string, status: number, ms: number, now: number) {
+function noteRoute(s: State, route: string, error: boolean, ms: number, now: number) {
   const hour = floorTo(now, HOUR);
   let key = `${hour}|${route}`;
   if (!s.routes.has(key) && s.routes.size >= MAX_ROUTES) key = `${hour}|other`;
   const r = s.routes.get(key) || { requests: 0, errors: 0, ms: 0, hist: emptyHist() };
   r.requests++;
-  if (status >= 500) r.errors++;
+  if (error) r.errors++;
   r.ms += ms;
   r.hist[bucketOf(ms)]++;
   s.routes.set(key, r);
@@ -223,7 +226,7 @@ function noteRoute(s: State, route: string, status: number, ms: number, now: num
 export function noteCommand(action: string, ms: number, failed: boolean, now = Date.now()) {
   const s = state();
   if (!s.enabled || !Number.isFinite(ms) || ms < 0) return;
-  noteRoute(s, commandRoute(action), failed ? 500 : 200, ms, now);
+  noteRoute(s, commandRoute(action), failed, ms, now);
 }
 
 // Adds to what other processes wrote for the same hour and route (like

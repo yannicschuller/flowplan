@@ -43,10 +43,10 @@ export async function searchImages(query: string, page = 1): Promise<ImageResult
   try {
     body = JSON.parse(response.data.toString("utf8"));
   } catch {
-    throw new HttpError(502, "Die Bildsuche hat nicht geantwortet.");
+    throw new HttpError(502, "Die Bildsuche hat nicht geantwortet.", { service: "image-search", host: "api.openverse.org" });
   }
   const results = z.object({ results: z.array(z.unknown()) }).safeParse(body);
-  if (!results.success) throw new HttpError(502, "Die Bildsuche hat nicht geantwortet.");
+  if (!results.success) throw new HttpError(502, "Die Bildsuche hat nicht geantwortet.", { service: "image-search", host: "api.openverse.org" });
   return results.data.results.flatMap((raw) => {
     const r = resultSchema.safeParse(raw);
     if (!r.success || !/^https:\/\//.test(r.data.url)) return [];

@@ -298,7 +298,7 @@ async function deliver(job: Job, q: Queue) {
         await providerCall(access.provider, endpoint, token, method, path, { body });
       } catch (error) {
         // Deleted on the provider: a new one.
-        if (!(error instanceof ProviderError && error.upstream === 404)) throw error;
+        if (!(error instanceof ProviderError && error.providerStatus === 404)) throw error;
         commentId = null;
       }
     }
@@ -306,7 +306,7 @@ async function deliver(job: Job, q: Queue) {
       const { method, path } = paths(target);
       const made = (await providerCall(access.provider, endpoint, token, method, path, { body })) as { id?: unknown } | null;
       commentId = made && (typeof made.id === "number" || typeof made.id === "string") ? String(made.id).slice(0, 64) : "";
-      if (!/^\d+$/.test(commentId)) throw new HttpError(502, "Der Git-Anbieter hat keinen Kommentar angelegt.");
+      if (!/^\d+$/.test(commentId)) throw new HttpError(502, "Der Git-Anbieter hat keinen Kommentar angelegt.", { service: "git", host: endpoint.api });
     }
     await record(pageId, target.url, { commentId, hash, status: null, error: null });
   } catch (error) {
@@ -315,7 +315,7 @@ async function deliver(job: Job, q: Queue) {
       // Again once the provider allows it, unless a newer event is waiting.
       if (!q.pending.has(target.url)) q.pending.set(target.url, job);
     }
-    const status = error instanceof ProviderError ? error.upstream : error instanceof IssueRateLimit ? 429 : null;
+    const status = error instanceof ProviderError ? error.providerStatus : error instanceof IssueRateLimit ? 429 : null;
     const message = error instanceof HttpError ? error.message : "Der Git-Anbieter ist nicht erreichbar.";
     console.warn(`Git back-link for ${target.url} failed: ${status ?? ""} ${message}`.replace(/\s+/g, " "));
     await record(pageId, target.url, { commentId: before?.comment_id ?? null, hash: before?.body_hash ?? "", status, error: message.slice(0, 500) });

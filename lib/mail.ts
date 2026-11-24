@@ -513,9 +513,6 @@ export async function sendTestMail(to: string) {
     });
   } catch (error) {
     const message = (error as Error).message;
-    throw new HttpError(
-      502,
-      `Senden fehlgeschlagen: ${message}${smtpTlsHint(message)}`,
-    );
+    throw new HttpError(502, `Senden fehlgeschlagen: ${message}${smtpTlsHint(message)}`, { service: "smtp", host: config.host });
   }
 }

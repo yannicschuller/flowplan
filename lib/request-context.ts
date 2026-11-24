@@ -28,7 +28,15 @@ export type RequestContext = {
   role?: CallerRole;
   // The first exception that turned into a 5xx (serverError, onRequestError).
   error?: unknown;
+  // The last failure of a third-party service this request raised (#514,
+  // an HttpError marked `upstream`, lib/auth.ts): when the answer has its
+  // status, it is counted apart from the server errors.
+  upstream?: UpstreamNote;
 };
+// A third-party service that failed: what it is ("ai", "oembed",
+// "calendar" …), its host where known (never a path), the status Flowplan
+// answered with and the message.
+export type UpstreamNote = { status: number; service: string; host: string; message: string };
 
 const holder = globalThis as unknown as { flowplanRequestContext?: AsyncLocalStorage<RequestContext | undefined> };
 const storage = (holder.flowplanRequestContext ??= new AsyncLocalStorage<RequestContext | undefined>());
@@ -79,6 +87,22 @@ export function noteRequestError(error: unknown) {
     const context = storage.getStore();
     if (context && context.error === undefined) context.error = error ?? new Error("(no error value)");
   } catch {}
+}
+
+// An upstream failure (#514): noted when the HttpError is made (lib/auth.ts),
+// so every route handler's `catch` keeps answering as before. Never throws.
+export function noteRequestUpstream(note: UpstreamNote) {
+  try {
+    const context = storage.getStore();
+    if (context) context.upstream = note;
+  } catch {}
+}
+// The upstream failure behind this answer: only when the request answered
+// with the status of the marked error and no exception made it a server
+// error – a real 500 after a handled upstream failure stays a 500.
+export function upstreamFailure(context: RequestContext | undefined, status: number): UpstreamNote | null {
+  const note = context?.upstream;
+  return note && status >= 500 && note.status === status && context.error === undefined ? note : null;
 }
 
 // For the `catch` of a route handler that answers unexpected errors with

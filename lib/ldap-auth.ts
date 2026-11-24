@@ -157,7 +157,7 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
     } catch (e) {
       if (e instanceof LdapError && e.invalidCredentials) throw (await wrong());
       console.error("LDAP sign-in failed", e instanceof Error ? e.message : e);
-      throw new HttpError(503, t("Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", "The directory service (LDAP) cannot be reached right now."));
+      throw new HttpError(503, t("Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", "The directory service (LDAP) cannot be reached right now."), { service: "ldap" });
     }
   } finally {
     await attempt.end();

@@ -262,7 +262,7 @@ export async function finishCalendarConnection(user: Identity, provider: OAuthPr
     code_verifier: stored.verifier,
   });
   if (token.status !== 200 || typeof token.data.access_token !== "string")
-    throw new HttpError(502, "Der Kalenderanbieter hat die Anmeldung abgelehnt.");
+    throw new HttpError(502, "Der Kalenderanbieter hat die Anmeldung abgelehnt.", { service: "calendar" });
   const claims = claimsOf(token.data.id_token);
   const audience = claims?.aud;
   if (
@@ -276,7 +276,7 @@ export async function finishCalendarConnection(user: Identity, provider: OAuthPr
     throw new HttpError(400, "Ungültige Antwort des Kalenderanbieters.");
   const refresh = token.data.refresh_token;
   if (typeof refresh !== "string" || !refresh)
-    throw new HttpError(502, "Kein Aktualisierungstoken erhalten. Bitte den Zugriff erneut erlauben.");
+    throw new HttpError(502, "Kein Aktualisierungstoken erhalten. Bitte den Zugriff erneut erlauben.", { service: "calendar" });
   const account = String(claims.email || claims.preferred_username || claims.upn || "").slice(0, 300);
   const existing = await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider=? AND account=?", user.id, provider, account);
   const cid = existing?.id || id();
@@ -331,7 +331,7 @@ async function accessToken(conn: ConnectionRow) {
       await run("UPDATE calendar_connections SET last_error=? WHERE id=?", REVOKED, conn.id);
       throw new HttpError(409, REVOKED);
     }
-    throw new HttpError(502, "Der Kalenderanbieter ist gerade nicht erreichbar.");
+    throw new HttpError(502, "Der Kalenderanbieter ist gerade nicht erreichbar.", { service: "calendar" });
   }
   const access = answer.data.access_token as string;
   conn.access_token = sealSecret(access, accessAad(conn.id));
@@ -391,7 +391,7 @@ async function call(conn: ConnectionRow, method: CalendarRequest["method"], url:
 function failed(answer: Answer, what: string): never {
   console.error(`Calendar sync: ${what} failed with HTTP ${answer.status}`);
   if (answer.status === 429 || answer.status === 403) throw new HttpError(429, "Der Kalenderanbieter begrenzt gerade die Anfragen. Die Synchronisierung versucht es später erneut.");
-  throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.");
+  throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.", { service: "calendar" });
 }
 
 /* ---------- Events ---------- */
@@ -561,7 +561,7 @@ const google: Adapter = {
       }
       return { events, token: String(answer.data?.nextSyncToken || token || "") };
     }
-    throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.");
+    throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.", { service: "calendar" });
   },
   async create(conn, calendarId, event, zone, rowId, link) {
     const answer = await call(conn, "POST", googleEvents(calendarId), toGoogle(event, zone, rowId, link));
@@ -679,7 +679,7 @@ const microsoft: Adapter = {
       const delta = answer.data?.["@odata.deltaLink"];
       return { events, token: graphLink(delta) ? (delta as string) : token || "" };
     }
-    throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.");
+    throw new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.", { service: "calendar" });
   },
   async create(conn, calendarId, event, _zone, _rowId, link) {
     const answer = await call(conn, "POST", `${GRAPH}/me/calendars/${encodeURIComponent(calendarId)}/events`, toGraph(event, link), GRAPH_PREFER);
@@ -756,13 +756,13 @@ function davSend(credentials: { username: string; password: string }, origins: s
         if (error instanceof HttpError) throw error;
         // The message names no credentials; it is not logged all the same.
         if (/Interne Adressen/.test((error as Error).message)) throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
-        throw new HttpError(502, "Der Kalenderserver ist nicht erreichbar.");
+        throw new HttpError(502, "Der Kalenderserver ist nicht erreichbar.", { service: "calendar" });
       }
       if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
         await sleep(Math.min(30_000, 1000 * 2 ** attempt));
         continue;
       }
-      if (Buffer.byteLength(response.body || "") >= MAX_ANSWER) throw new HttpError(502, "Die Antwort des Kalenderservers ist zu groß.");
+      if (Buffer.byteLength(response.body || "") >= MAX_ANSWER) throw new HttpError(502, "Die Antwort des Kalenderservers ist zu groß.", { service: "calendar" });
       const headers = Object.fromEntries(Object.entries(response.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
       return { status: response.status, body: response.body || "", headers };
     }
@@ -802,7 +802,7 @@ async function davError(error: unknown, connectionId: string | null) {
     if (error.status === 429) return new HttpError(429, "Der Kalenderanbieter begrenzt gerade die Anfragen. Die Synchronisierung versucht es später erneut.");
     if (error.status === 403) return new HttpError(403, "Der Kalenderserver erlaubt diese Änderung nicht.");
     if (error.what === "discovery") return new HttpError(400, "Unter dieser Adresse wurde kein CalDAV-Kalender gefunden.");
-    return new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.");
+    return new HttpError(502, "Der Kalenderanbieter meldet einen Fehler.", { service: "calendar" });
   }
   return error;
 }

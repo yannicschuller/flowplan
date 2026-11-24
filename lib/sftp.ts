@@ -62,13 +62,13 @@ export const remotePath = (dir: string, name: string) => posix.join(dir, name);
 function friendly(error: Error & { level?: string; code?: string }) {
   if (error instanceof HttpError) return error;
   if (error.level === "client-authentication") return new HttpError(400, "Anmeldung am SFTP-Server fehlgeschlagen: Benutzer, Passwort oder Schlüssel stimmen nicht.");
-  if (error.level === "client-timeout" || /Timed out/i.test(error.message)) return new HttpError(504, "Zeitüberschreitung beim Verbinden mit dem SFTP-Server.");
+  if (error.level === "client-timeout" || /Timed out/i.test(error.message)) return new HttpError(504, "Zeitüberschreitung beim Verbinden mit dem SFTP-Server.", { service: "sftp" });
   if (error.code === "ENOTFOUND" || error.code === "EAI_AGAIN") return new HttpError(400, "Den SFTP-Server gibt es unter diesem Namen nicht.");
   if (error.code === "ECONNREFUSED" || error.code === "EHOSTUNREACH" || error.code === "ECONNRESET" || error.code === "ENETUNREACH")
-    return new HttpError(502, "Der SFTP-Server ist nicht erreichbar.");
+    return new HttpError(502, "Der SFTP-Server ist nicht erreichbar.", { service: "sftp" });
   if (/private key|passphrase|Unsupported key format|Cannot parse privateKey/i.test(error.message))
     return new HttpError(400, "Der private Schlüssel kann nicht gelesen werden (Format oder Passphrase).");
-  return new HttpError(502, "Verbindung zum SFTP-Server fehlgeschlagen.");
+  return new HttpError(502, "Verbindung zum SFTP-Server fehlgeschlagen.", { service: "sftp" });
 }
 
 // Connects and opens SFTP. expected: the confirmed fingerprint; null means
@@ -112,7 +112,7 @@ export function connectSftp(login: SftpLogin, expected: string | null, timeoutMs
       if (seen && seen !== expected) return finish(new HostKeyError(seen, expected));
       finish(friendly(error));
     });
-    client.on("close", () => finish(seen && seen !== expected ? new HostKeyError(seen, expected) : new HttpError(502, "Der SFTP-Server hat die Verbindung beendet.")));
+    client.on("close", () => finish(seen && seen !== expected ? new HostKeyError(seen, expected) : new HttpError(502, "Der SFTP-Server hat die Verbindung beendet.", { service: "sftp" })));
     try {
       client.connect(config);
     } catch (error) {

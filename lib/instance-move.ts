@@ -595,7 +595,9 @@ const fromIncoming = (state: Incoming) => moveSource(state.source, openSecret(st
 // Errors of the pull as the administration shows them.
 function asHttp(e: unknown) {
   if (e instanceof HttpError) return e;
-  if (e instanceof MoveError) return new HttpError(e.status >= 400 && e.status < 500 ? (e.status === 401 ? 400 : e.status) : 502, e.message);
+  // The source failed (not this instance): counted apart from the server
+  // errors (#514).
+  if (e instanceof MoveError) return e.status >= 400 && e.status < 500 ? new HttpError(e.status === 401 ? 400 : e.status, e.message) : new HttpError(502, e.message, { service: "instance-move" });
   const message = (e as Error)?.message || "";
   return new HttpError(502, /Interne Adressen/.test(message) ? "Interne Adressen sind nur mit FLOWPLAN_MOVE_ALLOW_PRIVATE=true erlaubt." : `Die Quelle ist nicht erreichbar: ${message}`);
 }

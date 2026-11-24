@@ -7,10 +7,16 @@
 // an issue. A click on the error chart above filters to that time slot.
 // Data: /api/admin/monitoring?view=errors (lib/error-details.ts), loaded
 // when the section opens and whenever the dashboard counts new errors.
+//
+// Below it, "Fehler bei Fremddiensten" (#admin/monitoring/upstream, #514):
+// 5xx answers that report a failing third-party service (AI provider,
+// linked site, image search, calendar server …) – counted apart from the
+// server errors, per place, service and host with count and last time.
+// Data: /api/admin/monitoring?view=upstream.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowClockwise, CheckCircle, Copy, Trash, X } from "@phosphor-icons/react";
-import type { ErrorDetails } from "@/lib/error-details";
-import { frameText, issueReport, type ErrorGroupView, type ErrorOccurrence } from "@/lib/error-report";
+import type { ErrorDetails, UpstreamFailures } from "@/lib/error-details";
+import { frameText, issueReport, type ErrorGroupView, type ErrorOccurrence, type UpstreamFailureView } from "@/lib/error-report";
 import { useT } from "../../i18n";
 import { api } from "../../ui";
 import { Sparkline } from "../../sparkline";
@@ -240,5 +246,95 @@ function ErrorGroup({ g, n, values, t, now }: { g: ErrorGroupView; n: number; va
         </div>
       </details>
     </li>
+  );
+}
+
+// The third-party service by its key (lib/auth.ts HttpError `upstream`).
+const serviceName = (service: string, t: T) =>
+  (
+    ({
+      ai: t("KI-Anbieter", "AI provider"),
+      oembed: t("Verlinkte Seite (Einbettung)", "Linked site (embed)"),
+      web: t("Website", "Website"),
+      "image-search": t("Bildsuche", "Image search"),
+      "gif-search": t("GIF-Suche", "GIF search"),
+      calendar: t("Kalenderanbieter", "Calendar provider"),
+      "calendar-feed": t("Kalender-Abo (ICS)", "Calendar feed (ICS)"),
+      telegram: "Telegram",
+      git: t("Git-Anbieter", "Git provider"),
+      sftp: t("SFTP-Server", "SFTP server"),
+      s3: t("S3-Speicher", "S3 storage"),
+      netbox: "NetBox",
+      ldap: t("Verzeichnisdienst (LDAP)", "Directory service (LDAP)"),
+      notion: "Notion",
+      bookstack: "BookStack",
+      "instance-move": t("Quell-Instanz (Umzug)", "Source instance (move)"),
+      doi: t("DOI-Auflösung", "DOI resolver"),
+      smtp: t("Mailserver (SMTP)", "Mail server (SMTP)"),
+      transcription: t("Transkriptionsdienst", "Transcription service"),
+    }) as Record<string, string>
+  )[service] || service;
+
+export function UpstreamFailuresCard({ range, refreshKey }: { range: Range; refreshKey: number }) {
+  const t = useT();
+  const [data, setData] = useState<UpstreamFailures | null>(null);
+  const [failed, setFailed] = useState("");
+  const load = useCallback(async () => {
+    try {
+      setData(await api<UpstreamFailures>(`/api/admin/monitoring?view=upstream&range=${range}`));
+      setFailed("");
+    } catch (e) {
+      setFailed((e as Error).message);
+    }
+  }, [range]);
+  useEffect(() => {
+    void load();
+  }, [load, refreshKey]);
+  const now = Date.now();
+  return (
+    <section className="setting-group mon-card" id="upstream" aria-labelledby="upstream-title">
+      <header>
+        <div>
+          <h2 id="upstream-title">{t("Fehler bei Fremddiensten", "Errors from external services")}</h2>
+          <p>
+            {t(
+              "Antworten mit 502–504, weil ein anderer Dienst versagt hat – etwa der KI-Anbieter, eine verlinkte Seite oder die Bildsuche. Sie zählen nicht als Serverfehler (5xx) oben.",
+              "Answers with 502–504 because another service failed – such as the AI provider, a linked site or the image search. They do not count as server errors (5xx) above.",
+            )}
+          </p>
+        </div>
+        <div className="setting-group-actions">
+          <button type="button" className="button compact" onClick={() => void load()} aria-label={t("Neu laden", "Reload")} title={t("Neu laden", "Reload")}>
+            <ArrowClockwise size={16} aria-hidden />
+          </button>
+        </div>
+      </header>
+      <div className="mon-card-body">
+        {!data ? (
+          failed ? <p className="muted">{failed}</p> : <p className="muted">{t("Lädt …", "Loading …")}</p>
+        ) : !data.items.length ? (
+          <p className="muted">{t("Keine Fehler bei Fremddiensten in den letzten 14 Tagen.", "No errors from external services in the last 14 days.")}</p>
+        ) : (
+          <ResponsiveTable<UpstreamFailureView>
+            label={t("Fehler bei Fremddiensten", "Errors from external services")}
+            rows={data.items}
+            rowKey={(u) => u.key}
+            columns={[
+              { key: "service", header: t("Dienst", "Service"), primary: true, render: (u) => <span title={u.message || undefined}>{serviceName(u.service, t)}</span> },
+              { key: "host", header: "Host", render: (u) => (u.host ? <code>{u.host}</code> : "–") },
+              {
+                key: "where",
+                header: t("Wo", "Where"),
+                render: (u) => <code>{u.action ? `${u.route} · ${u.action}` : u.route}</code>,
+                hideOnPhone: true,
+              },
+              { key: "status", header: "Status", render: (u) => String(u.status), hideOnPhone: true },
+              { key: "count", header: t("Anzahl", "Count"), align: "end", render: (u) => (u.inRange === u.count ? num(u.count) : t(`${num(u.inRange)} (insgesamt ${num(u.count)})`, `${num(u.inRange)} (${num(u.count)} in total)`)) },
+              { key: "last", header: t("Zuletzt", "Last"), render: (u) => ago(u.lastSeen, t, now) },
+            ]}
+          />
+        )}
+      </div>
+    </section>
   );
 }

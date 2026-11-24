@@ -154,6 +154,19 @@ live charts go above the tiles (`status` slot of the shell).
   AsyncLocalStorage; route handlers' catches note the exception with
   `serverError(e)`, Next's own with `onRequestError` (instrumentation.ts).
   Every answer carries `X-Request-Id`. Tests: `tests/error-details.test.ts`.
+- Errors from external services (`#admin/monitoring/upstream`,
+  `UpstreamFailuresCard`, `/api/admin/monitoring?view=upstream`, #514): an
+  `HttpError` made with an `upstream` mark (`{ service, host }`, or
+  `upstreamError()` in `lib/auth.ts`) reports a failing third-party service
+  (AI provider, linked site, image search, calendar server, Git provider,
+  SFTP/S3, LDAP …). Made inside a request it notes itself on the request's
+  context; when the answer has its status (and no exception made it a 500)
+  `lib/request-metrics.ts` counts it as a request but not as a 5xx (chart,
+  KPI "Fehler 24 Std.", recommendations, time per endpoint) and
+  `lib/error-details.ts` keeps it in `upstream_failures` (per place, service
+  and host: count, first/last time; 14 days, 200 rows) instead of
+  `error_groups`. Failing workers and jobs with such an error go there too.
+  Mark only failures of the other service, never Flowplan's own.
 - Restarts (`#admin/monitoring/restarts`,
   `components/settings/admin/monitoring-restarts.tsx`,
   `/api/admin/monitoring?view=restarts`, `?view=restart&id=…` when a row is

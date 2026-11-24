@@ -22,7 +22,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { all, one, run } from "./db";
-import { HttpError } from "./auth";
+import { HttpError, type UpstreamMark } from "./auth";
 import type { Identity } from "./types";
 import { enterArea, shiftArea } from "./server-metrics";
 import { instanceId } from "./cluster/config";
@@ -176,11 +176,12 @@ export async function launchJob<T>(
 // (app/api/[...path]/handler.ts error()) stays the same – the status and text
 // of an HttpError, the messages of invalid input, a 500 for anything else.
 type StoredError =
-  | { kind: "http"; status: number; message: string }
+  // `upstream`: a failing third-party service (#514, lib/auth.ts).
+  | { kind: "http"; status: number; message: string; upstream?: UpstreamMark }
   | { kind: "input"; issues: { path: (string | number)[]; message: string }[] }
   | { kind: "other"; message: string };
 export function storedError(error: unknown): StoredError {
-  if (error instanceof HttpError) return { kind: "http", status: error.status, message: error.message.slice(0, 2000) };
+  if (error instanceof HttpError) return { kind: "http", status: error.status, message: error.message.slice(0, 2000), ...(error.upstream ? { upstream: error.upstream } : {}) };
   if (error instanceof z.ZodError)
     return {
       kind: "input",
@@ -189,7 +190,7 @@ export function storedError(error: unknown): StoredError {
   return { kind: "other", message: String((error as Error)?.message || error).slice(0, 2000) };
 }
 export function restoredError(stored: StoredError | undefined): Error {
-  if (stored?.kind === "http") return new HttpError(stored.status, stored.message);
+  if (stored?.kind === "http") return new HttpError(stored.status, stored.message, stored.upstream);
   if (stored?.kind === "input") return new z.ZodError(stored.issues.map((i) => ({ code: "custom" as const, path: i.path, message: i.message, input: undefined })));
   return new Error(stored?.message || "Job failed");
 }

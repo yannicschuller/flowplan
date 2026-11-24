@@ -942,16 +942,19 @@ export async function command(
   const area = LIVE_ACTIONS.has(action) ? shiftArea("api", "live") : null;
   // The command a failing request ran, for the error details (lib/request-context.ts).
   if (action) noteRequestAction(action);
-  let failed = false;
+  let failed = false,
+    upstream = false;
   try {
     // Permission lookups are remembered until the next write (lib/read-memo.ts).
     return await withReadMemo(async () => await runCommand(user, input, withinTransaction, keyed));
   } catch (error) {
     failed = !(error instanceof HttpError) || error.status >= 500;
+    // A failing third-party service is not the command's error (#514).
+    upstream = error instanceof HttpError && !!error.upstream;
     throw error;
   } finally {
     area?.();
-    if (action) noteCommand(action, performance.now() - started, failed);
+    if (action) noteCommand(action, performance.now() - started, failed && !upstream);
     if (action && !failed) signalCommand(user, action, input);
   }
 }

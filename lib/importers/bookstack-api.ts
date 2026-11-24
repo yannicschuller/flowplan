@@ -156,7 +156,7 @@ export function bookStackClient(credentials: BookStackCredentials, options: Book
           await sleep(1000 * 2 ** attempt);
           continue;
         }
-        throw new HttpError(502, UNREACHABLE);
+        throw new HttpError(502, UNREACHABLE, { service: "bookstack", host: url });
       }
       if (response.status === 429 && attempt < MAX_RETRIES && waited < MAX_TOTAL_WAIT_MS) {
         const ms = retryWait(response.headers);
@@ -176,12 +176,12 @@ export function bookStackClient(credentials: BookStackCredentials, options: Book
     if (response.status === 401) throw new HttpError(400, "BookStack hat das API-Token abgelehnt. Bitte prüfe Token-ID und Token-Secret.");
     if (response.status === 403 || response.status === 404) throw new BookStackMissing(response.status);
     if (response.status === 429) throw new HttpError(429, "BookStack begrenzt gerade die Anfragen. Bitte versuche es später erneut.");
-    if (response.status < 200 || response.status >= 300) throw new HttpError(502, response.status >= 300 && response.status < 400 ? NOT_BOOKSTACK : "BookStack hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.");
+    if (response.status < 200 || response.status >= 300) throw new HttpError(502, response.status >= 300 && response.status < 400 ? NOT_BOOKSTACK : "BookStack hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.", { service: "bookstack", host: base });
     try {
       const data = JSON.parse(response.body);
       if (data && typeof data === "object") return data as Json;
     } catch {}
-    throw new HttpError(502, NOT_BOOKSTACK);
+    throw new HttpError(502, NOT_BOOKSTACK, { service: "bookstack", host: base });
   }
   // Every item of a list endpoint, 500 at a time.
   async function list(path: string): Promise<Json[]> {
@@ -189,7 +189,7 @@ export function bookStackClient(credentials: BookStackCredentials, options: Book
     for (let offset = 0; items.length < MAX_LIST_ITEMS; ) {
       const page = await call(`${path}${path.includes("?") ? "&" : "?"}count=${BOOKSTACK_PAGE_SIZE}&offset=${offset}&sort=%2Bid`);
       const data = Array.isArray(page.data) ? (page.data as Json[]) : null;
-      if (!data) throw new HttpError(502, NOT_BOOKSTACK);
+      if (!data) throw new HttpError(502, NOT_BOOKSTACK, { service: "bookstack", host: base });
       items.push(...data);
       offset += data.length;
       if (!data.length || offset >= Number(page.total ?? 0)) break;

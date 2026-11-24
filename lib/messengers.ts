@@ -756,7 +756,7 @@ export async function createTelegramLink(user: Identity, now = Date.now()): Prom
   const recent = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM telegram_links WHERE user_id=? AND expires>?", user.id, now - 45 * 60_000))?.n || 0);
   if (recent >= 10) throw new HttpError(429, ct("Zu viele Verbindungscodes – bitte später erneut.", "Too many connection codes – try again later."));
   const username = config.bot.username || await refreshBotName(config.bot);
-  if (!username) throw new HttpError(502, ct("Der Telegram-Bot antwortet nicht – bitte Administration prüfen.", "The Telegram bot does not answer – ask an administrator."));
+  if (!username) throw new HttpError(502, ct("Der Telegram-Bot antwortet nicht – bitte Administration prüfen.", "The Telegram bot does not answer – ask an administrator."), { service: "telegram", host: config.bot.apiUrl || TELEGRAM_API });
   await run("DELETE FROM telegram_links WHERE user_id=? AND used_at IS NULL", user.id);
   const code = randomBytes(18).toString("base64url");
   const expires = now + LINK_MINUTES * 60_000;
@@ -1028,11 +1028,11 @@ export async function saveMessengerBot(actor: Identity, input: unknown) {
   try {
     me = await telegramCall(bot, "getMe", {});
   } catch {
-    throw new HttpError(502, ct(`Die Telegram-API unter ${hostOf(apiUrl)} ist nicht erreichbar.`, `The Telegram API at ${hostOf(apiUrl)} is not reachable.`));
+    throw new HttpError(502, ct(`Die Telegram-API unter ${hostOf(apiUrl)} ist nicht erreichbar.`, `The Telegram API at ${hostOf(apiUrl)} is not reachable.`), { service: "telegram", host: apiUrl });
   }
   if (me.status === 401 || me.status === 404) throw new HttpError(400, ct("Telegram lehnt den Bot-Token ab.", "Telegram refuses the bot token."));
   const username = me.status === 200 && me.data.ok ? (me.data.result as { username?: string })?.username : undefined;
-  if (!username) throw new HttpError(502, ct(`Die Telegram-API antwortet unerwartet (HTTP ${me.status}).`, `The Telegram API answers unexpectedly (HTTP ${me.status}).`));
+  if (!username) throw new HttpError(502, ct(`Die Telegram-API antwortet unerwartet (HTTP ${me.status}).`, `The Telegram API answers unexpectedly (HTTP ${me.status}).`), { service: "telegram", host: apiUrl });
   await writeStored({ ...stored, bot: { token: sealSecret(token, "messenger-bot"), apiUrl, username } });
   await setState("telegramOffset", null);
   await setState("telegramPoll", null);
