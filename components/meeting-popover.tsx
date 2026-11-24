@@ -4,7 +4,9 @@
 // content instead of pushing it down, stays inside the window (above the
 // button when there is no room below) and follows the button when the page
 // scrolls. Escape closes it and returns the focus to the button; a click
-// elsewhere closes it as well. On phones it is a bottom sheet.
+// elsewhere closes it as well. On phones it is a bottom sheet. Also the
+// editor of a record's property (components/record-property-value.tsx,
+// #519).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Modal } from "./ui";
@@ -18,8 +20,11 @@ export function AnchoredPopover({
   onClose,
   children,
   className = "",
+  focusBack,
 }: {
   anchor: HTMLElement | null;
+  // Where the focus returns on Escape (default: the anchor).
+  focusBack?: HTMLElement | null;
   label: string;
   onClose: (reason: "escape" | "away") => void;
   children: ReactNode;
@@ -27,7 +32,14 @@ export function AnchoredPopover({
 }) {
   const phone = usePhone();
   const panel = useRef<HTMLDivElement>(null);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  // Below the anchor from the first render on (fields inside that measure
+  // where they are, a select's list, see the right place); adjusted once the
+  // panel's size is known.
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(() => {
+    if (!anchor?.isConnected) return null;
+    const box = anchor.getBoundingClientRect();
+    return { left: Math.max(8, box.left), top: box.bottom + 4 };
+  });
   const close = useRef(onClose);
   close.current = onClose;
 
@@ -63,6 +75,9 @@ export function AnchoredPopover({
     const away = (e: Event) => {
       const target = e.target as Node;
       if (panel.current?.contains(target) || anchor?.contains(target)) return;
+      // The list of a select or search inside the panel goes to the
+      // dialog or the window, outside the panel.
+      if (target instanceof Element && target.closest(".fp-select-list, [data-radix-popper-content-wrapper]")) return;
       close.current("away");
     };
     document.addEventListener("pointerdown", away, true);
@@ -71,7 +86,7 @@ export function AnchoredPopover({
 
   const escape = () => {
     close.current("escape");
-    anchor?.focus({ preventScroll: true });
+    (focusBack ?? anchor)?.focus({ preventScroll: true });
   };
   if (phone)
     return (

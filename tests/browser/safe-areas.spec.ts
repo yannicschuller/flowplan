@@ -66,10 +66,20 @@ test("dialogs stay clear of the status bar and home indicator; related pages fit
   const title = entry.locator(".related-title");
   expect(await title.evaluate((t) => getComputedStyle(t).fontSize)).toBe("13px");
   expect(await title.evaluate((t) => t.scrollWidth > t.clientWidth)).toBe(true); // ends in "…"
-  // The empty date field says what it is for.
-  const empty = entry.locator(".date-input[data-placeholder]").first();
+  // The empty date field says what it is for – in the date's editor, a
+  // bottom sheet opened on the value (#519).
+  const fields = (await (await page.request.get(`/api/pages/${db.id}`)).json()).database.fields as { type: string; name: string }[];
+  const dateName = fields.find((f) => f.type === "date")!.name;
+  const unfold = entry.getByRole("button", { name: /^Eigenschaften ausklappen/ });
+  if (await unfold.isVisible()) await unfold.click();
+  await entry.getByRole("button", { name: `${dateName}: leer, ändern` }).first().click();
+  const empty = page.locator(".record-value-editor .date-input[data-placeholder]").first();
+  // The hint shows while the field is not focused (opening focuses it).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await expect(empty).toHaveAttribute("data-placeholder", "Datum wählen");
   expect(await empty.evaluate((d) => getComputedStyle(d, "::before").content)).toBe('"Datum wählen"');
+  await page.keyboard.press("Escape");
+  await expect(empty).toHaveCount(0);
 
   // As a page of its own the record pads its content instead.
   await page.evaluate(() => document.querySelector(".modal")!.classList.add("modal-full"));

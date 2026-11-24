@@ -32,21 +32,21 @@ test("changed cells show immediately on a slow connection", async ({ page }, inf
     await status.click();
     await page.getByRole("listbox", { name: "Optionen von Status" }).getByRole("option", { name: option, exact: true }).click();
   };
-  await expect(status).toHaveAccessibleName("Status: Nicht begonnen");
+  await expect(status).toHaveAccessibleName("Status: Nicht begonnen, ändern");
 
   await page.route("**/api/command", async (route) => {
     if (route.request().postData()?.includes('"row.update"')) await new Promise((r) => setTimeout(r, 3000));
     await route.continue();
   });
   await choose("In Arbeit");
-  await expect(status).toHaveAccessibleName("Status: In Arbeit", { timeout: 1000 });
+  await expect(status).toHaveAccessibleName("Status: In Arbeit, ändern", { timeout: 1000 });
   await expect(status.locator(".tag").filter({ hasText: "In Arbeit" })).toBeVisible({ timeout: 1000 });
   // After the answer the value stays.
   await expect
     .poll(async () => (await (await page.request.get(`/api/pages/${p.id}`)).json()).rows[0].cells.status)
     .toBe("In Arbeit");
   await page.waitForTimeout(500);
-  await expect(status).toHaveAccessibleName("Status: In Arbeit");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit, ändern");
 
   // A rejected change brings the old value back.
   await page.unroute("**/api/command");
@@ -56,7 +56,7 @@ test("changed cells show immediately on a slow connection", async ({ page }, inf
     await route.continue();
   });
   await choose("Erledigt");
-  await expect(status).toHaveAccessibleName("Status: In Arbeit");
+  await expect(status).toHaveAccessibleName("Status: In Arbeit, ändern");
   await expect(page.getByText("Geändert von jemand anderem.")).toBeVisible();
   expect(errors).toEqual([]);
 });

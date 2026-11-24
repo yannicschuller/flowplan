@@ -1,6 +1,7 @@
 "use client";
 // "Wiederkehrende Aufgabe" in the record view: once the record is done, the
 // next one is created with its date moved on (lib/repeat-records.ts).
+import { Repeat } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { localDay, nextOccurrence, parseRepeat, type RepeatRule } from "@/lib/recurrence";
@@ -49,7 +50,10 @@ export function RecordRepeat({
   const next = rule && validDateValue(current) ? nextOccurrence(localDay(current, rule.timeZone || "UTC"), rule) : null;
   return (
     <div className="row-property record-repeat">
-      <span>{t("Wiederkehrende Aufgabe", "Repeating task")}</span>
+      <span className="row-property-name">
+        <Repeat size={13} aria-hidden />
+        <span className="row-property-label">{t("Wiederkehrende Aufgabe", "Repeating task")}</span>
+      </span>
       <span className="record-repeat-choice">
         <Select
           aria-label={t("Wiederkehrende Aufgabe", "Repeating task")}

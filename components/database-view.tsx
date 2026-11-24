@@ -7,7 +7,9 @@ import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/server-message";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
-import { isLinkField } from "@/lib/cell-links";
+import { isLinkField, type LinkFieldType } from "@/lib/cell-links";
+import { isEmptyValue } from "@/lib/empty-value";
+import { RecordPropertyValue } from "./record-property-value";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
 import { recordsClipboard, type ClipboardContext } from "@/lib/database-clipboard";
@@ -203,6 +205,8 @@ import {
   ArrowRight,
   ShareNetwork,
   QrCode,
+  Bell as BellIcon,
+  ArrowsClockwise as RecurrenceIcon,
 } from "@phosphor-icons/react";
 import { RecordShareDialog } from "./record-share-dialog";
 import { RecordSubPages } from "./record-sub-pages";
@@ -2489,6 +2493,137 @@ export default function DatabaseView({
       return formatNumber(v, f.format, f.decimals);
     return cellText(v) || <span className="muted">—</span>;
   }
+  // A record's property, compact (#519): the value as text or chips on a
+  // button that opens today's editor (components/record-property-value.tsx);
+  // checkboxes, stars and checklists stay one-tap controls. Values that may
+  // not be changed are only shown – with their links.
+  function recordValueText(r: Row, f: Field): string {
+    const v = r.cells[f.id];
+    if (isEmptyValue(v, f.type)) return "";
+    const list = (Array.isArray(v) ? v : [v]).filter((x) => !isEmptyValue(x));
+    let text: string;
+    if (f.type === "person") text = list.map((id) => members.find((m) => m.id === id)?.name || "").filter(Boolean).join(", ");
+    else if (f.type === "relation")
+      text = list
+        .map((id) => {
+          const target = related[f.relationPage || ""]?.find((x) => x.id === id);
+          return target ? cellText(target.cells.title) || t("Ohne Titel", "Untitled") : t("Nicht verfügbar", "Not available");
+        })
+        .join(", ");
+    else if (f.type === "date") text = typeof v === "string" ? formatFieldDate(v, f) : "";
+    else if (f.type === "number") text = typeof v === "number" ? formatNumber(v, f.format, f.decimals) : cellText(v);
+    else if (f.type === "sprint") text = data.database.settings?.sprints?.find((s) => s.id === v)?.name || "";
+    else if (f.type === "files") {
+      const names = new Map((data.files || []).map((x) => [x.url, x.name]));
+      text = fileUrls(v).map((url) => fileLabel(url, names)).join(", ");
+    } else text = list.map((x) => cellText(x)).join(", ");
+    text = text.replace(/\s+/g, " ").trim();
+    return text.length > 80 ? `${text.slice(0, 79)}…` : text;
+  }
+  function recordFileLinks(v: unknown) {
+    const names = new Map((data.files || []).map((x) => [x.url, x.name]));
+    return (
+      <span className="record-value-links">
+        {fileUrls(v).map((url) => (
+          <a key={url} className="file-chip" href={url} target="_blank" rel="noreferrer noopener">
+            {data.files?.find((x) => x.url === url)?.mime.startsWith("image/") && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt="" />
+            )}
+            {fileLabel(url, names)}
+          </a>
+        ))}
+      </span>
+    );
+  }
+  function recordValueDisplay(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    if (isFormattedText(f, fields)) return <span className="record-value-text"><InlineText value={cellText(v)} links={false} /></span>;
+    if (f.type === "date") return typeof v === "string" ? formatFieldDate(v, f) : null;
+    if (f.type === "relation")
+      return (
+        <span className="tags">
+          {(Array.isArray(v) ? (v as string[]) : []).map((rid) => {
+            const target = related[f.relationPage || ""]?.find((x) => x.id === rid);
+            return target ? (
+              <span key={rid} className="relation-chip">
+                {target.icon && <PageIcon name={target.icon} size={14} className="relation-icon" />}
+                {cellText(target.cells.title) || t("Ohne Titel", "Untitled")}
+              </span>
+            ) : (
+              <span key={rid} className="relation-chip muted">
+                {t("Nicht verfügbar", "Not available")}
+              </span>
+            );
+          })}
+        </span>
+      );
+    if (f.type === "text" || f.type === "aliases") return <span className="record-value-text">{cellText(v)}</span>;
+    return display(r, f, "button");
+  }
+  function recordPropertyValue(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    const locked = !rowEditable(r) || fieldLocked(r, f);
+    // One tap changes these.
+    if (f.type === "checkbox" || f.type === "checklist" || (f.type === "number" && f.rollupDisplay === "rating"))
+      return (
+        <span className={`record-value-direct record-value-${f.type}`}>
+          <CellInput field={f} value={v} members={members} related={related} disabled={locked} onChange={(next) => updateCell(r, f, next)} keepRequired />
+        </span>
+      );
+    if (locked)
+      return (
+        <span className="record-value readonly">
+          {isEmptyValue(v, f.type) ? (
+            <span className="record-value-empty">{t("Leer", "Empty")}</span>
+          ) : f.type === "files" ? (
+            recordFileLinks(v)
+          ) : isFormattedText(f, fields) ? (
+            <span className="record-value-text"><InlineText value={cellText(v)} /></span>
+          ) : f.type === "text" || f.type === "aliases" ? (
+            <span className="record-value-text">{cellText(v)}</span>
+          ) : (
+            display(r, f, "cell")
+          )}
+        </span>
+      );
+    // Values of one choice or one line: the panel closes once it is saved.
+    const closes =
+      ["person", "sprint", "number", "aliases", "url", "email", "phone"].includes(f.type) ||
+      (f.type === "text" && !isFormattedText(f, fields)) ||
+      (f.type === "relation" && !!f.parent);
+    return (
+      <RecordPropertyValue
+        name={f.name}
+        text={recordValueText(r, f)}
+        display={recordValueDisplay(r, f)}
+        links={isLinkField(f.type) ? <LinkValue type={f.type as LinkFieldType} value={cellText(v)} /> : f.type === "files" ? recordFileLinks(v) : undefined}
+        wide={f.type === "relation" || f.type === "files" || isFormattedText(f, fields)}
+        editor={(done) => (
+          <CellInput
+            field={f}
+            value={v}
+            members={members}
+            related={related}
+            links
+            editing
+            onCancel={done}
+            formatted={isFormattedText(f, fields)}
+            multiline
+            optionPicker={optionPicker(f)}
+            onChange={(next) => {
+              const result = updateCell(r, f, next);
+              if (closes) done();
+              return result;
+            }}
+            keepRequired
+            upload={uploadFile}
+            files={data.files}
+          />
+        )}
+      />
+    );
+  }
   const galleryConfig = view.gallery || defaultGallery;
   const galleryImages = new Set((data.images || []).map((image) => image.url));
   // No cover boxes while no record has an image (or a colour) to show.
@@ -2561,7 +2696,10 @@ export default function DatabaseView({
     const base: Recurrence = rule || { freq: "weekly", interval: 1 };
     return (
       <div className="row-property recurrence-property">
-        <span>{t("Wiederholung", "Recurrence")}</span>
+        <span className="row-property-name">
+          <RecurrenceIcon size={13} aria-hidden />
+          <span className="row-property-label">{t("Wiederholung", "Recurrence")}</span>
+        </span>
         <span className="recurrence-choice">
           <Select
             aria-label={t("Wiederholung", "Recurrence")}
@@ -2688,7 +2826,10 @@ export default function DatabaseView({
             )}`, `Reminder on ${new Date(target.epochMilliseconds).toLocaleString(LOCALE_TAG, { timeZone: reminder.timeZone, dateStyle: "medium", timeStyle: "short" })}`);
     return (
       <label className="row-property reminder-property">
-        <span>{t("Erinnerung", "Reminder")}</span>
+        <span className="row-property-name">
+          <BellIcon size={13} aria-hidden />
+          <span className="row-property-label">{t("Erinnerung", "Reminder")}</span>
+        </span>
         <span className="reminder-choice">
           <Select
             aria-label={t(`Erinnerung für ${field.name}`, `Reminder for ${field.name}`)}
@@ -6444,15 +6585,17 @@ export default function DatabaseView({
                     save={(order) => act({ action: "database.recordLayout", layout: { ...recordLayout, order } })}
                     render={(f) => (
                     <Fragment key={`${selected.id}-${f.id}`}>
-                      <PropertyRow group={f.type === "files" || f.type === "date" || f.type === "select" || f.type === "multiselect" || isTagField(f)}>
-                        <span>
-                          {f.name}
+                      <PropertyRow>
+                        <span className="row-property-name">
+                          <FieldTypeIcon field={f} />
+                          <span className="row-property-label">{f.name}</span>
                           {isRequired(f) && <RequiredMark />}
                           {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
                           {isMissing(f, selected.cells) && <RequiredMissing label />}
                         </span>
                         {computedTypes.includes(f.type) ? (
-                          <span>
+                          // Computed: shown, never edited.
+                          <span className="record-value readonly">
                             {display(
                               {
                                 ...selected,
@@ -6467,22 +6610,8 @@ export default function DatabaseView({
                             )}
                           </span>
                         ) : (
-                          <span title={lockedTitle(f, selected)}>
-                            <CellInput
-                              field={f}
-                              value={selected.cells[f.id]}
-                              members={members}
-                              related={related}
-                              disabled={!selectedEditable || fieldLocked(selected, f)}
-                              links
-                              formatted={isFormattedText(f, fields)}
-                              multiline
-                              optionPicker={optionPicker(f)}
-                              onChange={(v) => updateCell(selected, f, v)}
-                              keepRequired
-                              upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
-                              files={data.files}
-                            />
+                          <span className="row-property-value" title={lockedTitle(f, selected)}>
+                            {recordPropertyValue(selected, f)}
                           </span>
                         )}
                       </PropertyRow>
@@ -7102,21 +7231,11 @@ function watchRecordWidth(el: HTMLDivElement | null) {
   observer.observe(el);
   return () => observer.disconnect();
 }
-function PropertyRow({
-  group,
-  children,
-}: {
-  group: boolean;
-  children: ReactNode;
-}) {
-  // Fields with several controls (files; a date with "Datum entfernen" and
-  // its time switch) are no <label>: WebKit passes taps on their buttons to
-  // the first input, which reopened the date picker instead of clearing.
-  return group ? (
-    <div className="row-property">{children}</div>
-  ) : (
-    <label className="row-property">{children}</label>
-  );
+// One property of an opened record: its name (with the type's icon) and
+// its value (#519). No <label>: the value is a button or a one-tap control
+// named on its own.
+function PropertyRow({ children }: { children: ReactNode }) {
+  return <div className="row-property">{children}</div>;
 }
 // Incoming relations of a record ("Verknüpft von").
 function RelationBacklinks({

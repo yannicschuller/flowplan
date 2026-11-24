@@ -141,17 +141,19 @@ test("multi-select cells stay open: two options, one of them new", async ({ page
   await expect(search).toBeHidden();
   await expect(row.locator("td").nth(3)).toHaveText("grünBlau");
 
-  // In the record: a chip goes with its ✕, "+ Option" finds the rest.
+  // In the record: the values as chips on a button that opens the same
+  // search (#519); a chip goes with its ✕ there.
   await row.getByRole("button", { name: /^Eintrag öffnen/ }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  const labels = entry.getByRole("group", { name: "Labels" });
-  await labels.getByRole("button", { name: "„grün“ entfernen" }).click();
+  await entry.getByRole("button", { name: "Labels: grün, Blau, ändern" }).click();
+  await expect(page.getByRole("combobox", { name: "Labels: Option suchen oder anlegen" })).toBeFocused();
+  await page.getByRole("group", { name: "Gewählt: Labels" }).getByRole("button", { name: "„grün“ entfernen" }).click();
   await expect.poll(async () => (await cells()).labels).toEqual(["Blau"]);
-  await labels.getByRole("button", { name: "Option zu „Labels“ hinzufügen" }).click();
-  await expect(entry.getByRole("combobox", { name: "Labels: Option suchen oder anlegen" })).toBeFocused();
   // A tap or click on an option picks it.
   await page.getByRole("listbox", { name: "Optionen von Labels" }).getByRole("option", { name: "Rot" }).click();
   await expect.poll(async () => (await cells()).labels).toEqual(["Blau", "Rot"]);
+  await page.keyboard.press("Escape");
+  await expect(entry.getByRole("button", { name: "Labels: Blau, Rot, ändern" })).toBeFocused();
   // The single select in the record: the same search.
   await entry.getByRole("button", { name: /^Status: / }).click();
   await page.keyboard.type("erl");
@@ -231,7 +233,7 @@ test("chosen values above the search: Backspace, Delete and the chips' ✕", asy
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await cells()).status).toBe("Erledigt");
   await entry.getByRole("button", { name: "Status: Erledigt" }).click();
-  await entry.getByRole("group", { name: "Gewählt: Status" }).getByRole("button", { name: "„Erledigt“ entfernen" }).click();
+  await page.getByRole("group", { name: "Gewählt: Status" }).getByRole("button", { name: "„Erledigt“ entfernen" }).click();
   await expect.poll(async () => (await cells()).status).toBe("");
   expect(errors).toEqual([]);
 });
@@ -265,10 +267,11 @@ test("readers see the values but cannot change them or create options", async ({
   reader.on("pageerror", (e) => errors.push(e.message));
   await reader.goto(`${origin}/#page=${db.id}&row=${row.id}`);
   const entry = reader.getByRole("dialog", { name: "Eintrag", exact: true });
-  await expect(entry.getByRole("button", { name: "Status: Offen" })).toBeDisabled({ timeout: 30_000 });
-  const labels = entry.getByRole("group", { name: "Labels" });
-  await expect(labels).toContainText("Rot");
-  await expect(labels.getByRole("button")).toHaveCount(0);
+  // Readers see the values as chips, without a button to change them (#519).
+  const properties = entry.locator(".row-properties");
+  await expect(properties).toContainText("Offen", { timeout: 30_000 });
+  await expect(properties).toContainText("Rot");
+  await expect(properties.getByRole("button", { name: /ändern$/ })).toHaveCount(0);
   await expect(reader.getByRole("combobox", { name: /Option suchen/ })).toHaveCount(0);
   // The server refuses a new option from a reader.
   const d = (await (await reader.request.get(`/api/pages/${db.id}`)).json()).database;

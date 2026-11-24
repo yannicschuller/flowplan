@@ -64,7 +64,7 @@ test.describe("on an iPhone", () => {
     await expect(summary).toContainText("In Arbeit");
     await expect(summary).toContainText("Hoch");
     await expect(summary).toContainText("+4 Eigenschaften");
-    await expect(entry.getByLabel("Budget", { exact: true })).toBeHidden();
+    await expect(entry.getByRole("button", { name: /^Budget: / })).toBeHidden();
     if (shots) await page.screenshot({ path: `${shots}/186-iphone-collapsed.png` });
     // Unfold: the values are there and editable; focus on the chevron.
     await summary.click();
@@ -72,10 +72,12 @@ test.describe("on an iPhone", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(toggle).toBeFocused();
     if (shots) await page.screenshot({ path: `${shots}/186-iphone-expanded.png` });
-    const budget = entry.getByLabel("Budget", { exact: true });
+    // The value opens its editor, a bottom sheet (#519); Enter saves.
+    await entry.getByRole("button", { name: /^Budget: / }).click();
+    const budget = page.getByLabel("Budget", { exact: true });
     await expect(budget).toBeVisible();
     await budget.fill("250");
-    await budget.blur();
+    await budget.press("Enter");
     await expect
       .poll(async () => (await (await page.request.get(`/api/pages/${db}`)).json()).rows.find((r: { id: string }) => r.id === first).cells.budget)
       .toBe(250);
@@ -113,7 +115,7 @@ test.describe("on an iPhone", () => {
     await large.goto(`/#page=${db}&row=${second}`);
     const desk = large.getByRole("dialog", { name: "Eintrag", exact: true });
     await expect(desk.getByRole("button", { name: "Eigenschaften", exact: true })).toHaveAttribute("aria-expanded", "true");
-    await expect(desk.getByLabel("Budget", { exact: true })).toBeVisible();
+    await expect(desk.getByRole("button", { name: /^Budget: / })).toBeVisible();
     await desktop.close();
     expect(errors).toEqual([]);
   });
@@ -128,7 +130,7 @@ test.describe("on a larger screen", () => {
     const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
     const toggle = entry.getByRole("button", { name: "Eigenschaften", exact: true });
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(entry.getByLabel("Budget", { exact: true })).toBeVisible();
+    await expect(entry.getByRole("button", { name: /^Budget: / })).toBeVisible();
     await toggle.click();
     const summary = entry.getByRole("button", { name: /^Eigenschaften ausklappen/ });
     await expect(summary).toContainText("In Arbeit");
@@ -140,7 +142,7 @@ test.describe("on a larger screen", () => {
     await expect(entry.getByRole("button", { name: /^Eigenschaften ausklappen/ })).toBeVisible();
     // Printed: every property, no folded line.
     await page.emulateMedia({ media: "print" });
-    await expect(entry.getByLabel("Budget", { exact: true })).toBeVisible();
+    await expect(entry.getByRole("button", { name: /^Budget: / })).toBeVisible();
     await expect(entry.getByRole("button", { name: /^Eigenschaften ausklappen/ })).toBeHidden();
   });
 });

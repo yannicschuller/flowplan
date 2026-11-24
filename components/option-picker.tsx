@@ -198,9 +198,15 @@ function OptionSearch({
     };
     window.addEventListener("resize", at);
     window.addEventListener("scroll", scrolled, true);
+    // A sheet or panel that slides in (a record's property on a phone,
+    // #519) moves the field once its animation ends.
+    window.addEventListener("animationend", scrolled, true);
+    window.addEventListener("transitionend", scrolled, true);
     return () => {
       window.removeEventListener("resize", at);
       window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("animationend", scrolled, true);
+      window.removeEventListener("transitionend", scrolled, true);
     };
     // Chips added before the field move it.
   }, [chosen.length]);
