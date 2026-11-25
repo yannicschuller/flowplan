@@ -17726,22 +17726,64 @@ pre,
 }
 
 /* ---------- Board: columns, cards and dragging (board-card-drag.ts) ---------- */
+/* No filled columns (design review): a group is its header and the cards
+   below it; the gap between groups gives the structure. The column the
+   dragged card would land in is tinted, the tint reaching a little past the
+   cards without moving them. */
 .board-column:not(.collapsed) {
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 10px 8px 4px;
+  border-radius: 10px;
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.board-column[data-drop-target] {
+  --drop-tint: color-mix(in srgb, var(--blue) 7%, transparent);
+  background: var(--drop-tint);
+  box-shadow: 0 0 0 6px var(--drop-tint);
+}
+[data-theme="dark"] .board-column[data-drop-target] {
+  --drop-tint: color-mix(in srgb, var(--blue) 11%, transparent);
+}
+/* "Ohne Gruppe" without cards: shown only while a card is dragged or lifted
+   with the keyboard, as a place to drop it (components/database-view.tsx). */
+.board > .board-column.ungrouped-empty {
+  display: none;
+}
+.board[data-card-dragging] > .board-column.ungrouped-empty,
+.board.board-lifting > .board-column.ungrouped-empty {
+  display: block;
+  animation: fade-in var(--motion-base, 0.16s) ease both;
+}
+/* With swimlanes, its head and its cells in every lane; cards there are
+   dragged with components/pointer-drag.ts. */
+.board-swimlanes .ungrouped-empty {
+  display: none;
+}
+html.pointer-dragging .board-swimlanes .ungrouped-empty {
+  display: flex;
+  animation: fade-in var(--motion-base, 0.16s) ease both;
+}
+.board-cell .record-card {
+  margin-bottom: 0;
+}
+/* Compact cards: a little less padding and space between the lines. */
+.board .record-card,
+.board-drag-preview > .record-card {
+  padding: 10px 12px;
+  gap: 7px;
+  margin-bottom: 8px;
 }
 .board-column > .record-card-wrap .record-card,
 .board-drag-preview > .record-card {
   border-color: transparent;
   box-shadow:
-    0 0 0 1px #1d1a1412,
+    0 0 0 1px #1d1a141a,
     0 1px 2px #1d1a140d;
 }
 .board-column > .record-card-wrap .record-card:hover {
   border-color: transparent;
   box-shadow:
-    0 0 0 1px #1d1a141c,
+    0 0 0 1px #1d1a1424,
     0 6px 16px -4px #1d1a1424;
 }
 [data-theme="dark"] .board-column > .record-card-wrap .record-card,
@@ -17754,7 +17796,7 @@ pre,
 .board .record-card {
   cursor: pointer;
 }
-/* The column grows by the opened gap so its background follows. */
+/* The column grows by the opened gap so its highlight follows. */
 .board-column:not(.collapsed)::after {
   content: "";
   display: block;
@@ -24938,8 +24980,11 @@ h3 .block-reactions {
   color: var(--signal);
   font-weight: 600;
 }
-.board-column:has(.wip-count.over) {
-  box-shadow: inset 0 3px 0 var(--signal);
+/* Over the limit: a line in the signal colour above the group's header
+   (the columns have no background of their own to carry it). */
+.board-column:has(.wip-count.over) > header {
+  box-shadow: 0 -6px 0 -3px var(--signal);
+  border-radius: 2px;
 }
 .board-wip {
   display: grid;
@@ -38276,14 +38321,11 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   gap: 12px;
   overflow: hidden;
 }
+/* Like the board itself: no filled columns, only header and cards. */
 .sk-board-column {
   display: grid;
   align-content: start;
   gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--hover) 30%, transparent);
 }
 .sk-card {
   height: 64px;

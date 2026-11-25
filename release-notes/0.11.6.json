@@ -147,6 +147,10 @@
       "issues": [
         541
       ]
+    },
+    {
+      "de": "Boards sind ruhiger: Gruppen ohne graue Spaltenfläche, etwas kompaktere Karten; die Zielspalte ist beim Ziehen leicht hinterlegt. „Ohne Gruppe“ erscheint nur, wenn eine Karte keine Gruppe hat oder du gerade eine ziehst.",
+      "en": "Boards are calmer: groups without grey column backgrounds, slightly more compact cards; the target column is lightly tinted while you drag. “No group” only appears when a card has no group or while you drag one."
     }
   ],
   "features": [
