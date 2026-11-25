@@ -931,9 +931,13 @@
   box-shadow: 0 1px 2px #1724390a;
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
-.sv-start-tile:hover {
-  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
-  box-shadow: 0 2px 8px #1724391a;
+/* Only with a real pointer: on touch screens :hover sticks to the tile
+   tapped last and looked like a selection. */
+@media (hover: hover) {
+  .sv-start-tile:hover {
+    border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+    box-shadow: 0 2px 8px #1724391a;
+  }
 }
 .sv-start-tile.alert {
   border-color: #e3b3b4;
@@ -952,6 +956,14 @@
   min-width: 0;
   font-size: 14px;
   font-weight: 600;
+  /* A long word ("Überwachung", "Fehlgeschlagene") breaks inside its box
+     instead of running under the status icon and the arrow. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.sv-start-tile-head > svg,
+.sv-start-tile-head .sv-start-icon {
+  flex: none;
 }
 .sv-start-caret {
   color: var(--muted);
@@ -1322,6 +1334,12 @@
   .sv-start-tile {
     min-height: 0;
     padding: 12px;
+  }
+  /* Two narrow columns: the whole tile is the link; the arrow and the icon
+     only take room from the title. */
+  .sv-start-caret,
+  .sv-start-tile-head .sv-start-icon {
+    display: none;
   }
   .sv-glance-grid {
     grid-template-columns: minmax(0, 1fr);
