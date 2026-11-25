@@ -6,7 +6,11 @@
 // the set, its enforcement in lib/ai/resolve.ts (a stale or forged choice
 // falls back to the default), workflows keeping the default, the picker's
 // data in the AI status, schema 138 with its data step, and the limits
-// file's aiModels "all". Stub provider (tests/helpers/ai-mock.ts).
+// file's aiModels "all". The default of a choice (schema 139,
+// ai_model_rules.default_model): the smallest or the most capable, the
+// precedence of mixed rules, the explicit choice beating it, workflows on
+// the most capable, the limits file's aiDefault and the settings file's
+// modelRules[].default. Stub provider (tests/helpers/ai-mock.ts).
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -276,4 +280,186 @@ test("limits file: aiModels 'all' is 'up to the most capable, your choice'; the 
   const plans = Object.fromEntries(exported.plans.map((p) => [p.group, p]));
   assert.equal(plans["Flowplan Pro"].aiModels, "all");
   assert.equal(plans["Flowplan Plus"].aiModels, "sonnet");
+});
+
+test("the default of a choice, pure: the smallest only when every choice rule says so; fixed rules have no say; the own rule wins", () => {
+  const instance = { kind: "anthropic", model: "claude-haiku-4-5" };
+  const prices = [
+    { model: "claude-haiku-4-5", input: 1, output: 5 },
+    { model: "claude-sonnet-4-6", input: 3, output: 15 },
+    { model: "claude-opus-4-5", input: 15, output: 75 },
+  ];
+  const options = prices.map((p) => p.model);
+  const rules: ModelRule[] = [
+    { scope: "group", target: "g-small", model: "claude-opus-4-5", kind: "anthropic", choice: true, defaultModel: "smallest" },
+    { scope: "role", target: "admin", model: "claude-sonnet-4-6", kind: "anthropic", choice: true, defaultModel: "smallest" },
+    { scope: "group", target: "g-large", model: "claude-sonnet-4-6", kind: "anthropic", choice: true },
+    { scope: "group", target: "g-fixed", model: "claude-opus-4-5", kind: "anthropic" },
+    { scope: "user", target: "u-own", model: "claude-sonnet-4-6", kind: "anthropic" },
+  ];
+  const who = (userId: string, groups: string[], roles: ("admin" | "guest")[] = []) => policy.chooseModel(rules, { userId, groups, roles }, instance, prices, options);
+  const small = who("u-x", ["g-small"]);
+  assert.equal(small.model, "claude-haiku-4-5", "the smallest of the set");
+  assert.equal(small.standard, "claude-haiku-4-5");
+  assert.equal(small.smallest, true);
+  assert.deepEqual(small.allowed, ["claude-opus-4-5", "claude-sonnet-4-6", "claude-haiku-4-5"], "still most capable first");
+  assert.equal(small.target, "g-small");
+  // Two choice rules, both "smallest": the smallest.
+  assert.equal(who("u-x", ["g-small"], ["admin"]).model, "claude-haiku-4-5");
+  // One says "smallest", one "largest" (absent): the most capable.
+  const mixed = who("u-x", ["g-small", "g-large"]);
+  assert.equal(mixed.model, "claude-opus-4-5");
+  assert.equal(mixed.standard, "claude-opus-4-5");
+  assert.equal(mixed.smallest, undefined);
+  // A fixed rule widens nothing below and has no say on the default.
+  assert.equal(who("u-x", ["g-small", "g-fixed"]).model, "claude-haiku-4-5");
+  // The own rule still wins entirely.
+  const own = who("u-own", ["g-small"]);
+  assert.equal(own.model, "claude-sonnet-4-6");
+  assert.equal(own.allowed, undefined);
+  // The explicit choice beats the default.
+  assert.equal(policy.applyModelChoice(small, "claude-opus-4-5").model, "claude-opus-4-5");
+  assert.equal(policy.applyModelChoice(small, "claude-opus-4-5").standard, "claude-haiku-4-5", "the default stays known for the picker");
+});
+
+test("the default of a choice: 'smallest' starts on Haiku, the explicit choice wins, workflows keep the most capable", async () => {
+  await clear();
+  await rule("group", pro, { model: "opus", choice: true, defaultModel: "smallest" });
+  assert.equal((await one<{ default_model: string | null }>("SELECT default_model FROM ai_model_rules WHERE target=?", pro))?.default_model, "smallest");
+  await ask(pia);
+  assert.equal(lastModel(), "haiku", "the default: the smallest");
+  let status = await aiStatus(pia, wid);
+  assert.equal(status.provider?.model, "haiku");
+  assert.equal(status.provider?.choice?.default, "haiku");
+  assert.deepEqual(status.provider?.choice?.models.map((m) => m.model), ["opus", "sonnet", "haiku"]);
+  assert.equal(status.provider?.choice?.chosen, false);
+  // The explicit choice wins.
+  await choose(pia, "opus");
+  assert.equal((await userAiSettings(pia.id)).instanceModel, "opus");
+  await ask(pia);
+  assert.equal(lastModel(), "opus");
+  status = await aiStatus(pia, wid);
+  assert.equal(status.provider?.choice?.default, "haiku");
+  assert.equal(status.provider?.choice?.chosen, true);
+  // Picking the default is stored as '' (follows the administration).
+  await choose(pia, "haiku");
+  assert.equal((await userAiSettings(pia.id)).instanceModel, "");
+  // Workflows: the most capable allowed, whatever the default.
+  const runner = (await runnerIdentity(pia.id))!;
+  const flow = await resolveAi(runner, "workflows", { workspaceId: wid });
+  assert.ok(flow.ok && flow.config.model === "opus");
+  const asPerson = await resolveAi(pia, "workflows", { workspaceId: wid });
+  assert.ok(asPerson.ok && asPerson.config.model === "opus");
+  // A second choice rule on "largest" (the role admin is not Pia's – a group instead).
+  await run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", plus, pia.id);
+  try {
+    await rule("group", plus, { model: "sonnet", choice: true, defaultModel: "largest" });
+    await ask(pia);
+    assert.equal(lastModel(), "opus", "mixed: the most capable");
+    await rule("group", plus, { model: "sonnet", choice: true, defaultModel: "smallest" });
+    await ask(pia);
+    assert.equal(lastModel(), "haiku", "both smallest: the smallest");
+  } finally {
+    await run("DELETE FROM group_members WHERE group_id=? AND user_id=?", plus, pia.id);
+  }
+});
+
+test("the administration: the default of a choice is kept on a model change and dropped without the choice", async () => {
+  await clear();
+  // Through the API without the field: the most capable (as every older rule).
+  await rule("group", pro, { model: "opus", choice: true });
+  const stored = async () => (await one<{ choice: number; default_model: string | null }>("SELECT choice,default_model FROM ai_model_rules WHERE target=?", pro))!;
+  assert.equal((await stored()).default_model, null);
+  let view = await aiRuleView(admin, { scope: "group", target: pro });
+  assert.equal(view.model.effective?.model, "opus");
+  assert.equal(view.model.effective?.smallest, undefined);
+  await rule("group", pro, { model: "opus", choice: true, defaultModel: "smallest" });
+  view = await aiRuleView(admin, { scope: "group", target: pro });
+  assert.equal(view.model.own?.defaultModel, "smallest");
+  assert.equal(view.model.effective?.model, "haiku");
+  assert.equal(view.model.effective?.standard, "haiku");
+  assert.equal(view.model.effective?.smallest, true);
+  // Another "up to" model without the field: the default stays.
+  await rule("group", pro, { model: "sonnet", choice: true });
+  assert.equal((await stored()).default_model, "smallest");
+  // A fixed model: no default of a choice.
+  await rule("group", pro, { model: "sonnet", choice: false });
+  assert.equal((await stored()).default_model, null);
+  // Back to a choice without the field: the most capable again.
+  await rule("group", pro, { model: "opus", choice: true });
+  assert.equal((await stored()).default_model, null);
+  // "largest" is stored as NULL.
+  await rule("group", pro, { model: "opus", choice: true, defaultModel: "smallest" });
+  await rule("group", pro, { model: "opus", choice: true, defaultModel: "largest" });
+  assert.equal((await stored()).default_model, null);
+  // Never on a person's rule.
+  await rule("user", pia.id, { model: "opus", choice: true, defaultModel: "smallest" });
+  assert.equal((await one<{ default_model: string | null }>("SELECT default_model FROM ai_model_rules WHERE scope='user' AND target=?", pia.id))?.default_model, null);
+  await assert.rejects(() => rule("group", pro, { model: "opus", choice: true, defaultModel: "tiny" }));
+});
+
+test("schema 139: ai_model_rules.default_model, older rules stay on the most capable", async () => {
+  assert.ok(SCHEMA_VERSION >= 139);
+  assert.ok((await tableColumns("ai_model_rules")).includes("default_model"));
+  await clear();
+  // A rule as schema 138 wrote it: no default_model.
+  await run("INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES('group',?,'opus','ollama',1,?)", pro, Date.now());
+  assert.equal((await one<{ default_model: string | null }>("SELECT default_model FROM ai_model_rules WHERE target=?", pro))?.default_model, null);
+  const rules = await policy.modelRules();
+  assert.equal(rules.find((r) => r.target === pro)?.defaultModel, undefined);
+  await ask(pia);
+  assert.equal(lastModel(), "opus");
+});
+
+test("limits file: aiDefault beside aiModels 'all' – import, idempotent, export only when 'smallest'", async () => {
+  await clear();
+  const file = (aiDefault?: string) => ({ version: 1, plans: [{ group: "Flowplan Pro", kind: "plan", aiModels: "all", ...(aiDefault ? { aiDefault } : {}) }] });
+  const apply = async (f: unknown, dryRun = false) => (await command(admin, { action: "admin.limitsImport", file: f, dryRun })) as LimitsImportResult;
+  const stored = async () => (await one<{ choice: number; default_model: string | null }>("SELECT choice,default_model FROM ai_model_rules WHERE target='dir:Flowplan Pro'"))!;
+  let r = await apply(file("smallest"));
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.changes.some((c) => c.area === "model" && c.after === "opus" && c.afterChoice && c.afterSmallest));
+  assert.deepEqual(await stored(), { choice: 1, default_model: "smallest" });
+  // Idempotent, also without aiDefault (left out: as it is).
+  assert.equal((await apply(file("smallest"), true)).changes.filter((c) => c.area === "model").length, 0);
+  assert.equal((await apply(file(), true)).changes.filter((c) => c.area === "model").length, 0);
+  // The export writes it back.
+  let exported = (await command(admin, { action: "admin.limitsExport" })) as { plans: Record<string, unknown>[] };
+  let pro0 = exported.plans.find((p) => p.group === "Flowplan Pro")!;
+  assert.equal(pro0.aiModels, "all");
+  assert.equal(pro0.aiDefault, "smallest");
+  // Round trip: the exported file has no changes.
+  assert.equal((await apply(exported, true)).changes.filter((c) => c.area === "model").length, 0);
+  // "largest": a change, then no aiDefault in the export.
+  r = await apply(file("largest"));
+  assert.ok(r.changes.some((c) => c.area === "model" && c.beforeSmallest && !c.afterSmallest));
+  assert.deepEqual(await stored(), { choice: 1, default_model: null });
+  exported = (await command(admin, { action: "admin.limitsExport" })) as { plans: Record<string, unknown>[] };
+  pro0 = exported.plans.find((p) => p.group === "Flowplan Pro")!;
+  assert.equal(pro0.aiModels, "all");
+  assert.equal("aiDefault" in pro0, false);
+  // Only beside aiModels "all"; only the two values.
+  const bad = await apply({ version: 1, plans: [{ group: "Flowplan Plus", kind: "plan", aiModels: "sonnet", aiDefault: "smallest" }] }, true);
+  assert.ok(bad.errors.some((e) => e.path.endsWith(".aiDefault") && e.code === "needs_choice"));
+  const bad2 = await apply(file("tiny"), true);
+  assert.ok(bad2.errors.some((e) => e.path.endsWith(".aiDefault") && e.code === "invalid"));
+});
+
+test("settings file: modelRules[].default round trip", async () => {
+  await clear();
+  await run("INSERT INTO ai_model_rules(scope,target,model,kind,choice,default_model,updated_at) VALUES('group','dir:Flowplan Pro','opus','ollama',1,'smallest',?)", Date.now());
+  await run("INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES('role','admin','sonnet','ollama',1,?)", Date.now());
+  const exported = (await command(admin, { action: "admin.settingsExport" })) as { ai: { modelRules: Record<string, unknown>[] } };
+  const rules = exported.ai.modelRules;
+  assert.deepEqual(rules.find((r) => r.group === "Flowplan Pro"), { scope: "group", group: "Flowplan Pro", model: "opus", choice: true, default: "smallest" });
+  assert.deepEqual(rules.find((r) => r.role === "admin"), { scope: "role", role: "admin", model: "sonnet", choice: true });
+  // Imported elsewhere (here: after clearing) it comes back the same.
+  await clear();
+  const res = (await command(admin, { action: "admin.settingsImport", file: { format: "flowplan-settings", version: 1, ai: { modelRules: rules } }, dryRun: false })) as { errors: unknown[] };
+  assert.deepEqual(res.errors, []);
+  assert.equal((await one<{ default_model: string | null }>("SELECT default_model FROM ai_model_rules WHERE target='dir:Flowplan Pro'"))?.default_model, "smallest");
+  assert.equal((await one<{ default_model: string | null }>("SELECT default_model FROM ai_model_rules WHERE target='admin'"))?.default_model, null);
+  await assert.rejects(() => command(admin, { action: "admin.settingsImport", file: { format: "flowplan-settings", version: 1, ai: { modelRules: [{ scope: "role", role: "admin", model: "sonnet", choice: true, default: "tiny" }] } }, dryRun: true }).then((r) => {
+    if ((r as { errors: unknown[] }).errors.length) throw new Error("refused");
+  }));
 });

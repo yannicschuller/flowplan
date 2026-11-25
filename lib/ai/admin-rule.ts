@@ -17,7 +17,7 @@ import { activeAfter, afterSchema, amountOf, checkedAfter, cleanLimits, instance
 import { allGroupKeys, validGroupKey } from "../person-groups";
 import { directoryName, isDirectoryKey } from "../group-keys";
 import { allowedByRule, chooseModel, choiceRanges, MODEL_NAME, modelRules } from "./model-policy";
-import { MODEL_RULE_SCOPES, QUOTA_PERIODS, QUOTA_ROLES, type ModelPolicy, type ModelRule, type ModelRuleScope, type QuotaPeriod, type QuotaRule } from "./quota-shared";
+import { MODEL_DEFAULTS, MODEL_RULE_SCOPES, QUOTA_PERIODS, QUOTA_ROLES, type ModelPolicy, type ModelRule, type ModelRuleScope, type QuotaPeriod, type QuotaRule } from "./quota-shared";
 
 const target = z.string().trim().min(1).max(210);
 const scopeInput = z.object({ scope: z.enum(MODEL_RULE_SCOPES), target });
@@ -40,7 +40,11 @@ export async function modelOptions(kind: string | null, rules?: ModelRule[]) {
 function rulePolicy(rule: ModelRule | null, scope: "group" | "role", id: string, provider: { kind: string; model: string }, options: string[], prices: Parameters<typeof allowedByRule>[2]): ModelPolicy {
   if (!rule || rule.kind !== provider.kind || !rule.model) return { model: provider.model, source: "instance", target: null, default: provider.model };
   const allowed = allowedByRule(rule, options, prices);
-  return { model: rule.model, source: scope, target: id, default: provider.model, ...(allowed.length > 1 ? { allowed } : {}) };
+  if (allowed.length < 2) return { model: rule.model, source: scope, target: id, default: provider.model };
+  // "Standard: kleinstes Modell": the cheapest of the set is the default.
+  const smallest = rule.defaultModel === "smallest";
+  const standard = smallest ? allowed[allowed.length - 1] : rule.model;
+  return { model: standard, source: scope, target: id, default: provider.model, allowed, standard, ...(smallest ? { smallest: true } : {}) };
 }
 
 type UsageRow = { day: string; model: string; tokens_in: number; tokens_out: number };
@@ -162,6 +166,10 @@ const saveInput = scopeInput.extend({
   // With a model of a group or role: "up to this model, your choice"
   // (#538); absent or false: exactly this model. Never for a person.
   choice: z.boolean().optional(),
+  // With the choice: the members' default until they pick a model –
+  // "smallest" or "largest" (the most capable). Absent: as the rule had it
+  // (a new rule: "largest").
+  defaultModel: z.enum(MODEL_DEFAULTS).optional(),
   // Absent: unchanged; null: no own limits (inherited); else the rule of
   // the quota table for this target.
   // afterLimits: the continuation's limit (absent: kept as it is).
@@ -181,16 +189,22 @@ export async function saveAiRule(user: Identity, raw: unknown) {
       const provider = (await instanceAiSettings()).provider;
       if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI).");
       const choice = !!b.choice && b.scope !== "user" && !!b.model;
+      // The default of the choice: given, else as the rule had it. Stored
+      // as 'smallest' or NULL (the most capable, as every older rule).
+      const before = choice && !b.defaultModel ? await one<{ choice: number; default_model: string | null }>("SELECT choice,default_model FROM ai_model_rules WHERE scope=? AND target=?", b.scope, b.target) : null;
+      const defaultModel = choice && (b.defaultModel ? b.defaultModel === "smallest" : !!before?.choice && before.default_model === "smallest") ? "smallest" : null;
       await run(
-        "INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,updated_at=excluded.updated_at",
+        "INSERT INTO ai_model_rules(scope,target,model,kind,choice,default_model,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,default_model=excluded.default_model,updated_at=excluded.updated_at",
         b.scope,
         b.target,
         b.model,
         provider.kind,
         choice ? 1 : 0,
+        defaultModel,
         Date.now(),
       );
       if (choice) detail.choice = true;
+      if (defaultModel) detail.defaultModel = defaultModel;
     }
     detail.model = b.model === null ? "inherited" : b.model || "instance-default";
   }

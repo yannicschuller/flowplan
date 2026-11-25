@@ -151,6 +151,12 @@
   padding: 6px 10px;
   font-size: 13px;
 }
+/* "Bis … – frei wählbar" with its default below. */
+.ai-quota-model-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .ai-quota-model-note {
   margin: 0;
   padding: 12px 22px 4px;

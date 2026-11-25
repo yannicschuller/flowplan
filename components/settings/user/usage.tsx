@@ -187,7 +187,10 @@ function AiCard({ ai, quota }: { ai: AiStatus | null | undefined; quota: ReturnT
             ai.provider.source === "user"
               ? t("Von deinem eigenen Anbieter.", "From your own provider.")
               : ai.provider.choice
-                ? t(`${upToLabel(ai.provider.choice.default, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} – unter KI-Einstellungen oder im KI-Fenster.`, `${upToLabel(ai.provider.choice.default, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} – in the AI settings or the AI panel.`)
+                ? t(
+                    `${upToLabel(ai.provider.choice.models[0].model, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} (Standard: ${ai.provider.choice.default}) – unter KI-Einstellungen oder im KI-Fenster.`,
+                    `${upToLabel(ai.provider.choice.models[0].model, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} (default: ${ai.provider.choice.default}) – in the AI settings or the AI panel.`,
+                  )
                 : ai.provider.assigned
                 ? t("Für dich festgelegt von der Administration.", "Set for you by the administration.")
                 : t("Das Modell der Instanz.", "The instance's model.")

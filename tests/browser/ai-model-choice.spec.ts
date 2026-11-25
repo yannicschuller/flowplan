@@ -157,3 +157,90 @@ test("a group with 'Bis Opus – frei wählbar': its member picks the model in t
     await mock.close();
   }
 });
+
+// The default of a choice: a new "Bis Opus – frei wählbar" made in the
+// limits table starts on "Standard: kleinstes Modell" – the member's picker
+// marks Haiku as the default and it is checked; back on the most capable,
+// Opus is.
+test("the default of a choice: a new one starts on the smallest model, the picker marks it", async ({ page }, info) => {
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the isolated test data directory");
+  test.skip(info.project.name === "mobile", "The limits table is the desktop's");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const mock = await startMock();
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) => {
+    const r = await page.request.post("/api/command", { headers: { origin }, data });
+    expect(r.ok(), await r.text()).toBe(true);
+    return r.json();
+  };
+  await command({ action: "profile.onboarded" });
+  await command({
+    action: "admin.ai",
+    settings: {
+      enabled: true,
+      access: "everyone",
+      provider: { kind: "openai", baseUrl: mock.base, model: HAIKU, embeddingModel: "" },
+      prices: [
+        { model: HAIKU, input: 1, output: 5 },
+        { model: SONNET, input: 3, output: 15 },
+        { model: OPUS, input: 5, output: 25 },
+      ],
+    },
+  });
+  await command({ action: "ai.settings", enabled: true, instanceModel: null });
+  const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+  db.exec("PRAGMA busy_timeout=5000;");
+  const group = randomUUID(),
+    groupName = `Lite ${Date.now()}`;
+  db.prepare("INSERT INTO groups(id,workspace_id,name) VALUES(?,?,?)").run(group, boot.workspace.id, groupName);
+  db.prepare("INSERT INTO group_members(group_id,user_id) VALUES(?,?)").run(group, boot.user.id);
+  const stored = () => db.prepare("SELECT choice,default_model FROM ai_model_rules WHERE scope='group' AND target=?").get(group) as { choice: number; default_model: string | null } | undefined;
+  const doc = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Standardmodell ${Date.now()}`, kind: "document" });
+  try {
+    // A quota row for the group, so the limits table lists it.
+    await command({ action: "admin.aiRule", scope: "group", target: group, model: SONNET });
+    await page.goto("/#settings/instance/ai");
+    const limits = page.locator("section[aria-labelledby='quota-limits-title']");
+    const cell = limits.getByRole("combobox", { name: new RegExp(`^Modell für .*${groupName}`) });
+    await expect(cell).toHaveValue(`m:${SONNET}`, { timeout: 30_000 });
+    await expect(limits.getByRole("combobox", { name: new RegExp(`^Standardmodell für .*${groupName}`) })).toHaveCount(0);
+    // "Bis Opus – frei wählbar": the default select appears, on the smallest.
+    await cell.selectOption(`c:${OPUS}`);
+    const defaults = limits.getByRole("combobox", { name: new RegExp(`^Standardmodell für .*${groupName}`) });
+    await expect(defaults).toHaveValue("smallest", { timeout: 15_000 });
+    await expect(defaults.locator("option")).toHaveText(["Standard: kleinstes Modell", "Standard: stärkstes Modell"]);
+    await expect.poll(() => stored()).toEqual({ choice: 1, default_model: "smallest" });
+
+    // The member's picker: Haiku is the default and in use.
+    await page.goto(`/#page=${doc.id}`);
+    await expect(page.locator(".page-content .ProseMirror").first()).toBeVisible({ timeout: 60_000 });
+    await page.locator(".main-nav").getByRole("button", { name: "KI fragen" }).click();
+    const panel = page.getByRole("complementary", { name: "KI fragen" });
+    const pill = panel.getByRole("button", { name: "Modell: Haiku 4.5 – ändern" });
+    await pill.click();
+    const picker = panel.getByRole("group", { name: "Modell wählen" });
+    await expect(picker.getByRole("radio", { name: /Haiku 4\.5 · Standard\s*schnell & günstig/ })).toBeChecked();
+    await expect(picker.getByRole("radio", { name: /Opus 4\.5 · Standard/ })).toHaveCount(0);
+
+    // Back to the most capable in the limits table: Opus is the default.
+    await page.goto("/#settings/instance/ai");
+    await expect(defaults).toHaveValue("smallest", { timeout: 30_000 });
+    await defaults.selectOption("largest");
+    await expect.poll(() => stored()).toEqual({ choice: 1, default_model: null });
+    await page.goto(`/#page=${doc.id}`);
+    await expect(page.locator(".page-content .ProseMirror").first()).toBeVisible({ timeout: 60_000 });
+    await page.locator(".main-nav").getByRole("button", { name: "KI fragen" }).click();
+    await panel.getByRole("button", { name: "Modell: Opus 4.5 – ändern" }).click();
+    await expect(picker.getByRole("radio", { name: /Opus 4\.5 · Standard\s*am stärksten/ })).toBeChecked();
+    expect(errors).toEqual([]);
+  } finally {
+    await command({ action: "admin.aiRule", scope: "group", target: group, model: null, quota: null }).catch(() => {});
+    await command({ action: "ai.settings", instanceModel: null }).catch(() => {});
+    db.prepare("DELETE FROM group_members WHERE group_id=?").run(group);
+    db.prepare("DELETE FROM groups WHERE id=?").run(group);
+    db.close();
+    await mock.close();
+  }
+});

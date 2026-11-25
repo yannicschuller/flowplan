@@ -5,7 +5,7 @@
 // The file (version 1) is shared with flowplan-billing's catalogue file
 // (its README "Catalogue file"): each side reads its own keys and ignores
 // the other's. Here: per plan `group`, `kind`, `storageMb`, `uploadMb`,
-// `workspaces`, `aiActions`, `aiModels`, `aiAfter`, `aiModel`, and the
+// `workspaces`, `aiActions`, `aiModels`, `aiDefault`, `aiAfter`, `aiModel`, and the
 // top-level `flowplan` object; Paddle's keys (prices, names, descriptions,
 // order, highlight, …) and keys starting with "_" are ignored. Any other
 // unknown key is an error, so a typo cannot pass silently.
@@ -14,6 +14,7 @@
 //     "plans": [{ "group": "Flowplan Plus", "kind": "plan"|"team"|"addon",
 //                 "storageMb": 25600, "uploadMb": 1024, "workspaces"?: 5,
 //                 "aiTokens": 5000000 | "aiActions": 1000, "aiModels": "haiku"|"sonnet"|"all",
+//                 "aiDefault"?: "smallest"|"largest" (with aiModels "all"),
 //                 "aiAfter"?: "haiku"|"<model id>"|"off", "aiAfterTokens"?: 20000000,
 //                 "aiModel"?: "<model id>" }],
 //     "flowplan": { "defaults": { "storageMb", "uploadMb", "workspaces"? },
@@ -49,7 +50,12 @@
 //   → "up to" its most capable (Opus, else Sonnet, else Haiku, else the
 //   priciest), your choice (#538: the rule's `choice` – members may pick
 //   that one or the instance's smaller models, "Bis Opus – frei wählbar"),
-//   or an explicit aiModel (exactly that one).
+//   or an explicit aiModel (exactly that one). aiDefault (only beside
+//   aiModels "all"): the members' default until they pick a model –
+//   "smallest" (the cheapest allowed) or "largest" (the most capable, the
+//   rule's default_model NULL); left out, an existing "all" rule keeps its
+//   default and a new one gets "largest". The export writes it only when it
+//   is "smallest".
 // A key left out leaves that setting as it is; null removes it. Nothing
 // that is not in the file is removed, unless "removeMissing": true – then
 // the limits, AI rules and model rules of directory groups not in the file
@@ -72,7 +78,7 @@ import { directoryKey, directoryName, isDirectoryKey, MAX_DIRECTORY_NAME } from 
 import { instanceAiSettings, type AiPrice } from "./ai/settings";
 import { cleanLimits, instanceModelOptions, quotaRules, quotaSettings } from "./ai/quota";
 import { allModel, familyModel, MODEL_FAMILIES, MODEL_NAME, modelRules, type ModelFamily } from "./ai/model-policy";
-import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "./ai/quota-shared";
+import { MODEL_DEFAULTS, QUOTA_PERIODS, type ModelDefault, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "./ai/quota-shared";
 import { MAX_UPLOAD_MB } from "./upload-limit";
 
 export const LIMITS_FILE_VERSION = 1;
@@ -103,8 +109,8 @@ export type FileIssue = { path: string; code: string; allowed?: string[]; max?: 
 // The payment provider's keys of a plan (flowplan-billing: "creem", older
 // files "paddle") and the top level: ignored here.
 const BILLING_PLAN_KEYS = ["status", "creem", "paddle", "prices", "name_de", "name_en", "description_de", "description_en", "prioritySupport", "order", "highlight", "studentDiscount", "minSeats", "taxCategory"];
-const PLAN_KEYS = new Set(["group", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel", ...BILLING_PLAN_KEYS]);
-const GROUP_KEYS = new Set(["group", "workspaceGroup", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel"]);
+const PLAN_KEYS = new Set(["group", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiDefault", "aiAfter", "aiAfterTokens", "aiModel", ...BILLING_PLAN_KEYS]);
+const GROUP_KEYS = new Set(["group", "workspaceGroup", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiDefault", "aiAfter", "aiAfterTokens", "aiModel"]);
 const TOP_KEYS = new Set(["version", "plans", "flowplan", "archiveMissing"]);
 const FLOWPLAN_KEYS = new Set(["defaults", "aiQuota", "moreLimitsUrl", "groups", "removeMissing"]);
 const DEFAULTS_KEYS = new Set(["storageMb", "uploadMb", "workspaces"]);
@@ -130,6 +136,8 @@ type DesiredGroup = {
   // Tokens per period for the model after the quota (null: unlimited).
   aiAfterTokens?: number | null;
   aiModels?: "haiku" | "sonnet" | "all";
+  // With aiModels "all": the default of the choice.
+  aiDefault?: ModelDefault;
   aiModel?: string | null;
 };
 type DesiredAi = {
@@ -256,6 +264,11 @@ async function parseGroup(raw: unknown, path: string, plan: boolean, errors: Fil
     if (has(raw, "aiModels")) {
       if (raw.aiModels === "haiku" || raw.aiModels === "sonnet" || raw.aiModels === "all") out.aiModels = raw.aiModels;
       else errors.push({ path: `${path}.aiModels`, code: "invalid", allowed: ["haiku", "sonnet", "all"] });
+    }
+    if (has(raw, "aiDefault")) {
+      if (!(MODEL_DEFAULTS as readonly unknown[]).includes(raw.aiDefault)) errors.push({ path: `${path}.aiDefault`, code: "invalid", allowed: [...MODEL_DEFAULTS] });
+      else if (raw.aiModels !== "all" || has(raw, "aiModel")) errors.push({ path: `${path}.aiDefault`, code: "needs_choice" });
+      else out.aiDefault = raw.aiDefault as ModelDefault;
     }
     if (has(raw, "aiModel")) {
       const m = raw.aiModel;
@@ -388,7 +401,7 @@ type State = {
   settings: { defaultUserStorageMb: number | null; maxUploadMb: number; defaultUserWorkspaces: number | null; moreLimitsUrl: string };
   limits: Map<string, GroupLimits>;
   quota: Map<string, QuotaState>; // "scope|target"
-  models: Map<string, { model: string; kind: string; choice: boolean }>; // group targets
+  models: Map<string, { model: string; kind: string; choice: boolean; smallest: boolean }>; // group targets
   unit: QuotaUnit;
   currency: string;
   prices: AiPrice[];
@@ -415,8 +428,8 @@ async function currentState(): Promise<State> {
   const provider = ai.provider?.model.trim() ? { kind: ai.provider.kind, model: ai.provider.model.trim() } : null;
   const quota = new Map<string, QuotaState>();
   for (const r of await quotaRules(q.unit)) quota.set(`${r.scope}|${r.target}`, { limits: r.limits, exempt: r.exempt, after: r.after ?? null, afterKind: r.afterKind ?? null, afterLimits: r.afterLimits ?? null });
-  const models = new Map<string, { model: string; kind: string; choice: boolean }>();
-  for (const r of await modelRules()) if (r.scope === "group") models.set(r.target, { model: r.model, kind: r.kind, choice: !!r.choice });
+  const models = new Map<string, { model: string; kind: string; choice: boolean; smallest: boolean }>();
+  for (const r of await modelRules()) if (r.scope === "group") models.set(r.target, { model: r.model, kind: r.kind, choice: !!r.choice, smallest: r.defaultModel === "smallest" });
   const names = new Map<string, string>();
   for (const g of await all<{ id: string; name: string; workspace: string | null }>("SELECT g.id,g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id")) names.set(g.id, `${g.workspace ?? "–"} · ${g.name}`);
   return {
@@ -446,7 +459,7 @@ export type LimitsChange =
   | { area: "limits"; target: string; name: string; field: "storageMb" | "uploadMb" | "workspaces" | "storageMode"; before: number | string | null; after: number | string | null }
   | { area: "limitsRemoved"; target: string; name: string }
   | { area: "quota"; scope: "group" | "default" | "instance" | "role" | "user"; target: string; name: string; before: QuotaSide | null; after: QuotaSide | null; unit: QuotaUnit; currency: string }
-  | { area: "model"; target: string; name: string; before: string | null; after: string | null; beforeChoice?: boolean; afterChoice?: boolean };
+  | { area: "model"; target: string; name: string; before: string | null; after: string | null; beforeChoice?: boolean; afterChoice?: boolean; beforeSmallest?: boolean; afterSmallest?: boolean };
 
 type Plan = {
   changes: LimitsChange[];
@@ -455,7 +468,7 @@ type Plan = {
     unit: QuotaUnit | null;
     limits: { target: string; limits: GroupLimits | null }[];
     quota: { scope: string; target: string; rule: { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null; afterLimits?: QuotaLimits | null } | null }[];
-    models: { target: string; model: string | null; kind: string; choice?: boolean }[];
+    models: { target: string; model: string | null; kind: string; choice?: boolean; smallest?: boolean }[];
     conversion: { period: QuotaPeriod; tokensPerAction: number; costPerAction: number };
   };
 };
@@ -651,9 +664,23 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     if (model !== undefined) {
       const cur = state.models.get(g.target) ?? null;
       const active = cur && state.provider && cur.kind === state.provider.kind ? cur.model : null;
-      if (model === null ? cur !== null : !(active === model && cur!.choice === choice)) {
-        changes.push({ area: "model", target: g.target, name: g.name, before: cur ? cur.model : null, after: model, ...(cur?.choice ? { beforeChoice: true } : {}), ...(model !== null && choice ? { afterChoice: true } : {}) });
-        writes.models.push({ target: g.target, model, kind: state.provider?.kind ?? "", choice: model !== null && choice });
+      // The default of the choice: from the file, else as the rule has it
+      // (a new rule, or one without the choice: the most capable).
+      const smallest = model !== null && choice && (g.aiDefault ? g.aiDefault === "smallest" : !!cur?.choice && cur.smallest);
+      const curSmallest = !!cur?.choice && cur.smallest;
+      if (model === null ? cur !== null : !(active === model && cur!.choice === choice && curSmallest === smallest)) {
+        changes.push({
+          area: "model",
+          target: g.target,
+          name: g.name,
+          before: cur ? cur.model : null,
+          after: model,
+          ...(cur?.choice ? { beforeChoice: true } : {}),
+          ...(model !== null && choice ? { afterChoice: true } : {}),
+          ...(curSmallest ? { beforeSmallest: true } : {}),
+          ...(smallest ? { afterSmallest: true } : {}),
+        });
+        writes.models.push({ target: g.target, model, kind: state.provider?.kind ?? "", choice: model !== null && choice, smallest });
       }
     }
   }
@@ -673,7 +700,7 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     }
     for (const [target, m] of state.models)
       if (isDirectoryKey(target) && !inFile.has(target)) {
-        changes.push({ area: "model", target, name: nameOf(state, target), before: m.model, after: null, ...(m.choice ? { beforeChoice: true } : {}) });
+        changes.push({ area: "model", target, name: nameOf(state, target), before: m.model, after: null, ...(m.choice ? { beforeChoice: true } : {}), ...(m.choice && m.smallest ? { beforeSmallest: true } : {}) });
         writes.models.push({ target, model: null, kind: m.kind });
       }
   }
@@ -758,11 +785,12 @@ export async function importLimitsFile(user: Identity, input: { file?: unknown; 
       if (m.model === null) await run("DELETE FROM ai_model_rules WHERE scope='group' AND target=?", m.target);
       else
         await run(
-          "INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES('group',?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,updated_at=excluded.updated_at",
+          "INSERT INTO ai_model_rules(scope,target,model,kind,choice,default_model,updated_at) VALUES('group',?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,default_model=excluded.default_model,updated_at=excluded.updated_at",
           m.target,
           m.model,
           m.kind,
           m.choice ? 1 : 0,
+          m.choice && m.smallest ? "smallest" : null,
           now,
         );
     }
@@ -835,8 +863,11 @@ export async function exportLimitsFile(user: Identity) {
         const f = modelName(m.model);
         // "all" is the choice up to the most capable (#538); a fixed rule
         // of the most capable model stays an explicit aiModel.
-        if (m.choice && m.model === allModel(state.options, state.prices)) entry.aiModels = "all";
-        else if (!m.choice && (f === "haiku" || f === "sonnet")) entry.aiModels = f;
+        if (m.choice && m.model === allModel(state.options, state.prices)) {
+          entry.aiModels = "all";
+          // Only when it is not the default ("largest").
+          if (m.smallest) entry.aiDefault = "smallest";
+        } else if (!m.choice && (f === "haiku" || f === "sonnet")) entry.aiModels = f;
         else {
           entry.aiModel = m.model;
           if (m.choice) skipped.push(`${what}: "up to ${m.model}, your choice" (exported as exactly this model)`);

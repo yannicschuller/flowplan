@@ -14,7 +14,7 @@ import { SaveState, useSaveState } from "../../settings-ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { upToLabel } from "../../ai-model-choice";
 import type { AiRuleView } from "@/lib/ai/admin-rule";
-import { QUOTA_PERIODS, quotaShare, type ModelPolicy, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "@/lib/ai/quota-shared";
+import { QUOTA_PERIODS, quotaShare, type ModelDefault, type ModelPolicy, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "@/lib/ai/quota-shared";
 
 type T = (de: string, en: string) => string;
 type Scope = "user" | "group" | "role";
@@ -120,6 +120,25 @@ const AFTER_PERIODS: Record<QuotaPeriod, readonly [string, string]> = {
   year: ["im Jahr", "a year"],
 };
 
+// The default of a choice ("Bis … – frei wählbar"): what its members get
+// until they pick a model themselves. A new choice starts with the
+// smallest (the form sends it); older rules are on the most capable.
+export const defaultModelLabel = (d: ModelDefault, t: T) => (d === "smallest" ? t("Standard: kleinstes Modell", "Default: smallest model") : t("Standard: stärkstes Modell", "Default: most capable model"));
+export function DefaultModelSelect({ value, label, id, className = "", onChange }: { value: ModelDefault; label: string; id?: string; className?: string; onChange: (d: ModelDefault) => void }) {
+  const t = useT();
+  return (
+    <Select id={id} className={className} aria-label={id ? undefined : label} value={value} onChange={(e) => onChange(e.target.value as ModelDefault)}>
+      <option value="smallest">{defaultModelLabel("smallest", t)}</option>
+      <option value="largest">{defaultModelLabel("largest", t)}</option>
+    </Select>
+  );
+}
+// What a model rule of a group or role offers, in a few words.
+export function choiceText(policy: ModelPolicy, t: T) {
+  const list = policy.allowed?.join(", ") ?? policy.model;
+  return policy.smallest ? t(`${list} · Standard: ${policy.standard} (kleinstes)`, `${list} · default: ${policy.standard} (smallest)`) : t(`${list} · Standard: ${policy.standard ?? policy.model}`, `${list} · default: ${policy.standard ?? policy.model}`);
+}
+
 // Where a model comes from, in a few words.
 export function modelSource(policy: ModelPolicy | null, t: T, groupNames: Record<string, string> = {}) {
   if (!policy || policy.source === "instance") return t("Standard der Instanz", "Instance default");
@@ -139,7 +158,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
   const [fetched, setFetched] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [status, run] = useSaveState();
-  const ids = { model: useId(), quota: useId(), after: useId() };
+  const ids = { model: useId(), modelDefault: useId(), quota: useId(), after: useId() };
   const load = useCallback(async () => {
     try {
       setView(await api<AiRuleView>(`/api/ai/admin/rule?scope=${scope}&target=${encodeURIComponent(target)}`));
@@ -149,7 +168,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
     }
   }, [scope, target]);
   useEffect(() => void load(), [load]);
-  const save = (patch: { model?: string | null; choice?: boolean; quota?: { exempt: boolean; limits: QuotaLimits; after?: string | null } | null }) =>
+  const save = (patch: { model?: string | null; choice?: boolean; defaultModel?: ModelDefault; quota?: { exempt: boolean; limits: QuotaLimits; after?: string | null } | null }) =>
     void run(async () => {
       setView(await api<AiRuleView>("/api/command", { action: "admin.aiRule", scope, target, ...patch }));
     });
@@ -247,7 +266,9 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
                 value={modelValue}
                 onChange={(e) => {
                   const v = e.target.value;
-                  save({ model: v === "inherit" ? null : v === "default" ? "" : v.slice(2), choice: v.startsWith("c:") });
+                  const choice = v.startsWith("c:");
+                  // A new choice starts with the smallest model as the default.
+                  save({ model: v === "inherit" ? null : v === "default" ? "" : v.slice(2), choice, ...(choice && !own?.choice ? { defaultModel: "smallest" as const } : {}) });
                 }}
               >
                 {scope === "user" ? (
@@ -280,6 +301,17 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
               </button>
             </span>
           </div>
+          {own?.choice && own.model && (
+            <div className="ai-rule-row">
+              <span className="ai-rule-text">
+                <label htmlFor={ids.modelDefault}>{t("Standardmodell", "Default model")}</label>
+                <small>{t("Was die Mitglieder bekommen, bis sie selbst ein Modell wählen.", "What the members get until they pick a model themselves.")}</small>
+              </span>
+              <span className="ai-rule-control">
+                <DefaultModelSelect id={ids.modelDefault} className="ai-rule-select" label={t("Standardmodell", "Default model")} value={own.defaultModel ?? "largest"} onChange={(d) => save({ model: own.model, choice: true, defaultModel: d })} />
+              </span>
+            </div>
+          )}
           <div className="ai-rule-row">
             <span className="ai-rule-text">
               <label htmlFor={ids.quota}>{t("Kontingent", "Quota")}</label>

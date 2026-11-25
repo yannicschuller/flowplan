@@ -32,10 +32,22 @@
 // model, or the instance's default) allows exactly that one. With more than
 // one model allowed, the person picks one in the AI panel or under
 // Einstellungen → KI (ai_user_settings.config.instanceModel,
-// lib/ai/settings.ts); the default is the most capable, as without a
-// choice. The server applies a choice only while it is in the allowed set
-// (applyModelChoice) – after a plan change a stale choice is ignored and
-// the default applies. Workflows always run with the default.
+// lib/ai/settings.ts). The server applies a choice only while it is in the
+// allowed set (applyModelChoice) – after a plan change a stale choice is
+// ignored and the default applies.
+//
+// The default of a choice ("Standard: kleinstes Modell / stärkstes
+// Modell", ai_model_rules.default_model): until a person picks a model
+// they get, from their allowed set,
+//   - the smallest (the cheapest by the price list) when at least one of
+//     their choice rules says "smallest" and none says "largest" (a rule
+//     without the setting – every rule from before – counts as "largest");
+//   - else the most capable.
+// Only choice rules have a say; a fixed rule widens the set but not the
+// default. A person's own rule still wins entirely (exactly its model).
+// The person's own choice beats the default. Workflows always run with the
+// most capable allowed model, whatever the default (modelPolicyFor's
+// `workflow`) – as before the default was configurable.
 import { all, one } from "../db";
 import { costOf } from "../ai-statistics";
 import { instanceAiSettings, userAiSettings, type AiPrice } from "./settings";
@@ -49,9 +61,9 @@ export const MODEL_NAME = /^[\w.\-:/@]+$/;
 
 export async function modelRules(): Promise<ModelRule[]> {
   try {
-    return (await all<Omit<ModelRule, "choice"> & { choice: number | null }>("SELECT scope,target,model,kind,choice FROM ai_model_rules ORDER BY scope,target"))
+    return (await all<Omit<ModelRule, "choice" | "defaultModel"> & { choice: number | null; default_model: string | null }>("SELECT scope,target,model,kind,choice,default_model FROM ai_model_rules ORDER BY scope,target"))
       .filter((r) => (MODEL_RULE_SCOPES as readonly string[]).includes(r.scope))
-      .map(({ choice, ...r }) => (choice && r.scope !== "user" ? { ...r, choice: true } : r));
+      .map(({ choice, default_model, ...r }): ModelRule => (choice && r.scope !== "user" ? { ...r, choice: true, ...(default_model === "smallest" ? { defaultModel: "smallest" as const } : {}) } : r));
   } catch {
     return [];
   }
@@ -127,17 +139,26 @@ export function chooseModel(rules: ModelRule[], who: QuotaPerson, instance: { ki
     groups.map((r) => r.model),
     prices,
   );
-  const rule = groups.filter((r) => r.model === model).sort((a, b) => (a.scope === b.scope ? a.target.localeCompare(b.target) : a.scope === "group" ? -1 : 1))[0];
+  const rule = byRule(groups.filter((r) => r.model === model))[0];
   const policy: ModelPolicy = { ...base, model, source: rule.scope === "group" ? "group" : "role", target: rule.target };
-  if (!groups.some((r) => r.choice)) {
+  const choices = groups.filter((r) => r.choice);
+  if (!choices.length) {
     const fixed = byCapability(groups.map((r) => r.model), prices);
-    return fixed.length > 1 ? { ...policy, allowed: fixed } : policy;
+    return fixed.length > 1 ? { ...policy, allowed: fixed, standard: model } : policy;
   }
   const known = options ?? [...new Set([instance.model, ...prices.map((p) => p.model), ...active.map((r) => r.model)].map((m) => m.trim()).filter(Boolean))];
-  // The union; the default (the most capable) first.
+  // The union, the most capable first (that is `model`).
   const allowed = byCapability(groups.flatMap((r) => allowedByRule(r, known, prices)), prices);
-  return allowed.length > 1 ? { ...policy, allowed: [model, ...allowed.filter((m) => m !== model)] } : policy;
+  if (allowed.length < 2) return policy;
+  // The default (see the precedence above): the smallest only when every
+  // choice rule of this person says so.
+  if (!choices.every((r) => r.defaultModel === "smallest")) return { ...policy, allowed, standard: model };
+  const smallest = allowed[allowed.length - 1];
+  const from = byRule(choices.filter((r) => allowedByRule(r, known, prices).includes(smallest)))[0] ?? byRule(choices)[0];
+  return { ...policy, model: smallest, source: from.scope === "group" ? "group" : "role", target: from.target, allowed, standard: smallest, smallest: true };
 }
+// Rules in a fixed order: groups before roles, then by target.
+const byRule = (rules: ModelRule[]) => [...rules].sort((a, b) => (a.scope === b.scope ? a.target.localeCompare(b.target) : a.scope === "group" ? -1 : 1));
 
 // The person's choice, when it is allowed; else the default (silently: a
 // choice from before a plan change, or forged).
@@ -154,8 +175,10 @@ export function modelTiers(allowed: string[]): { model: string; tier: ModelTier 
 
 // The model for this person's requests through the instance's provider
 // (lib/ai/resolve.ts). Without rules: the instance's default, one query.
-// `personal`: apply the person's own choice (not for workflows).
-export async function modelPolicyFor(user: Pick<Identity, "id" | "isAdmin">, options: { personal?: boolean } = {}): Promise<ModelPolicy> {
+// `personal`: apply the person's own choice; `workflow`: the most capable
+// allowed model, whatever the default of the choice (workflows, unchanged
+// by "Standard: kleinstes Modell"). Neither: the person's default.
+export async function modelPolicyFor(user: Pick<Identity, "id" | "isAdmin">, options: { personal?: boolean; workflow?: boolean } = {}): Promise<ModelPolicy> {
   const instance = await instanceAiSettings();
   const provider = instance.provider;
   const base: ModelPolicy = { model: provider?.model || "", source: "instance", target: null, default: provider?.model || "" };
@@ -167,12 +190,15 @@ export async function modelPolicyFor(user: Pick<Identity, "id" | "isAdmin">, opt
   }
   const rules = await modelRules();
   const policy = chooseModel(rules, await quotaPerson(user), provider, instance.prices, rules.some((r) => r.choice) ? await instanceModelOptions(provider.kind, rules) : undefined);
-  if (!options.personal || !policy.allowed) return policy;
+  if (!policy.allowed) return policy;
+  if (options.workflow) return policy.model === policy.allowed[0] ? policy : { ...policy, model: policy.allowed[0] };
+  if (!options.personal) return policy;
   return applyModelChoice(policy, (await userAiSettings(user.id)).instanceModel);
 }
 
 // What the AI panel's picker shows (AiStatus.provider.choice): the allowed
-// models with their tier, the default, and whether the person's quota
+// models with their tier (most capable first), the default ("Standard":
+// the most capable or the smallest, see above), and whether the person's quota
 // counts cost – then a smaller model stretches it.
 export async function modelChoiceView(user: Pick<Identity, "id" | "isAdmin">, policy: ModelPolicy) {
   if (!policy.allowed || policy.allowed.length < 2) return null;
@@ -184,5 +210,5 @@ export async function modelChoiceView(user: Pick<Identity, "id" | "isAdmin">, po
       costQuota = !personal.exempt && hasLimit(personal.limits);
     }
   } catch {}
-  return { models: modelTiers(policy.allowed), default: policy.allowed[0], costQuota };
+  return { models: modelTiers(policy.allowed), default: policy.standard ?? policy.allowed[0], costQuota };
 }

@@ -60,9 +60,11 @@ export function changeText(t: T, c: LimitsChange): string {
     }
     case "model": {
       // "all": "Bis Opus – frei wählbar" (#538).
-      const m = (v: string | null, choice?: boolean) => (v && choice ? `${upToLabel(v, t)} (${v})` : v || t("Standard der Instanz", "instance default"));
-      const before = m(c.before, c.beforeChoice),
-        after = m(c.after, c.afterChoice);
+      // aiDefault "smallest": the members start with the smallest model.
+      const m = (v: string | null, choice?: boolean, smallest?: boolean) =>
+        v && choice ? `${upToLabel(v, t)} (${v}${smallest ? t(", Standard: kleinstes Modell", ", default: smallest model") : ""})` : v || t("Standard der Instanz", "instance default");
+      const before = m(c.before, c.beforeChoice, c.beforeSmallest),
+        after = m(c.after, c.afterChoice, c.afterSmallest);
       if (!c.before) return t(`KI-Modell für ${c.name}: neu, ${after}`, `AI model for ${c.name}: new, ${after}`);
       if (!c.after) return t(`KI-Modell für ${c.name}: entfernt (war ${before})`, `AI model for ${c.name}: removed (was ${before})`);
       return t(`KI-Modell für ${c.name}: ${before} → ${after}`, `AI model for ${c.name}: ${before} → ${after}`);
@@ -118,6 +120,8 @@ export function issueText(t: T, e: FileIssue): string {
       return t(`${where}: ${e.value} ist ebenfalls angegeben und gilt – dieser Wert wird nicht verwendet`, `${where}: ${e.value} is given too and applies – this value is not used`);
     case "tokens_ignored":
       return t(`${where}: nicht verwendet – die KI-Kontingente zählen in Kosten, es gilt aiActions`, `${where}: not used – the AI quotas count in cost, aiActions applies`);
+    case "needs_choice":
+      return t(`${where}: gilt nur zusammen mit „aiModels“: „all“`, `${where}: only applies together with “aiModels”: “all”`);
     case "capped":
       return t(`${where}: auf ${num(e.max ?? 0)} MB begrenzt (größte Datei, die dieser Server annimmt)`, `${where}: capped at ${num(e.max ?? 0)} MB (the largest file this server takes)`);
     default:

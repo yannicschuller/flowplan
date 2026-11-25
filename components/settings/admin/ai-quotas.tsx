@@ -12,14 +12,14 @@ import { api, reportError } from "../../ui";
 import { Select } from "../../select";
 import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
 import { NumberInput } from "./parts";
-import { AfterLimitField, AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
+import { AfterLimitField, AfterSelect, choiceText, DefaultModelSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
 import { upToLabel } from "../../ai-model-choice";
 import { DirectoryGroupInput, GroupOptions, groupLabel } from "./group-picker";
 import { DirectoryMembersButton } from "./directory-groups";
 import { directoryName, isDirectoryKey } from "@/lib/group-keys";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { AdminQuotaView } from "@/lib/ai/quota";
-import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaRule } from "@/lib/ai/quota-shared";
+import { QUOTA_PERIODS, type ModelDefault, type QuotaLimits, type QuotaPeriod, type QuotaRule } from "@/lib/ai/quota-shared";
 
 type T = (de: string, en: string) => string;
 type Person = AdminQuotaView["people"][number];
@@ -61,7 +61,7 @@ export function AiQuotasSection() {
       await load();
     });
   // One row's model or both of its rules (admin.aiRule, lib/ai/admin-rule.ts).
-  const saveRule = (scope: string, target: string, patch: { model?: string | null; choice?: boolean; quota?: null }) =>
+  const saveRule = (scope: string, target: string, patch: { model?: string | null; choice?: boolean; defaultModel?: ModelDefault; quota?: null }) =>
     void run(async () => {
       await api("/api/command", { action: "admin.aiRule", scope, target, ...patch });
       await load();
@@ -351,7 +351,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
             {
               key: "model",
               header: t("Modell", "Model"),
-              render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model, choice) => saveRule(r.scope, r.target, { model, choice })} />,
+              render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model, choice, defaultModel) => saveRule(r.scope, r.target, { model, choice, ...(defaultModel ? { defaultModel } : {}) })} />,
             },
             {
               key: "after",
@@ -481,7 +481,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
             { key: "limit", header: t("Grenze", "Limit"), align: "end", render: (p) => (p.exempt ? t("ausgenommen", "exempt") : p.limit === null ? "–" : amount(p.limit)) },
             { key: "left", header: t("Übrig", "Left||remaining"), align: "end", render: (p) => (p.exempt || p.limit === null ? "–" : amount(Math.max(0, p.limit - p.used))) },
             { key: "source", header: t("Woher", "From"), hideOnPhone: true, render: (p) => (p.after ? `${sourceLabel(p, t)} · ${t(`danach ${p.after}`, `then ${p.after}`)}` : sourceLabel(p, t)) },
-            { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={p.model.allowed ? `${modelSource(p.model, t)} · ${p.model.allowed.join(", ")}` : modelSource(p.model, t)}>{p.model.allowed ? upToLabel(p.model.allowed[0], t) : p.model.model}</span> : "–") },
+            { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={p.model.allowed ? `${modelSource(p.model, t)} · ${choiceText(p.model, t)}` : modelSource(p.model, t)}>{p.model.allowed ? upToLabel(p.model.allowed[0], t) : p.model.model}</span> : "–") },
           ]}
         />
       </div>
@@ -496,8 +496,10 @@ const sourceLabel = (p: Person, t: T) => {
 // The model of a row of the limits table: the instance's default for the
 // instance and the default per person, a choice for roles, groups and people.
 // "Bis Opus – frei wählbar" (#538): groups and roles may also allow the
-// instance's smaller models (view.model.ranges: what each model allows).
-function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView; rule: QuotaRule; label: string; own?: AdminQuotaView["model"]["rules"][number]; onChange: (model: string | null, choice?: boolean) => void }) {
+// instance's smaller models (view.model.ranges: what each model allows),
+// with the default below: the smallest (what a new choice starts with) or
+// the most capable.
+function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView; rule: QuotaRule; label: string; own?: AdminQuotaView["model"]["rules"][number]; onChange: (model: string | null, choice?: boolean, defaultModel?: ModelDefault) => void }) {
   const t = useT();
   const fallback = view.model.provider?.model || "";
   if (rule.scope === "instance") return <span className="muted">–</span>;
@@ -506,14 +508,15 @@ function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView;
   const options = [...new Set([...view.model.options, ...(own?.model ? [own.model] : [])])].filter((m) => m !== fallback || own?.model === m);
   const ranges = view.model.ranges;
   const choices = rule.scope === "user" ? [] : [...new Set([...Object.keys(ranges), ...(own?.choice && own.model ? [own.model] : [])])].sort((a, b) => a.localeCompare(b));
-  return (
+  const select = (
     <Select
       className="ai-quota-model"
       aria-label={t(`Modell für ${label}`, `Model for ${label}`)}
       value={value}
       onChange={(e) => {
         const v = e.target.value;
-        onChange(v === "inherit" ? null : v === "default" ? "" : v.slice(2), v.startsWith("c:"));
+        const choice = v.startsWith("c:");
+        onChange(v === "inherit" ? null : v === "default" ? "" : v.slice(2), choice, choice && !own?.choice ? "smallest" : undefined);
       }}
     >
       {rule.scope === "user" ? (
@@ -535,5 +538,12 @@ function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView;
         </option>
       ))}
     </Select>
+  );
+  if (!own?.choice || !own.model) return select;
+  return (
+    <span className="ai-quota-model-cell">
+      {select}
+      <DefaultModelSelect className="ai-quota-model" label={t(`Standardmodell für ${label}`, `Default model for ${label}`)} value={own.defaultModel ?? "largest"} onChange={(d) => onChange(own.model, true, d)} />
+    </span>
   );
 }

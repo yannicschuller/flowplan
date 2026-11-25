@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 138;
+export const SCHEMA_VERSION = 139;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1710,6 +1710,8 @@ function migrate(d: DatabaseSync) {
   migrateTodayFavorites(d);
   // Schema 138 – "Bis … – frei wählbar" for model rules (#538, lib/ai/model-policy.ts).
   migrateModelRuleChoice(d);
+  // Schema 139 – the default of a choice: smallest or most capable (lib/ai/model-policy.ts).
+  migrateModelRuleDefault(d);
   // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
   // a new nullable column an older version leaves alone, so the schema
   // number stays.
@@ -1719,6 +1721,16 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 139 – ai_model_rules.default_model (lib/ai/model-policy.ts): on a
+// rule with the choice ("Bis … – frei wählbar"), which allowed model its
+// members get until they pick one – 'smallest' (the cheapest by the price
+// list) or 'largest' (the most capable); NULL, every older rule, is
+// 'largest', so nothing changes for them. An older version would ignore it
+// and give everyone the most capable, hence the number.
+function migrateModelRuleDefault(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(ai_model_rules)").all() as { name: string }[]).some((c) => c.name === "default_model"))
+    d.exec("ALTER TABLE ai_model_rules ADD COLUMN default_model TEXT");
 }
 // Schema 138 – ai_model_rules.choice (#538, lib/ai/model-policy.ts): 1
 // on a group or role rule means "up to this model, your choice" – its

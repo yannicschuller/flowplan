@@ -135,14 +135,15 @@ export async function draftProviderConfig(user: Identity, scope: "instance" | "u
 // the model the administration set for this person (lib/ai/model-policy.ts)
 // – here, so it holds for every feature. With the person's own choice among
 // the models their rules allow (#538) – except for workflows, which run
-// with the default (the most capable allowed).
+// with the most capable allowed, whatever the default of the choice.
 async function provider(user: Identity, feature?: string): Promise<AiResolution> {
   const own = await userAiSettings(user.id);
   const mine = await userProviderConfig(user);
   const instance = await instanceProviderConfig();
   if (own.source === "user" && mine.ok) return { ...mine, source: "user" };
   if (instance.ok) {
-    const policy = await modelPolicyFor(user, { personal: !user.workflowRun && feature !== "workflows" });
+    const workflow = !!user.workflowRun || feature === "workflows";
+    const policy = await modelPolicyFor(user, workflow ? { workflow: true } : { personal: true });
     return {
       ok: true,
       config: { ...instance.config, model: policy.model || instance.config.model },
