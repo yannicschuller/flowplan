@@ -373,12 +373,12 @@ export default function DataSection() {
           label={t("Sicherung der Instanz", "Backup of the instance")}
           description={
             boot.user.isAdmin
-              ? t("Geplante Sicherungen, S3 und die Wiederherstellung der ganzen Instanz findest du in der Administration.", "Scheduled backups, S3 and restoring the whole instance are in the administration.")
+              ? t("Geplante Sicherungen, S3 und die Wiederherstellung der ganzen Instanz findest du unter Einstellungen → Instanz → Speicher & Sicherung.", "Scheduled backups, S3 and restoring the whole instance are under Settings → Instance → Storage & backup.")
               : t("Regelmäßige Sicherungen der ganzen Instanz richtet die Administration ein; dafür ist hier nichts zu tun.", "Regular backups of the whole instance are set up by the administration; nothing to do here.")
           }
         >
           {boot.user.isAdmin ? (
-            <a className="button" href="#admin/storage">
+            <a className="button" href="#settings/instance/storage">
               {t("Speicher & Sicherung", "Storage & backup")}
               <ArrowRight aria-hidden />
             </a>
@@ -400,7 +400,7 @@ export default function DataSection() {
         </SettingRow>
         <SettingRow label={t("Frühere Versionen", "Earlier versions")} description={t("Wie lange frühere Versionen von Seiten aufbewahrt werden, legt die Administration der Instanz fest.", "How long earlier versions of pages are kept is set by the instance's administration.")}>
           {boot.user.isAdmin ? (
-            <a className="button" href="#admin/general">
+            <a className="button" href="#settings/instance/general">
               {t("Instanz", "Instance")}
               <ArrowRight aria-hidden />
             </a>

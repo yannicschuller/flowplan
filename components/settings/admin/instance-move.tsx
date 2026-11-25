@@ -179,8 +179,8 @@ function SourceSide({ status, act, onError }: { status: Status; act: Act; onErro
           <FreshSecret label={t("Umzugstoken", "Move token")} value={fresh.token} />
           <small>
             {t(
-              "Auf der neuen Instanz unter Administration → Speicher & Sicherung → Von anderer Instanz übernehmen eintragen, oder dort ausführen: ",
-              "Enter it on the new instance under Administration → Storage & backup → Take over from another instance, or run there: ",
+              "Auf der neuen Instanz unter Einstellungen → Instanz → Speicher & Sicherung → Von anderer Instanz übernehmen eintragen, oder dort ausführen: ",
+              "Enter it on the new instance under Settings → Instance → Storage & backup → Take over from another instance, or run there: ",
             )}
             <code>npm run move -- --from {fresh.url} --token …</code>
           </small>

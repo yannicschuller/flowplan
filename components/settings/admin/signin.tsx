@@ -64,7 +64,7 @@ export default function SigninSection() {
     );
   return (
     <>
-      <AdminStatus items={items} action={ldapFailed ? <FixLink href="#admin/signin/ldap">{t("Zum LDAP-Verzeichnis", "To the LDAP directory")}</FixLink> : undefined}>
+      <AdminStatus items={items} action={ldapFailed ? <FixLink href="#settings/instance/signin/ldap">{t("Zum LDAP-Verzeichnis", "To the LDAP directory")}</FixLink> : undefined}>
         {data.localLogin
           ? t(
               `Anmeldung mit E-Mail und Passwort ist an · ${secured} von ${local.length} lokalen Konten haben einen zweiten Faktor.`,
@@ -139,8 +139,8 @@ export default function SigninSection() {
                   "After this many days without any use an account is deleted (at least 60, more than for blocking). 14 and 3 days before, the person gets an e-mail with the date; signing in keeps the account. Admins and accounts without an e-mail address are never deleted. Empty = never.",
                 )
               : t(
-                  "Braucht den E-Mail-Versand (Administration → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto gelöscht. Leer = nie.",
-                  "Needs e-mail delivery (Administration → E-mail): without a warning by e-mail no account is deleted. Empty = never.",
+                  "Braucht den E-Mail-Versand (Einstellungen → Instanz → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto gelöscht. Leer = nie.",
+                  "Needs e-mail delivery (Settings → Instance → E-mail): without a warning by e-mail no account is deleted. Empty = never.",
                 )
           }
           unit={t("Tage", "days")}
@@ -161,8 +161,8 @@ export default function SigninSection() {
                     "If the e-mail address is still unconfirmed this many days after the account was created, the account is marked for deletion (at least 7): the person gets an e-mail with a confirmation link and a reminder 3 days before; without confirming, the account is deleted after 14 days. Never admins, SSO, LDAP or SCIM accounts; the rule does not mark a cancelled deletion again. Empty = never.",
                   )
                 : t(
-                    "Braucht den E-Mail-Versand (Administration → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto vorgemerkt. Leer = nie.",
-                    "Needs e-mail delivery (Administration → E-mail): without a warning by e-mail no account is marked. Empty = never.",
+                    "Braucht den E-Mail-Versand (Einstellungen → Instanz → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto vorgemerkt. Leer = nie.",
+                    "Needs e-mail delivery (Settings → Instance → E-mail): without a warning by e-mail no account is marked. Empty = never.",
                   )
             }
             unit={t("Tage", "days")}

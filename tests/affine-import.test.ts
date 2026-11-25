@@ -488,8 +488,8 @@ test("the import limit follows the upload limit, at least 100 MB; FLOWPLAN_IMPOR
   // The refusal names the limit and where to change it, in every language.
   const refusal = upload.importTooLarge(512, null);
   assert.equal(refusal.status, 413);
-  assert.match(refusal.message, /512 MB.*Administration → Grenzen & Aufbewahrung/);
-  assert.match(englishMessage(refusal.message), /512 MB.*Largest upload.*Administration → Limits & retention/);
+  assert.match(refusal.message, /512 MB.*Einstellungen → Instanz → Grenzen & Aufbewahrung/);
+  assert.match(englishMessage(refusal.message), /512 MB.*Largest upload.*Settings → Instance → Limits & retention/);
   assert.match(englishMessage(upload.importTooLarge(300, 300).message), /300 MB \(FLOWPLAN_IMPORT_MAX_MB\)/);
 
   // Internal limits grow with the file, never below their base values.

@@ -45,7 +45,7 @@ export function importTooLarge(limitMb: number, envMb = importEnvMb()) {
     413,
     envMb !== null
       ? `Die Datei darf höchstens ${limitMb} MB groß sein (FLOWPLAN_IMPORT_MAX_MB).`
-      : `Die Datei darf höchstens ${limitMb} MB groß sein. Die Grenze folgt der größten Datei beim Hochladen (Administration → Grenzen & Aufbewahrung), mindestens 100 MB.`,
+      : `Die Datei darf höchstens ${limitMb} MB groß sein. Die Grenze folgt der größten Datei beim Hochladen (Einstellungen → Instanz → Grenzen & Aufbewahrung), mindestens 100 MB.`,
   );
 }
 

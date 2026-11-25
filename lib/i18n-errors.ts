@@ -24,10 +24,10 @@ const exact: Record<string, string> = {
   "Der Worker-Thread wurde beendet.": "The worker thread ended.",
   "Bei dir laufen schon mehrere Exporte oder Importe. Bitte warte, bis einer fertig ist.": "You already have several exports or imports running. Please wait until one has finished.",
   // AI quotas (lib/ai/quota.ts, #382).
-  "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).": "Cost limits need prices per model (Administration → AI → Prices).",
+  "Kostengrenzen brauchen Preise je Modell (Einstellungen → Instanz → KI → Preise).": "Cost limits need prices per model (Settings → Instance → AI → Prices).",
   "Unbekannte Rolle.": "Unknown role.",
   "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.": "Groups and roles have no “instance default” of their own – remove the model instead.",
-  "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).": "Please set up an AI provider for the instance first (Administration → AI).",
+  "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI).": "Please set up an AI provider for the instance first (Settings → Instance → AI).",
   "Gruppe nicht gefunden.": "Group not found.",
   // Directory groups by hand (lib/directory-groups.ts, #451).
   "Gruppenname fehlt.": "Group name missing.",
@@ -1972,7 +1972,7 @@ const patterns: [RegExp, string][] = [
     "The server does not have enough memory for this AFFiNE workspace: the import needs about $1 MB, $2 MB are free. More memory for Flowplan (NODE_OPTIONS=--max-old-space-size=…) helps, or split the workspace in AFFiNE.",
   ],
   [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
-  [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
+  [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Einstellungen → Instanz → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Settings → Instance → Limits & retention), at least 100 MB."],
   // Messages with values that had no English yet (#453).
   [/^Der Import würde (\d+) neue Auswahl-Optionen anlegen \(höchstens (\d+)\)\. Passt die Spalte zur Eigenschaft\?$/, "The import would create $1 new select options (at most $2). Does the column fit the property?"],
   [/^„(.+)“ hätte mehr als (\d+) Optionen\.$/, "“$1” would have more than $2 options."],
@@ -1990,12 +1990,12 @@ const patterns: [RegExp, string][] = [
 
 // An incident of the instance for the administrators (lib/security-detect.ts
 // report): with the rule's own English title.
-const incidentNotice = /^(Kritischer )?Sicherheitsvorfall: (.+?)( – .+)?\. Details unter Administration → Sicherheit\.$/s;
+const incidentNotice = /^(Kritischer )?Sicherheitsvorfall: (.+?)( – .+)?\. Details unter (?:Administration|Einstellungen → Instanz) → Sicherheit\.$/s;
 function incidentEnglish(message: string) {
   const m = incidentNotice.exec(message);
   if (!m) return null;
   const rule = Object.values(securityRules).find((r) => r.de === m[2]);
-  return `${m[1] ? "Critical security incident" : "Security incident"}: ${rule ? rule.en : m[2]}${m[3] || ""}. Details under Administration → Security.`;
+  return `${m[1] ? "Critical security incident" : "Security incident"}: ${rule ? rule.en : m[2]}${m[3] || ""}. Details under Settings → Instance → Security.`;
 }
 
 // A rule's task that could not be made (lib/automation-task.ts): the

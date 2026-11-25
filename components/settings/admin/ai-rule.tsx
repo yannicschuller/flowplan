@@ -221,7 +221,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
         </p>
       )}
       {!view.provider ? (
-        <p className="muted ai-rule-note">{t("Die Instanz hat noch keinen KI-Anbieter (Administration → KI).", "The instance has no AI provider yet (Administration → AI).")}</p>
+        <p className="muted ai-rule-note">{t("Die Instanz hat noch keinen KI-Anbieter (Einstellungen → Instanz → KI).", "The instance has no AI provider yet (Settings → Instance → AI).")}</p>
       ) : (
         <>
           <div className="ai-rule-row">

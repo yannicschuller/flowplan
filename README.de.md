@@ -111,7 +111,7 @@ curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env
 docker compose up -d
 ```
 
-- **Lokale KI (optional):** `docker compose --profile ai up -d` startet Ollama neben Flowplan; `OLLAMA_URL=http://ollama:11434` setzen und unter **Administration → KI** ein Modell wählen ([KI](https://docs.flowplan.org/de/ai)).
+- **Lokale KI (optional):** `docker compose --profile ai up -d` startet Ollama neben Flowplan; `OLLAMA_URL=http://ollama:11434` setzen und unter **Einstellungen → Instanz → KI** ein Modell wählen ([KI](https://docs.flowplan.org/de/ai)).
 - **Kubernetes:** das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht; mehrere Pods im [Cluster-Modus](https://docs.flowplan.org/de/cluster#kubernetes-helm)).
 - **Single Sign-on:** beim OIDC-Anbieter einen vertraulichen Web-Client mit der Weiterleitungsadresse `https://<deine-domain>/api/auth/callback` anlegen ([Anmeldung](https://docs.flowplan.org/de/sign-in)).
 
@@ -313,7 +313,7 @@ KI ist in Flowplan **aus, bis ein Admin sie einschaltet** – und dann nur für 
 <table>
   <tr>
     <td width="50%"><img src=".github/assets/readme/ai-ask.webp" alt="KI fragen: eine Frage zum Arbeitsbereich mit nummerierten Quellenverweisen beantwortet"></td>
-    <td width="50%"><img src=".github/assets/readme/ai-settings.webp" alt="Administration → KI: Anbieter Ollama, wer KI nutzen darf, und ein Schalter pro Funktion"></td>
+    <td width="50%"><img src=".github/assets/readme/ai-settings.webp" alt="Einstellungen → Instanz → KI: Anbieter Ollama, wer KI nutzen darf, und ein Schalter pro Funktion"></td>
   </tr>
   <tr>
     <td><b>Fragen an den Arbeitsbereich</b> – Antworten mit Links zu ihren Quellen, nie mehr, als du lesen darfst.</td>
@@ -440,7 +440,7 @@ Sicherheitslücken bitte vertraulich melden – wie, was dazugehört und welche 
 - Optional [PostgreSQL](https://docs.flowplan.org/de/postgresql) statt SQLite, [Wechsel](https://docs.flowplan.org/de/database-migration) in beide Richtungen, und der [Cluster-Modus](https://docs.flowplan.org/de/cluster) mit mehreren Instanzen, Redis und S3 – Updates ohne Ausfallzeit
 - Volltextsuche inklusive Texterkennung für gescannte PDFs und Office-Dateien
 - Prometheus-Metriken und Health-Endpunkt; **Einstellungen → Über Flowplan** zeigt laufende Version, Commit und Build-Datum und meldet Admins eine neuere Version
-- Eine ganze Instanz auf einen anderen Server umziehen unter **Administration → Speicher & Sicherung**: Der neue Server holt Datenbank, Dateien und Schlüssel direkt vom alten, mit kurzer Schlusssynchronisierung im Nur-Lesen-Modus
+- Eine ganze Instanz auf einen anderen Server umziehen unter **Einstellungen → Instanz → Speicher & Sicherung**: Der neue Server holt Datenbank, Dateien und Schlüssel direkt vom alten, mit kurzer Schlusssynchronisierung im Nur-Lesen-Modus
 - `FLOWPLAN_SOURCE_URL` lässt die Quellcode-Links auf deinen geänderten Code zeigen (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` blendet die Sponsoring-Karte auf der Seite „Über Flowplan“ aus
 - Docker-Image für `amd64` und `arm64`, ein **Helm-Chart** für Kubernetes
 
@@ -491,7 +491,7 @@ Sichere das Volume `/app/data` – oder lass Flowplan das erledigen: geplante Si
 <details>
 <summary><b>Wie ziehe ich auf einen anderen Server um?</b></summary>
 
-Starte auf dem neuen Server eine frische Installation und nutze **Administration → Speicher & Sicherung → Instanz umziehen**: Die alte Instanz gibt einen einmaligen Umzugs-Token aus, die neue holt Datenbank, Uploads und Schlüsseldateien direkt von Server zu Server; die Ausfallzeit ist nur die Schlusssynchronisierung, meist wenige Minuten. Alternativ kopierst du das Datenvolume auf den neuen Host und startest dort dasselbe Image – oder startest mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her. Siehe [Instanz umziehen](https://docs.flowplan.org/de/move-instance) und [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen).
+Starte auf dem neuen Server eine frische Installation und nutze **Einstellungen → Instanz → Speicher & Sicherung → Instanz umziehen**: Die alte Instanz gibt einen einmaligen Umzugs-Token aus, die neue holt Datenbank, Uploads und Schlüsseldateien direkt von Server zu Server; die Ausfallzeit ist nur die Schlusssynchronisierung, meist wenige Minuten. Alternativ kopierst du das Datenvolume auf den neuen Host und startest dort dasselbe Image – oder startest mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her. Siehe [Instanz umziehen](https://docs.flowplan.org/de/move-instance) und [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen).
 
 </details>
 

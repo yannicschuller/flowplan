@@ -133,7 +133,7 @@ export async function recordPreviousRuns(runs: PreviousRun[], now = Date.now()) 
     written.push(rowId);
     if (unexpected)
       console.warn(
-        `Restart: the previous run (${h.instance || h.key}, up ${Math.round(c.uptimeMs / 1000)} s) ended unexpectedly – ${c.reason}${c.error ? `: ${c.error.split("\n")[0]}` : ""}. Administration → Überwachung → Neustarts has its last log lines.`,
+        `Restart: the previous run (${h.instance || h.key}, up ${Math.round(c.uptimeMs / 1000)} s) ended unexpectedly – ${c.reason}${c.error ? `: ${c.error.split("\n")[0]}` : ""}. Settings → Instance → Monitoring → Restarts has its last log lines.`,
       );
   }
   if (written.length) await checkRestartIncident(now);
@@ -189,7 +189,7 @@ export async function checkRestartIncident(now = Date.now()) {
     .filter(Boolean)
     .join(" · ");
   await audit("", "instance.restart.incident", "instance", JSON.stringify({ restarts: chain.length, reasons: chain.map((r) => r.reason), instances }));
-  console.error(`Restart: ${detail} (Administration → Überwachung → Neustarts).`);
+  console.error(`Restart: ${detail} (Settings → Instance → Monitoring → Restarts).`);
   const { sendIncidentAlert } = await import("../admin-ops");
   await sendIncidentAlert("unexpected_restart", key, detail, now).catch((error) => console.error("Restart alert failed", (error as Error)?.message));
   return key;

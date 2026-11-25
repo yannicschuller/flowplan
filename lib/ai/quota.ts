@@ -546,7 +546,7 @@ async function alertInstance(settings: QuotaSettings, now: number) {
     const { adminUserIds } = await import("../auth");
     const { id } = await import("../db");
     for (const admin of await adminUserIds())
-      await run("INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'ai_quota',?)", id(), admin, instanceAlertText(state.period, level, end), "#admin/ai/quotas");
+      await run("INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'ai_quota',?)", id(), admin, instanceAlertText(state.period, level, end), "#settings/instance/ai/quotas");
     try {
       const { dispatchPush } = await import("../push");
       await dispatchPush();
@@ -587,7 +587,7 @@ export async function instanceModelOptions(kind: string | null, ruleModels?: { k
 export async function checkedAfter(model: string | null | undefined): Promise<QuotaAfter | null> {
   if (!model) return null;
   const provider = (await instanceAiSettings()).provider;
-  if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).");
+  if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI).");
   if (!(await instanceModelOptions(provider.kind)).includes(model)) throw new HttpError(400, "Dieses Modell ist für die Instanz nicht vorgesehen.");
   return { model, kind: provider.kind };
 }
@@ -604,7 +604,7 @@ export async function saveQuotaConfig(user: Identity, raw: unknown) {
   const current = await quotaSettings();
   const next: QuotaSettings = { ...current, ...Object.fromEntries(Object.entries(b.settings || {}).filter(([, v]) => v !== undefined)) };
   const ai = await instanceAiSettings();
-  if (next.unit === "cost" && !ai.prices.length) throw new HttpError(400, "Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise).");
+  if (next.unit === "cost" && !ai.prices.length) throw new HttpError(400, "Kostengrenzen brauchen Preise je Modell (Einstellungen → Instanz → KI → Preise).");
   let rules = b.rules ?? null;
   // Another unit: numbers of the old one mean nothing – limits start empty
   // (exemptions stay), unless new rules come along.

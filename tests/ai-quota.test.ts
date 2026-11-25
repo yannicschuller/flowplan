@@ -379,7 +379,7 @@ test("administrators get one notification at the warning and one at the ceiling 
   await use(ben, 50);
   let notes = await all<{ body: string; link: string }>("SELECT body,link FROM notifications WHERE kind='ai_quota' AND user_id=?", admin.id);
   assert.deepEqual(notes.map((n) => n.body), ["Das KI-Kontingent der Instanz für diese Woche ist zu 80 % verbraucht."]);
-  assert.equal(notes[0].link, "#admin/ai/quotas");
+  assert.equal(notes[0].link, "#settings/instance/ai/quotas");
   await use(ben, 200);
   await use(ben, 200);
   notes = await all<{ body: string; link: string }>("SELECT body,link FROM notifications WHERE kind='ai_quota' AND user_id=? ORDER BY seq", admin.id);

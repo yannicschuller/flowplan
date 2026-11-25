@@ -37,16 +37,16 @@ const kindHints: Record<NotificationKind, [string, string]> = {
     "About your own account: a sign-in from a new device, a wrong PIN for your journal, a chat app switched off.",
   ],
   incident: [
-    "Nur für Administratoren: was die Erkennungsregeln auf der ganzen Instanz finden – Passwort-Raten, neue Adminrechte, Abtasten. Ein Tipp öffnet den Vorfall unter Administration → Sicherheit.",
-    "Administrators only: what the detection rules find on the whole instance – password guessing, new admin rights, probing. A tap opens the incident under Administration → Security.",
+    "Nur für Administratoren: was die Erkennungsregeln auf der ganzen Instanz finden – Passwort-Raten, neue Adminrechte, Abtasten. Ein Tipp öffnet den Vorfall unter Einstellungen → Instanz → Sicherheit.",
+    "Administrators only: what the detection rules find on the whole instance – password guessing, new admin rights, probing. A tap opens the incident under Settings → Instance → Security.",
   ],
   study: [
     "Die tägliche Erinnerung an fällige Lernkarten, zur Uhrzeit, die du unter „Lernen“ einstellst – nur wenn du an dem Tag noch nicht gelernt hast.",
     "The daily reminder of due flashcards, at the time you set under “Study” – only if you have not studied that day yet.",
   ],
   ai_quota: [
-    "Nur für Administratoren: wenn das KI-Kontingent der ganzen Instanz fast oder ganz verbraucht ist. Ein Tipp öffnet Administration → KI → Kontingente.",
-    "Administrators only: when the AI quota of the whole instance is almost or fully used up. A tap opens Administration → AI → Quotas.",
+    "Nur für Administratoren: wenn das KI-Kontingent der ganzen Instanz fast oder ganz verbraucht ist. Ein Tipp öffnet Einstellungen → Instanz → KI → Kontingente.",
+    "Administrators only: when the AI quota of the whole instance is almost or fully used up. A tap opens Settings → Instance → AI → Quotas.",
   ],
 };
 
