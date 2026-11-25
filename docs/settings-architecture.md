@@ -1,30 +1,50 @@
 # Settings and administration – architecture
 
-Status: phase 1 (foundation) implemented. The settings (`#settings`) and the
-administration (`#admin`) are a landing page of grouped tiles and one page
-per section ("tiles → detail pages"). Every existing panel is wired in
-unchanged; restyling the panels onto the building blocks below is phase 2.
+Status: one screen since #532. "Einstellungen" holds the personal settings
+and – for admins – the instance (formerly the separate "Administration"):
+one sidebar, a graphical start page and one page per section. Restyling
+the remaining panels onto the building blocks below is ongoing (phase 2).
 
 Code: `lib/settings-sections.ts` (registry data, addresses, old links,
 search), `components/settings/registry.tsx` (icons and components),
-`components/settings/shell.tsx` (landing page, detail page, routing),
+`components/settings.tsx` (the screen: route, sidebar, start page or
+section, the instance's summary), `components/settings/nav.tsx` (the
+sidebar), `components/settings/start.tsx` (the start page),
+`components/settings/previews.tsx` (rings, the page preview, the example
+notification, the feature tiles, the storage bar),
+`components/settings/shell.tsx` (detail page, tiles of search results,
+route hook), `app/settings-screen.css` (prefix `sv-`),
 `components/settings-ui.tsx` (building blocks), `components/settings/user/*`
 and `components/settings/admin/*` (one file per section),
 `components/settings/user-context.tsx` / `admin-context.tsx` (shared data),
 `lib/admin-summary.ts` + `app/api/admin/summary/handler.ts` (tile facts),
 `app/globals.css` ("Settings shell" block). Tests:
 `tests/settings-sections.test.ts`, `tests/admin-summary.test.ts`, the browser
-specs that open settings (they use the addresses below), `npm run quality`
-(axe, overflow and JS budget of `#settings`, `#settings/account`, `#admin`).
+specs that open settings (they use the addresses below;
+`tests/browser/settings-start.spec.ts` covers the start page, the redirects
+and phones), `npm run quality` (axe, overflow and JS budget of `#settings`,
+`#settings/account`, `#settings/instance`).
 
 ## Addresses
 
 | Address | Shows |
 |---|---|
-| `#settings` | landing page of the settings |
-| `#settings/<section>` | one section, e.g. `#settings/account` |
+| `#settings` | the start page |
+| `#settings/<section>` | one personal section, e.g. `#settings/account` |
 | `#settings/<section>/<anchor>` | the section, scrolled to the element with id `<anchor>` |
-| `#admin`, `#admin/<section>[/<anchor>]` | the same for the administration (admins only) |
+| `#settings/instance` | the start page at "Instanz auf einen Blick" (admins) |
+| `#settings/instance/<section>[/<anchor>]` | one section of the instance (area `admin`, admins only), e.g. `#settings/instance/monitoring` |
+| `#admin`, `#admin/<section>[/<anchor>…]` | old addresses: replaced in place (no history step) by `#settings/instance…` |
+
+- The registry keeps two areas: `settings` (personal) and `admin` (the
+  instance). Ids are unique per area – `ai`, `security` and `extensions`
+  exist in both – and the address keeps them apart (`#settings/ai` vs.
+  `#settings/instance/ai`). `instance` is reserved: never a personal
+  section id. `settingsHash()` and `parseSettingsHash()` are the only
+  places that know the address format; `redirectedSettingsHash()` gives the
+  new address of an old one (`components/workspace-app.tsx` replaces
+  `#admin…` before it picks the screen, the screen corrects old tab ids).
+- For non-admins the instance's addresses show the start page (`#settings`).
 
 - The hash is the state: reload, back, forward and links work. A tile is a
   real `<a href>`; opening a section pushes a history entry.
@@ -33,11 +53,14 @@ specs that open settings (they use the addresses below), `npm run quality`
 - **Section ids are permanent** once released – links in docs, e-mails and
   bookmarks use them. Rename the title, never the id.
 - Old tab ids are redirected in place (`LEGACY_SECTIONS`): `#settings/integrations`
-  → `#settings/api`, `#admin/operations` → `#admin/monitoring`,
-  `#admin/instance` → `#admin/general`. A removed or renamed section keeps an
+  → `#settings/api`, `#admin/operations` → `#settings/instance/monitoring`,
+  `#admin/instance` → `#settings/instance/general`. A removed or renamed section keeps an
   entry there.
-- `components/workspace-app.tsx` only decides the screen (`settings`/`admin`)
-  via `parseSettingsHash`; everything after the first `/` belongs to the shell.
+- `components/workspace-app.tsx` only decides the screen (`settings`) via
+  `parseSettingsHash`; everything after the first `/` belongs to the screen.
+- Server-made links (notifications, alerts, e-mails) use the new addresses;
+  stored ones with `#admin/…` keep working (`lib/page-location.ts` accepts
+  both).
 
 ## The registry
 
@@ -77,7 +100,7 @@ Settings (`#settings/…`):
 | Arbeitsbereich „…“ | `workspace` Allgemein · `members` Mitglieder · `groups` Gruppen & Rechte · `spaces` Bereiche · `extensions` Block-Erweiterungen · `data` Import & Export · `time` Zeiten |
 | Hilfe & Info | `about` Über Flowplan (version, licence and source – `FLOWPLAN_SOURCE_URL` –, links, the sponsor link unless `FLOWPLAN_HIDE_SPONSOR` or the mobile apps; lib/about.ts) |
 
-Administration (`#admin/…`):
+Instance (`#settings/instance/…`, admins only, under the heading "Instanz" in the sidebar):
 
 | Group | Sections |
 |---|---|
@@ -90,29 +113,60 @@ Administration (`#admin/…`):
 Every instance setting has one home: registration, two-factor and inactive
 accounts in `signin`, quotas, uploads and versions in `limits`, backups in
 `storage`, the notice in `maintenance`, plugins and domains in `extensions`,
-name and demo in `general`. Administration sections start with
+name and demo in `general`. Instance sections start with
 `<AdminStatus>` (components/settings/admin/parts.tsx: badges, one sentence,
 a link to the fix) and save single instance settings with `InstanceSwitch`,
 `InstanceSelect`, `InstanceNumber` and `InstanceText` (saved on change, the
 state next to the control).
 
-Planned: `settings/webhooks` (Webhooks out of `api`). `admin/overview` stays the landing page itself – the
-live charts go above the tiles (`status` slot of the shell).
+## The screen and its start page (#532)
+
+- **Sidebar** (`nav.tsx`, a `<nav>` landmark "Bereiche der Einstellungen",
+  `aria-current="page"` on the open section): "Übersicht", the personal
+  groups (sections up to the person's level), then for admins the heading
+  "Instanz – nur für Admins" and its groups. Wide screens: a sticky column,
+  with a search while a section is open. Phones (container ≤ 767 px): the
+  list under the start page, one line of facts per section (the tiles'
+  `TileSummary.line`, a meter or trend, a dot for warnings); a section opens
+  full screen with "← Einstellungen".
+- **Start page** (`start.tsx`): the search over every area (the instance's
+  results carry "Instanz"), the level switch, "Für dich" – storage and AI
+  quota as rings (`boot.myLimits`, the AI quota) and "Dein Setup"
+  (appearance with a small page preview, notifications, offline use on this
+  device) – and for admins "Instanz auf einen Blick": six tiles from
+  `/api/admin/summary` (accounts & sessions with the real active-people
+  series, storage & backup as a stacked bar database/files and the last
+  backup, monitoring warnings, failed sign-ins of 24 hours, features on/off
+  from `useFeatureModules()`, version and update) and the live strip (state,
+  live numbers, charts of 24 hours from `/api/admin/monitoring?view=live`).
+  Every tile is a link into its section. A trend only where a history
+  exists – no example data.
+- **Previews in sections** (`previews.tsx`): Darstellung (a page following
+  theme, accent, icon place, width and struck-through tasks, with the
+  facts in words), Speicher & KI (rings), Benachrichtigungen (one example
+  message per channel, labelled "Beispiel"), Instanz → Allgemein →
+  Funktionen dieser Instanz (tiles that are the real switches, with what
+  disappears for people), Speicher & Sicherung (the usage bar and the
+  accounts with the most files, live from `/api/admin`).
+- Instance sections keep "Aktualisieren" in their header (except those
+  with their own refresh: monitoring, storage, push).
+
+Planned: `settings/webhooks` (Webhooks out of `api`).
 
 ## Live overview and monitoring
 
-- The administration's landing page starts with the live strip
+- The start page's "Instanz auf einen Blick" ends with the live strip
   (`components/settings/admin/live-strip.tsx`): problems and notices of the
-  tiles, four live numbers and the requests of 24 hours from
+  sections, the live numbers and the requests of 24 hours from
   `/api/admin/monitoring?view=live`, polled every 15 s while visible
   (`use-live.ts`, paused in a hidden tab, "Live" badge). Tiles may carry a
   figure, a sparkline or a meter (`TileSummary.value/valueLabel/spark/meter`,
   series from `adminSummary().charts`).
-- `#admin/monitoring` is the full dashboard (`components/settings/admin/monitoring.tsx`,
+- `#settings/instance/monitoring` is the full dashboard (`components/settings/admin/monitoring.tsx`,
   data from `lib/admin-monitoring.ts`): health, KPIs, charts, queues, events
   with filters, quick actions, workers, alerts by webhook and the
-  statistics switch. It takes the full width (no rail).
-- `#admin/push` (`components/settings/admin/push.tsx`, `/api/admin/push`,
+  statistics switch.
+- `#settings/instance/push` (`components/settings/admin/push.tsx`, `/api/admin/push`,
   `lib/push-status.ts`): the push relay in use (official or
   `PUSH_RELAY_URL`), on/off with the reason, `APP_URL`, whether
   `/.well-known/flowplan-push` is published, the signing keys (rotation with
@@ -123,7 +177,7 @@ live charts go above the tiles (`status` slot of the shell).
   `lib/metrics.ts`). The landing page's tile and the monitoring's health
   tile show the last check without making one (`pushSummary`); the summary
   route warms it for at most 1.5 s.
-- `#admin/messengers` (`components/settings/admin/messengers.tsx`,
+- `#settings/instance/messengers` (`components/settings/admin/messengers.tsx`,
   `/api/admin/messengers`, `lib/messengers.ts`): which chat apps people may
   connect (Telegram, Gotify, ntfy, Matrix; default `FLOWPLAN_MESSENGERS`),
   the instance's Telegram bot (token checked with getMe, sealed, shown as
@@ -143,7 +197,7 @@ live charts go above the tiles (`status` slot of the shell).
   from `lib/ai/run.ts`; storage per day), written once a minute by
   `lib/metrics-worker.ts`. Kept 48 h / 35 d / 400 d. `FLOWPLAN_METRICS=off`
   or the switch in the section turns it off. Tests: `tests/metrics.test.ts`.
-- Error details (`#admin/monitoring/errors`,
+- Error details (`#settings/instance/monitoring/errors`,
   `components/settings/admin/monitoring-errors.tsx`,
   `/api/admin/monitoring?view=errors`, POST `errors.clear`):
   `lib/error-details.ts` groups every 5xx (and failing workers, jobs, MCP
@@ -154,7 +208,7 @@ live charts go above the tiles (`status` slot of the shell).
   AsyncLocalStorage; route handlers' catches note the exception with
   `serverError(e)`, Next's own with `onRequestError` (instrumentation.ts).
   Every answer carries `X-Request-Id`. Tests: `tests/error-details.test.ts`.
-- Errors from external services (`#admin/monitoring/upstream`,
+- Errors from external services (`#settings/instance/monitoring/upstream`,
   `UpstreamFailuresCard`, `/api/admin/monitoring?view=upstream`, #514): an
   `HttpError` made with an `upstream` mark (`{ service, host }`, or
   `upstreamError()` in `lib/auth.ts`) reports a failing third-party service
@@ -167,7 +221,7 @@ live charts go above the tiles (`status` slot of the shell).
   and host: count, first/last time; 14 days, 200 rows) instead of
   `error_groups`. Failing workers and jobs with such an error go there too.
   Mark only failures of the other service, never Flowplan's own.
-- Restarts (`#admin/monitoring/restarts`,
+- Restarts (`#settings/instance/monitoring/restarts`,
   `components/settings/admin/monitoring-restarts.tsx`,
   `/api/admin/monitoring?view=restarts`, `?view=restart&id=…` when a row is
   opened): `lib/restarts/tracker.ts` writes a heartbeat every 30 s and an
@@ -202,7 +256,8 @@ live charts go above the tiles (`status` slot of the shell).
    (numbers and states only, no texts; extend `tests/admin-summary.test.ts`)
    and word them in `admin/tiles.ts`.
 5. If it replaces an old location, add the old id to `LEGACY_SECTIONS` and
-   update texts that point there ("Einstellungen → …", e-mails, OpenAPI –
+   update texts that point there ("Einstellungen → …" / "Einstellungen →
+   Instanz → …", e-mails, OpenAPI –
    `npm run sdk` afterwards) and the docs.
 6. `npm run i18n` (French 100 %), `npx tsc --noEmit`, `npm test`, the
    browser specs that open the section (`page.goto("/#settings/<id>")`).
@@ -243,9 +298,10 @@ own headings, forms and CSS. Migrate it onto `components/settings-ui.tsx`:
 
 ## Mobile rules (≤ 860 px)
 
-- The landing page is a full-width inset list (one tile per row, ≥ 60 px);
-  the detail page has a sticky bar with "← Einstellungen"/"← Administration"
-  (≥ 44 px) instead of the breadcrumb; the sibling rail is hidden (≤ 1100 px).
+- The start page stacks (rings first, then the instance's tiles two a row,
+  then the level switch and "Alle Bereiche"); the sidebar follows as an
+  inset list (≥ 52 px rows with one line of facts); the detail page has a
+  sticky bar with "← Einstellungen" (≥ 44 px) instead of the breadcrumb.
 - No horizontal scrolling at 360 and 390 px in German, English and French.
   Tables scroll inside `.data-table-scroll` or become lists; long labels wrap
   (buttons in panels may wrap on phones).
@@ -254,8 +310,8 @@ own headings, forms and CSS. Migrate it onto `components/settings-ui.tsx`:
 - Dialogs: use `Modal` from `components/ui.tsx`; it fits the screen. No fixed
   widths above 320 px inside panels.
 - Check with screenshots at 390 px light and dark, and the overflow check of
-  `npm run quality` (it covers `#settings`, `#settings/account`, `#admin` at
-  1280 and 390 px).
+  `npm run quality` (it covers `#settings`, `#settings/account`,
+  `#settings/instance` at 1280 and 390 px).
 
 ## Naming
 
@@ -264,7 +320,10 @@ own headings, forms and CSS. Migrate it onto `components/settings-ui.tsx`:
 - Titles: German noun phrases with "&" for pairs ("Konto & Sicherheit"),
   English the same ("Account & security"), French in the catalogue ("Compte
   et sécurité"). Descriptions: one sentence, no "Hier kannst du …".
-- References in texts: "Einstellungen → <Section>" / "Administration →
-  <Section>", with the section title as on the tile – no third level.
+- References in texts: "Einstellungen → <Section>" for personal settings,
+  "Einstellungen → Instanz → <Section>" (English "Settings → Instance →
+  <Section>") for the instance's, with the section title as in the sidebar.
+  "Administration" stays a word for the people who administer, never a
+  place.
 - CSS: `settings-*` for the shell, `setting-*` for building blocks, panel
   classes stay with their panel.
