@@ -51,6 +51,7 @@ const PERSONAL = [
   "calendar_feeds",
   "favorites",
   "row_favorites",
+  "today_favorites",
   "journal_unlocks",
   "passkeys",
   // Two-factor: the sealed app secret and the recovery codes.

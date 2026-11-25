@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 136;
+export const SCHEMA_VERSION = 137;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1706,11 +1706,22 @@ function migrate(d: DatabaseSync) {
   // Schema 136 – what a notification is, besides its text
   // (lib/notification-display.ts): who caused it, its type and parameters.
   migrateNotificationFields(d);
+  // Schema 137 – "Heute" favourites of journals (#537, lib/today-favorites.ts).
+  migrateTodayFavorites(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 137 – today_favorites (#537, lib/today-favorites.ts): a journal
+// whose "Heute" link sits in this person's favourites – it opens the day of
+// the date it is clicked on, not a fixed page. Separate from `favorites`, so
+// the journal page itself can be a favourite as well. Goes with the journal
+// (trash purge, deletion) and the person; the bootstrap shows only journals
+// the person may read. An older version would ignore it, hence the number.
+function migrateTodayFavorites(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS today_favorites(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,created_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,page_id));`);
 }
 // Schema 136 – notifications.actor_id, subtype, severity, params and
 // excerpt: who caused a notification (a user id, no foreign key: the

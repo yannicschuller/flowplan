@@ -198,6 +198,15 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
         }),
       };
     }
+    case "favorite.today": {
+      if (!pageId) return null;
+      return {
+        boot: (boot) => {
+          const list = boot.todayFavorites || [];
+          return { ...boot, todayFavorites: b.value ? [...new Set([...list, pageId])] : list.filter((id) => id !== pageId) };
+        },
+      };
+    }
     case "favorite.row": {
       const rowId = str(b.rowId);
       if (!pageId || !rowId) return null;

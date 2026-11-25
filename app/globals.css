@@ -896,6 +896,14 @@ kbd,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A journal's "Heute" link (#537): the calendar in the icon's place. */
+.favorite-nav.today-favorite > svg {
+  flex: none;
+  color: var(--muted);
+}
+.favorite-nav.today-favorite.selected > svg {
+  color: var(--blue);
+}
 .add-space {
   justify-content: flex-start;
   margin: 0 18px;

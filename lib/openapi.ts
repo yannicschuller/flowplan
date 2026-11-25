@@ -99,7 +99,7 @@ export const commandActionNames = [
   "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "file.delete", "files.deleteUnused", "file.restore", "file.purge", "page.duplicate", "page.move", "page.moveCheck", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "database.collapseRecordProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
-  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "task.add", "task.target", "tasks.unassigned", "tasks.seen", "synced.create", "table.toDatabase", "page.tasksToDatabase", "page.tasksToDatabase.undo", "mention.link",
+  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.today", "favorite.row", "task.update", "task.add", "task.target", "tasks.unassigned", "tasks.seen", "synced.create", "table.toDatabase", "page.tasksToDatabase", "page.tasksToDatabase.undo", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "journal.completedMine", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
@@ -1142,6 +1142,13 @@ export const commandActions: ActionDoc[] = [
     action: "favorite",
     summary: "Add a page to or remove it from the favourites",
     input: z.object({ action: z.literal("favorite"), pageId: uuid, value: z.boolean() }),
+    result: okResult,
+  },
+  {
+    action: "favorite.today",
+    summary: "Add a journal's \"Today\" link to or remove it from the favourites",
+    description: "The link opens the journal's day of the date it is used on (#537); separate from the journal page's own favourite. The bootstrap lists them in `todayFavorites`. Journals only (400 otherwise).",
+    input: z.object({ action: z.literal("favorite.today"), pageId: uuid, value: z.boolean() }),
     result: okResult,
   },
   {

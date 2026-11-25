@@ -116,6 +116,7 @@ const ALLOWED = new Set([
   "page.move",
   "pages.bulk",
   "favorite",
+  "favorite.today",
   "page.follow",
   "page.owner",
   "page.review",

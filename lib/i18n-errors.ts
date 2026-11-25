@@ -493,6 +493,7 @@ const exact: Record<string, string> = {
   "Inhalt nur für Dokumente.": "Content is only possible for documents.",
   "Kein Journaltag.": "Not a journal day.",
   "Kein Dokument.": "Not a document.",
+  "Nur Journale haben einen Heute-Favoriten.": "Only journals have a Today favourite.",
   "Kein Whiteboard.": "Not a whiteboard.",
   // Guests editing whiteboards and notebooks (lib/share-canvas.ts, #280).
   "Hochladen ist für Gäste nicht möglich.": "Uploading is not available to guests.",

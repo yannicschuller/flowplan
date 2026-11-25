@@ -242,6 +242,7 @@ import {
   SlidersHorizontal,
   CalendarBlank,
   CalendarCheck,
+  CalendarDot,
   CalendarDots,
   FolderSimple,
   ArrowsInSimple,
@@ -713,7 +714,8 @@ export default function WorkspaceApp({
     [online, setOnline] = useState(true),
     [move, setMove] = useState(false),
     // Right click on a page in the sidebar: its actions at the pointer.
-    [pageMenu, setPageMenu] = useState<{ page: Page; x: number; y: number } | null>(null),
+    // `today`: the menu of a journal's "Heute" favourite (#537).
+    [pageMenu, setPageMenu] = useState<{ page: Page; x: number; y: number; today?: boolean } | null>(null),
     [templateName, setTemplateName] = useState(false),
     [templateTitle, setTemplateTitle] = useState("");
   // The tab's cache of recent pages belongs to this person (another one
@@ -2810,6 +2812,12 @@ export default function WorkspaceApp({
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id)),
+    // Journals whose "Heute" link is a favourite (#537), at the journal's
+    // place among the favourites.
+    todayFavorites = activePages.filter((p) => p.kind === "journal" && !!boot.todayFavorites?.includes(p.id)),
+    // The journal whose "Heute" favourite the open page (the journal or one
+    // of its days) can add or remove.
+    todayJournal = data?.page.kind === "journal" ? data.page : data?.journalDay ? activePages.find((p) => p.id === data.journalDay!.journalId) : undefined,
     shareSpace = boot.spaces.find((s) => s.id === data?.page.space_id);
   // Links in documents show the icons of these pages (#96) and follow
   // their changes like titles do (components/page-link-icons.tsx).
@@ -3470,7 +3478,7 @@ export default function WorkspaceApp({
   // Touch: holding a page for half a second opens its menu (phones have no
   // right click); moving the finger scrolls instead.
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; opened: boolean } | null>(null);
-  const pressMenu = (p: Page) => ({
+  const pressMenu = (p: Page, today?: boolean) => ({
     onPointerDown: (e: React.PointerEvent) => {
       if (e.pointerType !== "touch" || (e.target as HTMLElement).closest(".nav-drag, .nav-add, .tree-toggle")) return;
       const { clientX: x, clientY: y } = e;
@@ -3483,7 +3491,7 @@ export default function WorkspaceApp({
           if (!press.current) return;
           press.current.opened = true;
           navigator.vibrate?.(10);
-          setPageMenu({ page: p, x, y });
+          setPageMenu({ page: p, x, y, today });
         }, 480),
       };
     },
@@ -4196,6 +4204,19 @@ export default function WorkspaceApp({
     }
     return openPage(journalId);
   }
+  // A journal's "Heute" favourite (#537): its name in the favourites, whether
+  // today's day of the journal is the open page, and switching it.
+  function todayFavoriteLabel(journal: Page) {
+    const name = journal.title || t("Ohne Titel", "Untitled");
+    return t(`${name} – Heute`, `${name} – Today`);
+  }
+  function todayOpen(journalId: string) {
+    const today = localDay();
+    return (data?.journalDay?.journalId === journalId && data.journalDay.date === today) || (data?.draft?.journalId === journalId && data.draft.date === today);
+  }
+  function toggleTodayFavorite(journalId: string) {
+    return act({ action: "favorite.today", pageId: journalId, value: !boot.todayFavorites?.includes(journalId) });
+  }
   // Whether the offline copy holds a page (the service worker's or the app's).
   async function keptOffline(id: string) {
     try {
@@ -4338,6 +4359,16 @@ export default function WorkspaceApp({
             run: () =>
               void act({ action: "favorite", pageId: openPageData.page.id, value: !boot.favorites.includes(openPageData.page.id) }),
           },
+          ...(todayJournal
+            ? [
+                {
+                  label: boot.todayFavorites?.includes(todayJournal.id) ? t("Heute aus Favoriten entfernen", "Remove today from favourites") : t("Heute zu Favoriten", "Add today to favourites"),
+                  keywords: t("favorit stern journal tag heute", "favorit stern journal tag heute favourite favorite star journal day today"),
+                  icon: CalendarDot,
+                  run: () => void toggleTodayFavorite(todayJournal.id),
+                },
+              ]
+            : []),
           {
             label: openPageData.following ? t("Seite nicht mehr folgen", "Unfollow page") : t("Seite folgen", "Follow page"),
             keywords: "benachrichtigen glocke follow",
@@ -4799,7 +4830,7 @@ export default function WorkspaceApp({
             <p className="sidebar-empty tree-filter-empty">{t("Keine Seite heißt so.", "No page has that name.")}</p>
           )}
           {/* A focused branch (#318) is the tree alone, as while filtering. */}
-          {!filterMatches && !branchPage && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
+          {!filterMatches && !branchPage && (favorites.length > 0 || todayFavorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section
               className={`nav-section favorites-section${folds.has("g:favorites") ? " space-collapsed" : ""}`}
               aria-label={t("Favoriten", "Favourites")}
@@ -4820,7 +4851,34 @@ export default function WorkspaceApp({
               <Collapse open={!folds.has("g:favorites")} className="space-tree">
               {!folds.has("g:favorites") ? (
               <div id="favorites-list">
-              {favorites.map((p) => (
+              {/* Page favourites and journals' "Heute" links (#537) in the
+                  order of the page tree; a journal's "Heute" right after
+                  the journal itself. */}
+              {activePages
+                .filter((p) => favorites.includes(p) || todayFavorites.includes(p))
+                .flatMap((p) => [
+                  ...(favorites.includes(p) ? [{ p, today: false }] : []),
+                  ...(todayFavorites.includes(p) ? [{ p, today: true }] : []),
+                ])
+                .map(({ p, today }) => today ? (
+                <button
+                  className={`favorite-nav today-favorite ${screen === "page" && todayOpen(p.id) ? "selected" : ""}`}
+                  key={`today:${p.id}`}
+                  data-today-favorite={p.id}
+                  onClick={() => {
+                    setMobile(false);
+                    void openJournalToday(p.id);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setPageMenu({ page: p, x: e.clientX, y: e.clientY, today: true });
+                  }}
+                  {...pressMenu(p, true)}
+                >
+                  <CalendarDot size={16} aria-hidden="true" />
+                  <span>{todayFavoriteLabel(p)}</span>
+                </button>
+              ) : (
                 <button
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
                   key={p.id}
@@ -5568,6 +5626,16 @@ export default function WorkspaceApp({
                           </PageMenu.Item>
                         )}
                       </>
+                    )}
+                    {/* A journal and its days: the journal's "Heute" link as a
+                        favourite of its own (#537). */}
+                    {todayJournal && (
+                      <PageMenu.Item className="dropdown-item" onSelect={() => void toggleTodayFavorite(todayJournal.id)}>
+                        <CalendarDot />
+                        {boot.todayFavorites?.includes(todayJournal.id)
+                          ? t("Heute aus Favoriten entfernen", "Remove today from favourites")
+                          : t("Heute zu Favoriten", "Add today to favourites")}
+                      </PageMenu.Item>
                     )}
                     {/* Grouped with labels (design review): appearance as a
                         submenu (a section of its own in the phone sheet), then
@@ -7990,13 +8058,34 @@ export default function WorkspaceApp({
               sideOffset={2}
               collisionPadding={safeCollisionPadding()}
               aria-label={
-                selectedPages.length > 1 && selectedPages.includes(pageMenu.page.id)
+                pageMenu.today
+                  ? t(`Aktionen für ${todayFavoriteLabel(pageMenu.page)}`, `Actions for ${todayFavoriteLabel(pageMenu.page)}`)
+                  : selectedPages.length > 1 && selectedPages.includes(pageMenu.page.id)
                   ? t(`Aktionen für ${pagesLabel(selectedPages.length)}`, `Actions for ${pagesLabel(selectedPages.length)}`)
                   : t(`Aktionen für ${pageMenu.page.title || t("Ohne Titel", "Untitled")}`, `Actions for ${pageMenu.page.title || t("Ohne Titel", "Untitled")}`)
               }
             >
               {(() => {
                 const target = pageMenu.page;
+                // A journal's "Heute" favourite (#537).
+                if (pageMenu.today)
+                  return (
+                    <>
+                      <Dropdown.Item className="dropdown-item" onSelect={() => void openJournalToday(target.id)}>
+                        <CalendarDot />
+                        {t("Heute öffnen", "Open today")}
+                      </Dropdown.Item>
+                      <Dropdown.Item className="dropdown-item" onSelect={() => void openPage(target.id)}>
+                        <Notebook />
+                        {t("Journal öffnen", "Open journal")}
+                      </Dropdown.Item>
+                      <Dropdown.Separator className="dropdown-separator" />
+                      <Dropdown.Item className="dropdown-item" onSelect={() => void act({ action: "favorite.today", pageId: target.id, value: false })}>
+                        <X />
+                        {t("Heute aus Favoriten entfernen", "Remove today from favourites")}
+                      </Dropdown.Item>
+                    </>
+                  );
                 // A page of a selection of several (#275): the actions for
                 // all selected pages, as in the selection bar.
                 if (selectedPages.length > 1 && selectedPages.includes(target.id))
@@ -8102,6 +8191,14 @@ export default function WorkspaceApp({
                       <Star />
                       {starred ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites")}
                     </Dropdown.Item>
+                    {target.kind === "journal" && (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => void toggleTodayFavorite(target.id)}>
+                        <CalendarDot />
+                        {boot.todayFavorites?.includes(target.id)
+                          ? t("Heute aus Favoriten entfernen", "Remove today from favourites")
+                          : t("Heute zu Favoriten", "Add today to favourites")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => openThen(() => setShare(true))}
