@@ -103,6 +103,15 @@ export function healStep(kind: HealKind, page: string, server: { build: string |
 //   flowplan-desktop web-cache.js).
 // - The stored copy of the iPhone and iPad app (meta flowplan-offline-copy)
 //   is left to the app: it hears { type: "staleCopy", copy: true }.
+// - Inside the iPhone, iPad and Android app (window.FlowplanApp with its
+//   platform, or "FlowplanMobile/" in the user agent – lib/native-app.ts)
+//   the message has a third button, "Switch server" (#539): a server that
+//   moved to another address never loads the workspace menu with its
+//   "Switch instance …". It asks the app the way that menu does
+//   (openProfileSwitcher, with the token only the top frame's bridge
+//   knows); older apps get their profiles (openProfiles) or the link
+//   flowplan://change-server (APP_PROFILES_LINK in lib/native-app.ts),
+//   which every version since 1.0.1 opens. In a browser nothing changes.
 export function selfHealScript(build: string) {
   return `(function(){
 var BUILD=${JSON.stringify(build).replace(/</g, "\\u003c")},KEY=${JSON.stringify(HEAL_KEY)},PARAM=${JSON.stringify(FRESH_PARAM)},WINDOW=${HEAL_WINDOW};
@@ -110,6 +119,8 @@ var de=/^de\\b/i.test(document.documentElement.lang||"");
 var say=function(d,e){return de?d:e};
 var loaded=false,busy=false,done=false,asked=0,retry=false,pending=false,loadedAt=0,hiddenAt=0;
 var isCopy=function(){return !!document.querySelector('meta[name="flowplan-offline-copy"]')};
+var inApp=function(){var a=window.FlowplanApp;return !!(a&&(a.platform==="ios"||a.platform==="android"))||/\\bFlowplanMobile\\//.test(navigator.userAgent||"")};
+var switchServer=function(){var a=window.FlowplanApp;try{if(a&&typeof a.openProfileSwitcher==="function"){a.openProfileSwitcher();return}if(a&&typeof a.openProfiles==="function"){a.openProfiles();return}}catch(e){}location.assign("flowplan://change-server")};
 var post=function(m){try{window.ReactNativeWebView.postMessage(JSON.stringify(m));return true}catch(e){return false}};
 var fresh=function(){try{return new URL(location.href).searchParams.has(PARAM)}catch(e){return false}};
 var recent=function(){var t=0;try{t=Number(sessionStorage.getItem(KEY))||0}catch(e){}var d=Date.now()-t;return fresh()||(t>0&&d>=0&&d<WINDOW)};
@@ -127,8 +138,8 @@ var reload=function(all,shell){try{sessionStorage.setItem(KEY,String(Date.now())
 var message=function(offline){if(document.getElementById("flowplan-stale"))return;var box=document.createElement("div");box.id="flowplan-stale";box.setAttribute("role","alert");box.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:24px;background:Canvas;color:CanvasText;color-scheme:light dark;font:16px/1.5 system-ui,-apple-system,sans-serif;text-align:center";
 var inner=document.createElement("div");inner.style.maxWidth="420px";var h=document.createElement("p");h.style.cssText="margin:0 0 8px;font-size:18px;font-weight:600";h.textContent=say("Flowplan konnte nicht vollständig geladen werden.","Flowplan could not be loaded completely.");
 var p=document.createElement("p");p.style.margin="0 0 20px";p.textContent=offline?say("Keine Verbindung – und die gespeicherte Kopie auf diesem Gerät ist unvollständig. Versuche es wieder, wenn du online bist.","No connection – and the copy stored on this device is incomplete. Try again when you are online."):say("Wahrscheinlich wurde Flowplan aktualisiert, während dieses Gerät noch eine ältere Kopie gespeichert hatte.","Flowplan was probably updated while this device still kept an older copy.");
-var button=function(text,all){var b=document.createElement("button");b.type="button";b.textContent=text;b.style.cssText="margin:4px;padding:8px 16px;font:inherit;border-radius:8px;cursor:pointer";b.addEventListener("click",function(){reload(all,true)});return b};
-inner.appendChild(h);inner.appendChild(p);inner.appendChild(button(say("Neu laden","Reload"),false));inner.appendChild(button(say("Zwischenspeicher leeren","Clear cache"),true));box.appendChild(inner);document.documentElement.appendChild(box)};
+var button=function(text,run){var b=document.createElement("button");b.type="button";b.textContent=text;b.style.cssText="margin:4px;padding:8px 16px;font:inherit;border-radius:8px;cursor:pointer";b.addEventListener("click",run);return b};
+inner.appendChild(h);inner.appendChild(p);inner.appendChild(button(say("Neu laden","Reload"),function(){reload(false,true)}));inner.appendChild(button(say("Zwischenspeicher leeren","Clear cache"),function(){reload(true,true)}));if(inApp())inner.appendChild(button(say("Server wechseln","Switch server"),switchServer));box.appendChild(inner);document.documentElement.appendChild(box)};
 var fail=function(kind){if(done||busy)return;if(isCopy()){if(kind==="boot"){done=true;post({type:"staleCopy",build:BUILD,copy:true});setTimeout(function(){message(navigator.onLine===false)},3000)}return}busy=true;asked=Date.now();server().then(function(answer){busy=false;retry=!answer;var s=step(kind,BUILD,answer,recent());if(s==="none")return;done=true;if(s==="reload")reload(false,!!(answer&&answer.build&&answer.build!==BUILD));else message(!answer)})};
 var check=function(gap){if(Date.now()-asked>=gap)fail("later")};
 addEventListener("error",function(e){if(appFile(e.target))fail(loaded?"later":"boot");else if(e.error&&e.error.name==="ChunkLoadError")fail("later");else if(loaded&&e.error)check(${CHECK_GAP})},true);

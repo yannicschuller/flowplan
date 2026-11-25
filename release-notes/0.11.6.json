@@ -63,6 +63,13 @@
     {
       "de": "Die Regel „Abtasten“ zählt nur noch verschiedene abgewiesene Anfragen: abgemeldete Tabs und gelöschte Einträge lösen keinen Vorfall mehr aus.",
       "en": "The probing rule counts only different refused requests: signed-out tabs and deleted records no longer raise an incident."
+    },
+    {
+      "de": "In der iPhone- und Android-App hat die Meldung „Flowplan konnte nicht vollständig geladen werden“ jetzt „Server wechseln“: Ist dein Server unter eine neue Adresse umgezogen, kommst du direkt zur Serverauswahl der App.",
+      "en": "In the iPhone and Android app, the “Flowplan could not be loaded completely” message now has “Switch server”: if your server moved to a new address, it takes you straight to the app's server switcher.",
+      "issues": [
+        539
+      ]
     }
   ],
   "improvements": [

@@ -78,6 +78,8 @@ function page({
   worker = false,
   caches = null as null | Map<string, Set<string>>,
   desktop = false,
+  app = null as Record<string, unknown> | null,
+  agent = "Mozilla/5.0",
 } = {}) {
   // The clock of the page (Date.now) and what the server answers can change
   // while it is open.
@@ -93,6 +95,7 @@ function page({
   const posted: unknown[] = [];
   const replaced: string[] = [];
   const fetched: string[] = [];
+  const assigned: string[] = [];
   const root = Object.assign(element("html"), { lang: "de" });
   const sheet = element("link", { rel: "stylesheet", href: "/_next/static/chunks/app.css" });
   sheet.sheet = sheetLoaded ? {} : null;
@@ -108,6 +111,7 @@ function page({
       },
       origin: ORIGIN,
       replace: (to: string) => replaced.push(to),
+      assign: (to: string) => assigned.push(to),
     },
     history: { state: { tree: 1 }, replaceState: (_: unknown, __: string, to: string) => (state.url = new URL(to, ORIGIN).href) },
     sessionStorage: {
@@ -128,6 +132,7 @@ function page({
       return { headers: { get: (name: string) => (name.toLowerCase() === BUILD_HEADER.toLowerCase() ? build : null) } };
     },
     navigator: {
+      userAgent: agent,
       onLine: server !== null,
       ...(worker || caches
         ? { serviceWorker: { controller: worker ? {} : null, getRegistrations: async () => [{ update: async () => {} }] } }
@@ -141,6 +146,7 @@ function page({
     String,
     Date: { now: () => clock.now },
     JSON,
+    ...(app ? { FlowplanApp: app } : {}),
     ...(desktop ? { FlowplanDesktop: { clearCache: async () => (desktopCleared.push(clock.now), true) } } : {}),
     document: {
       visibilityState: "visible",
@@ -182,7 +188,7 @@ function page({
     fire("visibilitychange");
     await flush();
   };
-  return { fire, flush, load, posted, replaced, fetched, stored, message, state, root, clock, net, visibility, desktopCleared };
+  return { fire, flush, load, posted, replaced, fetched, assigned, stored, message, state, root, clock, net, visibility, desktopCleared };
 }
 
 test("a page without its styles loads the live page once, past the stored copy", async () => {
@@ -429,6 +435,54 @@ test("the app's stored copy is the app's to replace", async () => {
   assert.deepEqual(p.posted, [{ type: "staleCopy", build: "A", copy: true }]);
   // An app that does not know the message: the page says it itself.
   assert.ok(p.message());
+});
+
+// #539: a server that moved never loads the workspace menu, so inside the
+// app the message has the way to the app's server switcher – the same
+// request as "Switch instance …" in that menu. In a browser and in the
+// desktop app nothing changes.
+test("#539: inside the app the message offers the app's server switcher", async () => {
+  const labels = (p: ReturnType<typeof page>) =>
+    p.message()!.children[0].children.filter((child) => child.localName === "button").map((button) => button.textContent);
+  const switcher = (p: ReturnType<typeof page>) => p.message()!.children[0].children.find((child) => child.textContent === "Server wechseln");
+
+  const browser = page({ styled: false, server: null });
+  await browser.load();
+  assert.deepEqual(labels(browser), ["Neu laden", "Zwischenspeicher leeren"]);
+  const desktop = page({ styled: false, server: null, desktop: true, agent: "Mozilla/5.0 FlowplanDesktop/1.4.0 Electron/38" });
+  await desktop.load();
+  assert.deepEqual(labels(desktop), ["Neu laden", "Zwischenspeicher leeren"]);
+
+  // The app's bridge: its token-carrying openProfileSwitcher, nothing else.
+  const calls: string[] = [];
+  const app = {
+    platform: "ios",
+    version: "1.1.5",
+    openProfileSwitcher: () => calls.push("switcher"),
+    openProfiles: () => calls.push("profiles"),
+  };
+  const copy = page({ styled: false, copy: true, server: null, app });
+  await copy.load();
+  assert.deepEqual(labels(copy), ["Neu laden", "Zwischenspeicher leeren", "Server wechseln"]);
+  switcher(copy)!.listeners.get("click")![0]();
+  await copy.flush();
+  assert.deepEqual(calls, ["switcher"]);
+  assert.equal(copy.replaced.length, 0);
+  assert.deepEqual(copy.posted, [{ type: "staleCopy", build: "A", copy: true }]);
+
+  // An app with its profiles only (before openProfileSwitcher).
+  const older = page({ styled: false, server: null, app: { platform: "android", version: "1.0.20", openProfiles: () => calls.push("profiles") } });
+  await older.load();
+  switcher(older)!.listeners.get("click")![0]();
+  assert.deepEqual(calls, ["switcher", "profiles"]);
+
+  // Apps without either: the link every version opens; the user agent alone
+  // tells the app (the bridge comes only with the instance's own pages).
+  const oldest = page({ styled: false, server: null, agent: "Mozilla/5.0 (iPhone) FlowplanMobile/1.0.3" });
+  await oldest.load();
+  switcher(oldest)!.listeners.get("click")![0]();
+  assert.deepEqual(oldest.assigned, ["flowplan://change-server"]);
+  assert.equal(oldest.replaced.length, 0);
 });
 
 // public/sw.js: answers for navigations and the app's files.
