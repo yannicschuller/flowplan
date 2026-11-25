@@ -88,7 +88,8 @@ test("several people: chips with a search, both columns on the board, off keeps 
   await expect.poll(async () => (await cells()).team).toEqual([cleo]);
   // It stays open for more; the chosen one is a chip and no longer offered.
   await expect(search).toBeFocused();
-  await page.keyboard.type("b");
+  // The full first name: the shared demo workspace has more members with a "b".
+  await page.keyboard.type("Ben B");
   await expect(list.getByRole("option")).toHaveCount(1);
   await expect(list.getByRole("option")).toHaveAccessibleName("Ben Brandt");
   await page.keyboard.press("Enter");

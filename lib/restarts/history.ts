@@ -236,8 +236,9 @@ export async function restartHistory(now = Date.now(), page: RestartPage = {}): 
   const only: RestartFilter = page.only === "unexpected" ? "unexpected" : "all";
   const where = `at>=?${only === "unexpected" ? " AND reason<>'clean'" : ""}`;
   const rows = await all<Db>(`SELECT ${COLUMNS} FROM restart_events WHERE ${where} ORDER BY at DESC, id DESC LIMIT ? OFFSET ?`, since, limit, offset);
-  const c = await one<{ n: number; unexpected: number; day: number }>(
-    "SELECT COUNT(*) n, COALESCE(SUM(reason<>'clean'),0) unexpected, COALESCE(SUM(reason<>'clean' AND at>=?),0) day FROM restart_events WHERE at>=?",
+  // Portable SQL (SQLite and PostgreSQL): no boolean sums, no "day" alias.
+  const c = await one<{ n: number; unexpected: number; last_day: number }>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN reason<>'clean' THEN 1 ELSE 0 END),0) AS unexpected, COALESCE(SUM(CASE WHEN reason<>'clean' AND at>=? THEN 1 ELSE 0 END),0) AS last_day FROM restart_events WHERE at>=?",
     now - DAY,
     since,
   );
@@ -250,7 +251,7 @@ export async function restartHistory(now = Date.now(), page: RestartPage = {}): 
     more: offset + rows.length < total,
     counts,
     keepDays: RESTARTS_KEEP_DAYS,
-    unexpected24h: Number(c?.day || 0),
+    unexpected24h: Number(c?.last_day || 0),
     incident: await openRestartIncident(now),
   };
 }
