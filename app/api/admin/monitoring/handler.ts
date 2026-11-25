@@ -1,6 +1,6 @@
 // Administration → Überwachung (lib/admin-monitoring.ts): the dashboard,
-// polled while the page is open. `?view=live` answers only the live strip
-// of the landing page (numbers and the charts of its carousel), `?view=ai`
+// polled while the page is open. `?view=live` answers only the live panels
+// of the settings' start page (lib/admin-monitoring.ts monitoringStart), `?view=ai`
 // the AI statistics (`&days=7|30|90`, per person too), `?view=errors` the
 // error details (lib/error-details.ts, with `range` for the counts and
 // trend), `?view=upstream` the failures of third-party services counted
@@ -21,7 +21,7 @@ import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/db";
 import { withRequestLocale } from "@/lib/content-locale";
 import { requireOpsAdmin } from "@/lib/admin-ops";
-import { monitoringLive, monitoringOverview } from "@/lib/admin-monitoring";
+import { forgetMonitoringGlance, monitoringLive, monitoringOverview, monitoringStart } from "@/lib/admin-monitoring";
 import { aiStatistics } from "@/lib/ai-statistics";
 import { applyRecommendationAction, recommendationAction, recommendations } from "@/lib/recommendations-data";
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
@@ -49,7 +49,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const view = url.searchParams.get("view");
     if (view === "restarts" || view === "restart") return Response.json(await restartsForAdmin(user, view === "restart" ? url.searchParams.get("id") || "" : null), noStore);
     const range = rangeOf(url.searchParams.get("range"));
-    if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
+    if (url.searchParams.get("view") === "live") return Response.json(await monitoringStart(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "upstream") return Response.json(await upstreamFailures(Date.now(), range), noStore);
     // Administration → KI → Statistik: per model, workspace and person.
@@ -100,6 +100,8 @@ export const POST = withRequestLocale(async (req: Request) => {
       await audit(user.id, "admin.errors.clear", "instance", "");
       return Response.json(await errorDetails(), noStore);
     } else resetAiPing();
+    // The start page's cached facts follow the switch at once.
+    forgetMonitoringGlance();
     return Response.json(await monitoringLive(), noStore);
   } catch (e) {
     return failure(e);

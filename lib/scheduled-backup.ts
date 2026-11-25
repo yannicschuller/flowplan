@@ -38,10 +38,28 @@ async function lastRun(): Promise<BackupRun | null> {
   const row = await one<{ value: string }>("SELECT value FROM instance_state WHERE key='scheduledBackup'");
   return row ? (JSON.parse(row.value) as BackupRun) : null;
 }
+// The last runs, newest last (the start page's backup chart): the outcome
+// and size of each, no more – kept next to the last run in instance_state.
+export const BACKUP_RUNS_KEEP = 30;
+export async function backupRuns(): Promise<BackupRun[]> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_state WHERE key='scheduledBackupRuns'");
+  try {
+    const runs = row ? (JSON.parse(row.value) as BackupRun[]) : [];
+    if (Array.isArray(runs) && runs.length) return runs;
+  } catch {}
+  // Before this version only the last run was kept.
+  const last = await lastRun();
+  return last ? [last] : [];
+}
 async function remember(result: BackupRun) {
+  const runs = [...(await backupRuns()).filter((r) => r.at !== result.at), result].sort((a, b) => a.at - b.at).slice(-BACKUP_RUNS_KEEP);
   await run(
     "INSERT INTO instance_state(key,value) VALUES('scheduledBackup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     JSON.stringify(result),
+  );
+  await run(
+    "INSERT INTO instance_state(key,value) VALUES('scheduledBackupRuns',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    JSON.stringify(runs.map(({ at, target, name, bytes, error }) => ({ at, target, name, bytes, error }))),
   );
 }
 

@@ -5,7 +5,7 @@
 // cost. Reads metrics_ai_usage (lib/metrics.ts). Counts only, never a
 // prompt or an answer; the per-person numbers are for administrators only
 // (the route checks it, app/api/admin/monitoring).
-import { all } from "./db";
+import { all, one } from "./db";
 import { decodeHist, flushAi, localDay, percentile } from "./metrics";
 import { instanceAiSettings, type AiPrice } from "./ai/settings";
 import { workflowLimits } from "./workflows/limits";
@@ -150,9 +150,20 @@ export async function aiLatency(now = Date.now(), days = 7, features: readonly s
   return { requests: hist.reduce((a, b) => a + b, 0), p95: hist.length ? percentile(hist, 0.95) : null };
 }
 
-// The live strip's AI chart: tokens and cost per day (14 days).
+// The start page's AI panel: tokens and cost per day (14 days).
+// With the features that used the most tokens and how many different people
+// used AI in that time – a count, never who.
 export async function aiDaily(now = Date.now(), days = 14) {
   const s = await aiStatistics(now, days, false);
-  return { currency: s.currency, priced: s.pricedModels.length > 0, total: s.total, perDay: s.perDay.map((d) => ({ day: d.day, tokensIn: d.tokensIn, tokensOut: d.tokensOut, requests: d.requests, errors: d.errors + d.timeouts, cost: d.cost })) };
+  const keys = lastDays(now, days);
+  const people = Number((await one<{ n: number }>("SELECT COUNT(DISTINCT user_id) n FROM metrics_ai_usage WHERE day>=? AND user_id<>''", keys[0]))?.n || 0);
+  return {
+    currency: s.currency,
+    priced: s.pricedModels.length > 0,
+    total: s.total,
+    perDay: s.perDay.map((d) => ({ day: d.day, tokensIn: d.tokensIn, tokensOut: d.tokensOut, requests: d.requests, errors: d.errors + d.timeouts, cost: d.cost })),
+    features: s.features.filter((f) => f.tokensIn + f.tokensOut > 0).slice(0, 4).map((f) => ({ feature: f.feature, tokens: f.tokensIn + f.tokensOut, requests: f.requests })),
+    people,
+  };
 }
 export type AiDaily = Awaited<ReturnType<typeof aiDaily>>;

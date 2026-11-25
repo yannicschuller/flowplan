@@ -16708,22 +16708,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   }
 }
 
-/* ---------- Administration: live strip and rich tiles ---------- */
-.live-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
-  margin-bottom: 18px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg);
-}
-.live-strip-state {
-  display: grid;
-  align-content: start;
-  gap: 16px;
-  padding: 18px 20px;
-  border-right: 1px solid var(--border);
-}
+/* ---------- Instance state (settings start page) and rich tiles ---------- */
 .live-strip-head {
   display: flex;
   align-items: flex-start;
@@ -16782,168 +16767,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   text-decoration: underline;
   text-decoration-color: var(--border);
   text-underline-offset: 3px;
-}
-.live-strip-chart {
-  min-width: 0;
-  padding: 16px 20px 12px;
-}
-.live-strip-chart header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  margin-bottom: 8px;
-}
-.live-strip-chart h2 {
-  margin: 0;
-  font-size: 14.5px;
-}
-.live-strip-off {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-/* The strip's chart carousel (components/settings/admin/strip-charts.tsx). */
-.strip-carousel > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  min-height: 32px;
-  margin-bottom: 8px;
-}
-.strip-carousel > header h2 {
-  min-width: 0;
-  margin: 0;
-  font-size: 14.5px;
-}
-.strip-carousel-tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-}
-.strip-carousel-nav {
-  display: inline-flex;
-  gap: 2px;
-}
-.strip-carousel-nav .icon-button {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-}
-.strip-carousel-slide {
-  min-height: 190px;
-  /* Vertical scrolling stays with the page; a horizontal swipe changes the chart. */
-  touch-action: pan-y;
-}
-.strip-carousel-slide.enter-next {
-  animation: strip-enter-next 220ms ease-out;
-}
-.strip-carousel-slide.enter-prev {
-  animation: strip-enter-prev 220ms ease-out;
-}
-@keyframes strip-enter-next {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-}
-@keyframes strip-enter-prev {
-  from {
-    opacity: 0;
-    transform: translateX(-24px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .strip-carousel-slide.enter-next,
-  .strip-carousel-slide.enter-prev {
-    animation: none;
-  }
-}
-.strip-carousel-dots {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
-  margin-top: 6px;
-}
-.strip-carousel-dots button {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: none;
-  cursor: pointer;
-}
-.strip-carousel-dots i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border);
-  transition: background 150ms, transform 150ms;
-}
-.strip-carousel-dots button:hover i {
-  background: var(--muted);
-}
-.strip-carousel-dots button[aria-current="true"] i {
-  background: var(--chart-1);
-  transform: scale(1.25);
-}
-.strip-carousel-dots button:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: -2px;
-}
-/* Phones: swipe and the dots; the arrows only take room from the title. */
-@container main (max-width: 767.98px) {
-  .strip-carousel-nav {
-    display: none;
-  }
-  .strip-carousel-dots button {
-    width: 32px;
-    height: 32px;
-  }
-}
-.strip-chart-note {
-  margin: 6px 0 0;
-  color: var(--secondary);
-  font-size: 12.5px;
-}
-.strip-chart-sub {
-  margin: 8px 0 4px;
-  color: var(--secondary);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.strip-routes {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12.5px;
-}
-.strip-routes li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-.strip-routes code {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--text);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.strip-routes span {
-  flex: none;
-  font-variant-numeric: tabular-nums;
 }
 /* Monitoring → Server and KI → Statistik (monitoring-server.tsx, ai-statistics.tsx). */
 .mon-finding {
@@ -17674,26 +17497,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-@container main (max-width: 875px) {
-  .live-strip {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .live-strip-state {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .live-strip .kpi-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
 @container main (max-width: 767.98px) {
-  .live-strip-state,
-  .live-strip-chart {
-    padding: 14px 16px;
-  }
-  .live-strip .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .kpi strong {
     font-size: 21px;
   }

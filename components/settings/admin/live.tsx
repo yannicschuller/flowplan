@@ -1,12 +1,12 @@
 "use client";
-// Pieces the landing page's live strip and the monitoring share: the "Live"
-// indicator, the requests chart and the KPI numbers.
+// Pieces the settings' start page (live-panels.tsx) and the monitoring
+// share: the "Live" indicator, the requests chart and a KPI number.
 import type { ReactNode } from "react";
 import type { MonitoringLive } from "@/lib/admin-monitoring";
 import { useT } from "../../i18n";
 import { LineChart } from "../../charts";
 import type { LiveState } from "./use-live";
-import { clock, compact, dateTime, ms, num, percent, weekday } from "./monitoring-format";
+import { clock, compact, dateTime, num, weekday } from "./monitoring-format";
 
 export function LiveBadge({ state, label }: { state: LiveState; label?: string }) {
   const t = useT();
@@ -73,22 +73,6 @@ export function Kpi({ label, value, note, children }: { label: string; value: Re
       <span>{label}</span>
       {note && <small>{note}</small>}
       {children}
-    </div>
-  );
-}
-
-export function LiveKpis({ live }: { live: MonitoringLive }) {
-  const t = useT();
-  const k = live.kpis;
-  return (
-    <div className="kpi-grid">
-      <Kpi label={t("gerade aktiv", "active now")} value={num(k.activeNow)} />
-      <Kpi label={t("heute aktiv", "active today")} value={num(k.activeToday)} />
-      <Kpi label={t("Anfragen/Min.", "Requests/min")} value={live.collecting.enabled ? num(k.requestsPerMinute) : "–"} />
-      <Kpi label={t("Fehlerquote (1 Std.)", "Error rate (1 h)")} value={live.collecting.enabled ? percent(k.errorRate) : "–"} />
-      <Kpi label={t("Anmeldungen heute", "Sign-ins today")} value={num(k.signinsToday)} />
-      {/* How long the slowest 5 % of the last hour's requests took. */}
-      <Kpi label={t("Antwortzeit (p95, 1 Std.)", "Response time (p95, 1 h)")} value={live.collecting.enabled ? ms(k.p95) : "–"} />
     </div>
   );
 }
