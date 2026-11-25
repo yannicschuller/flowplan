@@ -7,6 +7,7 @@ import {
 } from "./file-cells";
 import { maintainRowOrders } from "./row-order-server";
 import { trashRow } from "./row-trash";
+import { isMultiPerson, MAX_PEOPLE, ONE_PERSON_MESSAGE, personCell, personIds } from "./person-values";
 import { dateOnly, isTimed, newTimeRefused, NO_TIME_MESSAGE, validDateValue } from "./date-values";
 import { z } from "zod";
 import { all, one, run, id, nowText } from "./db";
@@ -130,6 +131,9 @@ export function validateImportedCells(fields: Field[], cells: Record<string, unk
     // A date property without time (#327) takes the day of an imported
     // date with a time.
     if (f.type === "date" && f.noTime && isTimed(value)) cells[f.id] = dateOnly(value, zone);
+    // People in the property's shape (#535): a list with "Mehrere
+    // Personen", else the first one.
+    if (f.type === "person" && value !== null) cells[f.id] = personCell(f, personIds(value));
   }
 }
 // Date properties without time (#327): a write that would add a time to
@@ -174,6 +178,16 @@ export async function validateCellPatch(
       if (values.some((v) => !f.options?.includes(v)))
         throw new HttpError(400, "Unbekannte Auswahl.");
       result[key] = [...new Set(values)];
+    } else if (f.type === "person") {
+      // One id or a list (#535): with "Mehrere Personen" a list of members,
+      // else one – a list with one person is taken as that person.
+      const ids = personIds(z.union([z.string().max(100), z.array(z.string().max(100)).max(MAX_PEOPLE)]).parse(value));
+      if (!isMultiPerson(f) && ids.length > 1)
+        throw new HttpError(400, ONE_PERSON_MESSAGE);
+      for (const uid of ids)
+        if (!(await one("SELECT user_id FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, uid)))
+          throw new HttpError(400, "Mitglied fehlt.");
+      result[key] = personCell(f, ids);
     } else if (f.type === "aliases") result[key] = parseAliases(value);
     else if (f.type === "checklist")
       result[key] = z
@@ -227,16 +241,6 @@ export async function validateCellPatch(
         throw new HttpError(400, "Unbekannte Auswahl.");
       if (f.type === "sprint" && text && !(await databaseSettings(page.id)).sprints?.some((s) => s.id === text))
         throw new HttpError(400, "Unbekannter Sprint.");
-      if (
-        f.type === "person" &&
-        text &&
-        !(await one(
-          "SELECT user_id FROM members WHERE workspace_id=? AND user_id=?",
-          page.workspace_id,
-          text,
-        ))
-      )
-        throw new HttpError(400, "Mitglied fehlt.");
       if (f.type === "date" && text && !validDateValue(text))
         throw new HttpError(400, "Ungültiges Datum.");
       // A date property without time (#327): no new time; a stored value

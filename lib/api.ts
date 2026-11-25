@@ -257,6 +257,8 @@ import {
   assertEditableTitle,
 } from "./database-operations";
 import { cleanNoTime, validZone, withoutNewTimes } from "./date-values";
+import { cleanMultiPerson, personCell, personIds } from "./person-values";
+import { convertPersonValues } from "./person-values-server";
 import { field, view } from "./database-schema";
 import { publishPage, publicationSettings, protectPublication } from "./publication";
 import { publicAppearanceSchema } from "./public-appearance";
@@ -2759,6 +2761,8 @@ async function runCommand(
           );
         // "Mit Uhrzeit" off is stored as `noTime: true` on date properties only (#327).
         cleanNoTime(fields);
+        // "Mehrere Personen" (#535) only on person properties.
+        cleanMultiPerson(fields);
         // AI properties: references, output types, who automatic updates run as.
         const aiChanges = await prepareAiFields(user, await write(), fields, d.fields);
         if (
@@ -2892,6 +2896,8 @@ async function runCommand(
         // Formatted text (#126): a property that becomes or stops being
         // formatted text keeps its values' text.
         await convertFormattedValues(pid(), d.fields, fields);
+        // "Mehrere Personen" switched on or off (#535): lists or the first person.
+        await convertPersonValues(pid(), d.fields, fields);
         await run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(fields),
@@ -2972,6 +2978,10 @@ async function runCommand(
           now: creationTime(b.createdAt),
         });
         const cells = await contactCellsFor(pid(), (await database(pid())).fields, {}, withDefault, Object.keys(given));
+        // People in their property's shape (#535): a list with "Mehrere
+        // Personen", else one id – whatever the template or caller gave.
+        for (const f of (await database(pid())).fields)
+          if (f.type === "person" && cells[f.id] !== undefined && cells[f.id] !== null) cells[f.id] = personCell(f, personIds(cells[f.id]));
         // Aliases follow their limits (lib/aliases.ts).
         const aliasProperty = aliasField((await database(pid())).fields);
         if (aliasProperty && cells[aliasProperty.id] !== undefined)

@@ -208,7 +208,7 @@ async function teamDatabase(title: string) {
       { id: "title", name: "Titel", type: "text" },
       { id: "status", name: "Status", type: "select", options: ["Offen", "Erledigt"] },
       { id: "who", name: "Zuständig", type: "person" },
-      { id: "team", name: "Team", type: "person" },
+      { id: "team", name: "Team", type: "person", multiPerson: true },
       { id: "ready", name: "Bereit", type: "checkbox" },
     ],
     views: (await database(pageId)).views,

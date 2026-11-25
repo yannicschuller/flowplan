@@ -15,6 +15,7 @@
 //   Flowplan's formula language. Otherwise (and always from the export,
 //   which only has the computed values) the values become text and the
 //   property is listed in the report.
+import { personCell } from "../person-values";
 import { compileFormula } from "../formula";
 import { importDate, inferField } from "../zip-import-fields";
 import type { RollupAggregate } from "../rollups";
@@ -235,8 +236,12 @@ export function notionCsvColumns(
       case "created_by":
       case "last_edited_by": {
         const names = filled.flatMap(splitList);
-        if (names.length && names.every((n) => member(n)))
-          return as({ field: { id: fid, name, type: "person" }, value: (raw) => [...new Set(splitList(raw).map((n) => member(n)!))] });
+        // Several people in a record: "Mehrere Personen" on (#535); else one id.
+        if (names.length && names.every((n) => member(n))) {
+          const multiPerson = filled.some((raw) => new Set(splitList(raw)).size > 1);
+          const field: Field = { id: fid, name, type: "person", ...(multiPerson ? { multiPerson: true } : {}) };
+          return as({ field, value: (raw) => personCell(field, splitList(raw).map((n) => member(n)!)) });
+        }
         return as(text("property"));
       }
       case "relation":

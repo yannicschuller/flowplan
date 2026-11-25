@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { personIds } from "./person-values";
 import { requireModule } from "./instance-modules";
 import { z } from "zod";
 import { hiddenRowIds, visibleRows } from "./row-access";
@@ -191,15 +192,10 @@ export async function saveFormSubmission(
   for (const f of fields) {
     const value = result.cells[f.id];
     if (value === undefined || value === null || value === "") continue;
-    if (
-      f.type === "person" &&
-      !(await one(
-        "SELECT 1 FROM members WHERE workspace_id=? AND user_id=?",
-        page.workspace_id,
-        String(value),
-      ))
-    )
-      throw new HttpError(400, `${f.name}: Mitglied nicht gefunden.`);
+    if (f.type === "person")
+      for (const uid of personIds(value))
+        if (!(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, uid)))
+          throw new HttpError(400, `${f.name}: Mitglied nicht gefunden.`);
     if (f.type === "relation" && Array.isArray(value) && value.length) {
       if (!f.relationPage || !user)
         throw new HttpError(400, `${f.name}: Verknüpfung nicht möglich.`);

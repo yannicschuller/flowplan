@@ -1330,6 +1330,9 @@ async function importEntries(
               omittedRelations += ids.length - mapped.length;
               return [key, mapped];
             }
+            // Several people (#535): each one that is a member.
+            if (f?.type === "person" && Array.isArray(value))
+              return [key, value.filter((v): v is string => typeof v === "string" && members.has(v)).map((v) => person(v))];
             if (f?.type === "person")
               return [
                 key,

@@ -1,4 +1,5 @@
 "use client";
+import { personIds } from "@/lib/person-values";
 import { useEffect, useState } from "react";
 import { Flag, Play, CheckCircle, PencilSimple, Trash, Plus, ChartLine, DotsSixVertical } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
@@ -200,7 +201,7 @@ export function DatabaseSprints({
               {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
             </button>
             {rule && <span className="sprint-row-status">{cellText(r.cells[rule.field.id])}</span>}
-            {person && <span className="muted sprint-row-person">{members.find((m) => m.id === r.cells[person.id])?.name || ""}</span>}
+            {person && <span className="muted sprint-row-person">{personIds(r.cells[person.id]).map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(", ")}</span>}
             {pointsField && <span className="sprint-row-points">{pts(r) || "–"}</span>}
             {editable && (
               <Select aria-label={t("Verschieben nach", "Move to")} className="sprint-row-move" value={closedIds.has(sprintOf(r)) ? "" : sprintOf(r)} onChange={(e) => void move(r, e.target.value)}>

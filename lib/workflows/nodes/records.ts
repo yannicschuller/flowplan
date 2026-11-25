@@ -23,6 +23,7 @@ import type { WorkflowCondition, WorkflowConditionGroup } from "../catalog";
 import { hasPlaceholders, isEmpty, renderCompare, renderValue } from "../placeholders";
 import { coerceToField, compareNumberText } from "../values";
 import { dateOnly } from "../../date-values";
+import { personCell, personIds } from "../../person-values";
 import { databaseFields, recordValue, refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 import { withDefaults } from "../../field-defaults";
@@ -74,7 +75,14 @@ async function cellsFor(values: Record<string, unknown>, fields: Field[], ctx: N
     const value = cellValue(raw, field, ctx, createdBy);
     // A date property without time takes the day only ("Jetzt" is today,
     // in the run's time zone, #327).
-    out[field.id] = field.type === "date" && field.noTime ? dateOnly(value, ctx.scope.timeZone) : value;
+    out[field.id] =
+      field.type === "date" && field.noTime
+        ? dateOnly(value, ctx.scope.timeZone)
+        : // People in the property's shape (#535): a list with "Mehrere
+          // Personen", else one id.
+          field.type === "person" && value !== null && value !== undefined
+          ? personCell(field, personIds(value))
+          : value;
   }
   return out;
 }

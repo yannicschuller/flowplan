@@ -166,7 +166,13 @@ export async function runRuleAutomations(input: { page: Page; rowId: string; act
     if (!ruleTriggered(a, input.event, input.before ?? null, batch.row.cells, batch.fields)) continue;
     const graph = automationToGraph(a, input.page.id, batch.fields);
     const trigger = graph.nodes[0];
-    const values: Record<string, unknown> = { [trigger.id]: { record }, $trigger: { record }, ...builtins("UTC") };
+    // A change: what the record had before, so that "notify the people of
+    // the property" reaches only those it added (#535, ./nodes/notify.ts).
+    const change =
+      input.event === "updated" && input.before
+        ? { before: input.before, changed: batch.fields.map((f) => f.id).filter((k) => text(input.before![k]) !== text(batch.row.cells[k])) }
+        : {};
+    const values: Record<string, unknown> = { [trigger.id]: { record, ...change }, $trigger: { record }, ...builtins("UTC") };
     // A rule that does not get past its conditions did not fire.
     let passed = !a.conditions.length;
     const w: Walk = {

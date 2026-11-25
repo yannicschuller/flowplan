@@ -3,6 +3,7 @@
 // exactly their rights: reads go through requirePage, the journal lock and
 // record access; writes go through command() like an edit in the browser
 // (versions, notifications, webhooks). Read tokens only get read tools.
+import { isMultiPerson } from "./person-values";
 import { moduleOff, moduleOffError, modulesOff, toolModule } from "./instance-modules";
 import { randomBytes } from "node:crypto";
 import { isFormattedText } from "./inline-markdown";
@@ -278,6 +279,8 @@ const fieldInfo = (f: Field, _: number, fields: Field[]) => ({
   ...(f.tagOptions ? { tagOptions: true } : {}),
   // A date without time (#327): only YYYY-MM-DD; a time is refused.
   ...(f.type === "date" && f.noTime ? { noTime: true } : {}),
+  // Several people (#535): the value is a list.
+  ...(isMultiPerson(f) ? { multiple: true } : {}),
   ...(f.relationPage ? { relationDatabaseId: f.relationPage } : {}),
 });
 // Properties keyed by name, as an AI reads them; people by name.
@@ -289,6 +292,8 @@ function recordProperties(cells: Record<string, unknown>, fields: Field[], peopl
     out[f.name] =
       f.type === "person" && typeof value === "string"
         ? people.get(value) || value
+        : f.type === "person" && Array.isArray(value)
+          ? value.map((v) => (typeof v === "string" ? people.get(v) || v : v))
         : typeof value === "object" && !Array.isArray(value)
           ? cellText(value)
           : value;
@@ -826,12 +831,13 @@ async function cellPatch(user: Identity, page: Page, fields: Field[], input: Rec
       fields.find((f) => f.name.toLocaleLowerCase() === key.toLocaleLowerCase());
     if (!f) throw new HttpError(400, `Unknown property: ${key}`);
     let value = raw ?? "";
-    if (f.type === "person" && typeof value === "string" && value) {
-      const wanted = value.toLocaleLowerCase();
-      value =
-        people.find((m) => m.id === value || m.email.toLocaleLowerCase() === wanted || m.name.toLocaleLowerCase() === wanted)
-          ?.id || value;
-    }
+    // One person or several (#535): each by id, e-mail or name.
+    const person = (v: unknown) => {
+      if (typeof v !== "string" || !v) return v;
+      const wanted = v.toLocaleLowerCase();
+      return people.find((m) => m.id === v || m.email.toLocaleLowerCase() === wanted || m.name.toLocaleLowerCase() === wanted)?.id || v;
+    };
+    if (f.type === "person") value = (Array.isArray(value) ? value.map(person) : person(value)) as typeof value;
     if (f.type === "aliases" && typeof value === "string") value = aliasList(value);
     if (["multiselect", "relation", "files"].includes(f.type) && typeof value === "string")
       value = value ? [value] : [];
@@ -1206,7 +1212,7 @@ const tools: Tool[] = [
     name: "create_record",
     title: "Create a database record",
     description:
-      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs). Text properties with `markdown: true` take inline Markdown (**bold**, _italic_, ~~strike~~, `code`, [label](https://…), \\n for a line break; a backslash keeps * _ ~ ` [ ] \\ literal); the title is plain text. `document` writes the record's own document (Markdown: headings, lists, task lists, tables, code) – use it for longer text about the record instead of creating a separate page.",
+      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name; a list of them for a property with `multiple: true`, #535), relation (record IDs). Text properties with `markdown: true` take inline Markdown (**bold**, _italic_, ~~strike~~, `code`, [label](https://…), \\n for a line break; a backslash keeps * _ ~ ` [ ] \\ literal); the title is plain text. `document` writes the record's own document (Markdown: headings, lists, task lists, tables, code) – use it for longer text about the record instead of creating a separate page.",
     input: z.object({
       databaseId: id("Page ID of the database"),
       properties: z.record(z.string().max(200), z.unknown()).describe("e.g. {\"Name\": \"Call Anna\", \"Status\": \"Open\"}"),

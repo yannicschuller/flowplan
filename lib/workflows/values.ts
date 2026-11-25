@@ -5,6 +5,7 @@
 import type { Field } from "../types";
 import { isEmpty, valueText } from "./placeholders";
 import { dateOnly } from "../date-values";
+import { personCell } from "../person-values";
 
 export class ValueError extends Error {
   kind = "validation" as const;
@@ -106,7 +107,8 @@ export function coerceToField(value: unknown, field: Field, locale: "de" | "en" 
       if (isEmpty(value)) return "";
       const ids = list(value).map(idOf);
       if (ids.some((v) => !v)) return fail(field, value);
-      return ids.length === 1 ? ids[0] : ids;
+      // A list with "Mehrere Personen" (#535), else the first person.
+      return personCell(field, ids as string[]);
     }
     case "relation":
     case "files": {

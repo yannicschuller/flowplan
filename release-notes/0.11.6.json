@@ -134,6 +134,13 @@
       "issues": [
         532
       ]
+    },
+    {
+      "de": "Personen-Eigenschaften können mehrere Personen haben: Mit „Mehrere Personen“ in den Einstellungen der Eigenschaft wählst du Mitglieder als Chips mit Suche; das Board zeigt einen Eintrag bei jeder seiner Personen, und die Benachrichtigung geht nur an neu Eingetragene.",
+      "en": "Person properties can hold several people: with “Several people” in the property's settings you pick members as chips with a search; the board shows a record under each of its people, and the notification goes only to people newly added.",
+      "issues": [
+        535
+      ]
     }
   ]
 }

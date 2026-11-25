@@ -12,19 +12,56 @@
 // ✕ (#426): Backspace in the empty search removes the last one (a select's
 // value), ArrowLeft/Right move between the chips, Delete or Backspace on a
 // chip removes it.
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+// Person properties with "Mehrere Personen" (#535) take the same picker:
+// `people` are the members – their ids the options, found by name, shown
+// as chips with the avatar.
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CaretDown, Check, Plus, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { listPlacement, type ListPlacement } from "./select";
 import { choiceChipClass } from "@/lib/option-colors";
 import { MAX_OPTION_LENGTH, searchOptions } from "@/lib/option-search";
+import { isMultiPerson } from "@/lib/person-values";
 import type { Field } from "@/lib/types";
+import { Avatar } from "./ui";
 
 // Adds the option to the property; true once it is there.
 export type CreateOption = (name: string) => Promise<boolean>;
 
 type Entry = { kind: "option" | "create"; value: string };
+export type PickerPerson = { id: string; name: string };
+
+// How the options look: a choice's chip, or a person's avatar and name.
+type Look = {
+  options: string[];
+  person: boolean;
+  nameOf: (option: string) => string;
+  chip: (option: string) => string;
+  content: (option: string) => ReactNode;
+};
+function useLook(field: Field, people: readonly PickerPerson[] | undefined): Look {
+  const t = useT();
+  if (!people)
+    return { options: field.options || [], person: false, nameOf: (o) => o, chip: (o) => choiceChipClass(field, o), content: (o) => o };
+  const names = new Map(people.map((p) => [p.id, p.name]));
+  const nameOf = (o: string) => names.get(o) ?? t("Unbekannte Person", "Unknown person");
+  return {
+    options: people.map((p) => p.id),
+    person: true,
+    nameOf,
+    chip: () => "tag tag-choice person-chip",
+    content: (o) => (
+      <>
+        {/* The name is read out once: the initials are decoration. */}
+        <span className="person-chip-avatar" aria-hidden="true">
+          <Avatar name={nameOf(o)} userId={o} small />
+        </span>
+        <span className="person-chip-name">{nameOf(o)}</span>
+      </>
+    ),
+  };
+}
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && !!v) : typeof value === "string" && value ? [value] : [];
@@ -36,10 +73,13 @@ export function OptionInput({
   editing,
   create,
   keep = false,
+  people,
   onChange,
   onCancel,
 }: {
   field: Field;
+  // A person property (#535): the members to choose from.
+  people?: readonly PickerPerson[];
   value: unknown;
   disabled?: boolean;
   // A required property (#443): the last value cannot be removed.
@@ -53,7 +93,8 @@ export function OptionInput({
   onCancel?: () => void;
 }) {
   const t = useT();
-  const multi = field.type === "multiselect";
+  const multi = field.type === "multiselect" || isMultiPerson(field);
+  const look = useLook(field, people);
   const given = strings(value);
   const givenKey = JSON.stringify(given);
   // Picks made here count at once, before the record's new value is back
@@ -76,11 +117,12 @@ export function OptionInput({
     if (!saved) setChosen(latest.current);
     return saved;
   };
-  const chip = (o: string) => choiceChipClass(field, o);
+  const chip = look.chip;
   const removable = !keep || chosen.length > 1;
   const search = open && !disabled && (
     <OptionSearch
       field={field}
+      look={look}
       chosen={chosen}
       multi={multi}
       create={create}
@@ -115,12 +157,12 @@ export function OptionInput({
       {!search &&
         chosen.map((o) => (
         <span key={o} className={`${chip(o)} option-input-chip`}>
-          {o}
+          {look.content(o)}
           {!disabled && removable && (
             <button
               type="button"
               className="page-tag-remove"
-              aria-label={t(`„${o}“ entfernen`, `Remove “${o}”`)}
+              aria-label={t(`„${look.nameOf(o)}“ entfernen`, `Remove “${look.nameOf(o)}”`)}
               onClick={() => void set(chosen.filter((x) => x !== o))}
             >
               <X size={11} weight="bold" />
@@ -136,10 +178,14 @@ export function OptionInput({
             className="page-properties-add option-input-add"
             aria-haspopup="listbox"
             aria-expanded={false}
-            aria-label={t(`Option zu „${field.name}“ hinzufügen`, `Add an option to “${field.name}”`)}
+            aria-label={
+              look.person
+                ? t(`Person zu „${field.name}“ hinzufügen`, `Add a person to “${field.name}”`)
+                : t(`Option zu „${field.name}“ hinzufügen`, `Add an option to “${field.name}”`)
+            }
             onClick={() => setOpen(true)}
           >
-            <Plus size={13} aria-hidden /> {t("Option", "Option")}
+            <Plus size={13} aria-hidden /> {look.person ? t("Person", "Person") : t("Option", "Option")}
           </button>
         ))}
       {disabled && !chosen.length && <span className="muted">—</span>}
@@ -149,6 +195,7 @@ export function OptionInput({
 
 function OptionSearch({
   field,
+  look,
   chosen,
   multi,
   create,
@@ -158,6 +205,7 @@ function OptionSearch({
   removable = true,
 }: {
   field: Field;
+  look: Look;
   chosen: string[];
   multi: boolean;
   create?: CreateOption;
@@ -175,7 +223,7 @@ function OptionSearch({
   const [query, setQuery] = useState(""),
     [busy, setBusy] = useState(false),
     [place, setPlace] = useState<ListPlacement | null>(null);
-  const found = searchOptions(field.options || [], query, { exclude: multi ? chosen : [], canCreate: !!create });
+  const found = searchOptions(look.options, query, { exclude: multi ? chosen : [], canCreate: !!create && !look.person, labelOf: look.nameOf });
   const entries: Entry[] = [
     ...found.matches.map((value) => ({ kind: "option" as const, value })),
     ...(found.create ? [{ kind: "create" as const, value: found.create }] : []),
@@ -302,7 +350,7 @@ function OptionSearch({
         <Plus size={13} aria-hidden /> {t(`„${entry.value}“ anlegen`, `Create “${entry.value}”`)}
       </span>
     ) : (
-      <span className={choiceChipClass(field, entry.value)}>{entry.value}</span>
+      <span className={look.chip(entry.value)}>{look.content(entry.value)}</span>
     );
   const expanded = entries.length > 0;
   return (
@@ -312,13 +360,13 @@ function OptionSearch({
       {chosen.length > 0 && (
         <span className="option-picker-chosen" role="group" aria-label={t(`Gewählt: ${field.name}`, `Chosen: ${field.name}`)}>
           {chosen.map((o, i) => (
-            <span key={o} className={`${choiceChipClass(field, o)} option-input-chip`}>
-              {o}
+            <span key={o} className={`${look.chip(o)} option-input-chip`}>
+              {look.content(o)}
               {removable && (
                 <button
                   type="button"
                   className="page-tag-remove"
-                  aria-label={t(`„${o}“ entfernen`, `Remove “${o}”`)}
+                  aria-label={t(`„${look.nameOf(o)}“ entfernen`, `Remove “${look.nameOf(o)}”`)}
                   onKeyDown={(e) => chipKeyDown(e, i)}
                   onClick={() => remove(o)}
                 >
@@ -336,9 +384,15 @@ function OptionSearch({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={expanded && current >= 0 ? `${listId}-${current}` : undefined}
-        aria-label={create ? t(`${field.name}: Option suchen oder anlegen`, `${field.name}: find or create an option`) : t(`${field.name}: Option suchen`, `${field.name}: find an option`)}
+        aria-label={
+          look.person
+            ? t(`${field.name}: Person suchen`, `${field.name}: find a person`)
+            : create
+              ? t(`${field.name}: Option suchen oder anlegen`, `${field.name}: find or create an option`)
+              : t(`${field.name}: Option suchen`, `${field.name}: find an option`)
+        }
         aria-busy={busy || undefined}
-        placeholder={create ? t("Suchen oder anlegen …", "Find or create …") : t("Suchen …", "Find …")}
+        placeholder={create && !look.person ? t("Suchen oder anlegen …", "Find or create …") : t("Suchen …", "Find …")}
         autoComplete="off"
         enterKeyHint={multi ? "enter" : "done"}
         maxLength={MAX_OPTION_LENGTH}
@@ -358,7 +412,12 @@ function OptionSearch({
             onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
           >
-            <div id={listId} role="listbox" aria-label={t(`Optionen von ${field.name}`, `Options of ${field.name}`)} aria-multiselectable={multi || undefined}>
+            <div
+              id={listId}
+              role="listbox"
+              aria-label={look.person ? t(`Mitglieder für ${field.name}`, `Members for ${field.name}`) : t(`Optionen von ${field.name}`, `Options of ${field.name}`)}
+              aria-multiselectable={multi || undefined}
+            >
               {entries.map((entry, i) => (
                 <div
                   key={`${entry.kind}:${entry.value}`}
@@ -377,18 +436,32 @@ function OptionSearch({
             </div>
             {!expanded && (
               <p className="option-picker-empty muted">
-                {query.trim()
-                  ? t("Keine passende Option.", "No matching option.")
-                  : multi && (field.options || []).length
-                    ? t("Alle Optionen sind gewählt.", "Every option is chosen.")
-                    : t("Noch keine Optionen.", "No options yet.")}
+                {look.person
+                  ? query.trim()
+                    ? t("Keine passende Person.", "No matching person.")
+                    : look.options.length
+                      ? t("Alle Mitglieder sind gewählt.", "Every member is chosen.")
+                      : t("Keine Mitglieder.", "No members.")
+                  : query.trim()
+                    ? t("Keine passende Option.", "No matching option.")
+                    : multi && (field.options || []).length
+                      ? t("Alle Optionen sind gewählt.", "Every option is chosen.")
+                      : t("Noch keine Optionen.", "No options yet.")}
               </p>
             )}
           </div>,
           place.host,
         )}
       <span className="sr-only" role="status" aria-live="polite">
-        {query.trim() ? (found.matches.length === 1 ? t("1 Option", "1 option") : t(`${found.matches.length} Optionen`, `${found.matches.length} options`)) : ""}
+        {!query.trim()
+          ? ""
+          : look.person
+            ? found.matches.length === 1
+              ? t("1 Person", "1 person")
+              : t(`${found.matches.length} Personen`, `${found.matches.length} people`)
+            : found.matches.length === 1
+              ? t("1 Option", "1 option")
+              : t(`${found.matches.length} Optionen`, `${found.matches.length} options`)}
       </span>
     </span>
   );

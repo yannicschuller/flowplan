@@ -171,6 +171,26 @@
   gap: 2px;
   max-width: 100%;
 }
+/* A person in the picker (#535): the avatar and the name on a neutral chip. */
+.tag.person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 3px;
+  min-width: 0;
+  background: var(--hover);
+  color: var(--text);
+}
+.person-chip-avatar {
+  display: inline-flex;
+  flex: none;
+}
+.person-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .option-input-chip .page-tag-remove {
   --tag-fg: currentColor;
   display: inline-grid;

@@ -26,6 +26,7 @@
 // (and with ISSUE_SYNC_ALLOW_PRIVATE=true it may have an internal address). All
 // requests go through lib/safe-fetch.ts (resolved and pinned addresses, no
 // redirects with credentials).
+import { personCell, personIds } from "./person-values";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
@@ -919,7 +920,11 @@ async function localView(config: IssueSyncConfig, people: Map<string, string>, r
   if (config.body) view.body = config.body === "@document" ? (await documentMarkdown(rowId)) : cellText(cells[config.body]).trim();
   if (config.status) view.status = cellText(cells[config.status.field]);
   if (config.labels) view.labels = sorted(Array.isArray(cells[config.labels]) ? (cells[config.labels] as string[]) : []);
-  if (config.assignee) view.assignee = people.get(String(cells[config.assignee] || "")) || "";
+  // Several people (#535): their logins as a sorted list; one as before.
+  if (config.assignee)
+    view.assignee = Array.isArray(cells[config.assignee])
+      ? sorted(personIds(cells[config.assignee]).map((id) => people.get(id) || "").filter(Boolean))
+      : people.get(String(cells[config.assignee] || "")) || "";
   if (config.milestone) view.due = String(cells[config.milestone] || "").slice(0, 10);
   return view;
 }
@@ -964,8 +969,10 @@ function cellsFromIssue(config: IssueSyncConfig, fields: Field[], users: Map<str
     patch[config.labels] = issue.labels.filter((l) => !own.has(l) && field?.options?.includes(l));
   }
   if (config.assignee) {
-    const uid = issue.assignees.map((login) => users.get(login.toLowerCase())).find(Boolean);
-    patch[config.assignee] = uid || "";
+    // Every assignee for a property with "Mehrere Personen" (#535), else the first.
+    const uids = issue.assignees.map((login) => users.get(login.toLowerCase())).filter((v): v is string => !!v);
+    const field = fields.find((f) => f.id === config.assignee);
+    patch[config.assignee] = field ? personCell(field, uids) : uids[0] || "";
   }
   if (config.milestone) patch[config.milestone] = issue.milestone?.due && validDateValue(issue.milestone.due) ? issue.milestone.due : "";
   Object.assign(patch, readOnlyCells(config, fields, issue));
@@ -1004,7 +1011,7 @@ function issueFromView(
   }
   if (config.labels) labels!.push(...((view.labels as string[]) || []));
   if (labels) change.labels = sorted(labels);
-  if (config.assignee) change.assignees = view.assignee ? [String(view.assignee)] : [];
+  if (config.assignee) change.assignees = Array.isArray(view.assignee) ? view.assignee.map(String) : view.assignee ? [String(view.assignee)] : [];
   if (config.milestone && milestones) {
     const due = String(view.due || "");
     if (!due) change.milestone = null;

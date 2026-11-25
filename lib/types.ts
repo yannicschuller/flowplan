@@ -164,6 +164,9 @@ export type Field = {
   // already have a time keep it; no new time can be added (lib/date-values.ts
   // newTimeRefused). Unset: dates may have a time.
   noTime?: boolean;
+  // "person": "Mehrere Personen" (#535, lib/person-values.ts) – the value
+  // is a list of member ids. Unset: one person, stored as one id.
+  multiPerson?: boolean;
   decimals?: number;
   // "number" (and formulas with a number result): an own unit like "kg"
   // shown after the value (#522, lib/field-format.ts fieldUnit); ignored for

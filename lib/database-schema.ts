@@ -70,6 +70,8 @@ export const field = z.object({
   timeFormat: z.enum(["24", "12"]).optional(),
   // Date properties without a time of day (#327).
   noTime: z.boolean().optional(),
+  // Person properties with several people (#535).
+  multiPerson: z.boolean().optional(),
   decimals: z.number().int().min(0).max(10).optional(),
   // Own unit of a number property (#522), e.g. "kg": at most 12 characters,
   // no control characters.

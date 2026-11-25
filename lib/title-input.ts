@@ -5,6 +5,7 @@
 // the same writings the table and imports read ("23.11.2026", "1.234,5",
 // "12 kg"). The server stays strict (lib/database-operations.ts); the
 // value is sent ready.
+import { isMultiPerson, personIds } from "./person-values";
 import { parseCheckbox, parseNumber } from "./table-database";
 import { browserZone, draftDateValue, fieldValue, isTimed, validDateValue } from "./date-values";
 import { currencies, displayText, fieldUnit, formatFieldDate, formatNumber, ratingMax, stripUnit } from "./field-format";
@@ -12,7 +13,7 @@ import { cellText, csvListValues } from "./cell-text";
 import type { Field, FieldType } from "./types";
 
 type Translate = (de: string, en: string) => string;
-type TitleField = Pick<Field, "type" | "name" | "options" | "tagOptions" | "format" | "timeFormat" | "noTime" | "unit" | "decimals" | "rollupDisplay" | "rollupMax">;
+type TitleField = Pick<Field, "type" | "name" | "options" | "tagOptions" | "multiPerson" | "format" | "timeFormat" | "noTime" | "unit" | "decimals" | "rollupDisplay" | "rollupMax">;
 type Member = { id: string; name: string; email?: string };
 
 // How a title of this type is edited in the record view:
@@ -23,9 +24,11 @@ type Member = { id: string; name: string; email?: string };
 export type TitleMode = "text" | "typed" | "editor" | "readonly";
 const READONLY: FieldType[] = ["formula", "rollup", "id", "progress", "time", "created_at", "updated_at", "created_by", "updated_by"];
 const TEXT: FieldType[] = ["text", "url", "email", "phone"];
-export function titleMode(field: Pick<Field, "type" | "tagOptions">): TitleMode {
+export function titleMode(field: Pick<Field, "type" | "tagOptions" | "multiPerson">): TitleMode {
   if (READONLY.includes(field.type)) return "readonly";
   if (TEXT.includes(field.type)) return "text";
+  // Several people (#535): the picker.
+  if (isMultiPerson(field)) return "editor";
   if (field.type === "date" || field.type === "number" || field.type === "select" || field.type === "person") return "typed";
   if (field.type === "multiselect" && !field.tagOptions) return "typed";
   return "editor";
@@ -231,6 +234,13 @@ function optionError(field: TitleField, t: Translate) {
 
 // ---- Showing the title ----
 
+// One person's name, or several (#535) separated by commas.
+const peopleNames = (value: unknown, members: Member[] = []) =>
+  personIds(value)
+    .map((id) => members.find((m) => m.id === id)?.name ?? "")
+    .filter(Boolean)
+    .join(", ");
+
 // The title as the text to edit: the day as a number (23.11.2026, or as
 // the property's ISO/US format says) with the time in `zone`; a number
 // without thousands separators in the page's language.
@@ -247,7 +257,7 @@ export function titleEditText(field: TitleField, value: unknown, context: { zone
     if (typeof value !== "number" || !Number.isFinite(value)) return cellText(value);
     return field.format === "percent" ? formatNumber(value, "percent") : formatNumber(value, "plain");
   }
-  if (field.type === "person") return context.members?.find((m) => m.id === value)?.name ?? "";
+  if (field.type === "person") return peopleNames(value, context.members);
   if (field.type === "multiselect") return Array.isArray(value) ? value.map(String).join(", ") : cellText(value);
   return cellText(value);
 }
@@ -255,8 +265,7 @@ export function titleEditText(field: TitleField, value: unknown, context: { zone
 // record's header): dates and numbers formatted, people by name.
 export function titleDisplayText(field: TitleField, value: unknown, context: { zone?: string; members?: Member[] } = {}): string {
   if (field.type === "date" && typeof value === "string" && value) return formatFieldDate(value, field, context.zone);
-  if (field.type === "person" || field.type === "created_by" || field.type === "updated_by")
-    return context.members?.find((m) => m.id === value)?.name ?? "";
+  if (field.type === "person" || field.type === "created_by" || field.type === "updated_by") return peopleNames(value, context.members);
   if ((field.type === "multiselect" || field.type === "rollup") && Array.isArray(value)) return value.map((v) => cellText(v)).join(", ");
   if (field.type === "number" && (value === null || value === "")) return "";
   if (field.type === "checkbox") return value ? "✓" : "";

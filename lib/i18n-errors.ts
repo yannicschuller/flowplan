@@ -765,6 +765,8 @@ const exact: Record<string, string> = {
   "Ungültiges Datum.": "Invalid date.",
   // Date properties without time (#327, lib/date-values.ts NO_TIME_MESSAGE).
   "Diese Eigenschaft hat keine Uhrzeit. Bitte nur ein Datum angeben.": "This property has no time. Please enter only a date.",
+  // Person properties with one person (#535, lib/person-values.ts ONE_PERSON_MESSAGE).
+  "Diese Eigenschaft nimmt nur eine Person. Schalte „Mehrere Personen“ ein, um mehrere einzutragen.": "This property takes only one person. Turn on “Several people” to enter more.",
   "Änderung zu groß.": "Change too large.",
   "Datenbank ist gesperrt.": "Database is locked.",
   "Keine Datenbank.": "Not a database.",

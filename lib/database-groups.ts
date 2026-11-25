@@ -5,6 +5,7 @@ import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
 import { isRequired } from "./field-required";
 import { withUnit } from "./field-format";
+import { isMultiPerson, personIds } from "./person-values";
 export type DatabaseGroup = {
   key: string;
   label: string;
@@ -87,9 +88,11 @@ export function groupCellValue(
   current: unknown = [],
   sourceKey?: string,
 ) {
-  if (["relation", "multiselect"].includes(field.type)) {
+  // People of a property with "Mehrere Personen" (#535) like options of a
+  // multi-select: the card leaves the source column's person for the target's.
+  if (["relation", "multiselect"].includes(field.type) || isMultiPerson(field)) {
     if (value === null) return [];
-    const selected = Array.isArray(current) ? current : [];
+    const selected = field.type === "person" ? personIds(current) : Array.isArray(current) ? current : [];
     return [
       ...new Set([...selected.filter((v) => groupKey(v) !== sourceKey), value]),
     ];

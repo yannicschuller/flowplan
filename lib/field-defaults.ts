@@ -28,6 +28,7 @@
 //   paths: withDefaults also gives them their value.
 //
 // Client-safe: no database access here.
+import { isMultiPerson } from "./person-values";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
 import { isEmptyValue } from "./empty-value";
@@ -124,7 +125,8 @@ function nowValue(field: Field, now: number, zone?: string) {
 export function defaultCell(field: Field & { defaultValue?: unknown }, context: { creator: string | null; now?: number; timeZone?: string }) {
   const d = cleanDefault(field);
   if (!d) return undefined;
-  if (d.kind === "creator") return context.creator || undefined;
+  // "Mehrere Personen" (#535): the creator as the list's one person.
+  if (d.kind === "creator") return context.creator ? (isMultiPerson(field) ? [context.creator] : context.creator) : undefined;
   if (d.kind === "now") return nowValue(field, context.now ?? Date.now(), context.timeZone);
   return Array.isArray(d.value) ? [...d.value] : d.value;
 }
