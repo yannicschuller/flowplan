@@ -1,4 +1,5 @@
 "use client";
+import { enterFullscreen, leaveFullscreen } from "@/lib/fullscreen";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/server-message";
 import { useStatusLabel, useT } from "../i18n";
@@ -420,11 +421,10 @@ export default function Whiteboard({
   async function toggleFullscreen() {
     if (fullscreen) {
       setFullscreen(false);
-      if (document.fullscreenElement)
-        await document.exitFullscreen().catch(() => {});
+      leaveFullscreen();
     } else {
       setFullscreen(true);
-      await document.documentElement.requestFullscreen?.().catch(() => {});
+      enterFullscreen(document.documentElement);
     }
     requestAnimationFrame(() =>
       container.current?.focus({ preventScroll: true }),

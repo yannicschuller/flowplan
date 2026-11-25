@@ -109,11 +109,15 @@ test("Jira: code with braces, {noformat}, quotes and callouts", () => {
   assert.ok(out.includes("{noformat}\nplain {text} *stays*\n{noformat}"));
   assert.ok(out.includes("{code:typescript}\nlet x: {y: string};\n{code}"));
   assert.ok(out.includes("{quote}\nZitat\n\nzwei\n{quote}"));
-  assert.ok(out.includes("{info}\nNotiz\n{info}"));
-  assert.ok(out.includes("{tip}\nTipp\n{tip}"));
-  assert.ok(out.includes("{info:title=Wichtig}\nWichtig\n{info}"));
-  assert.ok(out.includes("{note}\nWarnung\n{note}"));
-  assert.ok(out.includes("{warning}\nAchtung\n{warning}"));
+  // Callouts as Jira's own coloured panels: {info} and the like are
+  // Confluence macros that Jira shows literally (#534).
+  const callout = (title: string, colours: string, body: string) => `{panel:title=${title}|borderStyle=solid|${colours}}\n${body}\n{panel}`;
+  assert.ok(out.includes(callout("Hinweis", "borderColor=#4C9AFF|titleBGColor=#B3D4FF|bgColor=#DEEBFF", "Notiz")), out);
+  assert.ok(out.includes(callout("Tipp", "borderColor=#36B37E|titleBGColor=#ABF5D1|bgColor=#E3FCEF", "Tipp")));
+  assert.ok(out.includes(callout("Wichtig", "borderColor=#8777D9|titleBGColor=#C0B6F2|bgColor=#EAE6FF", "Wichtig")));
+  assert.ok(out.includes(callout("Warnung", "borderColor=#FFAB00|titleBGColor=#FFF0B3|bgColor=#FFFAE6", "Warnung")));
+  assert.ok(out.includes(callout("Achtung", "borderColor=#FF5630|titleBGColor=#FFBDAD|bgColor=#FFEBE6", "Achtung")));
+  for (const macro of ["{info", "{tip}", "{note}", "{warning}"]) assert.ok(!out.includes(macro), macro);
   assert.ok(out.includes("{panel:title=Mehr}\nInnen\n{panel}"));
   assert.equal(codeLanguage("sh"), "bash");
   assert.equal(codeLanguage("plaintext"), null);

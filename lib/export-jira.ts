@@ -5,7 +5,9 @@
 // *bold*, _italic_, -strike-, +underline+, {{monospace}}, {code:language},
 // {noformat}, {quote}, lists with * and # nesting, tasks as [ ] / [x] text,
 // tables ||head|| / |cell|, links [text|url], pictures !url!, callouts as
-// {info} {tip} {note} {warning}, toggles and meetings as {panel}, ----.
+// coloured {panel}s with their name as title ({info} and the like are
+// Confluence macros that Jira shows literally, #534), toggles and meetings
+// as {panel}, ----.
 // Text is escaped so that it shows as typed. Links and pictures keep
 // absolute addresses of this instance (Jira cannot reach the files).
 import { tabTitle } from "./tabs-commands";
@@ -83,6 +85,14 @@ export const CALLOUT_MACROS: Record<CalloutType, "info" | "tip" | "note" | "warn
   important: "info",
   warning: "note",
   caution: "warning",
+};
+// Jira's own panel in the colours of each callout (border, title bar, box).
+export const JIRA_CALLOUT_COLOURS: Record<CalloutType, { border: string; title: string; bg: string }> = {
+  note: { border: "#4C9AFF", title: "#B3D4FF", bg: "#DEEBFF" },
+  tip: { border: "#36B37E", title: "#ABF5D1", bg: "#E3FCEF" },
+  important: { border: "#8777D9", title: "#C0B6F2", bg: "#EAE6FF" },
+  warning: { border: "#FFAB00", title: "#FFF0B3", bg: "#FFFAE6" },
+  caution: { border: "#FF5630", title: "#FFBDAD", bg: "#FFEBE6" },
 };
 export const calloutLabel = (type: CalloutType) =>
   ({
@@ -343,9 +353,9 @@ export function documentJira(html: string, context: TextExportContext): string {
         return `{quote}\n${children(node)}\n{quote}`;
       case "callout": {
         const type = calloutType(node.attrs.type);
-        const macro = CALLOUT_MACROS[type];
-        // Important shares the blue box with note: its title tells them apart.
-        return `{${macro}${type === "important" ? `:title=${calloutLabel(type)}` : ""}}\n${children(node)}\n{${macro}}`;
+        const c = JIRA_CALLOUT_COLOURS[type];
+        const title = calloutLabel(type).replace(/[|}=]/g, " ");
+        return `{panel:title=${title}|borderStyle=solid|borderColor=${c.border}|titleBGColor=${c.title}|bgColor=${c.bg}}\n${children(node)}\n{panel}`;
       }
       case "toggle":
         return panel(String(node.attrs.title || "Details"), children(node));

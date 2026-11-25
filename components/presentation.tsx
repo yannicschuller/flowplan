@@ -6,6 +6,7 @@
 // slide holds speaker notes, shown in the presenter view – a second window
 // (app/presenter) kept in step over a BroadcastChannel. The slides print as
 // one landscape page each through the usual print path.
+import { enterFullscreen, leaveFullscreen } from "@/lib/fullscreen";
 import { prefersReducedMotion } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CornersOut, Moon, Notepad, Printer, Sun, X } from "@phosphor-icons/react";
@@ -116,11 +117,11 @@ export function Presentation({ html, title, onClose }: { html: string; title: st
       else if (entered) closeRef.current();
     };
     document.addEventListener("fullscreenchange", change);
-    el?.requestFullscreen?.().catch(() => {});
+    enterFullscreen(el);
     el?.focus();
     return () => {
       document.removeEventListener("fullscreenchange", change);
-      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      leaveFullscreen();
     };
   }, []);
   // The look of the slides: the page's colours change along, and come back.
@@ -253,7 +254,7 @@ export function Presentation({ html, title, onClose }: { html: string; title: st
         <button type="button" className="icon-button" onClick={() => setPrinting(true)} disabled={printing} aria-label={t("Folien drucken oder als PDF sichern", "Print slides or save as PDF")} title={t("Folien drucken / PDF", "Print slides / PDF")}>
           <Printer size={18} />
         </button>
-        <button type="button" className="icon-button" onClick={() => root.current?.requestFullscreen?.().catch(() => {})} aria-label={t("Vollbild", "Full screen")} title={t("Vollbild", "Full screen")}>
+        <button type="button" className="icon-button" onClick={() => enterFullscreen(root.current)} aria-label={t("Vollbild", "Full screen")} title={t("Vollbild", "Full screen")}>
           <CornersOut size={18} />
         </button>
         <button type="button" className="icon-button" onClick={onClose} aria-label={t("Präsentation beenden (Esc)", "End presentation (Esc)")} title={t("Präsentation beenden (Esc)", "End presentation (Esc)")}>

@@ -45,6 +45,20 @@
       "issues": [
         529
       ]
+    },
+    {
+      "de": "Präsentieren öffnet die Folien auch dann, wenn eine Browser-Erweiterung den Vollbildmodus verändert, statt mit „Etwas ist schiefgelaufen“ abzubrechen.",
+      "en": "Present opens the slides even when a browser extension changes full screen, instead of stopping with “Something went wrong”.",
+      "issues": [
+        533
+      ]
+    },
+    {
+      "de": "Jira-Export: Hinweise werden zu farbigen Panels, die Jira darstellt, statt als Text {info} … {info}.",
+      "en": "Jira export: callouts become coloured panels that Jira renders, instead of literal {info} … {info} text.",
+      "issues": [
+        534
+      ]
     }
   ],
   "improvements": [
