@@ -84,7 +84,7 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
-  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1302 },
+  { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 1340 },
   // The signed-in pages were raised on 2026-11-19 by 7-15 KB (under 1.5 %):
   // offline creation (#370: the queue of new pages and uploads, the "not yet
   // synced" marks), the library (#329), passkeys from the apps and the

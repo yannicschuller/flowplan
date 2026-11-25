@@ -4,7 +4,7 @@
 // (components/ai-database.tsx), so it carries no server imports. German and
 // English, then the translation of "Content" in every catalogue in locales/ –
 // tests/ai-database.test.ts fails when a catalogue's word is missing here.
-export const CONTENT_REFERENCES = ["Inhalt", "Content", "Contenu", "内容", "Содержимое"];
+export const CONTENT_REFERENCES = ["Inhalt", "Content", "Contenu", "内容", "Содержимое", "Treść"];
 // The reference the editor's chip inserts for an unknown word: always parsable.
 export const CANONICAL_CONTENT_REFERENCE = "Content";
 

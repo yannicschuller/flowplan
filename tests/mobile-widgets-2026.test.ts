@@ -180,8 +180,11 @@ test("event: the next appointments with location and Join, countdown data, permi
   assert.ok(bytes(data) <= W.MAX_WIDGET_BYTES);
   // Without Join, fewer, only today.
   const plain = await one_(E, "event", { calendars, within: "today", showJoin: false, max: 1 });
-  assert.equal(plain.items.length, 1);
-  assert.equal(plain.items[0].joinUrl, undefined);
+  // The standup is 30 minutes from now: shortly before midnight (UTC, the
+  // test's time zone) it is tomorrow already.
+  const standupToday = at(NOW + 30 * 60_000).slice(0, 10) === at(NOW).slice(0, 10);
+  assert.equal(plain.items.length, standupToday ? 1 : 0);
+  if (standupToday) assert.equal(plain.items[0].joinUrl, undefined);
   // The week reaches the all-day entry in five days.
   assert.ok((await one_(E, "event", { calendars, within: "week" })).total >= 4);
   // Options: the calendars with their ids for `calendars`.
