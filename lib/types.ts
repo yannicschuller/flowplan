@@ -486,5 +486,17 @@ export type Bootstrap = {
     kind?: string | null;
     read_at: string | null;
     created_at: string;
+    // What it is besides its text (lib/notification-fields.ts): who
+    // caused it, its type, an incident's severity, the values of its line
+    // (JSON) and a comment's first words. Null for older rows: `body` shows.
+    actor_id?: string | null;
+    subtype?: string | null;
+    severity?: string | null;
+    params?: string | null;
+    excerpt?: string | null;
   }[];
+  // More notifications than the first page (GET /api/notifications/inbox).
+  notificationsMore?: boolean;
+  // Unread notifications in all, also beyond the first page (the badges).
+  notificationsUnread?: number;
 };

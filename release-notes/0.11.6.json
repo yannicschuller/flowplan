@@ -111,6 +111,10 @@
     {
       "de": "Sicherheit: Vorfälle lassen sich durchsuchen und nach offen, erledigt und Schwere filtern, seitenweise mit „Weitere laden“.",
       "en": "Security: incidents can be searched and filtered by open, resolved and severity, in pages with “Load more”."
+    },
+    {
+      "de": "Neuer Posteingang: nach Tag und Art gruppiert, kompakte Zeilen mit Person, Seite und Kommentaranfang, Ähnliches zusammengefasst, Vorfälle mit Schweregrad und „Zum Vorfall“. Gelesen und Entfernen beim Darüberfahren (Handy: ⋯), auch für mehrere; „Ältere laden“; Texte in deiner Sprache.",
+      "en": "New inbox: grouped by day and type, compact rows with the person, page and start of a comment, similar ones collapsed, incidents with severity and “View incident”. Read and remove on hover (phones: ⋯), also for several at once; “Load older”; texts in your language."
     }
   ],
   "features": [

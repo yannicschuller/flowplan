@@ -132,6 +132,7 @@ const ALLOWED = new Set([
   "notification.read",
   "notification.mark",
   "notification.delete",
+  "notification.bulk",
 ]);
 const PAGE_KEYS = ["pageId", "targetId", "parentId", "resourceId", "journalId", "sourcePageId", "targetPageId", "databaseId", "rootId"];
 const SPACE_KEYS = ["spaceId", "resourceId", "targetSpaceId"];

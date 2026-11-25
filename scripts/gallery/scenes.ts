@@ -279,6 +279,34 @@ const TABLE_HTML =
 const pages: Scene[] = [
   { id: "home", group: "Pages", title: "Start page", path: "#home" },
   { id: "inbox", group: "Pages", title: "Inbox", path: "#inbox" },
+  // Similar notifications collapsed into one row, opened.
+  {
+    id: "inbox-similar",
+    group: "Pages",
+    title: "Inbox – similar notifications opened",
+    path: "#inbox",
+    devices: ["desktop"],
+    // The examples exist only on the gallery's own server (inbox-seed.ts).
+    steps: async (page) => {
+      const similar = page.getByRole("button", { name: /security incidents/ }).first();
+      if (await similar.count()) await similar.click();
+    },
+  },
+  // By touch: one ⋯ menu per notification instead of the hover tools.
+  {
+    id: "inbox-actions",
+    group: "Pages",
+    title: "Inbox – actions of a notification",
+    covers: ["components/inbox.tsx"],
+    path: "#inbox",
+    devices: ["phone"],
+    steps: async (page) => {
+      const more = page.getByRole("button", { name: /^Actions: / }).first();
+      if (!(await more.count())) return;
+      await more.click();
+      await page.getByRole("menu").waitFor();
+    },
+  },
   { id: "tasks", group: "Pages", title: "My tasks", path: "#tasks" },
   {
     id: "tasks-range",

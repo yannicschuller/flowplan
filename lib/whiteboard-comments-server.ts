@@ -16,6 +16,8 @@ import { parseTargetKey } from "./link-targets";
 import { boardMessageContent } from "./whiteboard-comments";
 import type { WhiteboardMessage } from "./whiteboard-model";
 import type { Identity, Page } from "./types";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
+import { isEncryptedPage } from "./e2ee-server";
 
 export const MENTION_KEYS_LIMIT = 100;
 // A message notifies only while it is new – written or edited this long ago
@@ -100,13 +102,14 @@ export async function notifyBoardMentions(user: Identity, pageId: string, itemId
     );
     if (!Number(fresh.changes)) continue;
     await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
+      `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,?,${NOTIFICATION_FIELD_VALUES})`,
       id(),
       recipient,
       `${user.name} hat dich in einem Kommentar in „${page.title}“ erwähnt` + attachmentNote(content),
       page.id,
       null,
       "mention",
+      ...notificationFields({ actorId: user.id, subtype: "comment_mention", params: { actor: user.name, page: page.title }, excerpt: (await isEncryptedPage(page)) ? null : message.text }),
     );
     await mentionWebhook(page.workspace_id, page.id, null, recipient, user.name, user.id);
     count++;

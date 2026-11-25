@@ -26,6 +26,7 @@ import { workersPaused } from "./instance-read-only";
 import { validBlockId } from "./block-ids";
 import { userUnassignedTasks } from "./unassigned-tasks-pref";
 import { TASK_STATUSES, isClosedStatus, isContinuedTask, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 // The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
 const storedStatus = (status: TaskStatus) => (isStoredStatus(status) ? status : null);
@@ -194,12 +195,13 @@ export async function syncDocTasks(
         if (!(await mayHear(assignee, page, rowId))) continue;
         notified.add(assignee);
         await run(
-          "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
+          `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,'mention',${NOTIFICATION_FIELD_VALUES})`,
           id(),
           assignee,
           `${user.name} hat dir eine Aufgabe in „${page.title || "Ohne Titel"}“ gegeben: ${task.text.slice(0, 120)}`,
           page.id,
           rowId,
+          ...notificationFields({ actorId: user.id, subtype: "assignment", params: { actor: user.name, page: page.title, task: task.text.slice(0, 120) } }),
         );
       }
     }
@@ -497,12 +499,13 @@ export async function processDueTasks(today = localToday()) {
     sent++;
     const notificationId = id();
     await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
+      `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,'reminder',${NOTIFICATION_FIELD_VALUES})`,
       notificationId,
       task.assignee,
       `Heute fällig: ${task.text.slice(0, 120)} („${task.title || "Ohne Titel"}“)`,
       task.page_id,
       task.row_id || null,
+      ...notificationFields({ subtype: "task_due", params: { page: task.title, task: task.text.slice(0, 120) } }),
     );
     // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
     await rememberTaskTarget(notificationId, { type: "doc", pageId: task.page_id, rowId: task.row_id || null, key: taskKey(task.text) });

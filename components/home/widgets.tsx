@@ -34,6 +34,7 @@ import { BarChart, ChartTable } from "../charts";
 import { formatNumber } from "@/lib/field-format";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/server-message";
+import { notificationLine } from "@/lib/notification-display";
 import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { dueLabel, dueState } from "@/lib/task-due";
@@ -491,7 +492,7 @@ function FavoritesWidget({ widget, config }: Props<"favorites">) {
 function InboxWidget({ widget, config }: Props<"inbox">) {
   const t = useT();
   const env = useEnv();
-  const unread = env.boot.notifications.filter((n) => !n.read_at).length;
+  const unread = env.boot.notificationsUnread ?? env.boot.notifications.filter((n) => !n.read_at).length;
   const list = env.boot.notifications.filter((n) => !config.unreadOnly || !n.read_at).slice(0, config.max);
   return (
     <>
@@ -517,7 +518,11 @@ function InboxWidget({ widget, config }: Props<"inbox">) {
               <ChatCircle size={16} aria-hidden />
               <span>
                 {!n.read_at && <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />}
-                {serverMessage(n.body)}
+                {(() => {
+                  // The inbox's line, short.
+                  const line = notificationLine(n, t, env.boot.members, serverMessage);
+                  return line.actor ? `${line.actor.name} ${line.title}${line.place ? ` · ${line.place}` : ""}` : line.title;
+                })()}
               </span>
               <small>{relativeTime(n.created_at, env.clock, env.locale)}</small>
             </button>

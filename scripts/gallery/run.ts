@@ -193,7 +193,7 @@ async function main() {
   }
   const session: Session | null = options.session ? JSON.parse(readFileSync(options.session, "utf8")) : null;
 
-  let server: { origin: string; stop: () => Promise<void> } | null = null;
+  let server: { origin: string; data?: string; stop: () => Promise<void> } | null = null;
   let origin = session?.origin || options.url;
   if (!origin) {
     await ensureBuild(options.build);
@@ -214,7 +214,7 @@ async function main() {
       ...(session ? { storageState: session.storageState } : {}),
     });
     if (!session) console.log(`Seeding the gallery account on ${origin} …`);
-    const ids: Ids = session ? session.ids : await seedGallery(api, origin!, { fresh: !options.url });
+    const ids: Ids = session ? session.ids : await seedGallery(api, origin!, { fresh: !options.url, dataDir: server?.data });
     const storageState = await api.storageState();
     if (options.serve) {
       mkdirSync(out, { recursive: true });

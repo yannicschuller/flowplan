@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 135;
+export const SCHEMA_VERSION = 136;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1703,11 +1703,29 @@ function migrate(d: DatabaseSync) {
   // Schema 135 – the appearance a shared or published page shows its
   // visitors (#526, lib/public-appearance.ts).
   migratePublicAppearance(d);
+  // Schema 136 – what a notification is, besides its text
+  // (lib/notification-display.ts): who caused it, its type and parameters.
+  migrateNotificationFields(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 136 – notifications.actor_id, subtype, severity, params and
+// excerpt: who caused a notification (a user id, no foreign key: the
+// line stays when the person goes), its type within the kind ("assignment",
+// "comment_mention", "incident" … – lib/notification-kinds.ts
+// notificationSubtypes), the severity of an incident ("warn", "critical"),
+// the values the inbox builds its line from in the reader's language (JSON,
+// e.g. {"page":"Roadmap"}) and a short excerpt of a comment (plain text, at
+// most 160 characters, what the recipient may read). `body` stays the
+// German text for push, e-mail, chat apps and older rows. An older version
+// would show only `body` again, hence the number.
+function migrateNotificationFields(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).map((c) => c.name);
+  for (const column of ["actor_id", "subtype", "severity", "params", "excerpt"])
+    if (!columns.includes(column)) d.exec(`ALTER TABLE notifications ADD COLUMN ${column} TEXT`);
 }
 // Schema 135 – publications.appearance, share_links.appearance and
 // record_shares.appearance (#526, lib/public-appearance.ts): the page icon

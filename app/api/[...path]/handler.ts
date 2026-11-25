@@ -34,6 +34,7 @@ import { storageOverview } from "@/lib/storage-overview";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { offlineAssets } from "@/lib/offline-assets-server";
 import { notificationFeed } from "@/lib/notification-feed";
+import { INBOX_PAGE, inboxNotifications } from "@/lib/notification-inbox";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
@@ -433,6 +434,13 @@ async function handleGET(
     }
     // The newest notifications in short, for the desktop app (no push in
     // Electron, lib/notification-feed.ts).
+    // Older inbox notifications, after the bootstrap's first page
+    // (lib/notification-inbox.ts): the same rows, 50 at a time.
+    if (path.length === 2 && path[0] === "notifications" && path[1] === "inbox")
+      return NextResponse.json(
+        await inboxNotifications(user, { before: url.searchParams.get("before")?.slice(0, 100) || null, limit: INBOX_PAGE }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     if (path.length === 1 && path[0] === "notifications")
       return NextResponse.json(await notificationFeed(user, parseSince(url.searchParams.get("since"))), {
         headers: { "Cache-Control": "no-store" },

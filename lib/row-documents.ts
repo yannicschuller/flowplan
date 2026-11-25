@@ -14,6 +14,7 @@ import { recordDocumentAuthors } from "./document-authors";
 import { upgradePageChips } from "./page-chip-upgrade";
 import { mentionWebhook } from "./webhooks";
 import { mapHtmlPlaceholders, mapPlaceholders, mapTextCells, storeKey } from "./record-placeholders";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
 export type RowTemplate = {
   id: string;
@@ -143,12 +144,13 @@ export async function syncRowDocument(
           await requireRow({ ...user, id: uid }, pageId, rowId);
           await inSavepoint(async () =>
             await run(
-              "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
+              `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,'mention',${NOTIFICATION_FIELD_VALUES})`,
               id(),
               uid,
               `${user.name} hat dich in einem Eintrag von „${page.title}“ erwähnt`,
               pageId,
               rowId,
+              ...notificationFields({ actorId: user.id, subtype: "record_mention", params: { actor: user.name, page: page.title } }),
             ),
           );
           await mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name, user.id);
