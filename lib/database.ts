@@ -202,6 +202,8 @@ function cellLabels(
 const collator = new Intl.Collator("de", { numeric: true });
 // The order of a view: its sorts (numbers as numbers, everything else by the
 // text the table shows), then the saved row order, then the position.
+// A value that sorts as empty: nothing, an empty text or an empty list.
+const sortsEmpty = (v: unknown) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
 // `cells` are the computed cells, at least those of the sorted properties.
 export function rowComparator(
   fields: Field[],
@@ -230,6 +232,13 @@ export function rowComparator(
       const s = sorts[i];
       const av = a.cells[s.field],
         bv = b.cells[s.field];
+      // Empty values always go last, whatever the direction (#551, like
+      // Notion and AFFiNE): a date sorted ascending no longer starts with
+      // every record that has none.
+      const ae = sortsEmpty(av),
+        be = sortsEmpty(bv);
+      if (ae !== be) return ae ? 1 : -1;
+      if (ae) continue;
       const n =
         typeof av === "number" && typeof bv === "number"
           ? av - bv

@@ -19,6 +19,14 @@
       ]
     }
   ],
-  "improvements": [],
+  "improvements": [
+    {
+      "de": "Beim Sortieren in Datenbanken stehen Einträge ohne Wert jetzt immer am Ende – auf- wie absteigend, etwa Einträge ohne Datum bei einer Sortierung nach Fälligkeit.",
+      "en": "Database sorting now always puts records without a value last – ascending and descending, e.g. records without a date when sorted by due date.",
+      "issues": [
+        551
+      ]
+    }
+  ],
   "features": []
 }
