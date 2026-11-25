@@ -370,7 +370,8 @@ export function StorageStack({ databaseBytes, uploadBytes }: { databaseBytes: nu
 
 export function InstanceStorageChart({ databaseBytes, uploadBytes, accounts }: { databaseBytes: number; uploadBytes: number; accounts: { name: string; bytes: number }[] }) {
   const t = useT();
-  const top = [...accounts].sort((a, b) => b.bytes - a.bytes).slice(0, 5);
+  // Only accounts that store something; names may repeat (keys by place).
+  const top = accounts.filter((a) => a.bytes > 0).sort((a, b) => b.bytes - a.bytes).slice(0, 5);
   const max = Math.max(1, ...top.map((a) => a.bytes));
   return (
     <SettingGroup id="storage-chart" title={t("Belegung", "Usage")} description={t(`Zusammen ${sizeText(databaseBytes + uploadBytes)} – live aus der Instanz.`, `${sizeText(databaseBytes + uploadBytes)} in total – live from the instance.`)}>
@@ -378,8 +379,8 @@ export function InstanceStorageChart({ databaseBytes, uploadBytes, accounts }: {
       {top.length > 0 && (
         <div className="sv-hbars">
           <strong>{t("Die meisten Dateien", "Most files")}</strong>
-          {top.map((a) => (
-            <div key={a.name} className="sv-hbar">
+          {top.map((a, i) => (
+            <div key={i} className="sv-hbar">
               <span>{a.name}</span>
               <progress max={1000} value={Math.round((a.bytes / max) * 1000)} aria-label={`${a.name}: ${sizeText(a.bytes)}`} />
               <strong>{sizeText(a.bytes)}</strong>

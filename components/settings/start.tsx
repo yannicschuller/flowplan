@@ -281,7 +281,9 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
   // The live strip's problems and notices: the tiles' errors and warnings.
   const listed = (tone: string): StripItem[] =>
     sections.filter((s) => tiles[s.id]?.tone === tone).map((s) => ({ id: s.id, title: t(s.title.de, s.title.en), badge: tiles[s.id].badge }));
-  const strip = <LiveStrip problems={listed("error")} notices={listed("warn")} version={summary?.general.version} uptimeSeconds={summary?.general.uptimeSeconds} loaded={!!summary} />;
+  const problems = listed("error"),
+    notices = listed("warn");
+  const strip = <LiveStrip problems={problems} notices={notices} version={summary?.general.version} uptimeSeconds={summary?.general.uptimeSeconds} loaded={!!summary} />;
   if (!summary)
     return (
       <>
@@ -290,7 +292,9 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
       </>
     );
   const s = summary;
-  const warnings = s.monitoring.alerts.length + s.monitoring.failingWorkers.length;
+  // The same count as the live strip's headline (the sections' problems
+  // and notices) plus the monitoring's own alerts and failing workers.
+  const warnings = problems.length + notices.length + s.monitoring.alerts.length + s.monitoring.failingWorkers.length;
   const on = FEATURE_MODULES.filter((m) => !off.includes(m));
   const backupLine = s.storage.restorePending
     ? t("Wiederherstellung wartet auf Neustart", "Restore waits for a restart")
@@ -338,7 +342,7 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
       ]
         .filter(Boolean)
         .join(" · "),
-      tone: warnings ? "warn" : "ok",
+      tone: problems.length ? "error" : warnings ? "warn" : "ok",
     },
     {
       id: "signins",
@@ -398,7 +402,7 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
                 {tile.tone === "ok" ? (
                   <CheckCircle size={16} weight="fill" className="sv-start-ok" aria-hidden />
                 ) : tile.tone === "warn" || tile.tone === "error" ? (
-                  <WarningCircle size={16} weight="fill" className={`sv-start-warn ${tile.tone}`} aria-hidden />
+                  <WarningCircle size={16} weight="fill" className={`sv-start-warn tone-${tile.tone}`} aria-hidden />
                 ) : null}
                 <CaretRight size={14} className="sv-start-caret" aria-hidden />
               </span>

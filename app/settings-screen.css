@@ -962,7 +962,7 @@
 .sv-start-warn {
   color: #c99a2e;
 }
-.sv-start-warn.error {
+.sv-start-warn.tone-error {
   color: #c2474a;
 }
 .sv-start-value {
