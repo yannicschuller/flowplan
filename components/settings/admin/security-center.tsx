@@ -6,8 +6,8 @@
 // pages), blocked addresses and how the events leave the instance.
 // Anchors: #settings/instance/threats/<incidents|addresses|events|sessions|access|blocks|setup>;
 // an incident's own page: #settings/instance/threats/incident/<id>.
-import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, CheckCircle, DownloadSimple, Info, MagnifyingGlass, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
 import type { securityIncident, securityOverview, securityEvents } from "@/lib/security-admin";
 import { securityKinds, securityRules, type SecurityKind, type SecurityRule } from "@/lib/security-kinds";
 import { securityPlaybooks, type PlaybookStep } from "@/lib/security-playbooks";
@@ -25,7 +25,8 @@ import { useDocs } from "./parts";
 type Overview = Awaited<ReturnType<typeof securityOverview>>;
 type EventPage = Awaited<ReturnType<typeof securityEvents>>;
 type SecurityEventRow = EventPage["events"][number];
-type Incident = Overview["incidents"][number];
+type IncidentList = Overview["incidents"];
+type Incident = IncidentList["items"][number];
 type IncidentDetailData = Awaited<ReturnType<typeof securityIncident>>;
 type T = (de: string, en: string) => string;
 
@@ -195,17 +196,78 @@ const kindTitle = (kind: string, t: T) => {
 };
 const person = (p: { name: string; email: string } | null) => (p ? p.name || p.email : "");
 
+// A page of the incidents (#535): the first 20 come with the overview;
+// a search, a filter or "Weitere laden" ask the server for their own page,
+// which follows the overview's refresh.
+const PAGE = 20;
+type IncidentFilter = { q: string; status: "all" | "open" | "done"; severity: "all" | "critical" | "warn" };
+const ALL: IncidentFilter = { q: "", status: "all", severity: "all" };
+const isAll = (f: IncidentFilter) => !f.q.trim() && f.status === "all" && f.severity === "all";
+
 function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
   const t = useT();
-  const open = d.incidents.filter((i) => !i.resolvedAt);
-  const done = d.incidents.filter((i) => i.resolvedAt);
+  const { onError } = useAdmin();
+  const [text, setText] = useState("");
+  const [filter, setFilter] = useState<IncidentFilter>(ALL);
+  // null: the overview's first page.
+  const [page, setPage] = useState<IncidentList | null>(null);
+  const [loading, setLoading] = useState(false);
+  const asked = useRef(0);
+  const shownRef = useRef(0);
+  const load = async (f: IncidentFilter, offset: number, limit: number, append: boolean) => {
+    const ask = ++asked.current;
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({ incidents: "1", q: f.q.trim(), status: f.status, severity: f.severity, offset: String(offset), limit: String(limit) });
+      const answer = await api<IncidentList>(`${URL}?${query}`);
+      if (ask !== asked.current) return;
+      // More of the overview's first page, or of the own page.
+      setPage((before) => (append ? { ...answer, items: [...(before ?? d.incidents).items, ...answer.items] } : answer));
+    } catch (e) {
+      if (ask === asked.current) onError((e as Error).message);
+    } finally {
+      if (ask === asked.current) setLoading(false);
+    }
+  };
+  const apply = (f: IncidentFilter) => {
+    setFilter(f);
+    if (isAll(f)) {
+      asked.current++;
+      setLoading(false);
+      setPage(null);
+    } else void load(f, 0, PAGE, false);
+  };
+  // Typing searches after a short pause.
+  useEffect(() => {
+    if (text === filter.q) return;
+    const timer = window.setTimeout(() => apply({ ...filter, q: text }), 250);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  const list = page ?? (isAll(filter) ? d.incidents : null);
+  shownRef.current = page?.items.length ?? 0;
+  // The overview was refreshed (every 30 s, after an action): so is the own page.
+  useEffect(() => {
+    if (shownRef.current) void load(filter, 0, Math.min(500, Math.max(PAGE, shownRef.current)), false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.incidents]);
+  const items = list?.items ?? [];
+  const open = items.filter((i) => !i.resolvedAt);
+  const done = items.filter((i) => i.resolvedAt);
+  const nothingOpen = !d.summary.openIncidents && !filter.q.trim() && filter.severity === "all" && filter.status !== "done";
+  const searching = !isAll(filter);
+  const segments = [
+    ["all", t("Alle", "All"), list ? list.open + list.done : null],
+    ["open", t("Offen", "Open"), list?.open ?? null],
+    ["done", t("Erledigt", "Resolved"), list?.done ?? null],
+  ] as const;
   return (
     <SettingGroup
       id="incidents"
       title={t("Vorfälle", "Incidents")}
       description={t("Was die Erkennungsregeln gefunden haben. Gleiches innerhalb eines Tages zählt beim selben Vorfall weiter.", "What the detection rules found. The same thing within a day counts on the same incident.")}
       actions={
-        open.length > 1 ? (
+        d.summary.openIncidents > 1 ? (
           <button type="button" className="button" disabled={busy} onClick={() => void act({ action: "incident.resolveAll" }, t("Alle offenen Vorfälle als erledigt markieren?", "Mark all open incidents as resolved?"))}>
             {t("Alle erledigt", "All resolved")}
           </button>
@@ -213,16 +275,82 @@ function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
       }
     >
       <MyAlerts alerts={d.alerts} />
-      {!open.length && (
+      <div className="security-filters security-incident-filters">
+        <span className="admin-search">
+          <MagnifyingGlass size={16} aria-hidden />
+          <input
+            type="search"
+            aria-label={t("Vorfälle durchsuchen", "Search incidents")}
+            placeholder={t("Regel, Pfad, Netz, Person …", "Rule, path, network, person …")}
+            value={text}
+            maxLength={200}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </span>
+        <div className="segmented" role="group" aria-label={t("Status", "Status")}>
+          {segments.map(([value, label, n]) => (
+            <button key={value} type="button" aria-pressed={filter.status === value} onClick={() => apply({ ...filter, q: text, status: value })}>
+              {label}
+              {n !== null && <span className="security-segment-count"> {num(n)}</span>}
+            </button>
+          ))}
+        </div>
+        <select aria-label={t("Schwere", "Severity")} value={filter.severity} onChange={(e) => apply({ ...filter, q: text, severity: e.target.value as IncidentFilter["severity"] })}>
+          <option value="all">{t("Jede Schwere", "Any severity")}</option>
+          <option value="critical">{t("Kritisch", "Critical")}</option>
+          <option value="warn">{t("Warnung", "Warning")}</option>
+        </select>
+      </div>
+      <p className="security-incident-count muted" role="status" aria-live="polite">
+        {!list
+          ? t("Wird geladen …", "Loading …")
+          : list.total
+            ? t(`${num(items.length)} von ${num(list.total)}`, `${num(items.length)} of ${num(list.total)}`)
+            : ""}
+      </p>
+      {nothingOpen && (
         <EmptyState icon={<CheckCircle size={20} />} title={t("Nichts offen", "Nothing open")}>
           {t("Neue Vorfälle erscheinen hier und gehen an alle Admins – jeder wählt selbst, wie.", "New incidents appear here and go to all admins – each chooses how.")}
         </EmptyState>
       )}
-      <ul className="security-incidents">
-        {[...open, ...done].map((i) => (
-          <IncidentItem key={i.id} i={i} act={act} busy={busy} />
-        ))}
-      </ul>
+      {list && !list.total && searching && !(nothingOpen && filter.status === "open") && (
+        <EmptyState
+          icon={<MagnifyingGlass size={20} />}
+          title={t("Keine passenden Vorfälle", "No matching incidents")}
+          action={
+            <button type="button" className="button" onClick={() => {
+                setText("");
+                apply(ALL);
+              }}>
+              {t("Suche und Filter zurücksetzen", "Reset search and filters")}
+            </button>
+          }
+        >
+          {t("Gesucht wird in Regel, Details (z. B. Pfad oder Ereignis), Netz, Adresse und Person.", "Searched are the rule, the details (e.g. path or event), network, address and person.")}
+        </EmptyState>
+      )}
+      {open.length > 0 && (
+        <ul className="security-incidents" aria-label={t("Offene Vorfälle", "Open incidents")}>
+          {open.map((i) => (
+            <IncidentItem key={i.id} i={i} act={act} busy={busy} />
+          ))}
+        </ul>
+      )}
+      {done.length > 0 && (
+        <>
+          {filter.status === "all" && <h3 className="security-sub security-done-heading">{t("Erledigt", "Resolved")}</h3>}
+          <ul className="security-incidents" aria-label={t("Erledigte Vorfälle", "Resolved incidents")}>
+            {done.map((i) => (
+              <IncidentItem key={i.id} i={i} act={act} busy={busy} />
+            ))}
+          </ul>
+        </>
+      )}
+      {list?.more && (
+        <button type="button" className="button security-more" disabled={loading} onClick={() => void load(filter, items.length, PAGE, true)}>
+          {loading ? t("Wird geladen …", "Loading …") : t("Weitere laden", "Load more")}
+        </button>
+      )}
     </SettingGroup>
   );
 }
@@ -387,7 +515,7 @@ function IncidentPage({ id, live, act, busy }: { id: string; live: Overview; act
   const [error, setError] = useState("");
   const [all, setAll] = useState(false);
   const [version, setVersion] = useState(0);
-  const listed = live.incidents.find((x) => x.id === id);
+  const listed = live.incidents.items.find((x) => x.id === id);
   useEffect(() => {
     let alive = true;
     api<IncidentDetailData>(`${URL}?incident=${encodeURIComponent(id)}`).then(
@@ -970,7 +1098,7 @@ function Setup({ d }: { d: Overview }) {
     e2ee_reset: t("Ein Konto setzt seinen Schlüssel für verschlüsselte Bereiche zurück", "An account resets its key for encrypted spaces"),
     e2ee_mass_reset: t(`${th.e2eeResetAccounts} Konten setzen ihren Verschlüsselungsschlüssel in ${minutes(th.e2eeResetWindow)} Minuten zurück`, `${th.e2eeResetAccounts} accounts reset their encryption key within ${minutes(th.e2eeResetWindow)} minutes`),
     mass_export: t(`Mehr als ${th.exportsPerHour} Exporte einer Person in einer Stunde`, `More than ${th.exportsPerHour} exports by one person in an hour`),
-    probing: t(`${th.probes} abgewiesene API-Anfragen (401/403/404) einer Adresse in ${minutes(th.probeWindow)} Minuten`, `${th.probes} refused API requests (401/403/404) from one address in ${minutes(th.probeWindow)} minutes`),
+    probing: t(`${th.probes} verschiedene abgewiesene API-Anfragen (401/403/404) einer Adresse in ${minutes(th.probeWindow)} Minuten`, `${th.probes} different refused API requests (401/403/404) from one address in ${minutes(th.probeWindow)} minutes`),
     emergency_requests: t(`${th.emergencyRequests} Anfragen auf Notfallzugriff für ein Konto oder von einer Person an einem Tag`, `${th.emergencyRequests} emergency access requests for one account or by one person in a day`),
     injection_attempts: t(`${th.contentAttempts} abgewehrte Skripte oder interne Adressen in einer Stunde`, `${th.contentAttempts} refused scripts or internal addresses in an hour`),
   };

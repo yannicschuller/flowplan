@@ -97,40 +97,102 @@ export async function securityEvents(input: unknown) {
   };
 }
 
-async function incidents(now: number) {
-  return (await all<{
-    id: string;
-    rule: string;
-    severity: string;
-    actor_id: string | null;
-    name: string | null;
-    email: string | null;
-    network: string;
-    address_key: string;
-    detail: string;
-    first_at: number;
-    last_at: number;
-    count: number;
-    resolved_at: number | null;
-    resolver: string | null;
-  }>(
-    `SELECT i.*,u.name,u.email,r.name resolver FROM security_incidents i LEFT JOIN users u ON u.id=i.actor_id LEFT JOIN users r ON r.id=i.resolved_by
-     WHERE i.resolved_at IS NULL OR i.last_at>=? ORDER BY i.resolved_at IS NOT NULL, CASE i.severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, i.last_at DESC LIMIT 100`,
-    now - 30 * DAY,
-  )).map((i) => ({
-    id: i.id,
-    rule: i.rule,
-    severity: i.severity,
-    actor: i.actor_id ? { id: i.actor_id, name: i.name || "", email: i.email || "" } : null,
-    network: i.network,
-    address: i.address_key ? i.address_key.slice(0, 12) : "",
-    detail: i.detail,
-    firstAt: i.first_at,
-    lastAt: i.last_at,
-    count: i.count,
-    resolvedAt: i.resolved_at,
-    resolvedBy: i.resolver,
-  }));
+// The incidents, paged (#535): open ones first, then by severity and the
+// newest; `q` searches the rule's title (both languages), the detail
+// (paths, networks, event names such as scim.token.create), the network,
+// the short address key and the person's name or e-mail. Resolved ones
+// stay a year (lib/security-events.ts), so there can be thousands.
+export const INCIDENT_PAGE = 20;
+export const incidentFilterSchema = z.object({
+  q: z.string().max(200).default(""),
+  status: z.enum(["all", "open", "done"]).default("all"),
+  // The rules are warnings or critical (lib/security-kinds.ts).
+  severity: z.enum(["all", "critical", "warn"]).default("all"),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  limit: z.coerce.number().int().min(1).max(500).default(INCIDENT_PAGE),
+});
+type IncidentRow = {
+  id: string;
+  rule: string;
+  severity: string;
+  actor_id: string | null;
+  name: string | null;
+  email: string | null;
+  network: string;
+  address_key: string;
+  detail: string;
+  first_at: number;
+  last_at: number;
+  count: number;
+  resolved_at: number | null;
+  resolver: string | null;
+};
+export async function securityIncidents(input: unknown) {
+  const f = incidentFilterSchema.parse(input);
+  const where: string[] = [],
+    args: (string | number)[] = [];
+  const q = f.q.trim().toLowerCase();
+  if (q) {
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const text = ["i.detail", "i.network", "i.rule", "COALESCE(u.name,'')", "COALESCE(u.email,'')"].map((c) => `${sql.ilike(c)} ESCAPE '\\'`);
+    args.push(like, like, like, like, like);
+    // The short address key as the page shows it (12 characters).
+    if (/^[0-9a-f]{4,12}$/.test(q)) {
+      text.push("i.address_key LIKE ?");
+      args.push(`${q}%`);
+    }
+    // The rule's title in German or English ("Abtasten", "probing").
+    const rules = (Object.keys(securityRules) as SecurityRule[]).filter((r) => `${securityRules[r].de}\n${securityRules[r].en}`.toLowerCase().includes(q));
+    if (rules.length) {
+      text.push(`i.rule IN (${rules.map(() => "?").join(",")})`);
+      args.push(...rules);
+    }
+    where.push(`(${text.join(" OR ")})`);
+  }
+  if (f.severity !== "all") {
+    where.push("i.severity=?");
+    args.push(f.severity);
+  }
+  const base = `FROM security_incidents i LEFT JOIN users u ON u.id=i.actor_id LEFT JOIN users r ON r.id=i.resolved_by`;
+  const matching = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  // How many match the search and severity, open and resolved – the
+  // numbers on the filter and "12 von 340".
+  const counts = await one<{ open: number; done: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN i.resolved_at IS NULL THEN 1 ELSE 0 END),0) open,COALESCE(SUM(CASE WHEN i.resolved_at IS NULL THEN 0 ELSE 1 END),0) done ${base} ${matching}`,
+    ...args,
+  );
+  const open = Number(counts?.open || 0),
+    done = Number(counts?.done || 0);
+  const status = f.status === "open" ? "i.resolved_at IS NULL" : f.status === "done" ? "i.resolved_at IS NOT NULL" : "";
+  const filtered = [...where, ...(status ? [status] : [])];
+  const rows = await all<IncidentRow>(
+    `SELECT i.*,u.name,u.email,r.name resolver ${base} ${filtered.length ? `WHERE ${filtered.join(" AND ")}` : ""}
+     ORDER BY CASE WHEN i.resolved_at IS NULL THEN 0 ELSE 1 END, CASE i.severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, i.last_at DESC, i.id LIMIT ? OFFSET ?`,
+    ...args,
+    f.limit,
+    f.offset,
+  );
+  const total = f.status === "open" ? open : f.status === "done" ? done : open + done;
+  return {
+    items: rows.map((i) => ({
+      id: i.id,
+      rule: i.rule,
+      severity: i.severity,
+      actor: i.actor_id ? { id: i.actor_id, name: i.name || "", email: i.email || "" } : null,
+      network: i.network,
+      address: i.address_key ? i.address_key.slice(0, 12) : "",
+      detail: i.detail,
+      firstAt: i.first_at,
+      lastAt: i.last_at,
+      count: i.count,
+      resolvedAt: i.resolved_at,
+      resolvedBy: i.resolver,
+    })),
+    total,
+    open,
+    done,
+    more: f.offset + rows.length < total,
+  };
 }
 
 /* ---------- One incident in detail ---------- */
@@ -201,7 +263,7 @@ function ruleReason(rule: SecurityRule) {
     e2ee_reset: ["Ein Konto hat seinen Schlüssel für verschlüsselte Bereiche zurückgesetzt („Passphrase und Wiederherstellungsschlüssel vergessen“).", "An account reset its key for encrypted spaces (“passphrase and recovery key lost”)."],
     e2ee_mass_reset: [`Mindestens ${T.e2eeResetAccounts} Konten haben innerhalb von ${min(T.e2eeResetWindow)} Minuten ihren Schlüssel für verschlüsselte Bereiche zurückgesetzt.`, `At least ${T.e2eeResetAccounts} accounts reset their key for encrypted spaces within ${min(T.e2eeResetWindow)} minutes.`],
     mass_export: [`Mindestens ${T.exportsPerHour} Exporte in einer Stunde und ein Vielfaches des Üblichen dieser Person in den letzten 30 Tagen.`, `At least ${T.exportsPerHour} exports in an hour and many times this person's usual amount over the last 30 days.`],
-    probing: [`Mindestens ${T.probes} Anfragen an die API mit der Antwort 401, 403 oder 404 von derselben Adresse innerhalb von ${min(T.probeWindow)} Minuten – jemand probiert Adressen, IDs oder Zugänge durch.`, `At least ${T.probes} API requests answered with 401, 403 or 404 from the same address within ${min(T.probeWindow)} minutes – someone is trying addresses, IDs or access.`],
+    probing: [`Mindestens ${T.probes} verschiedene Anfragen an die API mit der Antwort 401, 403 oder 404 von derselben Adresse innerhalb von ${min(T.probeWindow)} Minuten – jemand probiert Adressen, IDs oder Zugänge durch. Derselbe Pfad zählt nur einmal.`, `At least ${T.probes} different API requests answered with 401, 403 or 404 from the same address within ${min(T.probeWindow)} minutes – someone is trying addresses, IDs or access. The same path counts only once.`],
     emergency_requests: [`Mindestens ${T.emergencyRequests} Anfragen auf Notfallzugriff für dasselbe Konto oder von derselben Person innerhalb von ${min(T.emergencyWindow) / 60} Stunden.`, `At least ${T.emergencyRequests} emergency access requests for the same account or by the same person within ${min(T.emergencyWindow) / 60} hours.`],
     injection_attempts: [`Mindestens ${T.contentAttempts} abgewiesene Versuche in einer Stunde, über Inhalte interne Adressen (SSRF) oder gefährliches Markup einzuschleusen.`, `At least ${T.contentAttempts} refused attempts within an hour to sneak in internal addresses (SSRF) or dangerous markup through content.`],
   };
@@ -483,7 +545,7 @@ export async function securityOverview(now = Date.now(), viewer: Identity | null
       exports: await count("SELECT COUNT(*) n FROM security_events WHERE kind='data.export' AND at>=?", day),
     },
     hourly,
-    incidents: await incidents(now),
+    incidents: await securityIncidents({}),
     events: await securityEvents({ limit: 50 }),
     addresses: await topAddresses(now),
     sessions: await sessions(now),

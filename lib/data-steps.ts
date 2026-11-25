@@ -35,6 +35,7 @@ export const WORKFLOW_DYNAMIC_MAIL_STEP = "workflow-dynamic-mail-099";
 export const CARD_STATES_NEW_STEP = "card-states-new-105";
 export const FEATURE_MODULES_STEP = "feature-modules-378";
 export const TEXT_LINKS_STEP = "text-links-107";
+export const INCIDENT_NOTICE_STEP = "incident-notice-wording-535";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -54,7 +55,21 @@ export const dataSteps = (): DataStep[] => [
   { name: CARD_STATES_NEW_STEP, run: cardStatesNewCheck },
   { name: FEATURE_MODULES_STEP, run: modulesForExistingAccounts },
   { name: TEXT_LINKS_STEP, run: textLinksOfAllSources },
+  { name: INCIDENT_NOTICE_STEP, run: incidentNoticeWording },
 ];
+
+// Incident notifications stored before #532 named "Administration →
+// Sicherheit" and led to #admin/threats/…: they name the place in the
+// settings now, as new ones do (lib/security-detect.ts report).
+async function incidentNoticeWording() {
+  await run(
+    "UPDATE notifications SET body=replace(body,?,?) WHERE kind='incident' AND body LIKE ?",
+    "Details unter Administration → Sicherheit.",
+    "Details unter Einstellungen → Instanz → Sicherheit.",
+    "%Details unter Administration → Sicherheit.",
+  );
+  await run("UPDATE notifications SET link=replace(link,'#admin/threats/','#settings/instance/threats/') WHERE kind='incident' AND link LIKE '#admin/threats/%'");
+}
 
 // Schema 108 (#383): the links of every page and record read once
 // (lib/text-links.ts); afterwards the triggers mark what changes.

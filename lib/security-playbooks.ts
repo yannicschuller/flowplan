@@ -280,8 +280,8 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
       en: "An address asks for many API paths that do not exist or that it may not use – someone is looking for gaps, valid IDs or open ways in (scanners, bots). As long as only 401, 403 and 404 come back, it found nothing.",
     },
     harmless: {
-      de: "Eine eigene Integration oder App mit abgelaufenem Token, oder ein Monitoring mit falscher Adresse.",
-      en: "An own integration or app with an expired token, or monitoring with a wrong address.",
+      de: "Eine eigene Integration oder App mit abgelaufenem Token, oder ein Monitoring mit falscher Adresse. Ein offener Browser-Tab, dessen Sitzung abgelaufen ist, oder einer, der einen inzwischen gelöschten Eintrag immer wieder abfragt, zählt nicht: Derselbe Pfad zählt nur einmal.",
+      en: "An own integration or app with an expired token, or monitoring with a wrong address. An open browser tab whose session ended, or one that keeps asking for a record deleted meanwhile, does not count: the same path counts only once.",
     },
     steps: [
       {

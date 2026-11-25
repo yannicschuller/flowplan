@@ -4,8 +4,8 @@ import { useStatusLabel, useT } from "./i18n";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
-import { Clock, CloudSlash, Plus, SquaresFour } from "@phosphor-icons/react";
-import { api, Modal } from "./ui";
+import { Clock, CloudSlash, Plus, SquaresFour, Trash } from "@phosphor-icons/react";
+import { api, ApiError, Modal } from "./ui";
 import { VersionChanges } from "./version-changes";
 import { RecordSkeleton } from "./skeleton";
 import { appCache, recordCachePolicy, rowKey } from "@/lib/swr-cache";
@@ -87,7 +87,9 @@ export default function RowDocument({
     // "" saves a new template; an id replaces that template.
     [replaceId, setReplaceId] = useState(""),
     // Offline and not in the device's copy (#47).
-    [unavailable, setUnavailable] = useState(false);
+    [unavailable, setUnavailable] = useState(false),
+    // Deleted meanwhile, or no longer shared with this person (404/403).
+    [gone, setGone] = useState(false);
   // `visit`: the record was just opened – it counts for the person's own
   // quick search (#243); the reloads every few seconds do not.
   const refresh = useCallback(async (visit = false) => {
@@ -111,6 +113,16 @@ export default function RowDocument({
       return;
     }
     let first = true;
+    setGone(false);
+    // The record is gone (deleted, or no longer shared): no more asking –
+    // a tab left open would ask every 8 s for ever, which also looked like
+    // probing to the security monitor (#535).
+    const lost = (e: unknown) => {
+      if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 403)) return false;
+      clearInterval(timer);
+      setGone(true);
+      return true;
+    };
     const load = () =>
       refresh(first).then(
         () => {
@@ -120,13 +132,14 @@ export default function RowDocument({
         (e) => {
           // No connection (fetch fails) and no stored copy of the record.
           if (!navigator.onLine || e instanceof TypeError) setUnavailable(true);
-          else onError(e.message);
+          else if (!lost(e)) onError(e.message);
         },
       );
-    void load();
+    // A hidden tab does not ask (#383).
     const timer = setInterval(() => {
-      if (navigator.onLine) void refresh().catch(() => {});
+      if (navigator.onLine && document.visibilityState !== "hidden") void refresh().catch(lost);
     }, 8000);
+    void load();
     // Back online: the record loads by itself.
     const back = () => void load();
     window.addEventListener("online", back);
@@ -217,7 +230,12 @@ export default function RowDocument({
           )}
         </p>
       )}
-      {data ? (
+      {gone ? (
+        <div className="empty-state small row-document-offline" role="status">
+          <Trash size={28} aria-hidden />
+          <p>{t("Diesen Eintrag gibt es nicht mehr – er wurde gelöscht, oder du hast keinen Zugriff mehr.", "This record no longer exists – it was deleted, or you no longer have access.")}</p>
+        </div>
+      ) : data ? (
         <ViewBoundary key={rowId}>
         <DocumentEditor
           key={`${rowId}-${data.generation}`}

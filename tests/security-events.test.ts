@@ -9,7 +9,7 @@ process.env.FLOWPLAN_TRUSTED_PROXIES = "1";
 const { run, id, all, one, audit } = await import("../lib/db");
 const events = await import("../lib/security-events");
 const { noteRefusal, SECURITY_THRESHOLDS } = await import("../lib/security-detect");
-const { securityAction, securityOverview, securityExport, securityIncident } = await import("../lib/security-admin");
+const { securityAction, securityOverview, securityExport, securityIncident, securityIncidents } = await import("../lib/security-admin");
 const { failed, limited } = await import("../lib/local-auth");
 
 // Events are written right after the current synchronous work.
@@ -176,11 +176,63 @@ test("probing: many refused API requests from one address make one event", async
   assert.match(recorded[0], /404 \/api\/pages\/0/);
 });
 
+test("probing: a tab whose session ended keeps polling – no event (#535)", async () => {
+  const recorded: string[] = [];
+  const note = (status: number, path: string, at: number) => noteRefusal("192.0.2.120", status, path, at, (d) => recorded.push(d));
+  const ws = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab";
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes * 3; i++) {
+    // The live stream, the activity ping, the notices and the timed refresh.
+    await note(401, `/api/live?workspace=${ws}`, 3_000_000 + i);
+    await note(401, "/api/activity", 3_000_000 + i);
+    await note(401, "/api/maintenance", 3_000_000 + i);
+    await note(401, `/api/bootstrap?workspace=${ws}`, 3_000_000 + i);
+    await note(401, "/api/ai/quota", 3_000_000 + i);
+  }
+  assert.deepEqual(recorded, []);
+});
+
+test("probing: polling a deleted record or a forbidden page counts once (#535)", async () => {
+  const recorded: string[] = [];
+  const page = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab",
+    row = "6bb9f3fa-1912-4c2b-9e8a-0123456789ab";
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes * 3; i++) {
+    await noteRefusal("2001:db8:77::5", 404, `/api/pages/${page}/rows/${row}`, 4_000_000 + i * 100, (d) => recorded.push(d));
+    await noteRefusal("2001:db8:77::5", 403, `/api/ai/block?target=${page}&kind=page`, 4_000_000 + i * 100, (d) => recorded.push(d));
+    await noteRefusal("2001:db8:77::5", 404, `/api/pages/${page}?t=${i}`, 4_000_000 + i * 100, (d) => recorded.push(d));
+  }
+  assert.deepEqual(recorded, []);
+});
+
+test("probing: many different IDs still count – also with 401 and among polling (#535)", async () => {
+  const recorded: string[] = [];
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes; i++) {
+    // Noise of an open tab in between does not hide it, nor add to it.
+    await noteRefusal("192.0.2.121", 401, "/api/live?workspace=x", 5_000_000 + i, (d) => recorded.push(d));
+    await noteRefusal("192.0.2.121", 404, "/api/pages/same", 5_000_000 + i, (d) => recorded.push(d));
+    await noteRefusal("192.0.2.121", 401, `/api/files/${i}`, 5_000_000 + i, (d) => recorded.push(d));
+  }
+  assert.equal(recorded.length, 1);
+  // 59 different files plus /api/pages/same: the 60th different request fires it.
+  assert.match(recorded[0], new RegExp(`^${SECURITY_THRESHOLDS.probes} verschiedene Anfragen mit 401/403/404 \\(\\d+ insgesamt\\), z\\. B\\. 404 /api/pages/same$`));
+  // The same path with another answer is another request.
+  const other: string[] = [];
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes / 2; i++) {
+    await noteRefusal("192.0.2.122", 403, `/api/admin/users/${i}`, 6_000_000 + i, (d) => other.push(d));
+    await noteRefusal("192.0.2.122", 404, `/api/admin/users/${i}`, 6_000_000 + i, (d) => other.push(d));
+  }
+  assert.equal(other.length, 1);
+  // A new window starts over.
+  const later: string[] = [];
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes - 1; i++) await noteRefusal("192.0.2.123", 404, `/api/pages/${i}`, 7_000_000 + i, (d) => later.push(d));
+  await noteRefusal("192.0.2.123", 404, "/api/pages/last", 7_000_000 + SECURITY_THRESHOLDS.probeWindow + 1, (d) => later.push(d));
+  assert.deepEqual(later, []);
+});
+
 test("probing keeps the refused paths with their answers on the incident", async () => {
   await reset();
   const uuid = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab";
   for (let i = 0; i < SECURITY_THRESHOLDS.probes; i++) {
-    const [status, path] = i % 3 === 0 ? [401, "/api/bootstrap"] : i % 3 === 1 ? [404, `/api/pages/${uuid.slice(0, -2)}${String(i).padStart(2, "0")}`] : [403, `/api/admin/users/${i}`];
+    const [status, path] = i % 3 === 0 ? [401, `/api/files/${i}`] : i % 3 === 1 ? [404, `/api/pages/${uuid.slice(0, -2)}${String(i).padStart(2, "0")}`] : [403, `/api/admin/users/${i}`];
     await noteRefusal("198.51.100.77", status, path, 2_000_000 + i, (detail) =>
       events.securityEvent("request.probing", { headers: headersFrom("198.51.100.77"), detail }),
     );
@@ -192,7 +244,7 @@ test("probing keeps the refused paths with their answers on the incident", async
   assert.deepEqual(d.evidence?.statuses, { "401": 20, "404": 20, "403": 20 });
   assert.deepEqual(
     d.evidence?.paths.map((p) => `${p.status} ${p.path} ${p.count}`).sort(),
-    ["401 /api/bootstrap 20", "403 /api/admin/users/:n 20", "404 /api/pages/:id 20"],
+    ["401 /api/files/:n 20", "403 /api/admin/users/:n 20", "404 /api/pages/:id 20"],
   );
   assert.match(d.reason.de, /401, 403 oder 404/);
   assert.equal(d.events[0].kind, "request.probing");
@@ -329,4 +381,65 @@ test("an encryption key reset is a warning of its own; several in an hour are cr
     const d = await securityIncident(row!.id);
     assert.ok(JSON.stringify(d).includes("e2ee.identity.reset"), rule);
   }
+});
+
+test("incidents: paged, open first, searchable and filtered (#535)", async () => {
+  await reset();
+  const dora = await person("Dora");
+  const now = Date.now();
+  const add = async (rule: string, severity: string, detail: string, at: number, extra: { resolved?: boolean; actor?: string; network?: string; address?: string } = {}) =>
+    await run(
+      "INSERT INTO security_incidents(id,rule,key,severity,actor_id,network,address_key,detail,first_at,last_at,resolved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      id(),
+      rule,
+      `k${at}`,
+      severity,
+      extra.actor ?? null,
+      extra.network ?? "",
+      extra.address ?? "",
+      detail,
+      at,
+      at,
+      extra.resolved ? at + 1 : null,
+    );
+  // 45 resolved probing incidents, 3 open ones of other rules.
+  for (let i = 0; i < 45; i++) await add("probing", "warn", `60 verschiedene Anfragen mit 401/403/404, z. B. 404 /api/pages/${i}`, now - i * 1000, { resolved: true, network: "203.0.113.0/24", address: `abcdef${String(i).padStart(6, "0")}ffff` });
+  await add("privilege_change", "critical", "scim.token.create", now - 999_999);
+  await add("brute_force_account", "warn", "dora@example.test: 10", now - 5, { actor: dora.id });
+  await add("mass_export", "warn", "100% of 25_", now - 6);
+
+  const first = await securityIncidents({});
+  assert.equal(first.items.length, 20);
+  assert.deepEqual([first.total, first.open, first.done, first.more], [48, 3, 45, true]);
+  // Open ones first, critical before warnings, then the newest.
+  assert.deepEqual(first.items.slice(0, 3).map((i) => i.rule), ["privilege_change", "brute_force_account", "mass_export"]);
+  assert.ok(first.items.slice(3).every((i) => i.resolvedAt));
+  assert.deepEqual((await securityOverview()).incidents.items.map((i) => i.id), first.items.map((i) => i.id));
+
+  const third = await securityIncidents({ offset: "40", limit: "20" });
+  assert.deepEqual([third.items.length, third.more], [8, false]);
+  const ids = new Set([...first.items, ...(await securityIncidents({ offset: 20 })).items, ...third.items].map((i) => i.id));
+  assert.equal(ids.size, 48);
+
+  const search = async (q: string, more: Record<string, string> = {}) => await securityIncidents({ q, ...more });
+  // The rule's title in German and English, a path, an event, a network, a person, an address.
+  assert.equal((await search("abtasten")).total, 45);
+  assert.equal((await search("Probing")).total, 45);
+  assert.deepEqual((await search("/api/pages/7")).items.map((i) => i.detail), ["60 verschiedene Anfragen mit 401/403/404, z. B. 404 /api/pages/7"]);
+  assert.deepEqual((await search("scim.token.create")).items.map((i) => i.rule), ["privilege_change"]);
+  assert.equal((await search("203.0.113")).total, 45);
+  assert.deepEqual((await search("dora")).items.map((i) => i.rule), ["brute_force_account"]);
+  assert.equal((await search("abcdef000003")).total, 1);
+  // LIKE wildcards are text.
+  assert.deepEqual((await search("0%")).items.map((i) => i.rule), ["mass_export"]);
+  assert.equal((await search("a_i")).total, 0);
+  assert.equal((await search("nothing like this")).total, 0);
+  // Status and severity; the counts follow the search.
+  const open = await securityIncidents({ status: "open" });
+  assert.deepEqual([open.items.length, open.total, open.open, open.done], [3, 3, 3, 45]);
+  assert.equal((await securityIncidents({ status: "done", q: "pages/1" })).total, 11);
+  const critical = await securityIncidents({ severity: "critical" });
+  assert.deepEqual([critical.total, critical.open, critical.done], [1, 1, 0]);
+  await assert.rejects(async () => await securityIncidents({ status: "nope" }));
+  await assert.rejects(async () => await securityIncidents({ limit: 501 }));
 });
