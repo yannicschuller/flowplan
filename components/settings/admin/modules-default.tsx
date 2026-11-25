@@ -10,10 +10,11 @@ import { useRef, useState } from "react";
 import { FEATURE_MODULES, hiddenModulesOf, type FeatureModule } from "@/lib/feature-modules";
 import { setFeatureModulesOff, setFeatureModulesStandard } from "@/lib/feature-modules-client";
 import { useT } from "../../i18n";
-import { SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
+import { SaveState, SettingGroup, SettingRow, useSaveState } from "../../settings-ui";
 import { useAdmin } from "../admin-context";
 import { ModuleSwitches, moduleTexts } from "../user/feature-modules";
 import { useInstanceSettings } from "./parts";
+import { FeatureTiles } from "../previews";
 
 // A list of features as an instance setting: saved one after the other, a
 // failed save goes back; `after` once saved.
@@ -73,9 +74,8 @@ export function InstanceModulesOff() {
       <SettingRow label={t("Auf dieser Instanz eingeschaltet", "On for this instance")}>
         <SaveState status={status} />
       </SettingRow>
-      {FEATURE_MODULES.map((module) => (
-        <SwitchRow key={module} label={texts[module].label} description={texts[module].description} checked={!off.includes(module)} disabled={!settings} onChange={(on) => toggle(module, on)} />
-      ))}
+      {/* Tiles that switch (#532), and what disappears for people. */}
+      <FeatureTiles off={off} disabled={!settings} onToggle={toggle} />
     </SettingGroup>
   );
 }

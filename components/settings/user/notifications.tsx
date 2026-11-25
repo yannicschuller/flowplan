@@ -11,6 +11,7 @@ import { NotificationSoundSettings } from "../../notification-sound-settings";
 import PushSettings from "../../push-settings";
 import { api } from "../../ui";
 import { useUserSettings } from "../user-context";
+import { NotificationPreview } from "../previews";
 
 export default function NotificationsSection() {
   const { boot, mutate, onError } = useUserSettings();
@@ -28,6 +29,7 @@ export default function NotificationsSection() {
   const chatApps = !!messengers && messengers.services.length > 0;
   return (
     <>
+      <NotificationPreview />
       {boot.notificationPrefs && (
         <NotificationSettings
           prefs={boot.notificationPrefs}

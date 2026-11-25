@@ -18,6 +18,7 @@ import { AdminStatus, FixLink, InstanceNumber, InstanceSwitch, useDocs, type Sta
 import { ago } from "./format";
 import { InstanceMove } from "./instance-move";
 import { SftpBackup } from "./sftp-backup";
+import { InstanceStorageChart } from "../previews";
 
 export default function StorageSection() {
   const t = useT();
@@ -75,9 +76,9 @@ export default function StorageSection() {
         items={items}
         action={
           backup.sftp?.enabled && (backup.sftp.last?.error || !backup.sftp.hostKey) ? (
-            <FixLink href="#admin/storage/sftp-backup">{t("Zum SFTP-Ziel", "To the SFTP target")}</FixLink>
+            <FixLink href="#settings/instance/storage/sftp-backup">{t("Zum SFTP-Ziel", "To the SFTP target")}</FixLink>
           ) : !backup.enabled || backup.last?.error ? (
-            <FixLink href="#admin/storage/backup">{t("Zur Sicherung", "To the backup")}</FixLink>
+            <FixLink href="#settings/instance/storage/backup">{t("Zur Sicherung", "To the backup")}</FixLink>
           ) : s3 && !s3.enabled ? (
             <FixLink
               href={docs("configuration-storage", "s3-und-datenbanksicherung", "s3-and-database-backup")}
@@ -86,6 +87,12 @@ export default function StorageSection() {
             </FixLink>
           ) : undefined
         }
+      />
+      {/* The instance's storage as a picture (#532), live. */}
+      <InstanceStorageChart
+        databaseBytes={data.metrics.databaseBytes}
+        uploadBytes={data.metrics.uploadBytes}
+        accounts={(data.userUsage || []).map((u) => ({ name: data.users.find((x) => x.id === u.id)?.name || "–", bytes: u.bytes }))}
       />
       <Backups data={data} storage={storage} onChange={load} />
       <SftpBackup onError={onError} />
@@ -198,7 +205,7 @@ function Backups({ data, storage, onChange }: { data: AdminData; storage: Awaite
             {!backup.encrypted && (
               <>
                 {" "}
-                · <a href="#admin/security">{t("Verschlüsselung", "Encryption")}</a>
+                · <a href="#settings/instance/security">{t("Verschlüsselung", "Encryption")}</a>
               </>
             )}
           </>

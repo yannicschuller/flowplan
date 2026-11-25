@@ -34,6 +34,7 @@ import "./onboarding-migrate.css";
 import "./study.css";
 import "./ai-quota.css";
 import "./settings-usage.css";
+import "./settings-screen.css";
 import "./comment-margin.css";
 import "./comment-content.css";
 import "./side-panel.css";

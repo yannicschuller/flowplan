@@ -1,5 +1,5 @@
 "use client";
-// Administration → Überwachung → Empfehlungen (#admin/monitoring/
+// Administration → Überwachung → Empfehlungen (#settings/instance/monitoring/
 // recommendations): what the measurements suggest (lib/recommendations.ts),
 // each with its reason in numbers, what to do and a page of the
 // documentation; "Ausblenden" (while it lasts) and "Erinnere mich in 30

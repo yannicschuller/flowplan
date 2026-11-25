@@ -1,5 +1,5 @@
 "use client";
-// Administration → Überwachung → Neustarts (#admin/monitoring/restarts):
+// Administration → Überwachung → Neustarts (#settings/instance/monitoring/restarts):
 // every restart of the last 30 days – when, how long the run before was up,
 // why it ended (clean, crash, likely out of memory, without trace) and the
 // memory at its last heartbeat. Opened, an unexpected one shows its error

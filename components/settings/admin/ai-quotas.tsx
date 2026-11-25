@@ -315,7 +315,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
         "Leer heißt: keine Grenze für diesen Zeitraum. Für eine Person gilt ihre eigene Grenze, sonst die höchste ihrer Gruppen und Rollen, sonst der Standard; die Grenze der ganzen Instanz gilt immer zusätzlich. „Ausgenommen“ hebt die persönlichen Grenzen auf. „Danach“: ist die Grenze erreicht, ist KI aus – oder es geht mit einem anderen Modell weiter (gezählt; mit „höchstens“ bis zu einer eigenen Grenze, danach ist KI aus bis zum Neubeginn; die Grenze der Instanz gilt weiter).",
         "Empty means: no limit for that period. A person gets their own limit, else the highest of their groups and roles, else the default; the whole instance's ceiling always applies on top. “Exempt” lifts the personal limits. “Afterwards”: once the limit is reached, AI is off – or goes on with another model (counted; with “at most” up to a limit of its own, then AI is off until the period resets; the instance's ceiling still applies).",
       )}
-      actions={<a href="#admin/limits/limits-file">{t("Export / Import der Tarife", "Export / import of the plans")}</a>}
+      actions={<a href="#settings/instance/limits/limits-file">{t("Export / Import der Tarife", "Export / import of the plans")}</a>}
     >
       <div className="mon-table ai-quota-limits">
         <ResponsiveTable

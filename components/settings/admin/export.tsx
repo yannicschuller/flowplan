@@ -52,7 +52,7 @@ export default function ExportSection() {
   );
   return (
     <>
-      <AdminStatus items={items} action={!data.backup.enabled ? <FixLink href="#admin/storage/backup">{t("Geplante Sicherung einschalten", "Turn on the scheduled backup")}</FixLink> : undefined}>
+      <AdminStatus items={items} action={!data.backup.enabled ? <FixLink href="#settings/instance/storage/backup">{t("Geplante Sicherung einschalten", "Turn on the scheduled backup")}</FixLink> : undefined}>
         {data.backup.enabled
           ? t("Der Export läuft mit jeder geplanten Sicherung.", "The export runs with every scheduled backup.")
           : t("Die geplante Sicherung ist aus – ohne sie entsteht kein Export.", "The scheduled backup is off – without it there is no export.")}

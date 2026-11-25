@@ -1,5 +1,5 @@
 "use client";
-// Administration → Überwachung → Fehler im Detail (#admin/monitoring/errors):
+// Administration → Überwachung → Fehler im Detail (#settings/instance/monitoring/errors):
 // where the 5xx answers come from – one row per kind of error (route or
 // command, error name, short message, count in the range, trend, last
 // time); opened, its occurrences (time, request id, status, instance,
@@ -8,7 +8,7 @@
 // Data: /api/admin/monitoring?view=errors (lib/error-details.ts), loaded
 // when the section opens and whenever the dashboard counts new errors.
 //
-// Below it, "Fehler bei Fremddiensten" (#admin/monitoring/upstream, #514):
+// Below it, "Fehler bei Fremddiensten" (#settings/instance/monitoring/upstream, #514):
 // 5xx answers that report a failing third-party service (AI provider,
 // linked site, image search, calendar server …) – counted apart from the
 // server errors, per place, service and host with count and last time.

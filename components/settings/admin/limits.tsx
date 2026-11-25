@@ -56,7 +56,7 @@ export default function LimitsSection() {
         description={
           <>
             {t("Abweichungen für einzelne Arbeitsbereiche und Personen:", "Exceptions for single workspaces and people:")}{" "}
-            <a href="#admin/workspaces">{t("Arbeitsbereiche", "Workspaces")}</a>, <a href="#admin/users">{t("Benutzer", "Users")}</a>.
+            <a href="#settings/instance/workspaces">{t("Arbeitsbereiche", "Workspaces")}</a>, <a href="#settings/instance/users">{t("Benutzer", "Users")}</a>.
           </>
         }
       >

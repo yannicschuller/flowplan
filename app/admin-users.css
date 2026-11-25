@@ -4,70 +4,10 @@
    and one account in a side panel (a bottom sheet on phones). Prefix ux-.
    Kept apart from globals.css (loaded after it, app/layout.tsx). */
 
-/* ===== The section's own navigation as tabs above the heading: the eight
-   columns need the width the rail beside the page would take. ===== */
+/* ===== The table takes the section's whole width. ===== */
 .settings-detail[data-detail="users"] .settings-detail-layout {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-}
-.settings-detail[data-detail="users"] .settings-rail {
-  order: -1;
-  position: static;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  margin: 0 0 18px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  /* The line under the tabs, inside the box: the active tab's underline
-     covers it without reaching past the bottom edge. */
-  background: none;
-  box-shadow: inset 0 -1px 0 var(--border);
-  /* Sideways only. overflow-x: auto alone makes overflow-y auto too, and
-     the tabs pulled 1px over a bottom border (margin-bottom: -1px) were
-     taller than the box: an iPhone dragged the strip up and down and cut
-     the labels in half. With overflow-y hidden a vertical swipe on the
-     strip scrolls the page (touch-action stays auto: pan-x would block
-     exactly that). */
-  overflow: auto hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-.settings-detail[data-detail="users"] .settings-rail::-webkit-scrollbar {
-  display: none;
-}
-.settings-detail[data-detail="users"] .settings-rail h2 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.settings-detail[data-detail="users"] .settings-rail ul {
-  display: flex;
-  gap: 4px;
-}
-.settings-detail[data-detail="users"] .settings-rail a {
-  padding: 9px 12px;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  white-space: nowrap;
-}
-.settings-detail[data-detail="users"] .settings-rail a:hover {
-  background: none;
-  border-bottom-color: var(--border);
-}
-.settings-detail[data-detail="users"] .settings-rail a[aria-current="page"] {
-  background: none;
-  border-bottom-color: var(--blue);
-}
-.settings-detail[data-detail="users"] .settings-rail a:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: -2px;
 }
 
 /* ===== The toolbar: title, then search and "Konto anlegen" on one line,

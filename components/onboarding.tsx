@@ -90,7 +90,7 @@ export function Onboarding({
   // Loads the workspace again (after an import, which is no command).
   refresh: () => Promise<unknown>;
   onOpenPage: (pageId: string) => void;
-  // An address in the app (#admin/mail …), after the introduction closed.
+  // An address in the app (#settings/instance/mail …), after the introduction closed.
   onOpenHash: (hash: string) => void;
   onClose: () => void;
   initialStep?: OnboardingStep;

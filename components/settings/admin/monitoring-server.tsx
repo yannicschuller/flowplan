@@ -1,5 +1,5 @@
 "use client";
-// Administration → Überwachung → Server (#admin/monitoring/server): CPU,
+// Administration → Überwachung → Server (#settings/instance/monitoring/server): CPU,
 // memory and disk of the Flowplan process over the chosen range, and for
 // debugging what uses the most – memory by part (V8 heap, buffers, live
 // documents and connections, SQLite's cache), CPU time by area, the routes

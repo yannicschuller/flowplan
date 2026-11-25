@@ -40,6 +40,7 @@ import { quoteShortcut, setQuoteShortcutLocal, useQuoteShortcut } from "@/lib/qu
 import type { FormattingToolbarPref } from "@/lib/toolbar-pref";
 import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } from "@/lib/toolbar-pref-client";
 import { ToolbarLayoutEditor } from "./toolbar-layout-editor";
+import { AppearancePreview } from "../previews";
 import { FeatureModulesSettings } from "./feature-modules";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
@@ -241,6 +242,7 @@ export default function AppearanceSection() {
   };
   return (
     <>
+      <AppearancePreview />
       <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
         <SettingRow anchor="ui-language" label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
           <SaveState status={status} />

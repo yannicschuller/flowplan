@@ -16,6 +16,7 @@ import { SettingGroup, SettingRow } from "../../settings-ui";
 import { QuotaBarList } from "../../ai-quota-bars";
 import { refreshAiQuota, resetText, useAiQuota } from "../../ai-quota";
 import { useUserSettings } from "../user-context";
+import { UsageOverview } from "../previews";
 
 export default function UsageSection() {
   const t = useT();
@@ -25,6 +26,7 @@ export default function UsageSection() {
   useEffect(() => refreshAiQuota(), []);
   return (
     <>
+      <UsageOverview quota={quota} />
       {boot.myLimits && <StorageCard limits={boot.myLimits} />}
       <AiCard ai={boot.ai} quota={quota} />
       {boot.myLimits?.moreUrl && (

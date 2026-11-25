@@ -75,7 +75,7 @@ export default function AboutSection() {
           <div className="callout about-update" role="status">
             <ArrowCircleUp size={18} aria-hidden />
             <span>{t(`Flowplan ${about.update.latest} ist verfügbar.`, `Flowplan ${about.update.latest} is available.`)}</span>
-            <a href="#admin/general">{t("Zur Instanz", "Go to the instance")}</a>
+            <a href="#settings/instance/general">{t("Zur Instanz", "Go to the instance")}</a>
           </div>
         )}
       </SettingGroup>

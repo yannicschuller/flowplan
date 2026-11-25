@@ -586,7 +586,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         }
       }}
     >
-      <AdminStatus items={items} action={saved.enabled && !saved.provider && !saved.userProviders ? <FixLink href="#admin/ai/ai-provider">{t("Anbieter einrichten", "Set up provider")}</FixLink> : undefined}>
+      <AdminStatus items={items} action={saved.enabled && !saved.provider && !saved.userProviders ? <FixLink href="#settings/instance/ai/ai-provider">{t("Anbieter einrichten", "Set up provider")}</FixLink> : undefined}>
         {saved.enabled
           ? saved.provider?.kind === "ollama"
             ? t("Texte bleiben auf deinem Server.", "Text stays on your server.")
@@ -682,7 +682,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
           label={t("Personen", "People")}
           description={
             <>
-              {t("„Ausgewählte“: pro Person freischalten unter", "“Selected”: enable per person under")} <a href="#admin/users">{t("Benutzer", "Users")}</a>.
+              {t("„Ausgewählte“: pro Person freischalten unter", "“Selected”: enable per person under")} <a href="#settings/instance/users">{t("Benutzer", "Users")}</a>.
             </>
           }
         >

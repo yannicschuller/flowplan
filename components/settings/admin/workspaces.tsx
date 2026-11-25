@@ -75,7 +75,7 @@ export default function WorkspacesSection() {
             label: quota ? t(`Standard ${quota} MB`, `Default ${quota} MB`) : t("Standard unbegrenzt", "Default unlimited"),
           },
         ]}
-        action={<FixLink href="#admin/limits/storage-limits">{t("Standard ändern", "Change default")}</FixLink>}
+        action={<FixLink href="#settings/instance/limits/storage-limits">{t("Standard ändern", "Change default")}</FixLink>}
       >
         {t("Ein eigenes Kontingent gilt statt des Standards; leer = Standard, 0 = unbegrenzt.", "An own quota applies instead of the default; empty = default, 0 = unlimited.")}
       </AdminStatus>
