@@ -306,6 +306,56 @@ test("administrators only, never with an API token", async () => {
   assert.ok(get.indexOf("await admin()") >= 0 && get.indexOf("await admin()") < get.indexOf("restartsForAdmin("), "the route checks the person first");
 });
 
+test("the history in pages: newest first, 20 a page, 'Nur unerwartete', counts of both, older than 30 days left out", async () => {
+  await run("DELETE FROM restart_events");
+  const now = Date.now();
+  // 45 restarts, one an hour: every third unexpected (15), the rest clean (30); one too old.
+  for (let i = 0; i < 45; i++)
+    await run(
+      "INSERT INTO restart_events(id,at,ended_at,instance,host,previous_start,uptime_ms,reason,line_count) VALUES(?,?,?,?,?,?,?,?,?)",
+      `page-${String(i).padStart(2, "0")}`,
+      now - i * HOUR,
+      now - i * HOUR,
+      "host-a",
+      "host-a",
+      now - i * HOUR - DAY,
+      DAY,
+      i % 3 === 0 ? "crash" : "clean",
+      0,
+    );
+  await run("INSERT INTO restart_events(id,at,ended_at,instance,host,previous_start,uptime_ms,reason,line_count) VALUES('page-old',?,?,'h','h',0,0,'crash',0)", now - 31 * DAY, now - 31 * DAY);
+  const first = await history.restartHistory(now);
+  assert.equal(first.restarts.length, 20);
+  assert.equal(first.restarts[0].id, "page-00");
+  assert.ok(first.restarts.every((r, i, a) => i === 0 || a[i - 1].at >= r.at), "newest first");
+  assert.deepEqual([first.offset, first.total, first.more], [0, 45, true]);
+  assert.deepEqual(first.counts, { all: 45, unexpected: 15 });
+  // Unexpected in the last 24 hours: hours 0, 3, … 24 – from the database, not the page.
+  assert.equal(first.unexpected24h, 9);
+  const second = await history.restartHistory(now, { offset: 20 });
+  assert.equal(second.restarts[0].id, "page-20");
+  const third = await history.restartHistory(now, { offset: 40 });
+  assert.deepEqual([third.restarts.length, third.more], [5, false]);
+  // No row twice, none missing.
+  assert.equal(new Set([...first.restarts, ...second.restarts, ...third.restarts].map((r) => r.id)).size, 45);
+  const unexpected = await history.restartHistory(now, { only: "unexpected" });
+  assert.deepEqual([unexpected.restarts.length, unexpected.total, unexpected.more], [15, 15, false]);
+  assert.ok(unexpected.restarts.every((r) => r.reason !== "clean"));
+  assert.deepEqual(unexpected.counts, first.counts);
+  // Out-of-range or broken numbers fall back to a sane page.
+  assert.equal((await history.restartHistory(now, { limit: 5000 })).restarts.length, Math.min(45, history.RESTARTS_PAGE_MAX));
+  assert.equal((await history.restartHistory(now, { limit: Number.NaN, offset: -3 })).restarts.length, 20);
+  assert.equal((await history.restartHistory(now, { limit: 0 })).restarts.length, 1);
+  const admin = await account("restart-pager", true);
+  const viaRoute = (await history.restartsForAdmin(admin, null, { offset: 10, limit: 5, only: "unexpected" })) as Awaited<ReturnType<typeof history.restartHistory>>;
+  assert.deepEqual(viaRoute.restarts.map((r) => r.id), ["page-30", "page-33", "page-36", "page-39", "page-42"]);
+  assert.equal(viaRoute.more, false);
+  // The route reads offset, limit and only from the query.
+  const route = readFileSync(join(import.meta.dirname, "../app/api/admin/monitoring/handler.ts"), "utf8");
+  assert.match(route, /n\("offset"\), limit: n\("limit"\), only: url\.searchParams\.get\("only"\) === "unexpected"/);
+  await run("DELETE FROM restart_events");
+});
+
 test("the alert: one per incident – a crash at once, two unexpected restarts within an hour; webhook, landing tile, activity log", async () => {
   const { createServer } = await import("node:http");
   const received: { event: string; detail: string }[] = [];
