@@ -448,7 +448,7 @@ test("my tasks include open records I am assigned to, with the web's rights", as
   const db = await makeDatabase(owner.user, wid, sid, "Tickets", [
     { id: "title", name: "Title", type: "text" },
     { id: "status", name: "Status", type: "select", options: ["Open", "Done"] },
-    { id: "who", name: "Verantwortlich", type: "person" },
+    { id: "who", name: "Verantwortlich", type: "person", multiPerson: true },
     { id: "start", name: "Start", type: "date" },
     { id: "due", name: "Due", type: "date" },
   ]);

@@ -1,4 +1,5 @@
 import { aliasList } from "./aliases";
+import { isMultiPerson, MAX_PEOPLE, personCell, personIds } from "./person-values";
 import { numberCell } from "./field-format";
 import { z } from "zod";
 import { newTimeRefused, validDateValue } from "./date-values";
@@ -296,6 +297,11 @@ export function validateFormValues(
         const selected = z.array(z.string()).max(100).parse(value);
         if (selected.some((v) => !f.options?.includes(v))) throw new Error();
         cells[f.id] = [...new Set(selected)];
+      } else if (f.type === "person" && (Array.isArray(value) || isMultiPerson(f))) {
+        // Several people (#535): a list of ids; one id for a property with one.
+        const ids = personIds(z.union([z.string().max(100), z.array(z.string().max(100)).max(MAX_PEOPLE)]).parse(value));
+        if (!isMultiPerson(f) && ids.length > 1) throw new Error();
+        cells[f.id] = personCell(f, ids);
       } else if (f.type === "relation") {
         const ids = z.array(z.string().uuid()).max(100).parse(value);
         cells[f.id] = [...new Set(ids)];

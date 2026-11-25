@@ -24,6 +24,7 @@ import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
 import { OptionInput, type CreateOption } from "./option-picker";
+import { isMultiPerson, personIds } from "@/lib/person-values";
 import { PageIcon } from "./ui";
 import { Cube, Eye } from "@phosphor-icons/react";
 import { isModelName } from "@/lib/model-formats";
@@ -63,8 +64,9 @@ function useRichTextEditor(wanted: boolean) {
 // switch) to the date input in WebKit, which opens the picker instead.
 // Tag-backed multi-selects (chips with remove buttons) are no <label> either:
 // a tap on "+ Tag" would remove the first tag.
-export function FieldLabel({ field, children }: { field: Pick<Field, "type" | "tagOptions">; children: ReactNode }) {
-  return field.type === "date" || (field.type === "multiselect" && field.tagOptions) ? <div className="field-group">{children}</div> : <label>{children}</label>;
+// People of a property with "Mehrere Personen" (#535) neither.
+export function FieldLabel({ field, children }: { field: Pick<Field, "type" | "tagOptions" | "multiPerson">; children: ReactNode }) {
+  return field.type === "date" || (field.type === "multiselect" && field.tagOptions) || isMultiPerson(field) ? <div className="field-group">{children}</div> : <label>{children}</label>;
 }
 // A stored record's value (`keepRequired`): a required property (#443,
 // lib/field-required.ts) that has a value is not offered empty – a select
@@ -269,6 +271,20 @@ function CellInputBody({
           ))}
       </Select>
     );
+  // "Mehrere Personen" (#535): the members as chips with ✕ and a search.
+  if (isMultiPerson(f))
+    return (
+      <OptionInput
+        field={f}
+        value={value}
+        disabled={disabled}
+        editing={editing}
+        keep={keep}
+        people={members.map((u) => ({ id: u.id, name: u.name }))}
+        onChange={onChange}
+        onCancel={onCancel}
+      />
+    );
   if (optionPicker && (f.type === "select" || (f.type === "multiselect" && !f.tagOptions)))
     return (
       <OptionInput
@@ -291,7 +307,7 @@ function CellInputBody({
       <Select
         aria-label={f.name}
         disabled={disabled}
-        value={cellText(value)}
+        value={f.type === "person" ? (personIds(value)[0] ?? "") : cellText(value)}
         onChange={(e) => onChange(e.target.value)}
       >
         {!keep && <option value="">{t("Auswählen …", "Select …")}</option>}

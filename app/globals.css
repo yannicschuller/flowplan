@@ -3179,6 +3179,15 @@ tr:hover .row-open,
   gap: 6px;
   font-size: 11px;
 }
+/* Several people in one property (#535): side by side, wrapping. */
+.person-cells {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  max-width: 100%;
+}
 .check-display {
   display: inline-flex;
   width: 15px;

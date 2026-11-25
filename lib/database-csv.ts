@@ -5,6 +5,7 @@
 // related records by title, uploaded files by name, sprints by name. Other
 // values stay as stored (numbers, ISO dates, true/false), so the import gives
 // them back unchanged; it looks the names up again. Client-safe and pure.
+import { personCell } from "./person-values";
 import Papa from "papaparse";
 import { CSV_FORMULA, cellText, csvImportText, csvListSplitter } from "./cell-text";
 import { validDateValue } from "./date-values";
@@ -233,7 +234,9 @@ export function csvImporter(fields: Field[], allFields: Field[], ctx: CsvContext
             return [f.id, lists.get(f.id)!(text)];
           // People by name or e-mail, records by title, files by name (or as
           // links), sprints by name; ids from older exports still match.
+          // Several people (#535): every name of the cell.
           case "person":
+            return [f.id, personCell(f, resolve(f, text))];
           case "sprint":
             return [f.id, resolve(f, text)[0] || ""];
           case "relation":

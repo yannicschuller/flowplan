@@ -17,21 +17,27 @@ import { queueWorkflowMessage } from "../../webhooks";
 import { recordUrl } from "../../notification-events";
 import { workflowLimits } from "../limits";
 import { refId } from "./data";
+import { addedPeople, personIds } from "../../person-values";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 
 const MAX_RECIPIENTS = 50;
 
 // Recipients: ids, "@actor", "@creator", "@runner", "field:<id>" of the
 // triggering record, or placeholders on people.
+// A change of that very person property triggered the run (an assignment,
+// #535): only the people it added hear of it – not those who were on the
+// record before.
 export async function recipients(ctx: NodeRun, to: string[], cells: Record<string, unknown>, createdBy: string | null) {
   const out: string[] = [];
+  const trigger = ctx.scope.values[ctx.run.triggerNodeId] as { before?: Record<string, unknown>; changed?: string[] } | undefined;
   for (const entry of to) {
     if (entry === "@creator") createdBy && out.push(createdBy);
     else if (entry === "@actor") ctx.actor && out.push(ctx.actor.id);
     else if (entry === "@runner") ctx.runner && out.push(ctx.runner.id);
     else if (entry.startsWith("field:")) {
-      const value = cells[entry.slice(6)];
-      out.push(...(Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string" && !!v));
+      const fieldId = entry.slice(6);
+      const assigned = !!trigger?.before && Array.isArray(trigger.changed) && trigger.changed.includes(fieldId);
+      out.push(...(assigned ? addedPeople(trigger!.before![fieldId], cells[fieldId]) : personIds(cells[fieldId])));
     } else if (entry.includes("{{")) {
       const value = renderValue(entry, ctx.scope);
       for (const v of Array.isArray(value) ? value : [value]) {

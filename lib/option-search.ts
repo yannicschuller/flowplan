@@ -26,18 +26,28 @@ export type OptionSearch = {
 export function searchOptions(
   options: readonly string[],
   query: string,
-  { exclude = [], canCreate = false }: { exclude?: readonly string[]; canCreate?: boolean } = {},
+  {
+    exclude = [],
+    canCreate = false,
+    labelOf = (o) => o,
+  }: {
+    exclude?: readonly string[];
+    canCreate?: boolean;
+    // What is searched for an option: itself, or a person's name for a
+    // member id (#535).
+    labelOf?: (option: string) => string;
+  } = {},
 ): OptionSearch {
   const typed = cleanOptionName(query);
   const q = foldOption(typed);
   const skip = new Set(exclude);
-  const exact = q ? options.find((o) => foldOption(o) === q) : undefined;
+  const exact = q ? options.find((o) => foldOption(labelOf(o)) === q) : undefined;
   const first: string[] = [],
     prefix: string[] = [],
     contains: string[] = [];
   for (const option of options) {
     if (skip.has(option)) continue;
-    const key = foldOption(option);
+    const key = foldOption(labelOf(option));
     if (!q) contains.push(option);
     else if (key === q) first.push(option);
     else if (key.startsWith(q)) prefix.push(option);

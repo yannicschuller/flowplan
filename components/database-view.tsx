@@ -164,6 +164,7 @@ import {
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput, FieldLabel } from "./cell-input";
+import { isMultiPerson, personIds, recordsWithSeveralPeople } from "@/lib/person-values";
 import { FieldAccessEditor, FieldLock } from "./field-access-editor";
 import { FieldDefaultEditor } from "./field-default-editor";
 import { FieldRequiredEditor, RequiredMark, RequiredMissing } from "./field-required";
@@ -2430,14 +2431,27 @@ export default function DatabaseView({
         </span>
       ) : null;
     if (["person", "created_by", "updated_by"].includes(f.type)) {
-      const u = members.find((m) => m.id === v);
-      return u ? (
-        <span className="person-cell">
-          <Avatar name={u.name} userId={u.id} small />
-          {u.name}
+      // One person or several ("Mehrere Personen", #535): each with the avatar.
+      const people = personIds(v)
+        .map((id) => members.find((m) => m.id === id))
+        .filter((u): u is User => !!u);
+      if (!people.length) return <span className="muted">—</span>;
+      if (people.length === 1)
+        return (
+          <span className="person-cell">
+            <Avatar name={people[0].name} userId={people[0].id} small />
+            {people[0].name}
+          </span>
+        );
+      return (
+        <span className="person-cells">
+          {people.map((u) => (
+            <span key={u.id} className="person-cell">
+              <Avatar name={u.name} userId={u.id} small />
+              {u.name}
+            </span>
+          ))}
         </span>
-      ) : (
-        <span className="muted">—</span>
       );
     }
     if (f.type === "select" || f.type === "multiselect") {
@@ -2628,7 +2642,9 @@ export default function DatabaseView({
       );
     // Values of one choice or one line: the panel closes once it is saved.
     const closes =
-      ["person", "sprint", "number", "aliases", "url", "email", "phone"].includes(f.type) ||
+      ["sprint", "number", "aliases", "url", "email", "phone"].includes(f.type) ||
+      // One person; several (#535) stay open for more.
+      (f.type === "person" && !isMultiPerson(f)) ||
       (f.type === "text" && !isFormattedText(f, fields)) ||
       (f.type === "relation" && !!f.parent);
     return (
@@ -3469,8 +3485,8 @@ export default function DatabaseView({
                   value={r.cells[f.id]}
                   members={members}
                   related={related}
-                  // A multi-select's search stays open for more (#423).
-                  onChange={(v) => updateCell(r, f, v, f.type === "multiselect" && !f.tagOptions)}
+                  // A multi-select's search stays open for more (#423), several people too (#535).
+                  onChange={(v) => updateCell(r, f, v, (f.type === "multiselect" && !f.tagOptions) || isMultiPerson(f))}
                   keepRequired
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
@@ -5530,6 +5546,26 @@ export default function DatabaseView({
               setOptionConfirm(renames);
               return;
             }
+            // "Mehrere Personen" off (#535): records with several people
+            // keep the first one – said before it happens.
+            if (stored && isMultiPerson(stored) && draft.type === "person" && !isMultiPerson(draft)) {
+              const several = recordsWithSeveralPeople(data.rows, stored.id);
+              if (
+                several > 0 &&
+                !window.confirm(
+                  several === 1
+                    ? t(
+                        "„Mehrere Personen“ ausschalten? 1 Eintrag hat mehr als eine Person – er behält nur die erste.",
+                        "Turn off “Several people”? 1 record has more than one person – it keeps only the first.",
+                      )
+                    : t(
+                        `„Mehrere Personen“ ausschalten? ${several} Einträge haben mehr als eine Person – sie behalten nur die erste.`,
+                        `Turn off “Several people”? ${several} records have more than one person – they keep only the first.`,
+                      ),
+                )
+              )
+                return;
+            }
             setOptionConfirm(null);
             const next = fields.some((f) => f.id === fieldDraft.id)
               ? fields.map((f) => (f.id === fieldDraft.id ? draft : f))
@@ -5918,6 +5954,34 @@ export default function DatabaseView({
                   </p>
                 );
               })()}
+            </>
+          )}
+          {/* #535: several people per record; off keeps the first one
+              (confirmed on saving). */}
+          {fieldDraft.type === "person" && (
+            <>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={!!fieldDraft.multiPerson}
+                  disabled={!editable || !allowFieldChanges}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      multiPerson: e.target.checked ? true : undefined,
+                    }))
+                  }
+                />
+                {t("Mehrere Personen", "Several people")}
+              </label>
+              <p className="muted">
+                {fieldDraft.multiPerson
+                  ? t(
+                      "Ein Eintrag kann mehrere Mitglieder haben. Wer neu eingetragen wird, bekommt die Benachrichtigung.",
+                      "A record can have several members. Whoever is newly added gets the notification.",
+                    )
+                  : t("Ein Eintrag hat höchstens ein Mitglied.", "A record has at most one member.")}
+              </p>
             </>
           )}
           {fieldDraft.type === "formula" && (

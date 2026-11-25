@@ -16,6 +16,7 @@
 // 5xx. Files Notion hosts are downloaded during the import (their
 // addresses expire after an hour), only from Notion's file hosts and
 // within the person's upload limit; external files stay links.
+import { personCell } from "../person-values";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -811,8 +812,11 @@ function finishDatabases(ctx: Context, databases: (DatabasePlan & { page: Import
       if (plan.field.type === "person") {
         const all = db.raw.flatMap((row) => plan.convert(row.properties?.[plan.notionName] || {}) as { name?: string; email?: string }[]);
         if (all.every((p) => ctx.member(p))) {
-          fields.push(plan.field);
-          convertors.push({ plan, to: (value) => [...new Set((plan.convert(value) as { name?: string; email?: string }[]).map((p) => ctx.member(p)!))] });
+          const ids = (value: unknown) => [...new Set((plan.convert(value as never) as { name?: string; email?: string }[]).map((p) => ctx.member(p)!))];
+          // Several people in a record: "Mehrere Personen" on (#535); else one id.
+          const field: Field = db.raw.some((row) => ids(row.properties?.[plan.notionName] || {}).length > 1) ? { ...plan.field, multiPerson: true } : plan.field;
+          fields.push(field);
+          convertors.push({ plan, to: (value) => personCell(field, ids(value)) });
         } else textPlan("property", ct(`Personen in „${name}“ sind keine Mitglieder des Arbeitsbereichs: als Text`, `People in “${name}” are no members of the workspace: as text`));
         continue;
       }

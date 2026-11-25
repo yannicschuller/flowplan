@@ -2,6 +2,7 @@
 // Obsidian keeps notes): the title from "title:", the first heading or the
 // file name, properties from the frontmatter by name, the rest as the
 // record document. Missing properties can be created with a guessed type.
+import { isMultiPerson, personCell } from "./person-values";
 import { colorOptions } from "./option-colors";
 import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable } from "./field-access";
@@ -247,8 +248,10 @@ export async function importMarkdownRecords(
             return (await tagCells(user, page, [field], { [field.id]: list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))) }, false))[field.id];
           return [...new Set(list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))).map((v) => option(field, v)).filter((v): v is string => !!v))];
         case "person": {
-          const ids = list.map(member).filter((v): v is string => !!v);
-          return ids[0];
+          // Several people (#535): a list, or names separated by commas.
+          const names = isMultiPerson(field) ? list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))) : list;
+          const ids = names.map(member).filter((v): v is string => !!v);
+          return isMultiPerson(field) ? personCell(field, ids) : ids[0];
         }
         case "relation": {
           if (!field.relationPage) return undefined;

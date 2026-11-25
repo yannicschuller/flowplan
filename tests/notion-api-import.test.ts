@@ -381,7 +381,9 @@ test("blocks, sub-pages, databases with relations and rollups, files, synced blo
   // Both related records, also those beyond the first answer (has_more).
   assert.deepEqual(new Set(planen.cells[field("Personen").id] as string[]), new Set(persons.map((p) => p.id)));
   assert.equal(planen.cells[field("Länge").id], "6");
-  assert.deepEqual(planen.cells[field("Zuständig").id], [owner.id]);
+  // One person per record: a person property with one, stored as one id (#535).
+  assert.equal(planen.cells[field("Zuständig").id], owner.id);
+  assert.equal((field("Zuständig") as { multiPerson?: boolean }).multiPerson, undefined);
   assert.match(planen.created_at, /^2025-01-05/);
   const bauen = records.find((r) => r.cells.title === "Bauen")!;
   assert.deepEqual(bauen.cells[field("Personen").id], []);
