@@ -42,7 +42,7 @@ test("an administrator creates an account, hands over the link, and the person s
     const stamp = Date.now().toString(36);
     const name = `Rosa Neu ${stamp}`;
     const email = `rosa-${stamp}@example.test`;
-    await page.goto(`${origin}/#admin/users`);
+    await page.goto(`${origin}/#settings/instance/users`);
     await page.getByRole("button", { name: "Konto anlegen" }).click();
     const dialog = page.getByRole("dialog", { name: "Konto anlegen" });
     await expect(dialog).toContainText("Diese Instanz versendet keine E-Mails");

@@ -297,8 +297,8 @@ async function report(incident: string, rule: SecurityRule, detail: string, now:
           "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'incident',?)",
           id(),
           admin,
-          `${severity === "critical" ? "Kritischer Sicherheitsvorfall" : "Sicherheitsvorfall"}: ${title}${detail ? ` – ${detail}` : ""}. Details unter Administration → Sicherheit.`,
-          `#admin/threats/incident/${incident}`,
+          `${severity === "critical" ? "Kritischer Sicherheitsvorfall" : "Sicherheitsvorfall"}: ${title}${detail ? ` – ${detail}` : ""}. Details unter Einstellungen → Instanz → Sicherheit.`,
+          `#settings/instance/threats/incident/${incident}`,
         );
     await dispatch();
     const { sendSecurityAlert } = await import("./admin-ops");

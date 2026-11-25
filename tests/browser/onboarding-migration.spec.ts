@@ -68,8 +68,8 @@ test("moving from Notion: guide, import, terms, starters, sample space and the c
   if (await dialog.getByRole("heading", { name: "Instanz einrichten" }).isVisible()) {
     const lights = dialog.locator(".onboarding-setup li");
     await expect(lights).toHaveCount(5);
-    await expect(dialog.getByRole("link", { name: /^E-Mail-Versand: / })).toHaveAttribute("href", "#admin/mail");
-    await expect(dialog.getByRole("link", { name: /^Sicherung: / })).toHaveAttribute("href", "#admin/storage/backup");
+    await expect(dialog.getByRole("link", { name: /^E-Mail-Versand: / })).toHaveAttribute("href", "#settings/instance/mail");
+    await expect(dialog.getByRole("link", { name: /^Sicherung: / })).toHaveAttribute("href", "#settings/instance/storage/backup");
     await shot("onboarding-admin-setup");
     await dialog.getByRole("button", { name: "Weiter", exact: true }).click();
   }

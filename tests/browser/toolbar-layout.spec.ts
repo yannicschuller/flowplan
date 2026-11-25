@@ -234,7 +234,7 @@ test("admins set a default toolbar for everyone without their own", async ({ pag
   const admin = await adminContext.newPage();
   const { command, host } = await setup(page);
   try {
-    await admin.goto(`${origin}/#admin/general`);
+    await admin.goto(`${origin}/#settings/instance/general`);
     const setting = admin.locator("#toolbar-layout-default");
     await expect(setting.locator(".toolbar-layout-status")).toHaveText("Standard", { timeout: 30_000 });
     await setting.getByRole("button", { name: "Anpassen …" }).click();

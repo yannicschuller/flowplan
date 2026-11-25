@@ -177,7 +177,7 @@ test("without e-mail an administrator changes the address in the account's panel
     const page = await admin.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
     await localAccount(page, "Admin Adressen", ["flowplan-admins"]);
-    await page.goto(`${origin}/#admin/users`);
+    await page.goto(`${origin}/#settings/instance/users`);
     await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     await page.locator(".user-row", { hasText: name }).locator("td.state").click();
     const sheet = page.getByRole("dialog", { name, exact: true });

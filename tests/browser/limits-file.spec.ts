@@ -79,7 +79,7 @@ test("limits file: check, apply, the member sees the plan's limits", async ({ br
     });
     expect(r.ok(), await r.text()).toBe(true);
 
-    await admin.page.goto(`${origin}/#admin/limits/limits-file`);
+    await admin.page.goto(`${origin}/#settings/instance/limits/limits-file`);
     const section = admin.page.locator("section#limits-file");
     await expect(section).toBeVisible({ timeout: 20_000 });
     await section.getByLabel("Datei (JSON)").fill(JSON.stringify(sample, null, 2));

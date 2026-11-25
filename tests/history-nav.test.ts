@@ -26,7 +26,9 @@ test("places: pages with their record, screens, settings sections – not quick 
   assert.equal(stepOf("settings/account"), "settings/account");
   // A view inside a section (a webhook, a setting the search jumps to).
   assert.equal(stepOf("settings/account/passkeys"), "settings/account/passkeys");
-  assert.equal(stepOf("admin"), "admin");
+  // The administration is the instance part of the settings (#532).
+  assert.equal(stepOf("admin"), "settings/instance");
+  assert.equal(stepOf("admin/users"), "settings/instance/users");
   assert.equal(stepOf(`collection/${B}`), `collection/${B}`);
   assert.equal(stepOf(`tags/${B}`), `tags/${B}`);
   for (const screen of ["inbox", "tasks", "tags", "graph", "media", "trash"]) assert.equal(stepOf(screen), screen);

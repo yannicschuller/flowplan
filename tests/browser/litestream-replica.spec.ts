@@ -52,7 +52,7 @@ test("a stuck replica: warning, rebuild on the next start, restart now", async (
     } catch {}
   });
 
-  await page.goto(`${origin}/#admin/monitoring`);
+  await page.goto(`${origin}/#settings/instance/monitoring`);
   const warning = page.getByTestId("litestream-warning");
   await expect(warning).toBeVisible();
   await expect(warning).toHaveAttribute("role", "alert");
@@ -106,7 +106,7 @@ test("a stuck replica: warning, rebuild on the next start, restart now", async (
 
 test("no stuck replica, nothing scheduled: no warning", async ({ page }) => {
   const origin = await signInAdmin(page);
-  await page.goto(`${origin}/#admin/monitoring`);
+  await page.goto(`${origin}/#settings/instance/monitoring`);
   await expect(page.locator(".mon-toolbar")).toBeVisible();
   await expect(page.locator("#health, .mon-health").first()).toBeVisible();
   await expect(page.getByTestId("litestream-warning")).toHaveCount(0);

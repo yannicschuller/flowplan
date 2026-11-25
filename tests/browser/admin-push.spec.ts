@@ -107,19 +107,18 @@ test("admins see the push relay's state: tile, monitoring and detail page", asyn
     if (shots) await page.screenshot({ path: `${shots}/relay-status-${name}-${info.project.name}.png`, animations: "disabled" });
   };
 
-  // The landing page: a tile with a green badge and the deliveries.
-  await page.goto("/#admin");
-  const tile = page.locator('.settings-tile[data-section="push"]');
+  // The settings' sidebar (#532): the section with the relay in its line.
+  await page.goto("/#settings/instance");
+  const tile = page.locator('.sv-side a[data-area="admin"][data-section="push"]');
   await expect(tile).toBeVisible();
   await expect(tile).toContainText("Push-Benachrichtigungen");
-  await expect(tile.locator(".status-badge.ok")).toHaveText("Erreichbar (85 ms)");
   await expect(tile).toContainText("push.flowplan.org");
   await tile.scrollIntoViewIfNeeded();
   await shot("tile");
 
   // The detail page.
   await tile.click();
-  await expect(page).toHaveURL(/#admin\/push$/);
+  await expect(page).toHaveURL(/#settings\/instance\/push$/);
   const health = page.getByTestId("push-relay-health");
   await expect(health).toHaveText("Erreichbar (85 ms)");
   const relay = page.locator("#relay");
@@ -175,7 +174,7 @@ test("admins see the push relay's state: tile, monitoring and detail page", asyn
   expect(overflow).toBeLessThanOrEqual(0);
 
   // The monitoring's health tiles show the relay too.
-  await page.goto("/#admin/monitoring");
+  await page.goto("/#settings/instance/monitoring");
   const monitoringTile = page.locator(".mon-health-tile", { hasText: "Push-Relay" });
   await expect(monitoringTile).toBeVisible();
   await expect(monitoringTile).toHaveClass(/error/);

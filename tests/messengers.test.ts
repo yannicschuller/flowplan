@@ -428,7 +428,7 @@ test("operations alerts reach administrators' chat apps; security incidents are 
   );
   assert.equal(queued.length, 1);
   assert.equal(queued[0].title, "Flowplan · Viele fehlgeschlagene Anmeldungen");
-  assert.equal(queued[0].url, "https://flow.example.test/#admin/monitoring");
+  assert.equal(queued[0].url, "https://flow.example.test/#settings/instance/monitoring");
   // Once a day.
   await ops.checkHealthAlerts();
   assert.equal((await all("SELECT 1 FROM messenger_deliveries")).length, 1);

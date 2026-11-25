@@ -103,18 +103,22 @@ test("administrators get incidents as their own kind, leading to the incident; o
   for (const admin of [root, vera]) {
     const [notice] = await incidentsOf(admin);
     assert.ok(notice, admin.name);
-    assert.match(notice.body, /^Kritischer Sicherheitsvorfall: Viele Konten von einer Adresse probiert – detail \d+\. Details unter Administration → Sicherheit\.$/);
-    assert.equal(notice.link, `#admin/threats/incident/${incidentId}`);
-    assert.equal(notificationUrl(notice), `/#admin/threats/incident/${incidentId}`);
+    assert.match(notice.body, /^Kritischer Sicherheitsvorfall: Viele Konten von einer Adresse probiert – detail \d+\. Details unter Einstellungen → Instanz → Sicherheit\.$/);
+    assert.equal(notice.link, `#settings/instance/threats/incident/${incidentId}`);
+    assert.equal(notificationUrl(notice), `/#settings/instance/threats/incident/${incidentId}`);
   }
   assert.equal((await incidentsOf(ada)).length, 0);
   assert.equal((await all("SELECT 1 FROM notifications WHERE kind='security'")).length, 0, "no longer as account notices");
   // In English with the rule's own title.
   assert.equal(
     englishMessage((await incidentsOf(root))[0].body),
-    `Critical security incident: Many accounts tried from one address – detail ${n}. Details under Administration → Security.`,
+    `Critical security incident: Many accounts tried from one address – detail ${n}. Details under Settings → Instance → Security.`,
   );
+  // Notices from before #532 name the old place: translated all the same.
+  assert.equal(englishMessage("Sicherheitsvorfall: X. Details unter Administration → Sicherheit."), "Security incident: X. Details under Settings → Instance → Security.");
   // Signing in from the push keeps the target.
+  assert.equal(loginReturnPath(`/#settings/instance/threats/incident/${incidentId}`), `/#settings/instance/threats/incident/${incidentId}`);
+  // Notifications from before #532 kept the old address: it still leads there.
   assert.equal(loginReturnPath(`/#admin/threats/incident/${incidentId}`), `/#admin/threats/incident/${incidentId}`);
   assert.equal(loginReturnPath("/#admin/threats?next=https://evil.example.test"), "/");
   assert.equal(notificationUrl({ page_id: null, link: "javascript:alert(1)" }), "/#inbox");
@@ -135,12 +139,12 @@ test("by default inbox, push, e-mail and chat apps; each channel follows the per
   await queueNotificationDigests(Date.now() + 30 * 60_000);
   const recipients = await all<{ recipient: string; text: string }>("SELECT recipient,text FROM mail_queue");
   assert.deepEqual(recipients.map((m) => m.recipient), [root.email]);
-  assert.match(recipients[0].text, /https:\/\/flow\.example\.test\/#admin\/threats\/incident\/[0-9a-f-]{36}/);
+  assert.match(recipients[0].text, /https:\/\/flow\.example\.test\/#settings\/instance\/threats\/incident\/[0-9a-f-]{36}/);
   // The chat app's message: urgent, titled, linked to the incident.
   const message = await M.notificationMessage({ ...r, kind: "incident" }, "de", { preview: true, encrypted: false });
   assert.equal(message.urgent, true);
   assert.match(message.title, /Sicherheitsvorfall$/);
-  assert.match(message.url, /\/#admin\/threats\/incident\//);
+  assert.match(message.url, /\/#settings\/instance\/threats\/incident\//);
   // Inbox off: nothing at all.
   await as(vera)({ action: "notification.prefs", kind: "incident", inbox: false, push: true, email: true, messenger: true });
   await incident("brute_force_account");
@@ -215,10 +219,11 @@ test("the inbox item leads to the incident; only in-app routes are honoured as t
   const incidentId = await incident("brute_force_account");
   // What the inbox gets (bootstrap) opens the incident's page.
   const item = ((await bootstrap(root, wid)).notifications as { kind?: string | null; page_id: string | null; link?: string | null }[]).find((x) => x.kind === "incident")!;
-  assert.equal(notificationUrl(item), `/#admin/threats/incident/${incidentId}`);
+  assert.equal(notificationUrl(item), `/#settings/instance/threats/incident/${incidentId}`);
+  assert.equal(notificationUrl({ page_id: null, link: `#admin/threats/incident/${incidentId}` }), `/#admin/threats/incident/${incidentId}`);
   // The desktop app's feed and the push payload use the same target.
   const { notificationFeed } = await import("../lib/notification-feed");
-  assert.equal((await notificationFeed(root, null)).notifications.find((x) => x.kind === "incident")?.url, `/#admin/threats/incident/${incidentId}`);
+  assert.equal((await notificationFeed(root, null)).notifications.find((x) => x.kind === "incident")?.url, `/#settings/instance/threats/incident/${incidentId}`);
   for (const link of [
     "https://evil.example.test/#admin",
     "//evil.example.test",
@@ -234,6 +239,6 @@ test("the inbox item leads to the incident; only in-app routes are honoured as t
   // A page always wins over a link.
   assert.match(notificationUrl({ page_id: "00000000-0000-4000-8000-000000000000", link: "#admin/threats" }), /^\/#page=/);
   // Incidents from before (kind "security", "Sicherheit: …", no target): the security page.
-  assert.equal(notificationUrl({ page_id: null, kind: "security", body: "Sicherheit: Abtasten von Adressen und IDs – 60 × 401/403/404. Details unter Administration → Sicherheit." }), "/#admin/threats");
+  assert.equal(notificationUrl({ page_id: null, kind: "security", body: "Sicherheit: Abtasten von Adressen und IDs – 60 × 401/403/404. Details unter Administration → Sicherheit." }), "/#settings/instance/threats");
   assert.equal(notificationUrl({ page_id: null, kind: "security", body: "Neue Anmeldung bei deinem Konto: x" }), "/#inbox");
 });

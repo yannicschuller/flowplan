@@ -4,7 +4,7 @@ import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
-import { findSection, parseSettingsHash, settingsHash } from "@/lib/settings-sections";
+import { findSection, parseSettingsHash, redirectedSettingsHash, settingsHash } from "@/lib/settings-sections";
 import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
 import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
@@ -430,15 +430,14 @@ const Whiteboard = dynamic(() => loadView(loadWhiteboard), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
-// Settings and the administration (each section loads with its page,
-// components/settings/registry.tsx): loaded when opened.
+// The settings with the instance's sections (#532; each section loads with
+// its page, components/settings/registry.tsx): loaded when opened.
 const SettingsLoading = () => (
   <div className="settings-loading">
     <SettingsSkeleton />
   </div>
 );
 const Settings = dynamic(() => loadView(() => import("./settings")), { ssr: false, loading: SettingsLoading });
-const Admin = dynamic(() => loadView(() => import("./admin")), { ssr: false, loading: SettingsLoading });
 // "Aufgaben in Datenbank verschieben …" (#420), loaded when it opens.
 const TasksToDatabase = dynamic(() => import("./tasks-to-database"), { ssr: false });
 // Opened by an action: the presentation (KaTeX and the read-only document
@@ -546,7 +545,6 @@ type Screen =
   | "graph"
   | "media"
   | "settings"
-  | "admin"
   // Pages by tag (#70, components/tag-view.tsx): #tags, #tags/<id>.
   | "tags"
   // A collection's results (#86, components/collection-view.tsx): #collection/<id>.
@@ -2263,7 +2261,7 @@ export default function WorkspaceApp({
           );
         } else if (!keepNav) setMobile(false);
       } else if (
-        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags", "study"].includes(
+        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "tags", "study"].includes(
           fragment,
         ) ||
         /^tags\/[0-9a-f-]{36}$/.test(fragment) ||
@@ -2272,7 +2270,11 @@ export default function WorkspaceApp({
         // (components/settings/shell.tsx reads the rest).
         parseSettingsHash(fragment)
       ) {
-        const base = fragment.split("/")[0] as Screen;
+        // The administration's old addresses (#admin/…, #532) are the
+        // instance's part of the settings now: replaced, no new step.
+        const moved = redirectedSettingsHash(fragment);
+        if (moved && fragment.startsWith("admin")) window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}${moved}`);
+        const base = (parseSettingsHash(fragment) ? "settings" : fragment.split("/")[0]) as Screen;
         if (base === "collection") setCollectionId(fragment.split("/")[1]);
         if (screenRef.current !== base) {
           screenRef.current = base;
@@ -2680,12 +2682,12 @@ export default function WorkspaceApp({
     }
     const settings = parseSettingsHash(hash);
     if (settings) {
-      const area = settings.area === "admin" ? t("Administration", "Administration") : t("Einstellungen", "Settings");
+      const area = settings.area === "admin" ? t("Einstellungen: Instanz", "Settings: instance") : t("Einstellungen", "Settings");
       const section = findSection(settings.area, settings.section);
       return {
-        title: section ? t(section.title.de, section.title.en) : area,
+        title: section ? t(section.title.de, section.title.en) : t("Einstellungen", "Settings"),
         detail: section ? area : undefined,
-        icon: settings.area === "admin" ? <ShieldCheck size={16} /> : <GearSix size={16} />,
+        icon: <GearSix size={16} />,
       };
     }
     const [base, id] = hash.split("/");
@@ -4308,8 +4310,9 @@ export default function WorkspaceApp({
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
     { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => (location.hash = "settings/about") },
     { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
+    // The instance's part of the settings (#532; formerly "Administration").
     ...(boot.user.isAdmin
-      ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
+      ? [{ label: t("Einstellungen: Instanz", "Settings: instance"), keywords: t("admin administration instanz betrieb", "admin administration instanz betrieb instance operations"), icon: ShieldCheck, run: () => (location.hash = settingsHash({ area: "admin" })) }]
       : []),
     { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
     { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
@@ -4516,9 +4519,6 @@ export default function WorkspaceApp({
       className: "sidebar-help",
       onSelect: () => setShortcuts(true),
     },
-    ...(boot.user.isAdmin
-      ? [{ id: "admin", label: t("Administration", "Administration"), icon: ShieldCheck, selected: screen === "admin", onSelect: () => go("admin") }]
-      : []),
   ];
   const signOut = async () => {
     await clearAccountData();
@@ -5372,7 +5372,6 @@ export default function WorkspaceApp({
                     media: t("Medien", "Media"),
                     study: t("Lernen", "Study"),
                     settings: t("Einstellungen", "Settings"),
-                    admin: t("Administration", "Administration"),
                     page: missingPage && missingPage.id === pageId && !busy ? t("Seite nicht gefunden", "Page not found") : t("Seite", "Page"),
                   }[screen]
                 }
@@ -6722,9 +6721,6 @@ export default function WorkspaceApp({
               theme={theme}
               setTheme={chooseTheme}
             />
-          )}
-          {screen === "admin" && boot.user.isAdmin && (
-            <Admin mutate={mutate} onError={notifyError} />
           )}
         </div>
           </div>

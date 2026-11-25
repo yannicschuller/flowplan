@@ -4,8 +4,8 @@
 // with what to do about them, addresses with failed sign-ins, the security
 // events, signed-in people, open ways in (API tokens, share links, public
 // pages), blocked addresses and how the events leave the instance.
-// Anchors: #admin/threats/<incidents|addresses|events|sessions|access|blocks|setup>;
-// an incident's own page: #admin/threats/incident/<id>.
+// Anchors: #settings/instance/threats/<incidents|addresses|events|sessions|access|blocks|setup>;
+// an incident's own page: #settings/instance/threats/incident/<id>.
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
 import type { securityIncident, securityOverview, securityEvents } from "@/lib/security-admin";
@@ -255,7 +255,7 @@ function MyAlerts({ alerts }: { alerts: Overview["alerts"] }) {
   );
 }
 
-const incidentHref = (id: string) => `#admin/threats/incident/${id}`;
+const incidentHref = (id: string) => `#settings/instance/threats/incident/${id}`;
 
 function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }) {
   const t = useT();
@@ -366,9 +366,9 @@ function Counts({ label, rows, tone: chipTone }: { label: string; rows: { value:
   );
 }
 
-// #admin/threats/incident/<id>: the incident's own page.
+// #settings/instance/threats/incident/<id>: the incident's own page.
 function useIncidentRoute() {
-  const read = () => (typeof location === "undefined" ? null : /^#admin\/threats\/incident\/([0-9a-f-]{36})$/.exec(location.hash)?.[1] ?? null);
+  const read = () => (typeof location === "undefined" ? null : /^#(?:settings\/instance|admin)\/threats\/incident\/([0-9a-f-]{36})$/.exec(location.hash)?.[1] ?? null);
   const [id, setId] = useState(read);
   useEffect(() => {
     const sync = () => setId(read());
@@ -408,7 +408,7 @@ function IncidentPage({ id, live, act, busy }: { id: string; live: Overview; act
     setVersion((v) => v + 1);
   };
   const back = (
-    <a className="security-back" href="#admin/threats/incidents">
+    <a className="security-back" href="#settings/instance/threats/incidents">
       <ArrowLeft size={16} aria-hidden /> {t("Alle Vorfälle", "All incidents")}
     </a>
   );
@@ -1000,7 +1000,7 @@ function Setup({ d }: { d: Overview }) {
         <dd>{on(d.setup.prometheus, d.setup.prometheus ? "/api/metrics" : t("aus", "off"))} <code>FLOWPLAN_METRICS_TOKEN</code></dd>
         <dt>{t("Webhook für Vorfälle", "Webhook for incidents")}</dt>
         <dd>
-          {on(d.setup.webhook, d.setup.webhook ? t("an", "on") : t("aus", "off"))} <a href="#admin/monitoring/alerts">{t("Überwachung → Warnungen", "Monitoring → Alerts")}</a>
+          {on(d.setup.webhook, d.setup.webhook ? t("an", "on") : t("aus", "off"))} <a href="#settings/instance/monitoring/alerts">{t("Überwachung → Warnungen", "Monitoring → Alerts")}</a>
         </dd>
         <dt>{t("E-Mail an Admins", "E-mail to admins")}</dt>
         <dd>{on(d.setup.mail, d.setup.mail ? t("an", "on") : t("kein SMTP", "no SMTP"))}</dd>

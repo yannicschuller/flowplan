@@ -115,7 +115,7 @@ for (const inApp of [true, false]) {
       // A settings section, and the drawer again.
       await menuTab(page).tap();
       await expectDrawer(page, false);
-      await page.locator('.settings-tile[data-section="appearance"]').tap();
+      await page.locator('.sv-side a[data-section="appearance"]').tap();
       await expect(page).toHaveURL(/#settings\/appearance$/);
       await menuTab(page).tap();
       await expectDrawer(page, true);

@@ -166,7 +166,7 @@ export async function saveAiRule(user: Identity, raw: unknown) {
     else {
       if (b.model === "" && b.scope !== "user") throw new HttpError(400, "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.");
       const provider = (await instanceAiSettings()).provider;
-      if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI).");
+      if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI).");
       await run(
         "INSERT INTO ai_model_rules(scope,target,model,kind,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,updated_at=excluded.updated_at",
         b.scope,

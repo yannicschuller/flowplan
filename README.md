@@ -109,7 +109,7 @@ curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env
 docker compose up -d
 ```
 
-- **Local AI (optional):** `docker compose --profile ai up -d` starts Ollama next to Flowplan; set `OLLAMA_URL=http://ollama:11434` and choose a model under **Administration → AI** ([AI](https://docs.flowplan.org/en/ai)).
+- **Local AI (optional):** `docker compose --profile ai up -d` starts Ollama next to Flowplan; set `OLLAMA_URL=http://ollama:11434` and choose a model under **Settings → Instance → AI** ([AI](https://docs.flowplan.org/en/ai)).
 - **Kubernetes:** the Helm chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (one pod with a volume, as SQLite needs; several pods in [cluster mode](https://docs.flowplan.org/en/cluster#kubernetes-helm)).
 - **Single sign-on:** register a confidential web client at your OIDC provider with the redirect URI `https://<your-domain>/api/auth/callback` ([Sign-in](https://docs.flowplan.org/en/sign-in)).
 
@@ -341,7 +341,7 @@ AI in Flowplan is **off until an admin switches it on** – and then only for th
 <table>
   <tr>
     <td width="50%"><img src=".github/assets/readme/ai-ask.webp" alt="Ask AI: a question about the workspace answered with numbered source links"></td>
-    <td width="50%"><img src=".github/assets/readme/ai-settings.webp" alt="Administration → AI: provider Ollama, who may use AI, and a switch per feature"></td>
+    <td width="50%"><img src=".github/assets/readme/ai-settings.webp" alt="Settings → Instance → AI: provider Ollama, who may use AI, and a switch per feature"></td>
   </tr>
   <tr>
     <td><b>Ask your workspace</b> – answers with links to their sources, never more than you may read.</td>
@@ -468,7 +468,7 @@ Please report vulnerabilities privately – see [SECURITY.md](SECURITY.md) for h
 - Optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) instead of SQLite, [switching](https://docs.flowplan.org/en/database-migration) in both directions, and [cluster mode](https://docs.flowplan.org/en/cluster) with several instances, Redis and S3 – updates without downtime
 - Full-text search including OCR for scanned PDFs and Office files
 - Prometheus metrics and a health endpoint; **Settings → About Flowplan** shows the running version, commit and build date, and tells admins about a newer release
-- Move a whole instance to another server from **Administration → Storage & backup**: the new server pulls the database, files and keys directly from the old one, with a short read-only final sync
+- Move a whole instance to another server from **Settings → Instance → Storage & backup**: the new server pulls the database, files and keys directly from the old one, with a short read-only final sync
 - `FLOWPLAN_SOURCE_URL` points the source links to your modified code (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` hides the sponsor card on the About page
 - Docker image for `amd64` and `arm64`, a **Helm chart** for Kubernetes
 
@@ -519,7 +519,7 @@ Back up the `/app/data` volume, or let Flowplan do it: scheduled backups and Mar
 <details>
 <summary><b>How do I move to another server?</b></summary>
 
-Start a fresh installation on the new server and use **Administration → Storage & backup → Move instance**: the old instance hands out a one-time move token, the new one pulls the database, uploads and key files server to server, and the downtime is only the final sync, usually minutes. Without that, copy the data volume to the new host and start the same image there, or – with S3 – start with the same `S3_*` variables and an empty volume; Litestream restores the database. See [Moving an instance](https://docs.flowplan.org/en/move-instance) and [Restore](https://docs.flowplan.org/en/storage-and-backups#restore).
+Start a fresh installation on the new server and use **Settings → Instance → Storage & backup → Move instance**: the old instance hands out a one-time move token, the new one pulls the database, uploads and key files server to server, and the downtime is only the final sync, usually minutes. Without that, copy the data volume to the new host and start the same image there, or – with S3 – start with the same `S3_*` variables and an empty volume; Litestream restores the database. See [Moving an instance](https://docs.flowplan.org/en/move-instance) and [Restore](https://docs.flowplan.org/en/storage-and-backups#restore).
 
 </details>
 

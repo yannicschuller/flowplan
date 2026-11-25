@@ -57,19 +57,19 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
   ]);
   const admin = await adminContext.newPage();
   try {
-    await admin.goto(`${origin}/#admin`);
-    await expect(
-      admin.getByRole("heading", { name: "Administration" }),
-    ).toBeVisible();
-    // The landing page: a tile per section with its state.
-    await expect(admin.getByRole("link", { name: /Überwachung/ })).toBeVisible();
-    await admin.goto(`${origin}/#admin/general`);
+    await admin.goto(`${origin}/#settings/instance`);
+    // The settings' start page at the instance (#532): its overview, and
+    // every section of the instance in the sidebar.
+    await expect(admin.getByRole("heading", { name: "Instanz auf einen Blick" })).toBeVisible();
+    await expect(admin.locator('.sv-start-tile[data-tile="monitoring"]')).toBeVisible();
+    await expect(admin.getByRole("navigation", { name: "Bereiche der Einstellungen" }).getByRole("link", { name: /^Überwachung/ })).toBeVisible();
+    await admin.goto(`${origin}/#settings/instance/general`);
     // The running version and commit (the test server runs from a checkout).
     const build = admin.getByLabel("Laufende Version");
     await expect(build).toContainText(/^v\d+\.\d+\.\d+/);
     await expect(build.getByRole("link")).toHaveAttribute("href", /github\.com\/yannicschuller\/flowplan\/commit\/[0-9a-f]{40}$/);
     await admin.screenshot({ path: `test-results/admin-verification/${testInfo.project.name}-version.png` });
-    await admin.goto(`${origin}/#admin/monitoring`);
+    await admin.goto(`${origin}/#settings/instance/monitoring`);
     // The live dashboard: health of each part, charts, queues.
     const health = admin.getByRole("region", { name: "Zustand" });
     // (The dev server may compile the dashboard on first use.)
@@ -81,7 +81,7 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
     await admin.screenshot({
       path: `test-results/admin-verification/${testInfo.project.name}-metrics.png`,
     });
-    await admin.goto(`${origin}/#admin/workspaces`);
+    await admin.goto(`${origin}/#settings/instance/workspaces`);
     // Every account starts with a workspace of the same name (this admin's
     // too): the demo account's, found by its owner.
     await admin.getByRole("searchbox", { name: "Arbeitsbereiche suchen" }).fill(boot.user.email);

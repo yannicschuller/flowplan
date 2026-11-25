@@ -256,7 +256,7 @@ export default function UsersSection() {
   ];
   return (
     <>
-      <AdminStatus items={items} action={data.localLogin ? <FixLink href="#admin/signin/registration">{t("Registrierung einstellen", "Set up sign-up")}</FixLink> : undefined}>
+      <AdminStatus items={items} action={data.localLogin ? <FixLink href="#settings/instance/signin/registration">{t("Registrierung einstellen", "Set up sign-up")}</FixLink> : undefined}>
         {data.sessions === 1 ? t("1 aktive Sitzung.", "1 active session.") : t(`${data.sessions} aktive Sitzungen.`, `${data.sessions} active sessions.`)}{" "}
         {t(`Inaktiv heißt: ${INACTIVE_DAYS} Tage oder länger ohne Anmeldung.`, `Inactive means: ${INACTIVE_DAYS} days or more without signing in.`)}
         {!data.localLogin && (
@@ -353,8 +353,8 @@ export default function UsersSection() {
             ) : (
               <span className="muted">
                 {t(
-                  "Zur Löschung vormerken gibt es nur, wenn diese Instanz E-Mails versendet (Administration → E-Mail): Niemand wird ohne Vorwarnung gelöscht.",
-                  "Marking for deletion is only offered while this instance sends e-mail (Administration → E-mail): nobody is deleted without a warning.",
+                  "Zur Löschung vormerken gibt es nur, wenn diese Instanz E-Mails versendet (Einstellungen → Instanz → E-Mail): Niemand wird ohne Vorwarnung gelöscht.",
+                  "Marking for deletion is only offered while this instance sends e-mail (Settings → Instance → E-mail): nobody is deleted without a warning.",
                 )}
               </span>
             )}
@@ -1610,7 +1610,7 @@ function UserDrawer({
             )}
           </PanelRow>
           {ai && (
-            <PanelRow label={t("KI-Funktionen", "AI features")} hint={t("Nur ausgewählte Personen dürfen KI nutzen (Administration → KI).", "Only selected people may use AI (Administration → AI).")}>
+            <PanelRow label={t("KI-Funktionen", "AI features")} hint={t("Nur ausgewählte Personen dürfen KI nutzen (Einstellungen → Instanz → KI).", "Only selected people may use AI (Settings → Instance → AI).")}>
               <AiUserSwitch userId={u.id} name={u.name} allowed={ai.allowed} onChange={() => void load()} />
             </PanelRow>
           )}

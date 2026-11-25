@@ -93,14 +93,14 @@ test("a reload on a page, a settings section or the administration never shows t
   await expectNoStartPage(page, "page");
 });
 
-test("a reload on the administration never shows the start page", async ({ page }) => {
+test("a reload on the instance's settings never shows the start page", async ({ page }) => {
   await signInAdmin(page);
   await watchFirstPaint(page);
-  await page.goto("/#admin");
-  await expect(page.locator(".settings-tile[data-section='push']")).toBeVisible({ timeout: 30_000 });
+  await page.goto("/#settings/instance");
+  await expect(page.locator(".sv-side a[data-area='admin'][data-section='push']")).toBeVisible({ timeout: 30_000 });
   await expectNoStartPage(page, "settings");
   await page.reload();
-  await expect(page.locator(".settings-tile[data-section='push']")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".sv-side a[data-area='admin'][data-section='push']")).toBeVisible({ timeout: 30_000 });
   await expectNoStartPage(page, "settings");
 });
 

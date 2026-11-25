@@ -2798,8 +2798,7 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   align-items: center;
   gap: 6px;
   border-bottom: 1px solid var(--border);
-  /* Sideways only (a strip, not a box): see .settings-rail in
-     app/admin-users.css. */
+  /* Sideways only (a strip, not a box): see tests/browser/strip-scroll.spec.ts. */
   overflow: auto hidden;
   overscroll-behavior-x: contain;
 }
@@ -16086,9 +16085,10 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .settings-breadcrumb a {
   color: var(--secondary);
 }
+/* The section's siblings are in the settings' sidebar (#532). */
 .settings-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 36px;
   align-items: start;
 }
@@ -16111,48 +16111,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   width: 34px;
   padding: 0;
   justify-content: center;
-}
-.settings-rail {
-  position: sticky;
-  top: 16px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg);
-}
-.settings-rail h2 {
-  margin: 2px 6px 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.settings-rail ul {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.settings-rail a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  color: var(--secondary);
-  font-size: 13.5px;
-  text-decoration: none;
-}
-.settings-rail a:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-.settings-rail a[aria-current="page"] {
-  background: var(--blue-light);
-  color: var(--blue);
-  font-weight: 500;
 }
 .settings-loading {
   color: var(--muted);
@@ -16303,9 +16261,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 @container main (max-width: 875px) {
   .settings-detail-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .settings-rail {
-    display: none;
   }
 }
 @container main (max-width: 767.98px) {
@@ -17321,9 +17276,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 /* ---------- Administration → Überwachung ---------- */
 .settings-detail[data-detail="monitoring"] .settings-detail-layout {
   grid-template-columns: minmax(0, 1fr);
-}
-.settings-detail[data-detail="monitoring"] .settings-rail {
-  display: none;
 }
 .mon-toolbar {
   display: flex;
@@ -26280,8 +26232,7 @@ h3 .block-reactions {
   border-bottom: 1px solid var(--border);
 }
 /* Sideways only; the strip, not each tab, reaches over the bar's bottom
-   border, so the tabs fit the scrolling box (see .settings-rail in
-   app/admin-users.css). */
+   border, so the tabs fit the scrolling box (tests/browser/strip-scroll.spec.ts). */
 .survey-tabs {
   display: flex;
   align-self: flex-end;

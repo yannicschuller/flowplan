@@ -47,7 +47,7 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
   const admin = await open(adminSession.token);
   const me = await open(member.token);
   try {
-    await admin.page.goto(`${origin}/#admin/limits`);
+    await admin.page.goto(`${origin}/#settings/instance/limits`);
     const section = admin.page.locator(".setting-group", { hasText: "Grenzen pro Gruppe" });
     await expect(section).toBeVisible({ timeout: 20_000 });
     // The group is offered by the picker; here it is added by its name.
@@ -91,7 +91,7 @@ test("limits per group: set by an administrator, shown to a member", async ({ br
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-group-limits.png`, fullPage: true });
 
     // The administration's account panel names the group as the source.
-    await admin.page.goto(`${origin}/#admin/users`);
+    await admin.page.goto(`${origin}/#settings/instance/users`);
     await admin.page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     const row = admin.page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name, exact: true }).click();

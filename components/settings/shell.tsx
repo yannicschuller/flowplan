@@ -1,15 +1,15 @@
 "use client";
-// The frame of the settings and the administration
-// (docs/settings-architecture.md): a landing page of grouped tiles with a
-// search, and a detail page per section with breadcrumb, title, one line of
-// description and the section's content. The address is the hash
-// (#settings, #settings/<section>[/<anchor>], #admin/…), so reload, back and
-// forward work and every section can be linked.
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { ArrowLeft, CaretRight, MagnifyingGlass, type Icon } from "@phosphor-icons/react";
-import { parseSettingsHash, settingsHash, searchSettings, type GroupMeta, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
-import { anchorLevel, hiddenEntries, higherLevel, sectionMinLevel, sectionVisible, withinLevel, type SettingsLevel } from "@/lib/settings-level";
-import { LevelDot, LevelMore, LevelNotice, LevelSwitch, LevelViewProvider, useLevelName } from "../settings-level";
+// The parts of the settings screen (components/settings.tsx,
+// docs/settings-architecture.md): a tile (search results), and the page of
+// a section with breadcrumb, title, one line of description and the
+// section's content. The address is the hash (#settings/<section>[/<anchor>],
+// #settings/instance/<section>[/<anchor>]), so reload, back and forward work
+// and every section can be linked.
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { ArrowLeft, CaretRight } from "@phosphor-icons/react";
+import { parseSettingsHash, settingsHash, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
+import { anchorLevel, hiddenEntries, higherLevel, sectionMinLevel, withinLevel, type SettingsLevel } from "@/lib/settings-level";
+import { LevelDot, LevelMore, LevelNotice, LevelViewProvider } from "../settings-level";
 import { SettingsSkeleton } from "../skeleton";
 import { useT } from "../i18n";
 import { StatusBadge, type Tone } from "../settings-ui";
@@ -41,22 +41,25 @@ export type TileBar = { label: string; text: string; share: number | null };
 // Set when a tile (or a search result) opened the section: "back" can then
 // go back in the history instead of adding an entry.
 let openedFromHome = false;
-// The section a person came back from, to focus its tile again.
-let lastSection: string | null = null;
+export const markOpenedFromHome = () => {
+  openedFromHome = true;
+};
 
-export function useSettingsRoute(area: SettingsArea): SettingsRoute {
+// The route in the address: of one area, or (no area) of the settings
+// screen – personal or instance. Old addresses (#admin/…, old tab ids,
+// unknown sections) are corrected in place, without a history step.
+export function useSettingsRoute(area?: SettingsArea): SettingsRoute {
   const read = (): SettingsRoute => {
     const parsed = typeof location === "undefined" ? null : parseSettingsHash(location.hash);
-    return parsed && parsed.area === area ? { area, section: parsed.section, anchor: parsed.anchor } : { area, section: null, anchor: null };
+    return parsed && (!area || parsed.area === area) ? { area: parsed.area, section: parsed.section, anchor: parsed.anchor } : { area: area ?? "settings", section: null, anchor: null };
   };
   const [route, setRoute] = useState<SettingsRoute>(read);
   useEffect(() => {
     const sync = () => {
       const parsed = parseSettingsHash(location.hash);
-      if (!parsed || parsed.area !== area) return;
-      // Old tab ids and unknown sections: the address is corrected in place.
+      if (!parsed || (area && parsed.area !== area)) return;
       if (parsed.redirected) history.replaceState(history.state, "", `${location.pathname}${location.search}${settingsHash(parsed)}`);
-      setRoute({ area, section: parsed.section, anchor: parsed.anchor });
+      setRoute((r) => (r.area === parsed.area && r.section === parsed.section && r.anchor === parsed.anchor ? r : { area: parsed.area, section: parsed.section, anchor: parsed.anchor }));
     };
     sync();
     window.addEventListener("hashchange", sync);
@@ -74,155 +77,31 @@ export function AdminLoading() {
   );
 }
 
-type ShellProps = {
+type DetailProps = {
   area: SettingsArea;
+  // The screen's name ("Einstellungen"): back button and breadcrumb.
   title: string;
-  description: ReactNode;
-  HeaderIcon: Icon;
-  sections: SectionDef[];
-  groups: GroupMeta[];
-  // The group's title (the workspace group names the workspace).
-  groupTitle?: (group: GroupMeta) => string;
-  summaries: Record<string, TileSummary>;
-  // Above the tiles, e.g. the state of the instance.
-  status?: ReactNode;
+  // The section's group in the breadcrumb ("Instanz › Personen").
+  groupName: string;
+  section: SectionDef;
+  anchor: string | null;
   // Buttons next to a section's title (e.g. "Aktualisieren").
   detailActions?: ReactNode;
   // Wraps the section content (providers that only sections need).
   Wrap?: ComponentType<{ children: ReactNode }>;
   // Settings levels (#294, lib/settings-level.ts), only for the personal
-  // settings: the person's level and how to change it. Sections above it
-  // are left out of the tiles and the side navigation, the search finds
-  // them; a section opened above it says so.
+  // settings: the person's level and how to change it. A section opened
+  // above it says so.
   level?: { value: SettingsLevel; onChange: (level: SettingsLevel) => void };
 };
-
-export function SettingsShell(props: ShellProps) {
-  const route = useSettingsRoute(props.area);
-  const section = props.sections.find((s) => s.id === route.section) || null;
-  const root = useRef<HTMLDivElement>(null);
-  // A new page starts at the top (the app scrolls an inner container).
-  useEffect(() => {
-    if (!route.anchor) root.current?.scrollIntoView({ block: "start" });
-  }, [route.section, route.anchor]);
-  return (
-    <div ref={root} className={`utility-content settings-shell ${props.area === "admin" ? "admin-page" : "settings-page"}`} data-area={props.area}>
-      {section ? <SettingsDetail {...props} section={section} anchor={route.anchor} /> : <SettingsHome {...props} />}
-    </div>
-  );
-}
 
 function useText() {
   const t = useT();
   return (text: Text) => t(text.de, text.en);
 }
 
-function SettingsHome({ area, title, description, HeaderIcon, sections, groups, groupTitle, summaries, status, level }: ShellProps) {
-  const t = useT();
-  const tx = useText();
-  const [query, setQuery] = useState("");
-  const list = useRef<HTMLDivElement>(null);
-  // Back from a section: its tile gets the focus again.
-  useEffect(() => {
-    if (!lastSection) return;
-    list.current?.querySelector<HTMLElement>(`[data-section="${lastSection}"]`)?.focus({ preventScroll: false });
-    lastSection = null;
-  }, []);
-  // Every text of a section in the reader's language and in German and
-  // English, so a search in any of them finds it.
-  const results = useMemo(() => {
-    if (!query.trim()) return null;
-    // Every level (#294): a setting above the person's carries its mark.
-    return searchSettings(sections, query, tx).map((r) => ({ ...r, entry: r.entry ? tx(r.entry.title) : undefined }));
-  }, [query, sections, tx]);
-  const levelName = useLevelName();
-  // Above the person's level: the mark and the level's name.
-  const above = (l: SettingsLevel | undefined) => (level && l && !withinLevel(l, level.value) ? l : undefined);
-  const shown = level ? sections.filter((s) => sectionVisible(s, level.value)) : sections;
-  const groupName = (g: GroupMeta) => (groupTitle ? groupTitle(g) : tx(g.title));
-  return (
-    <div className="settings-home">
-      <header className="settings-home-head">
-        <span className="settings-head-icon" aria-hidden>
-          <HeaderIcon size={26} />
-        </span>
-        <div>
-          <h1>{title}</h1>
-          <p>{description}</p>
-        </div>
-      </header>
-      {status}
-      {level && <LevelSwitch value={level.value} onChange={level.onChange} />}
-      <div className="settings-search" role="search">
-        <MagnifyingGlass size={17} aria-hidden />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("Einstellung suchen …", "Search settings …")}
-          aria-label={t("Einstellung suchen", "Search settings")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && results?.[0]) {
-              openedFromHome = true;
-              location.hash = settingsHash({ area, section: results[0].section.id, anchor: results[0].anchor });
-            }
-          }}
-        />
-      </div>
-      <div ref={list}>
-        {results ? (
-          <section className="settings-results" aria-label={t("Suchergebnisse", "Search results")}>
-            <p className="settings-results-count" role="status">
-              {results.length ? t(`${results.length} Treffer`, `${results.length} results`) : t("Nichts gefunden. Versuche ein anderes Wort.", "Nothing found. Try another word.")}
-            </p>
-            <ul className="settings-tiles list">
-              {results.map((r, i) => (
-                <li key={`${r.section.id}-${i}`}>
-                  <Tile
-                    area={area}
-                    section={r.section}
-                    summary={
-                      above(r.level)
-                        ? {
-                            line: r.entry
-                              ? t(`in ${tx(r.section.title)} · Stufe ${levelName(r.level!)}`, `in ${tx(r.section.title)} · ${levelName(r.level!)} level`)
-                              : t(`Stufe ${levelName(r.level!)}`, `${levelName(r.level!)} level`),
-                          }
-                        : r.entry
-                          ? { line: t(`in ${tx(r.section.title)}`, `in ${tx(r.section.title)}`) }
-                          : summaries[r.section.id]
-                    }
-                    title={r.entry || tx(r.section.title)}
-                    anchor={r.anchor}
-                    level={above(r.level)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : (
-          groups
-            .map((g) => ({ g, items: shown.filter((s) => s.group === g.id) }))
-            .filter(({ items }) => items.length)
-            .map(({ g, items }) => (
-              <section className="settings-tile-group" key={g.id} aria-labelledby={`settings-group-${g.id}`}>
-                <h2 id={`settings-group-${g.id}`}>{groupName(g)}</h2>
-                <ul className="settings-tiles">
-                  {items.map((s) => (
-                    <li key={s.id}>
-                      <Tile area={area} section={s} summary={summaries[s.id]} title={tx(s.title)} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Tile({ area, section, summary, title, anchor, level }: { area: SettingsArea; section: SectionDef; summary?: TileSummary; title: string; anchor?: string; level?: SettingsLevel }) {
+export function Tile({ section, summary, title, anchor, level }: { section: SectionDef; summary?: TileSummary; title: string; anchor?: string; level?: SettingsLevel }) {
+  const area = section.area;
   const tx = useText();
   const { Icon } = section;
   const tone = summary?.tone;
@@ -321,12 +200,10 @@ function Tile({ area, section, summary, title, anchor, level }: { area: Settings
   );
 }
 
-function SettingsDetail({ area, title, sections, groups, groupTitle, detailActions, section, anchor, Wrap, level }: ShellProps & { section: SectionDef; anchor: string | null }) {
+export function SettingsDetail({ title, groupName, detailActions, section, anchor, Wrap, level }: DetailProps) {
   const t = useT();
   const tx = useText();
   const heading = useRef<HTMLHeadingElement>(null);
-  const group = groups.find((g) => g.id === section.group);
-  const groupName = group ? (groupTitle ? groupTitle(group) : tx(group.title)) : "";
   // Levels (#294): "Trotzdem zeigen" shows this section up to a higher
   // level for now; another section starts at the person's level again.
   const [reveal, setReveal] = useState<{ section: string; level: SettingsLevel } | null>(null);
@@ -339,10 +216,8 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
   const pointed = anchorLevel(section, anchor);
   const target = !level ? null : pointed && !withinLevel(pointed, level.value) ? higherLevel(pointed, lowest) : whole ? lowest : null;
   const showBody = !viewLevel || withinLevel(lowest, viewLevel);
-  const siblings = sections.filter((s) => s.group === section.group && (!level || s.id === section.id || sectionVisible(s, level.value)));
   const { Component, Icon } = section;
   useEffect(() => {
-    lastSection = section.id;
     if (!anchor) {
       heading.current?.focus({ preventScroll: true });
       return;
@@ -361,7 +236,7 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
     if (openedFromHome && history.length > 1) {
       openedFromHome = false;
       history.back();
-    } else location.hash = settingsHash({ area });
+    } else location.hash = settingsHash({ area: "settings" });
   };
   const body = viewLevel ? (
     <LevelViewProvider level={viewLevel} section={section}>
@@ -380,7 +255,7 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
         </button>
       </div>
       <nav className="settings-breadcrumb" aria-label={t("Pfad", "Path")}>
-        <a href={settingsHash({ area })}>{title}</a>
+        <a href={settingsHash({ area: "settings" })}>{title}</a>
         <CaretRight size={12} aria-hidden />
         <span>{groupName}</span>
         <CaretRight size={12} aria-hidden />
@@ -412,21 +287,6 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
           )}
           <div className="settings-body">{Wrap ? <Wrap>{body}</Wrap> : body}</div>
         </div>
-        {siblings.length > 1 && (
-          <nav className="settings-rail" aria-label={t(`Auch in ${groupName}`, `Also in ${groupName}`)}>
-            <h2>{groupName}</h2>
-            <ul>
-              {siblings.map((s) => (
-                <li key={s.id}>
-                  <a href={settingsHash({ area, section: s.id })} aria-current={s.id === section.id ? "page" : undefined}>
-                    <s.Icon size={16} aria-hidden />
-                    {tx(s.title)}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
       </div>
     </div>
   );

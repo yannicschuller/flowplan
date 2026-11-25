@@ -129,7 +129,7 @@ export function EncryptionSettings({ status, onChange }: { status: EncryptionSta
                       "Litestream legt die Datenbank laufend unverschlüsselt in den Bucket (Ordner db/); Litestream 0.5 kann nicht selbst verschlüsseln. Für einen Bucket, dem du nicht traust: FLOWPLAN_LITESTREAM=off setzen und unter Speicher & Sicherung „Stündlich statt täglich“ einschalten – dann liegt die Datenbank nur verschlüsselt im Bucket.",
                       "Litestream keeps putting the database unencrypted into the bucket (folder db/); Litestream 0.5 cannot encrypt by itself. For a bucket you do not trust: set FLOWPLAN_LITESTREAM=off and turn on “Hourly instead of daily” under Storage & backup – then the database is only in the bucket encrypted.",
                     )}{" "}
-                    <a href="#admin/storage/backup">{t("Zu den Sicherungen", "To the backups")}</a>
+                    <a href="#settings/instance/storage/backup">{t("Zu den Sicherungen", "To the backups")}</a>
                   </span>
                 )
               }

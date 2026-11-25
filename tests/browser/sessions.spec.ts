@@ -58,7 +58,7 @@ test("session lifetimes in Administration → Sign-in & SSO → Sessions", async
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.goto("/#admin/signin");
+  await page.goto("/#settings/instance/signin");
   await skipIntro(page);
   const group = page.locator("#sessions");
   await expect(group.getByText("Desktop- und Mobil-Apps")).toBeVisible();

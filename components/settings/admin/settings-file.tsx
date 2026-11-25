@@ -36,7 +36,7 @@ export function settingsChangeText(t: T, c: SettingsChange): string {
 function secretText(t: T, path: SecretPath): string {
   switch (path) {
     case "ai.apiKey":
-      return t("API-Schlüssel des KI-Anbieters (Administration → KI)", "API key of the AI provider (Administration → AI)");
+      return t("API-Schlüssel des KI-Anbieters (Einstellungen → Instanz → KI)", "API key of the AI provider (Settings → Instance → AI)");
     case "instance.sftpBackup.password":
       return t("Passwort des SFTP-Ziels (Speicher & Sicherung)", "Password of the SFTP target (Storage & backup)");
     case "instance.sftpBackup.privateKey":

@@ -170,19 +170,19 @@ export default function GeneralSection() {
       <SettingsFile />
       <SettingGroup id="moved" title={t("Weitere Einstellungen der Instanz", "More instance settings")}>
         <SettingRow label={t("Registrierung, Zwei-Faktor, SSO", "Sign-up, two-factor, SSO")}>
-          <FixLink href="#admin/signin">{t("Anmeldung & SSO", "Sign-in & SSO")}</FixLink>
+          <FixLink href="#settings/instance/signin">{t("Anmeldung & SSO", "Sign-in & SSO")}</FixLink>
         </SettingRow>
         <SettingRow label={t("Kontingente, Uploads, Versionen", "Quotas, uploads, versions")}>
-          <FixLink href="#admin/limits">{t("Grenzen & Aufbewahrung", "Limits & retention")}</FixLink>
+          <FixLink href="#settings/instance/limits">{t("Grenzen & Aufbewahrung", "Limits & retention")}</FixLink>
         </SettingRow>
         <SettingRow label={t("Geplante Sicherung", "Scheduled backup")}>
-          <FixLink href="#admin/storage/backup">{t("Speicher & Sicherung", "Storage & backup")}</FixLink>
+          <FixLink href="#settings/instance/storage/backup">{t("Speicher & Sicherung", "Storage & backup")}</FixLink>
         </SettingRow>
         <SettingRow label={t("Hinweis für alle, Wartung", "Notice for everyone, maintenance")}>
-          <FixLink href="#admin/maintenance">{t("Wartung & Hinweise", "Maintenance & notices")}</FixLink>
+          <FixLink href="#settings/instance/maintenance">{t("Wartung & Hinweise", "Maintenance & notices")}</FixLink>
         </SettingRow>
         <SettingRow label={t("Block-Erweiterungen, eigene Domains", "Block extensions, custom domains")}>
-          <FixLink href="#admin/extensions">{t("Erweiterungen & Domains", "Extensions & domains")}</FixLink>
+          <FixLink href="#settings/instance/extensions">{t("Erweiterungen & Domains", "Extensions & domains")}</FixLink>
         </SettingRow>
       </SettingGroup>
     </>

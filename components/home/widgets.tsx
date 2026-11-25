@@ -26,6 +26,7 @@ import {
 import { useT } from "../i18n";
 import { moduleShownIn, QUICK_ACTION_MODULE } from "@/lib/feature-modules";
 import { useHiddenModules } from "@/lib/feature-modules-client";
+import { settingsHash } from "@/lib/settings-sections";
 import { WidgetSkeleton } from "../skeleton";
 import { PageIcon } from "../ui";
 import { Sparkline } from "../sparkline";
@@ -61,7 +62,7 @@ export type HomeEnv = {
   openPage: (id: string, target?: PageLocation) => void;
   addPage: (kind?: PageKind) => void;
   openCapture: () => void;
-  go: (screen: "inbox" | "tasks" | "admin") => void;
+  go: (screen: "inbox" | "tasks") => void;
   mutate: (body: Record<string, unknown>) => Promise<unknown>;
   notify: (message: string) => void;
   notifyError: (error: unknown) => void;
@@ -1272,7 +1273,7 @@ function InstanceWidget({ widget, data }: { widget: HomeWidget; data: Record<str
   const issues = (data.issues || []) as { code: string; text: string; value?: number }[];
   return (
     <>
-      <Heading widget={widget} action={<More onClick={() => env.go("admin")}>{t("Administration", "Administration")}</More>} />
+      <Heading widget={widget} action={<More onClick={() => (location.hash = settingsHash({ area: "admin" }))}>{t("Einstellungen: Instanz", "Settings: instance")}</More>} />
       <p className={`home-instance level-${data.level}`}>
         {data.level === "ok" ? <CheckCircle size={18} weight="fill" aria-hidden /> : <WarningCircle size={18} weight="fill" aria-hidden />}
         {data.level === "ok" ? t("Alles in Ordnung", "All good") : data.level === "critical" ? t("Kritisch", "Critical") : t("Warnung", "Warning")}

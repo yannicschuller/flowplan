@@ -94,13 +94,13 @@ export function issueText(t: T, e: FileIssue): string {
     case "ambiguous":
       return t(`${where}: mehrere Gruppen mit diesem Namen`, `${where}: several groups with this name`);
     case "no_provider":
-      return t(`${where}: zuerst einen KI-Anbieter der Instanz einrichten (Administration → KI)`, `${where}: set up an AI provider for the instance first (Administration → AI)`);
+      return t(`${where}: zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI)`, `${where}: set up an AI provider for the instance first (Settings → Instance → AI)`);
     case "unknown_model":
       return t(`${where}: das Modell „${e.value}“ kennt die Instanz nicht – erlaubt: ${list}`, `${where}: the instance does not know the model “${e.value}” – allowed: ${list}`);
     case "no_family_model":
       return t(`${where}: kein Modell für „${e.value}“ bei der Instanz – erlaubt: ${list}`, `${where}: no model for “${e.value}” on this instance – allowed: ${list}`);
     case "no_prices":
-      return t(`${where}: Kostengrenzen brauchen Preise je Modell (Administration → KI → Preise)`, `${where}: cost limits need prices per model (Administration → AI → Prices)`);
+      return t(`${where}: Kostengrenzen brauchen Preise je Modell (Einstellungen → Instanz → KI → Preise)`, `${where}: cost limits need prices per model (Settings → Instance → AI → Prices)`);
     case "unit_mismatch":
       return t(`${where}: passt nicht zur Einheit ${e.value} der KI-Kontingente – nimm ${list} oder setze „unit“`, `${where}: does not fit the AI quotas' unit ${e.value} – use ${list} or set “unit”`);
     case "currency_mismatch":

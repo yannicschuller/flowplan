@@ -5,8 +5,8 @@
 // deliveries and AI tokens, the queues, recent events with filters and quick
 // actions – then the background workers, alerts by webhook
 // (/api/admin/operations) and the switch of the usage statistics. The
-// maintenance notice has its own section (#admin/maintenance).
-// Anchors: #admin/monitoring/<health|recommendations|traffic|errors|server|restarts|people|signins|refused|storage|
+// maintenance notice has its own section (#settings/instance/maintenance).
+// Anchors: #settings/instance/monitoring/<health|recommendations|traffic|errors|server|restarts|people|signins|refused|storage|
 // deliveries|ai|queues|events|actions|system|workers|instance|alerts|metrics>.
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import dynamic from "next/dynamic";
@@ -96,7 +96,7 @@ export default function MonitoringSection() {
             <p className="mon-note">
               <Info size={16} aria-hidden />
               {t("Die Nutzungsstatistik ist ausgeschaltet – Anfragen, aktive Personen und KI-Tokens werden nicht gezählt.", "Usage statistics are switched off – requests, active people and AI tokens are not counted.")}{" "}
-              <a href="#admin/monitoring/metrics">{t("Statistik", "Statistics")}</a>
+              <a href="#settings/instance/monitoring/metrics">{t("Statistik", "Statistics")}</a>
             </p>
           )}
           <SecondInstanceWarning s={d.system} />
@@ -292,7 +292,7 @@ function Health({ d }: { d: MonitoringOverview }) {
       title: t("Hintergrunddienste", "Background workers"),
       tone: h.workers.failing.length ? "error" : "ok",
       detail: h.workers.failing.length ? h.workers.failing.map((k) => workerName(k, t)).join(", ") : t(`${num(h.workers.active)} aktiv, ohne Fehler`, `${num(h.workers.active)} active, no errors`),
-      href: "#admin/monitoring/workers",
+      href: "#settings/instance/monitoring/workers",
       icon: Gear,
     },
     {
@@ -357,7 +357,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
   return (
     <div className="mon-kpis" role="group" aria-label={t("Kennzahlen", "Key figures")}>
       <KpiTile
-        href="#admin/monitoring/people"
+        href="#settings/instance/monitoring/people"
         icon={Users}
         label={t("Aktiv 24 Std.", "Active 24 h")}
         value={num(k.active24h)}
@@ -367,7 +367,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
         <Sparkline values={d.active.slice(-24).map((p) => p.people)} label={t("Aktive Personen je Stunde, 24 Std.", "Active people per hour, 24 h")} height={26} />
       </KpiTile>
       <KpiTile
-        href="#admin/monitoring/storage"
+        href="#settings/instance/monitoring/storage"
         icon={HardDrives}
         label={t("Speicher", "Storage")}
         value={storageValue}
@@ -390,7 +390,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
         )}
       </KpiTile>
       <KpiTile
-        href="#admin/monitoring/deliveries"
+        href="#settings/instance/monitoring/deliveries"
         icon={PaperPlaneTilt}
         label={t("Zustellungen 7 Tage", "Deliveries 7 days")}
         value={num(sum(delivered))}
@@ -399,7 +399,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
         <Sparkline values={delivered} label={t("Zustellungen je Tag, 7 Tage", "Deliveries per day, 7 days")} height={26} />
       </KpiTile>
       <KpiTile
-        href="#admin/monitoring/ai"
+        href="#settings/instance/monitoring/ai"
         icon={Sparkle}
         label={t("KI-Tokens 14 Tage", "AI tokens 14 days")}
         value={compact(tokensTotal)}
@@ -415,7 +415,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
         <Sparkline values={tokens} label={t("KI-Tokens je Tag, 14 Tage", "AI tokens per day, 14 days")} height={26} />
       </KpiTile>
       <KpiTile
-        href="#admin/monitoring/errors"
+        href="#settings/instance/monitoring/errors"
         icon={WarningCircle}
         tone={on && e.errors ? "error" : undefined}
         label={t("Fehler 24 Std.", "Errors 24 h")}

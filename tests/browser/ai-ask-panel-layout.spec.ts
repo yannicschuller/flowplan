@@ -190,8 +190,8 @@ test("Ask AI beside the page: the layout follows the room that is left", async (
     expect(await page.evaluate(() => localStorage.getItem("flowplan-ask-width"))).toBeNull();
     await expectNoSidewaysScroll(page);
 
-    // The administration beside the docked panel (the pin is remembered).
-    await page.goto("/#admin/users");
+    // An instance section beside the docked panel (the pin is remembered).
+    await page.goto("/#settings/instance/users");
     await page.reload();
     await expect(page.locator(".settings-shell")).toBeVisible({ timeout: 60_000 });
     await openPanel(page);
@@ -201,14 +201,9 @@ test("Ask AI beside the page: the layout follows the room that is left", async (
     // The header's text keeps a readable width (not a word per line).
     const intro = await box(page.locator(".settings-detail-head p").first());
     expect(intro.width).toBeGreaterThan(250);
-    // The section list does not float over the content: on the users page
-    // it is a row of tabs above the heading.
-    const rail = page.locator(".settings-rail");
-    if (await rail.isVisible()) {
-      const tabs = await box(rail);
-      expect(tabs.y + tabs.height).toBeLessThanOrEqual((await box(page.locator(".settings-detail-head"))).y + 1);
-      expect(overlaps(tabs, await box(page.locator(".admin-users")))).toBe(false);
-    }
+    // The settings' sidebar does not float over the content.
+    const nav = page.locator(".sv-side");
+    if (await nav.isVisible()) expect(overlaps(await box(nav), await box(page.locator(".admin-users")))).toBe(false);
     // "Registrierung einstellen" below the status text, not over it.
     const fix = page.locator(".admin-status").getByRole("link", { name: "Registrierung einstellen" });
     await expect(fix).toBeVisible();

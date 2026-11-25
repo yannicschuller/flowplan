@@ -6,8 +6,8 @@ import { join } from "node:path";
 // Rows that scroll sideways (tab strips, toolbars, chip rows) must not also
 // scroll up and down: a box with overflow-x: auto gets overflow-y: auto too,
 // and content a pixel taller than the box (underline, focus ring, padding)
-// let iPhones drag the strip vertically and cut the labels in half (the
-// section tabs of Administration → Benutzer). Generic: every element with
+// let iPhones drag the strip vertically and cut the labels in half (once
+// the section tabs of Administration → Benutzer). Generic: every element with
 // a computed overflow-x of auto/scroll whose content is wider than the box,
 // except the ones meant to scroll both ways (tables, code, canvases).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -95,28 +95,13 @@ for (const scheme of ["light", "dark"] as const) {
     };
     await command({ action: "profile.onboarded" });
 
-    // Administration → Benutzer: the section tabs and the filter chips.
-    await page.goto("/#admin/users");
-    const rail = page.locator(".settings-detail[data-detail='users'] .settings-rail");
-    await expect(rail.getByRole("link", { name: "Benutzer" })).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(".admin-user-filters")).toBeVisible();
-    await expectNoVerticalScroll(page, "admin/users", ["settings-rail"]);
-    // The strip itself cannot move vertically; the labels stay whole.
-    const box = (await rail.boundingBox())!;
-    expect(await rail.evaluate((el) => getComputedStyle(el).overflowY)).toBe("hidden");
-    await rail.evaluate((el) => el.scrollBy({ top: 30 }));
-    expect(await rail.evaluate((el) => el.scrollTop)).toBe(0);
-    const label = (await rail.getByRole("link", { name: "Benutzer" }).boundingBox())!;
-    expect(label.y).toBeGreaterThanOrEqual(box.y - 1);
-    expect(label.y + label.height).toBeLessThanOrEqual(box.y + box.height + 1);
-    await page.screenshot({ path: `test-results/strip-scroll/admin-users-${scheme}.png`, clip: { x: 0, y: Math.max(0, box.y - 40), width: 390, height: box.height + 120 } });
-    // Still scrolls sideways to the last section.
-    const last = rail.getByRole("link").last();
-    await last.scrollIntoViewIfNeeded();
-    expect(await rail.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
-    expect(await rail.evaluate((el) => el.scrollTop)).toBe(0);
+    // Einstellungen → Instanz → Benutzer: the filter chips (the section's
+    // siblings are in the settings' sidebar since #532, no tabs).
+    await page.goto("/#settings/instance/users");
+    await expect(page.locator(".admin-user-filters")).toBeVisible({ timeout: 30_000 });
+    await expectNoVerticalScroll(page, "settings/instance/users");
 
-    for (const hash of ["#admin", "#admin/signin", "#admin/workspaces", "#settings", "#settings/account", "#settings/appearance"]) {
+    for (const hash of ["#settings/instance", "#settings/instance/signin", "#settings/instance/workspaces", "#settings", "#settings/account", "#settings/appearance"]) {
       await page.goto(`/${hash}`);
       await expect(page.locator(".settings-shell")).toBeVisible({ timeout: 30_000 });
       await expectNoVerticalScroll(page, hash);

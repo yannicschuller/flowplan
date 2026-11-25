@@ -39,7 +39,7 @@ test("directory groups: add and remove in a person's details, and the members di
   page.on("pageerror", (e) => errors.push(e.message));
   const scimId = () => (db.prepare("SELECT id FROM scim_groups WHERE display_name=?").get(group) as { id: string } | undefined)?.id;
   try {
-    await page.goto(`${origin}/#admin/users`);
+    await page.goto(`${origin}/#settings/instance/users`);
     await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     await page.locator(".user-row", { hasText: name }).getByRole("button", { name, exact: true }).click();
     const sheet = page.getByRole("dialog", { name, exact: true });
@@ -71,7 +71,7 @@ test("directory groups: add and remove in a person's details, and the members di
     await expect(sheet).toBeHidden();
 
     // Grenzen pro Gruppe → Mitglieder.
-    await page.goto(`${origin}/#admin/limits`);
+    await page.goto(`${origin}/#settings/instance/limits`);
     const section = page.locator(".setting-group", { hasText: "Grenzen pro Gruppe" });
     await expect(section).toBeVisible({ timeout: 20_000 });
     await section.getByRole("button", { name: `Mitglieder von Verzeichnis · ${group}` }).click();

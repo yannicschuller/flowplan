@@ -202,7 +202,7 @@ function AiChart({ ai, t }: { ai: NonNullable<MonitoringLive["ai"]>; t: T }) {
         ]
           .filter(Boolean)
           .join(" · ")}{" "}
-        <a href="#admin/ai/ai-statistics">{t("Details", "Details")}</a>
+        <a href="#settings/instance/ai/ai-statistics">{t("Details", "Details")}</a>
       </p>
     </>
   );
@@ -234,7 +234,7 @@ function ServerChart({ live, t }: { live: MonitoringLive; t: T }) {
       />
       <p className="strip-chart-note">
         {rss !== null && t(`Flowplan belegt ${bytes(rss)} Arbeitsspeicher.`, `Flowplan uses ${bytes(rss)} of memory.`)}{" "}
-        <a href="#admin/monitoring/server">{t("Was ihn belegt", "What uses it")}</a>
+        <a href="#settings/instance/monitoring/server">{t("Was ihn belegt", "What uses it")}</a>
       </p>
     </>
   );

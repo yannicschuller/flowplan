@@ -34,7 +34,7 @@ test("a 5xx shows up in the error details with its stack frames and request id",
   const uncaughtId = uncaught.headers()["x-request-id"];
   expect(uncaughtId).toMatch(/^[A-Za-z0-9]{12}$/);
 
-  await page.goto(`${origin}/#admin/monitoring/errors`);
+  await page.goto(`${origin}/#settings/instance/monitoring/errors`);
   const card = page.locator("#errors");
   await expect(card.getByRole("heading", { name: "Fehler im Detail" })).toBeVisible();
   const group = card.locator(".mon-errgroup").filter({ hasText: "E2eTestFailure" }).first();

@@ -7,8 +7,8 @@
 //
 //   1. an open dialog, sheet or menu closes (the topmost one);
 //   2. a part of a page closes: a comment thread, then an open record;
-//   3. a section of the settings or the administration goes to its landing
-//      page;
+//   3. a section of the settings (personal or the instance's, #532) goes to
+//      the settings' start page;
 //   4. a page or a screen goes to the one opened before it (the app's own
 //      list, not the browser history), and finally to the start page.
 //
@@ -25,12 +25,12 @@ import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
 import { createBackPreview, type BackEdge, type BackPhase, type BackTarget } from "./back-preview";
 
-const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "study"];
+const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "study"];
 const MAX_STACK = 50;
 
 // The place a fragment stands for in the list of places visited: a page
-// (records and threads belong to it), the settings, the administration or a
-// screen. null for what is no place (quick actions such as #search).
+// (records and threads belong to it), the settings (with the instance's
+// sections, #532) or a screen. null for what is no place (quick actions such as #search).
 export function locationKey(fragment: string): string | null {
   const hash = fragment.replace(/^#/, "");
   if (!hash) return "home";
@@ -39,7 +39,7 @@ export function locationKey(fragment: string): string | null {
     return target ? `page=${target.pageId}` : null;
   }
   const settings = parseSettingsHash(hash);
-  if (settings) return settings.area;
+  if (settings) return "settings";
   return TOP_SCREENS.includes(hash) ? hash : null;
 }
 
@@ -63,7 +63,7 @@ export function parentLocation(fragment: string, stack: readonly string[]): Back
     if (target?.rowId) return { hash: pageLocationHash({ pageId: target.pageId }).slice(1), pop: false };
   }
   const settings = parseSettingsHash(hash);
-  if (settings?.section) return { hash: settingsHash({ area: settings.area }).slice(1), pop: false };
+  if (settings?.section) return { hash: settingsHash({ area: "settings" }).slice(1), pop: false };
   const key = locationKey(hash);
   if (key === "home") return null;
   // The place before this one.

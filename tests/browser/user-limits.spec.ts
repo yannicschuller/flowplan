@@ -37,7 +37,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
   const adminSession = session(["flowplan-admins"], "Admin Grenzen");
   const admin = await open(adminSession.token);
   try {
-    await admin.page.goto(`${origin}/#admin/users`);
+    await admin.page.goto(`${origin}/#settings/instance/users`);
     // The list is paged: find the account first, then open it by its name.
     await admin.page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     const row = admin.page.locator(".user-row", { hasText: name });

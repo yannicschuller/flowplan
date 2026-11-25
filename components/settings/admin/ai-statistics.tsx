@@ -1,5 +1,5 @@
 "use client";
-// Administration → KI → Statistik (#admin/ai/ai-statistics): AI use per day,
+// Administration → KI → Statistik (#settings/instance/ai/ai-statistics): AI use per day,
 // model (with the estimated cost from the prices in the AI settings),
 // feature, workspace and person – requests, tokens, errors, timeouts and
 // response times. Counts only, never a prompt or an answer; the
@@ -192,7 +192,7 @@ function QuotaLines({ quota, money }: { quota: AiStatistics["limits"]["quota"]; 
     <p className="muted mon-small">
       {instance ? t(`Kontingent der ganzen Instanz: ${instance}.`, `Quota of the whole instance: ${instance}.`) : t("Kein Kontingent für die ganze Instanz.", "No quota for the whole instance.")}{" "}
       {person ? t(`Standard je Person: ${person}.`, `Default per person: ${person}.`) : t("Kein Standard je Person.", "No default per person.")}{" "}
-      <a href="#admin/ai/quotas">{t("Kontingente bearbeiten", "Edit quotas")}</a>
+      <a href="#settings/instance/ai/quotas">{t("Kontingente bearbeiten", "Edit quotas")}</a>
     </p>
   );
 }

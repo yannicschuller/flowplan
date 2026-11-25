@@ -94,7 +94,7 @@ test("removing admin rights is critical: incident, every admin notified, webhook
   // Root is still an admin and hears of it; Ada never.
   const [notice] = await noticesOf(root);
   assert.match(notice.body, /^Kritischer Sicherheitsvorfall: Rechte oder Anmeldung der Instanz geändert – revoked: local account /);
-  assert.match(notice.link, /^#admin\/threats\/incident\//);
+  assert.match(notice.link, /^#settings\/instance\/threats\/incident\//);
   assert.equal((await noticesOf(ada)).length, 0);
   const [hook] = webhookFor("privilege_change");
   assert.equal(hook.event, "ops.security");

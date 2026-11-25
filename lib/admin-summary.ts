@@ -86,6 +86,9 @@ export async function adminSummary(now = Date.now(), update: UpdateStatus | null
     workspaces: { total: usage.length, nearlyFull, fullest: fullest ? { name: fullest.name, share: Math.round(fullest.share * 1000) / 1000 } : null },
     storage: {
       bytes: metrics.databaseBytes + metrics.uploadBytes,
+      // The two parts, for the stacked bar of the settings' start page (#532).
+      databaseBytes: metrics.databaseBytes,
+      uploadBytes: metrics.uploadBytes,
       s3: mirror.enabled ? { pending: mirror.pending, failing: mirror.failing } : null,
       backup: { enabled: backup.enabled, lastAt: backup.last?.at ?? null, failed: !!backup.last?.error },
       restorePending: !!pendingRestore(),
