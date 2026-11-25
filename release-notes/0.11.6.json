@@ -59,6 +59,10 @@
       "issues": [
         534
       ]
+    },
+    {
+      "de": "Die Regel „Abtasten“ zählt nur noch verschiedene abgewiesene Anfragen: abgemeldete Tabs und gelöschte Einträge lösen keinen Vorfall mehr aus.",
+      "en": "The probing rule counts only different refused requests: signed-out tabs and deleted records no longer raise an incident."
     }
   ],
   "improvements": [
@@ -103,6 +107,10 @@
       "issues": [
         530
       ]
+    },
+    {
+      "de": "Sicherheit: Vorfälle lassen sich durchsuchen und nach offen, erledigt und Schwere filtern, seitenweise mit „Weitere laden“.",
+      "en": "Security: incidents can be searched and filtered by open, resolved and severity, in pages with “Load more”."
     }
   ],
   "features": [
