@@ -105,6 +105,13 @@
       "issues": [
         531
       ]
+    },
+    {
+      "de": "Einstellungen und Administration sind ein Bildschirm: eine Seitenleiste, eine Startseite mit Speicher, KI und deinem Setup, für Admins mit Live-Diagrammen der Instanz (aktive Personen, Anfragen, KI, Speicher, Fehler, Server, Konten, Anmeldungen, Sicherungen) – und Vorschauen in den Bereichen.",
+      "en": "Settings and administration are one screen: one sidebar, a start page with storage, AI and your setup, for admins with live charts of the instance (active people, requests, AI, storage, errors, server, accounts, sign-ins, backups) – and previews in the sections.",
+      "issues": [
+        532
+      ]
     }
   ]
 }
