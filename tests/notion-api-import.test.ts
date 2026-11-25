@@ -278,8 +278,9 @@ test("tokens are checked; the client sends the token and Notion's version, waits
   const client = notionClient(TOKEN, { base: `${base}/v1`, minIntervalMs: 40 });
   const start = Date.now();
   for (let i = 0; i < 3; i++) await client.call("GET", `/pages/${bare(PAGE_B)}`);
-  // Three requests start at least 40 ms apart each.
-  assert.ok(Date.now() - start >= 80, `${Date.now() - start} ms`);
+  // Three requests start at least 40 ms apart each (Date.now() and the
+  // timers round to whole milliseconds: one of slack per wait).
+  assert.ok(Date.now() - start >= 78, `${Date.now() - start} ms`);
   const [first] = seen.slice(before);
   assert.equal(first.auth, `Bearer ${TOKEN}`);
   assert.equal(first.version, "2022-06-28");

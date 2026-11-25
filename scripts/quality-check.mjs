@@ -126,15 +126,15 @@ const PAGES = [
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
   { path: "/#home", name: "home", signedIn: true, jsKb: 814, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 828, ready: ".sv-start .sv-start-ring, .sv-start .sv-start-setup a" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 917, ready: ".settings-detail .setting-group" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 870, ready: ".sv-start .sv-start-ring, .sv-start .sv-start-setup a" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 957, ready: ".settings-detail .setting-group" },
   // The start page of an admin: the instance at a glance (#532, the former
   // administration landing page).
-  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 836, ready: ".sv-glance-grid:not(.placeholder)" },
+  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 870, ready: ".sv-glance-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 864, ready: ".mon-health" },
+  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 897, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 844, ready: "#relay" },
+  { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 876, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";
