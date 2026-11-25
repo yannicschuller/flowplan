@@ -242,3 +242,25 @@ test("the inbox item leads to the incident; only in-app routes are honoured as t
   assert.equal(notificationUrl({ page_id: null, kind: "security", body: "Sicherheit: Abtasten von Adressen und IDs – 60 × 401/403/404. Details unter Administration → Sicherheit." }), "/#settings/instance/threats");
   assert.equal(notificationUrl({ page_id: null, kind: "security", body: "Neue Anmeldung bei deinem Konto: x" }), "/#inbox");
 });
+
+test("incident notices stored with the old wording name the settings (#535)", async () => {
+  const { dataSteps, INCIDENT_NOTICE_STEP } = await import("../lib/data-steps");
+  const old = id(),
+    other = id(),
+    incidentId = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab";
+  await run(
+    "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'incident',?)",
+    old,
+    root.id,
+    "Kritischer Sicherheitsvorfall: X – 3. Details unter Administration → Sicherheit.",
+    `#admin/threats/incident/${incidentId}`,
+  );
+  await run("INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'mention',?)", other, root.id, "Details unter Administration → Sicherheit.", "#admin/threats/x");
+  await dataSteps().find((s) => s.name === INCIDENT_NOTICE_STEP)!.run();
+  assert.deepEqual(await one("SELECT body,link FROM notifications WHERE id=?", old), {
+    body: "Kritischer Sicherheitsvorfall: X – 3. Details unter Einstellungen → Instanz → Sicherheit.",
+    link: `#settings/instance/threats/incident/${incidentId}`,
+  });
+  // Other kinds stay as they are.
+  assert.deepEqual(await one("SELECT body,link FROM notifications WHERE id=?", other), { body: "Details unter Administration → Sicherheit.", link: "#admin/threats/x" });
+});

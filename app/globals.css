@@ -42235,3 +42235,34 @@ td > span > .required-missing:only-child {
   background: transparent;
   border: 1px dashed var(--required-missing);
 }
+/* Incidents: search, status and severity, the count and "Weitere laden" (#535). */
+.security-incident-filters {
+  margin: 12px 0 4px;
+}
+.security-incident-filters .admin-search {
+  flex: 1 1 220px;
+  width: auto;
+  max-width: 340px;
+}
+.security-segment-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.security-incident-count {
+  min-height: 1.2em;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.security-done-heading {
+  margin-top: 18px;
+}
+.security-more {
+  justify-self: start;
+  margin-top: 12px;
+}
+@media (max-width: 600px) {
+  .security-incident-filters .admin-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}

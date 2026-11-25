@@ -333,7 +333,19 @@ const pathShape = (path: string) =>
     .replace(/\/\d+(?=\/|$)/g, "/:n")
     .replace(/\/[A-Za-z0-9_-]{20,}(?=\/|$)/g, "/:token");
 
-type Probe = { since: number; last: number; count: number; reported: boolean; sample: string; statuses: Map<number, number>; paths: Map<string, number> };
+// `count`: the different refused requests (answer and path without the
+// query) – what probing is about; `requests`: all of them.
+type Probe = {
+  since: number;
+  last: number;
+  count: number;
+  requests: number;
+  reported: boolean;
+  sample: string;
+  statuses: Map<number, number>;
+  paths: Map<string, number>;
+  seen: Set<string>;
+};
 const probes = new Map<string, Probe>();
 // Evidence waiting for its incident, by address key (the event is written
 // asynchronously; detectSecurity picks it up).
@@ -381,27 +393,44 @@ async function mergeEvidence(incidentId: string, add: ProbeEvidence) {
   await run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(merged), incidentId);
 }
 
+// What a browser tab asks for by itself, again and again, with its session
+// (#535): the live stream (components/workspace-live.ts), the activity ping,
+// the maintenance notices, the timed refresh of the sidebar and the AI
+// quota. A tab whose session ended (signed out elsewhere, expired) gets a
+// 401 for each until it notices – that is no probing. Older tabs (before
+// #513) knocked at /api/live every 30 s for ever.
+const BACKGROUND_401 = /^\/api\/(?:live|activity|maintenance|bootstrap|ai\/quota)(?:$|[/?])/;
+const MAX_SEEN = 500;
+
 // Called for every answered request (lib/request-metrics.ts): many 401, 403
 // and 404 answers of the API from one address in ten minutes are recorded
-// as one event, which opens an incident.
+// as one event, which opens an incident. Only *different* requests count:
+// a tab polling a record that was deleted meanwhile, or a page it may no
+// longer open, asks for the same path every few seconds – probing asks
+// for many paths and IDs. The same path with another answer counts again.
 export async function noteRefusal(address: string, status: number, path: string, now = Date.now(), record?: (detail: string) => void) {
   if (!address || ![401, 403, 404].includes(status) || !path.startsWith("/api/")) return;
+  if (status === 401 && BACKGROUND_401.test(path)) return;
   let entry = probes.get(address);
   if (!entry || now - entry.since > T.probeWindow) {
     if (probes.size > 10_000) probes.clear();
-    entry = { since: now, last: now, count: 0, reported: false, sample: "", statuses: new Map(), paths: new Map() };
+    entry = { since: now, last: now, count: 0, requests: 0, reported: false, sample: "", statuses: new Map(), paths: new Map(), seen: new Set() };
     probes.set(address, entry);
   }
-  entry.count += 1;
+  entry.requests += 1;
   entry.last = now;
   entry.statuses.set(status, (entry.statuses.get(status) ?? 0) + 1);
   const shape = `${status} ${pathShape(path)}`;
   if (entry.paths.has(shape) || entry.paths.size < 200) entry.paths.set(shape, (entry.paths.get(shape) ?? 0) + 1);
   if (!entry.sample) entry.sample = `${status} ${path.split("?")[0].slice(0, 80)}`;
+  const request = `${status} ${path.split("?")[0].slice(0, 300)}`;
+  if (entry.seen.has(request)) return;
+  // Past MAX_SEEN different ones the rule has long fired.
+  if (entry.seen.size < MAX_SEEN) entry.seen.add(request);
+  entry.count += 1;
   if (entry.count < T.probes || entry.reported) return;
   entry.reported = true;
   if (probeEvidence.size > 1000) probeEvidence.clear();
   probeEvidence.set(await addressHash(address), evidenceOf(entry));
-  record?.(`${entry.count} × 401/403/404, z. B. ${entry.sample}`);
+  record?.(`${entry.count} verschiedene Anfragen mit 401/403/404 (${entry.requests} insgesamt), z. B. ${entry.sample}`);
 }
-
