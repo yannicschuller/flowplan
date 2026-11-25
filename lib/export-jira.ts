@@ -15,7 +15,7 @@ import type { Node } from "@tiptap/pm/model";
 import { audit } from "./db";
 import { offThread, type PoolJobOptions } from "./worker-pool";
 import { calloutType, type CalloutType } from "./document-schema";
-import { taskStatusOf, type TaskStatus } from "./task-status";
+import { continuedSuffix, shownStatusOf, type TaskStatus } from "./task-status";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct } from "./content-locale";
 import { footnoteText } from "./footnotes";
@@ -240,14 +240,15 @@ export function documentJira(html: string, context: TextExportContext): string {
         first = true;
       const after: string[] = [];
       if (item.type.name === "taskItem") {
-        const status = taskStatusOf(item.attrs);
+        // A continued journal task: the state it shows (#536).
+        const status = shownStatusOf(item.attrs);
         text = taskDone(status) ? "\\[x\\] " : "\\[ \\] ";
       }
       item.forEach((child) => {
         if (["bulletList", "orderedList", "taskList"].includes(child.type.name)) after.push(...list(child, own));
         else if (child.type.name === "paragraph" || child.type.name === "heading") {
           const part = inline(child).trim();
-          const shown = item.type.name === "taskItem" && taskStatusOf(item.attrs) === "cancelled" && first ? wrap(part, "-") : part;
+          const shown = item.type.name === "taskItem" && shownStatusOf(item.attrs) === "cancelled" && first ? wrap(part, "-") : part;
           text += (first ? "" : " \\\\ ") + shown;
           first = false;
         } else {
@@ -256,6 +257,7 @@ export function documentJira(html: string, context: TextExportContext): string {
         }
       });
       if (item.type.name === "taskItem" && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || ""))) text += ` (📅 ${item.attrs.due})`;
+      if (item.type.name === "taskItem") text += continuedSuffix(item.attrs);
       lines.push(`${own} ${text.trim()}`.trimEnd(), ...after);
     });
     return lines;

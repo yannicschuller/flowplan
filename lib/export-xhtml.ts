@@ -5,7 +5,7 @@
 import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
-import { STATUS_BOX, taskStatusOf, taskSymbolOf } from "./task-status";
+import { STATUS_BOX, continuedSuffix, shownStatusOf, taskSymbolOf } from "./task-status";
 import { CALLOUT_COLORS, calloutColor, calloutFill, calloutIcon } from "./callout-types";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct, contentLocale } from "./content-locale";
@@ -259,10 +259,13 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       case "listItem":
         return `<li>${children(node)}</li>`;
       case "taskItem": {
-        const status = taskStatusOf(node.attrs),
+        // A continued journal task: the state it shows, then "(→ day)" (#536).
+        const status = shownStatusOf(node.attrs),
           done = status === "done" || status === "cancelled",
           box = STATUS_BOX[status] + (taskSymbolOf(node.attrs) ? ` [${xml(taskSymbolOf(node.attrs)!)}]` : "");
-        const due = /^\d{4}-\d{2}-\d{2}$/.test(String(node.attrs.due || "")) ? ` <span class="due">📅 ${node.attrs.due}</span>` : "";
+        const due =
+          (/^\d{4}-\d{2}-\d{2}$/.test(String(node.attrs.due || "")) ? ` <span class="due">📅 ${node.attrs.due}</span>` : "") +
+          (continuedSuffix(node.attrs) ? ` <span class="continued">${continuedSuffix(node.attrs).trim()}</span>` : "");
         // The box goes in front of the first paragraph's text.
         let first = true,
           body = "";

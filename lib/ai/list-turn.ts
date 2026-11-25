@@ -32,7 +32,7 @@ function convertItem(schema: Schema, item: PMNode, kind: ListKind) {
   const content: PMNode[] = [];
   item.content.forEach((child) => content.push(isList(child) ? convertList(schema, child, kind, true) : child));
   // A task that stays a task keeps its state, due date …; a new one is open.
-  const attrs = item.type === type ? { ...item.attrs } : carried(item, type, ["checked", "status", "symbol", "due", "journalSince", "journalContinued"]);
+  const attrs = item.type === type ? { ...item.attrs } : carried(item, type, ["checked", "status", "symbol", "due", "journalSince", "journalContinued", "journalWas"]);
   return type.createChecked(attrs, Fragment.fromArray(content));
 }
 
@@ -49,7 +49,7 @@ function convertList(schema: Schema, list: PMNode, kind: ListKind, keepId: boole
 function textItem(schema: Schema, block: PMNode, kind: ListKind) {
   const type = itemType(schema, kind);
   const paragraph = schema.nodes.paragraph.createChecked(block.type === schema.nodes.paragraph ? block.attrs : carried(block, schema.nodes.paragraph), block.content);
-  return type.createChecked(carried(block, type, ["checked", "status", "symbol", "due", "journalSince", "journalContinued"]), paragraph);
+  return type.createChecked(carried(block, type, ["checked", "status", "symbol", "due", "journalSince", "journalContinued", "journalWas"]), paragraph);
 }
 
 // One transaction turning the blocks the range touches into a list of

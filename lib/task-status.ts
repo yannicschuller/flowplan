@@ -113,6 +113,54 @@ export const STATUS_BOX: Record<TaskStatus, string> = { open: "☐", progress: "
 // (so every count, "My tasks" and an older client see it as not open) and
 // marked with the date of the day it continues on (`journalContinued`).
 // It is shown as carried over, not as cancelled, and never carried again.
-type ContinuedAttrs = ({ checked?: unknown; status?: unknown; symbol?: unknown; journalContinued?: unknown }) | null | undefined;
+type ContinuedAttrs =
+  | ({ checked?: unknown; status?: unknown; symbol?: unknown; journalContinued?: unknown; journalWas?: unknown })
+  | null
+  | undefined;
 export const isContinuedTask = (attrs: ContinuedAttrs) =>
   typeof attrs?.journalContinued === "string" && !!attrs.journalContinued && taskStatusOf(attrs) === "cancelled";
+
+// The day a task was continued on (#469), whatever was done with it on its
+// own day since (#536): the marker stays until it is removed on purpose.
+export const continuedOn = (attrs: ContinuedAttrs): string | null =>
+  typeof attrs?.journalContinued === "string" && /^\d{4}-\d{2}-\d{2}$/.test(attrs.journalContinued) ? attrs.journalContinued : null;
+// The state a continued task shows on its day (#536, `journalWas`): stored
+// closed as cancelled for everything that counts, it keeps the look it had
+// when it was continued – open or in progress (or deferred) – or the one
+// given to it there since. Done is stored as done.
+export const CONTINUED_SHOWN = ["open", "progress", "deferred", "cancelled"] as const;
+type ContinuedShown = (typeof CONTINUED_SHOWN)[number];
+export const isContinuedShown = (value: unknown): value is ContinuedShown =>
+  typeof value === "string" && (CONTINUED_SHOWN as readonly string[]).includes(value);
+// What the task shows: its state, or the one a continued task keeps. A task
+// continued before #536 (no `journalWas`) shows as cancelled here and keeps
+// its carried-over look in the editor (isLegacyContinued).
+export function shownStatusOf(attrs: ContinuedAttrs): TaskStatus {
+  const status = taskStatusOf(attrs);
+  if (status === "cancelled" && continuedOn(attrs) && isContinuedShown(attrs?.journalWas)) return attrs!.journalWas as ContinuedShown;
+  return status;
+}
+// Continued before #536: its first state is not known.
+export const isLegacyContinued = (attrs: ContinuedAttrs) => isContinuedTask(attrs) && !isContinuedShown(attrs?.journalWas);
+// The attributes that give a task this state – a continued one stays closed
+// (cancelled, showing the state) unless it is done, and keeps its marker.
+export function taskStatusAttrs(attrs: ContinuedAttrs, status: TaskStatus) {
+  if (!continuedOn(attrs)) return statusAttrs(status);
+  if (status === "done") return { ...statusAttrs("done"), journalWas: null };
+  return { ...statusAttrs("cancelled"), journalWas: status as ContinuedShown };
+}
+// The attributes of a continued task as an ordinary one again (the state
+// menu's "Nicht mehr als weitergeführt markieren"): the state it shows, open
+// for one continued before #536.
+export function uncontinuedAttrs(attrs: ContinuedAttrs) {
+  const status = isLegacyContinued(attrs) ? "open" : shownStatusOf(attrs);
+  return { ...statusAttrs(status), journalContinued: null, journalWas: null };
+}
+// Behind a continued task's text in exports that show its state (PDF and
+// print, e-book, Word, Jira, Confluence): " (→ 2026-11-26)", with the box of
+// the state it shows (#536). Markdown keeps it closed as "[-]", so it does
+// not come back open when the file is read in again.
+export const continuedSuffix = (attrs: ContinuedAttrs) => {
+  const on = continuedOn(attrs);
+  return on ? ` (→ ${on})` : "";
+};

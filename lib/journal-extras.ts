@@ -175,7 +175,7 @@ function resetTasks(doc: PMNode): PMNode {
     node.forEach((child) => children.push(walk(child)));
     const attrs =
       node.type.name === "taskItem"
-        ? { ...node.attrs, checked: false, status: null, symbol: null, journalSince: null, journalContinued: null }
+        ? { ...node.attrs, checked: false, status: null, symbol: null, journalSince: null, journalContinued: null, journalWas: null }
         : node.attrs;
     return node.type.create(attrs, children, node.marks);
   };

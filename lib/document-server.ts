@@ -72,6 +72,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-symbol",
         "data-journal-since",
         "data-journal-continued",
+        "data-journal-was",
         "data-due",
         "data-reactions",
         "data-block-id",

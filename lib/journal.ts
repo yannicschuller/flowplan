@@ -26,7 +26,7 @@ import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
 import { placeBlocks, type BlockPlace } from "./journal-place";
 import { indexPageTasks } from "./doc-tasks";
-import { isContinuedTask, statusAttrs } from "./task-status";
+import { isContinuedTask, statusAttrs, taskStatusOf } from "./task-status";
 import {
   hasEntryData,
   journalSettings,
@@ -116,7 +116,8 @@ export function withoutOpenTasks(
 // The document with its open tasks marked as copied on to the day `to`
 // (#469, "Offene Aufgaben: kopieren"): the tasks withoutOpenTasks would
 // take out (and their open subtasks, which travelled with them) are closed
-// as continued – not open any more, not carried again.
+// as continued – not open any more, not carried again. Each keeps the state
+// it had (open, in progress, deferred) to show on its day (#536).
 export function withContinuedTasks(
   doc: PMNode,
   to: string,
@@ -131,7 +132,7 @@ export function withContinuedTasks(
     let inside = copied;
     if (node.type.name === "taskItem" && !node.attrs.checked) {
       if (!copied && (emptyTask(node) || keep(node))) return node;
-      attrs = { ...node.attrs, ...statusAttrs("cancelled"), journalContinued: to };
+      attrs = { ...node.attrs, ...statusAttrs("cancelled"), journalContinued: to, journalWas: taskStatusOf(node.attrs) };
       inside = true;
     }
     const children: PMNode[] = [];
@@ -167,7 +168,7 @@ export function hasOwnEntry(doc: PMNode, date: string) {
 export function carryTasks(tasks: PMNode[], from: string) {
   return tasks.map((task) =>
     task.type.create(
-      { ...task.attrs, journalSince: task.attrs.journalSince || from, journalContinued: null },
+      { ...task.attrs, journalSince: task.attrs.journalSince || from, journalContinued: null, journalWas: null },
       task.content,
       task.marks,
     ),

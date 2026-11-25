@@ -115,6 +115,13 @@
     {
       "de": "Neuer Posteingang: nach Tag und Art gruppiert, kompakte Zeilen mit Person, Seite und Kommentaranfang, Ähnliches zusammengefasst, Vorfälle mit Schweregrad und „Zum Vorfall“. Gelesen und Entfernen beim Darüberfahren (Handy: ⋯), auch für mehrere; „Ältere laden“; Texte in deiner Sprache.",
       "en": "New inbox: grouped by day and type, compact rows with the person, page and start of a comment, similar ones collapsed, incidents with severity and “View incident”. Read and remove on hover (phones: ⋯), also for several at once; “Load older”; texts in your language."
+    },
+    {
+      "de": "Mit „Offene Aufgaben: kopieren“ behält eine weitergeführte Aufgabe an ihrem Tag ihr Kästchen (offen oder in Arbeit) und bekommt ein kleines ➔ an der Ecke – „Weitergeführt am …“. Es bleibt, wenn du den Status dort änderst; zählt weiter nicht als offen.",
+      "en": "With “Open tasks: copy”, a continued task keeps its box (open or in progress) on its day, with a small ➔ on the corner – “Continued on …”. It stays when you change the status there and still does not count as open.",
+      "issues": [
+        536
+      ]
     }
   ],
   "features": [
