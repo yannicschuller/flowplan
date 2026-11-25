@@ -382,7 +382,7 @@
   "{0} disabled": "{0} wyłączone",
   "{0} documents are open live, with {1} live connections ({2} open streams in total, ≈ {3}).": "{0} dokumentów jest otwartych na żywo, z {1} aktywnymi połączeniami (łącznie {2} otwartych strumieni, ≈ {3}).",
   "{0} documents as content of database records": "Dokumenty {0} jako zawartość rekordów bazy danych",
-  "{0} documents in database records are also in folders in AFFiNE; the folders link to the record.": "{0} documents in database records are also in folders in AFFiNE; foldery zawierają łącze do rekordu.",
+  "{0} documents in database records are also in folders in AFFiNE; the folders link to the record.": "{0} dokumentów w rekordach bazy danych znajduje się też w folderach w AFFiNE; foldery zawierają łącze do rekordu.",
   "{0} documents in database records have tags, but the database has no “Tags” column; these tags are not imported.": "{0} dokumentów w rekordach bazy danych ma tagi, ale baza nie ma kolumny „Tagi”; te tagi nie są importowane.",
   "{0} documents in the trash are not imported.": "{0} dokumentów w koszu nie zostało zaimportowanych.",
   "{0} documents linked only from documents in database records sit below the database (records have no subpages).": "{0} dokumentów połączonych wyłącznie z dokumentów w rekordach bazy danych trafiają poniżej tej bazy (rekordy nie mają podstron).",
