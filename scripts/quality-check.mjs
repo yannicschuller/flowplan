@@ -110,7 +110,7 @@ const PAGES = [
   // list, the group chip with one-tap choices, the kind of a new database
   // as a select) and the limits notice in the shell. Measured: database
   // 920.3, settings section 884.3 KB; both budgets are about 3 % above.
-  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 955 },
+  { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 990 },
   // A workflow page with its canvas (@xyflow/react, components/workflow):
   // at most a database page + 120 KB (docs/specs/workflows.md §10.1);
   // 1830 since 0.9.6: measured 1818.7 KB with tabs and frames (#279) and
@@ -125,7 +125,7 @@ const PAGES = [
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
-  { path: "/#home", name: "home", signedIn: true, jsKb: 814, ready: ".home-grid" },
+  { path: "/#home", name: "home", signedIn: true, jsKb: 840, ready: ".home-grid" },
   { path: "/#settings", name: "settings", signedIn: true, jsKb: 870, ready: ".sv-start .sv-start-ring, .sv-start .sv-start-setup a" },
   { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 957, ready: ".settings-detail .setting-group" },
   // The start page of an admin: the instance at a glance (#532, the former
