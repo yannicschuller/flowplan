@@ -404,7 +404,8 @@ test("formulas over empty dates and empty date rollups stay blank in views", () 
   const result = queryRows(data, fields, view, "", related, schemas, fixed.now);
   assert.deepEqual(
     result.map((r) => r.cells.left),
-    ["", -3, 6],
+    // A blank formula result counts as empty and sorts last (#551).
+    [-3, 6, ""],
   );
   assert.equal(result[0].cells.since, "");
   const overdue = queryRows(

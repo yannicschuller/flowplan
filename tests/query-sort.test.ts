@@ -54,11 +54,12 @@ const view = (field: string): View =>
 const sorted = (field: string) =>
   queryRows(rows, fields, view(field), "", related, schemas, new Date(), labels).map((r) => r.id);
 
+// Records without a value come last (#551).
 test("people, related records and sprints sort by their names", () => {
-  assert.deepEqual(sorted("owner"), ["none", "anna", "zoe"]);
-  assert.deepEqual(sorted("by"), ["none", "anna", "zoe"]);
-  assert.deepEqual(sorted("client"), ["none", "anna", "zoe"]);
-  assert.deepEqual(sorted("sprint"), ["none", "zoe", "anna"]);
+  assert.deepEqual(sorted("owner"), ["anna", "zoe", "none"]);
+  assert.deepEqual(sorted("by"), ["anna", "zoe", "none"]);
+  assert.deepEqual(sorted("client"), ["anna", "zoe", "none"]);
+  assert.deepEqual(sorted("sprint"), ["zoe", "anna", "none"]);
 });
 
 test("the search finds records by a person's or a sprint's name", () => {
