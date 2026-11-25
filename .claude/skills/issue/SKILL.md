@@ -99,6 +99,7 @@ Commit messages end with the trailers from CLAUDE.md (`Co-Authored-By: Yannic Sc
 
 For each finished item, an **English** comment to the reporter. Write in the first person singular – "I fixed …", "I'll look into …" – never "we" (also in drafts for Discord):
 - thank them (with @mention), what the cause was, what changed (short bullets), how it was tested, link to the docs page (`https://docs.flowplan.org/en/...`), "It's in the `:beta` image now and will be in the next release." (app: which build/track).
+  - **Hosted users** (the reporter says they use flowplan.org / app.flowplan.org, the hosted version): don't point them to the `:beta` image – they can't use it. Say the fix comes with the **next release** and they can then test it directly on https://app.flowplan.org; when asking them to confirm a fix, ask for that test after the release.
 - End with the footer, exactly:
 
 ```
