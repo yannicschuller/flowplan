@@ -160,7 +160,11 @@ test("a failed meeting shows the error with its one action and the admin detail"
 test("attendees: search, keyboard, a guest from the typed text", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One run covers it.");
   const { block, boot } = await openMeeting(page);
-  const me = (boot.members as { id: string; name: string }[])[0].name;
+  // A member whose name no other member's name contains: other specs share
+  // the workspace ("Cursor Kollegin" and "Cursor Kollegin mit einem sehr
+  // langen Anzeigenamen"), so the first three letters may match two people.
+  const names = (boot.members as { id: string; name: string }[]).map((m) => m.name);
+  const me = names.find((n) => !names.some((o) => o !== n && o.toLowerCase().includes(n.toLowerCase()))) ?? names[0];
   const plus = block.getByRole("button", { name: "Teilnehmende hinzufügen" });
   const tabs = await block.locator(".meeting-tabs").boundingBox();
   await plus.click();
@@ -168,7 +172,7 @@ test("attendees: search, keyboard, a guest from the typed text", async ({ page }
   const search = picker.getByRole("combobox");
   await expect(search).toBeFocused();
   expect(await block.locator(".meeting-tabs").boundingBox()).toEqual(tabs);
-  await search.fill(me.slice(0, 3).toLowerCase());
+  await search.fill(me.toLowerCase());
   await expect(picker.getByRole("option").first()).toContainText(me);
   await expect(picker.getByRole("option").first()).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");
