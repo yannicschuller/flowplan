@@ -7,6 +7,7 @@ import { magnetShape, scaleShape, shapeAnchors, shapeBounds, shapeDistance, shap
 import { inkId, type InkItem, type InkStroke, type InkText } from "./model";
 import { hitImage, imageBounds, imageCentre } from "./image";
 import { stickerTintable } from "./stickers";
+import { penPath, penPieces, type PenPiece } from "../pen-outline";
 
 export type Pt = { x: number; y: number; p: number };
 export type Box = { x: number; y: number; w: number; h: number };
@@ -32,53 +33,18 @@ export function variesInWidth(stroke: InkStroke) {
 // The constant width of a stroke drawn as a line.
 export const lineWidth = (stroke: InkStroke) => (stroke.type === "highlighter" ? stroke.width : penWidth(stroke.width, stroke.points[2] ?? 0.5));
 
-// The outline of a pen stroke whose width follows the pressure, with round
-// ends: a closed polygon around the centre line.
-export function strokeOutline(points: Pt[], width: number): [number, number][] {
-  const radius = (p: Pt) => penWidth(width, p.p) / 2;
-  const circle = (c: Pt, r: number, from: number, sweep: number, steps: number) =>
-    Array.from({ length: steps - 1 }, (_, k): [number, number] => {
-      const a = from + (sweep * (k + 1)) / steps;
-      return [c.x + Math.cos(a) * r, c.y + Math.sin(a) * r];
-    });
-  // Points closer than a tenth of the width add nothing but noise.
-  const list: Pt[] = [];
-  for (const p of points) {
-    const last = list[list.length - 1];
-    if (!last || Math.hypot(p.x - last.x, p.y - last.y) > width * 0.1) list.push(p);
-    else last.p = Math.max(last.p, p.p);
-  }
-  if (list.length === 1) {
-    const r = radius(list[0]);
-    return [[list[0].x + r, list[0].y], ...circle(list[0], r, 0, Math.PI * 2, 16)];
-  }
-  const left: [number, number][] = [];
-  const right: [number, number][] = [];
-  const normals: XY[] = [];
-  for (let i = 0; i < list.length; i++) {
-    const prev = list[Math.max(0, i - 1)];
-    const next = list[Math.min(list.length - 1, i + 1)];
-    const dx = next.x - prev.x,
-      dy = next.y - prev.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const n = { x: -dy / len, y: dx / len };
-    normals.push(n);
-    const r = radius(list[i]);
-    left.push([list[i].x + n.x * r, list[i].y + n.y * r]);
-    right.push([list[i].x - n.x * r, list[i].y - n.y * r]);
-  }
-  const first = list[0],
-    last = list[list.length - 1];
-  const nEnd = normals[normals.length - 1],
-    nStart = normals[0];
-  // From the left side around the tip to the right side, and back at the start.
-  const endCap = circle(last, radius(last), Math.atan2(nEnd.y, nEnd.x), -Math.PI, 8);
-  const startCap = circle(first, radius(first), Math.atan2(-nStart.y, -nStart.x), -Math.PI, 8);
-  return [...left, ...endCap, ...right.reverse(), ...startCap];
+// The shape of a pen stroke whose width follows the pressure: discs and
+// the bands between them (lib/pen-outline.ts, #548) – one outline around
+// the centre line crossed itself at tight turns and left holes in the line.
+// Points closer than a tenth of the width add nothing but noise.
+export function strokeOutline(points: Pt[], width: number): PenPiece[] {
+  return penPieces(
+    points.map((p) => ({ x: p.x, y: p.y, r: penWidth(width, p.p) / 2 })),
+    width * 0.1,
+  );
 }
 
 const f1 = (n: number) => Math.round(n * 100) / 100;
-export const polygonPath = (poly: [number, number][]) => (poly.length ? `M${poly.map(([x, y]) => `${f1(x)} ${f1(y)}`).join("L")}Z` : "");
 export function polylinePath(points: XY[]) {
   if (!points.length) return "";
   if (points.length === 1) return `M${f1(points[0].x)} ${f1(points[0].y)}l0.01 0`;
@@ -87,7 +53,7 @@ export function polylinePath(points: XY[]) {
 // The SVG path of a stroke and whether it is filled (outline) or stroked.
 export function strokePath(stroke: InkStroke): { d: string; fill: boolean } {
   const points = strokePoints(stroke);
-  if (variesInWidth(stroke)) return { d: polygonPath(strokeOutline(points, stroke.width)), fill: true };
+  if (variesInWidth(stroke)) return { d: penPath(strokeOutline(points, stroke.width)), fill: true };
   return { d: polylinePath(points), fill: false };
 }
 

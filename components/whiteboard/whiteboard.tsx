@@ -156,6 +156,7 @@ import {
   samples,
   setPenOnly,
   stillWriting,
+  stylusTouch,
   writingInField,
 } from "@/lib/stylus";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
@@ -1151,6 +1152,9 @@ export default function Whiteboard({
   useEffect(() => {
     if (!plusOpen && !moreOpen) setPlusQuery("");
   }, [plusOpen, moreOpen]);
+  // A drawing tool in hand (the pen's touchstart below).
+  const drawingRef = useRef(false);
+  drawingRef.current = tool === "laser" || (editable && (tool === "pen" || tool === "eraser"));
   // A finger on the board never scrolls or zooms the page – touch-action
   // alone is not always enough in iOS web views. Menus and fields that
   // scroll themselves keep their touches.
@@ -1163,8 +1167,25 @@ export default function Whiteboard({
       if (target?.closest?.(".wb-sheet, .wb-actions, .wb-plus, .wb-panel, .wb-comment-popover, .wb-style-bar, textarea, input, select")) return;
       e.preventDefault();
     };
+    // The Apple Pencil drawing on the canvas (#548): its touchstart is
+    // cancelled, as on the notebook's ink layer, so WebKit starts no
+    // Scribble, callout or text selection under it that would take the
+    // touch over and cut the stroke. Not while a text field has the focus
+    // (handwriting into it, writingInField) and only with the drawing tools,
+    // whose pen taps need no click.
+    const start = (e: TouchEvent) => {
+      if (!e.cancelable || !stylusTouch(e) || !drawingRef.current) return;
+      const target = e.target as Element | null;
+      if (!target?.closest?.(".wb-canvas") || target.closest("foreignObject, textarea, input, select, [contenteditable]")) return;
+      if (document.activeElement?.matches?.("textarea, input, select, [contenteditable]:not([contenteditable='false'])")) return;
+      e.preventDefault();
+    };
+    el.addEventListener("touchstart", start, { passive: false });
     el.addEventListener("touchmove", move, { passive: false });
-    return () => el.removeEventListener("touchmove", move);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+    };
   }, [fullscreen]);
 
   // ---- editing the board ----

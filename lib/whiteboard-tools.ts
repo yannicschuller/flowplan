@@ -4,6 +4,7 @@
 // the outline of a pressure-sensitive pen stroke.
 import type { Point, ShapeKind, WhiteboardItem } from "./whiteboard-model";
 import { plainText } from "./whiteboard-richtext";
+import { penPath, penPieces } from "./pen-outline";
 
 type Box = { x: number; y: number; w: number; h: number };
 export type Guide = { axis: "x" | "y"; at: number; from: number; to: number };
@@ -295,33 +296,17 @@ export function recognizeStroke(points: Point[]): Recognized | null {
 
 // ---- Pressure-sensitive pen ----
 
-// Outline of a stroke whose width follows the pen pressure (0–1 per point),
-// as a closed SVG path around the centre line.
-export function pressureOutline(points: { x: number; y: number; p: number }[], width: number) {
-  if (points.length < 2) {
-    const p = points[0];
-    if (!p) return "";
-    const r = (width * (0.4 + p.p)) / 2;
-    return `M ${p.x - r} ${p.y} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0`;
-  }
-  const left: Point[] = [];
-  const right: Point[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
-    const dx = next.x - prev.x;
-    const dy = next.y - prev.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const r = (width * (0.35 + 0.9 * points[i].p)) / 2;
-    const nx = (-dy / len) * r;
-    const ny = (dx / len) * r;
-    left.push({ x: points[i].x + nx, y: points[i].y + ny });
-    right.push({ x: points[i].x - nx, y: points[i].y - ny });
-  }
-  const f = (n: number) => Math.round(n * 10) / 10;
-  const outline = [...left, ...right.reverse()];
-  return `M ${outline.map((p) => `${f(p.x)} ${f(p.y)}`).join(" L ")} Z`;
+// The shape of a stroke whose width follows the pen pressure (0–1 per
+// point): discs and the bands between them (lib/pen-outline.ts, #548) – a
+// single outline around the centre line crossed itself at tight turns and
+// left gaps in the line. Points closer than a tenth of the width are one.
+export function pressurePieces(points: { x: number; y: number; p: number }[], width: number) {
+  return penPieces(
+    points.map((q) => ({ x: q.x, y: q.y, r: (width * (0.35 + 0.9 * q.p)) / 2 })),
+    width * 0.1,
+  );
 }
+export const pressureOutline = (points: { x: number; y: number; p: number }[], width: number) => penPath(pressurePieces(points, width), 1);
 
 // ---- Eraser ----
 
