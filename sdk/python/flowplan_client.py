@@ -2517,6 +2517,10 @@ NotebookRecordingsQuery = TypedDict("NotebookRecordingsQuery", {
     "upload": str,  # Recording ID of an upload in progress
 }, total=False)
 
+PagePreviewQuery = TypedDict("PagePreviewQuery", {
+    "full": Literal["1"],  # 1: the whole document as HTML
+}, total=False)
+
 SnapshotChangesQuery = TypedDict("SnapshotChangesQuery", {
     "against": str,  # Compare with this version instead of the current content
 }, total=False)
@@ -3198,9 +3202,9 @@ class FlowplanClient:
         """Upload, finish, rename or delete a notebook recording — Upload: `?upload=<recording id>&offset=<bytes the server has>&type=<audio/webm|audio/ogg|audio/mp4>` with the raw bytes as `application/octet-stream` (at most 4 MiB per request; a repeated chunk is ignored, a gap answers 409). Then JSON `{action: "finish", recId, name, durationMs}` stores it as a file of the notebook (counted against the quota; at most three hours; 413 when too long, too large for its length or over the quota; 415 for other content). Also `{action: "rename", recId, name}`, `{action: "delete", recId}` (into the trash with its file) and `{action: "discard", recId}` (drops an unfinished upload). Needs editor rights; not on locked pages or in encrypted spaces. (POST /api/pages/{pageId}/recordings)"""
         return self._json("POST", "/api/pages/" + _p(page_id) + "/recordings", json_body=body, headers=headers)
 
-    def page_preview(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview)"""
-        return self._json("GET", "/api/pages/" + _p(page_id) + "/preview", headers=headers)
+    def page_preview(self, page_id: str, query: Optional["PagePreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Short preview of a page — With `full=1`, documents also carry their whole content as sanitized read-only `html` (empty with `encrypted` for end-to-end encrypted spaces, `locked` behind a journal PIN), with an ETag (304 while unchanged). Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview)"""
+        return self._json("GET", "/api/pages/" + _p(page_id) + "/preview", query=dict(query) if query else None, headers=headers)
 
     def page_shares(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Who has access to exactly this page (GET /api/pages/{pageId}/shares)"""

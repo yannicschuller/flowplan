@@ -2,7 +2,7 @@
 import { useT } from "../i18n";
 import { pressureOutline } from "@/lib/whiteboard-tools";
 import { LibraryIcon } from "../library-icons";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { placeholderKey, usePlaceholder } from "../image-placeholder";
 import { safeImageSource, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { connectorGeometry, contentBounds, shapePath } from "@/lib/whiteboard-geometry";
@@ -20,6 +20,11 @@ import { boardCommentBadge, boardCommentColor } from "@/lib/whiteboard-comments"
 import { TableCellContent } from "./link-card";
 import { cellFill, isHeadCell, tableShape } from "@/lib/whiteboard-tables";
 import { CardExcerpt } from "./card-preview";
+import { fullPageCard, type CardView } from "@/lib/whiteboard-page-cards";
+import { loadView } from "../view-fallback";
+// The whole document on large page cards (#549): the read-only renderer
+// loads with the first such card.
+const PageCardDocument = lazy(() => loadView(() => import("./page-card-doc")));
 import { BoardColors, DARK_CANVAS_CLASS, useBoardColors } from "./board-colors";
 import { boardPalette } from "@/lib/whiteboard-display-colors";
 import { useDarkCanvas } from "@/lib/whiteboard-canvas-pref-client";
@@ -143,6 +148,7 @@ function ShapeBody({
   editing,
   cards,
   deviceCards,
+  fullCards,
 }: {
   item: WhiteboardItem;
   items: Map<string, WhiteboardItem>;
@@ -152,6 +158,8 @@ function ShapeBody({
   cards?: Map<string, RowCard>;
   // The board shows its own card for devices instead of their tooltip.
   deviceCards?: boolean;
+  // The board's view: large page cards in it show the whole document (#549).
+  fullCards?: CardView;
 }) {
   const t = useT();
   const colors = useBoardColors();
@@ -392,6 +400,29 @@ function ShapeBody({
             </foreignObject>
           </g>
         );
+      const kindLabel =
+        page?.kind === "database" ? t("Datenbank", "Database") : page?.kind === "whiteboard" ? t("Whiteboard", "Whiteboard") : t("Seite", "Page");
+      // Large enough and in view (#549): the whole document, scrollable.
+      if (page?.kind === "document" && fullCards && fullPageCard(item, fullCards))
+        return (
+          <g transform={transform}>
+            <rect width={item.w} height={item.h} rx={10} fill={colors.fill("#ffffff")} stroke={colors.line("#dee2e6")} filter="url(#wb-shadow)" />
+            <rect width={6} height={item.h} rx={3} fill={colors.fill(item.fill || "#3b3fd8")} />
+            <foreignObject x={14} y={0} width={Math.max(1, item.w - 20)} height={item.h}>
+              <div className="wb-card-body wb-pagecard">
+                <div className="wb-pagecard-head">
+                  <small>{kindLabel}</small>
+                  <strong>{page.title || t("Ohne Titel", "Untitled")}</strong>
+                </div>
+                <div className="wb-pagecard-scroll" data-wb-scroll="">
+                  <Suspense fallback={<span className="wb-pagecard-note">{t("Wird geladen …", "Loading …")}</span>}>
+                    <PageCardDocument pageId={page.id} />
+                  </Suspense>
+                </div>
+              </div>
+            </foreignObject>
+          </g>
+        );
       return (
         <g transform={transform}>
           <rect
@@ -415,13 +446,7 @@ function ShapeBody({
             height={item.h}
           >
             <div className="wb-card-body">
-              <small>
-                {page?.kind === "database"
-                  ? t("Datenbank", "Database")
-                  : page?.kind === "whiteboard"
-                    ? t("Whiteboard", "Whiteboard")
-                    : t("Seite", "Page")}
-              </small>
+              <small>{kindLabel}</small>
               <strong>{page?.title || t("Seite nicht verfügbar", "Page not available")}</strong>
               {page?.kind === "document" && item.h >= 130 && <CardExcerpt pageId={page.id} />}
             </div>

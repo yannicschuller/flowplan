@@ -4612,9 +4612,9 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/pages/${encodeURIComponent(pageId)}/recordings`, { json: body }, options);
   }
 
-  /** Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview) */
-  async pagePreview(pageId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/preview`, {}, options);
+  /** Short preview of a page — With `full=1`, documents also carry their whole content as sanitized read-only `html` (empty with `encrypted` for end-to-end encrypted spaces, `locked` behind a journal PIN), with an ETag (304 while unchanged). Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview) */
+  async pagePreview(pageId: string, query?: { full?: "1" }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/preview`, { query }, options);
   }
 
   /** Who has access to exactly this page (GET /api/pages/{pageId}/shares) */

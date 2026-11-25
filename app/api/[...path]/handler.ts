@@ -801,10 +801,14 @@ async function handleGET(
         { targets: await linkTargets(user, (url.searchParams.get("ids") || "").split(",").filter(Boolean)) },
         { headers: { "Cache-Control": "no-store" } },
       );
-    if (path[0] === "pages" && path[1] && path[2] === "preview")
+    if (path[0] === "pages" && path[1] && path[2] === "preview") {
+      // With ?full=1 the whole document (page cards on whiteboards, #549),
+      // with an ETag: the cards' refresh gets 304 while nothing changed.
+      if (url.searchParams.get("full") === "1") return jsonWithTag(req, await pagePreview(user, z.uuid().parse(path[1]), { full: true }));
       return NextResponse.json(await pagePreview(user, z.uuid().parse(path[1])), {
         headers: { "Cache-Control": "no-store" },
       });
+    }
     if (path[0] === "pages" && path[2] === "linked" && path[3])
       return NextResponse.json(await linkedDatabaseData(user, path[1], path[3]));
     // Embeddings inside a record document.
