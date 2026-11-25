@@ -12531,23 +12531,21 @@ details[data-heading] > summary {
   min-width: 0;
 }
 .space-appearance legend {
+  padding: 0;
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 8px;
 }
+/* The icon buttons right below "Space icon", then "Background colour" as a
+   field of its own like Name and Visibility above (#555): side by side, the
+   two labels sat at different heights and the buttons were taller than the
+   select. */
 .space-appearance-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: end;
+  display: grid;
+  gap: 14px;
 }
 .space-appearance-controls label {
   margin: 0;
-  flex: 1;
-  min-width: 130px;
-}
-.space-appearance-controls .button {
-  min-height: 38px;
 }
 .space-appearance-buttons {
   display: flex;

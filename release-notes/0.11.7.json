@@ -17,6 +17,13 @@
       "issues": [
         547
       ]
+    },
+    {
+      "de": "Bereich verwalten: Bereichssymbol und Hintergrundfarbe stehen sauber untereinander statt versetzt nebeneinander.",
+      "en": "Manage space: the space icon and the background colour now sit neatly one below the other instead of staggered side by side.",
+      "issues": [
+        555
+      ]
     }
   ],
   "improvements": [
