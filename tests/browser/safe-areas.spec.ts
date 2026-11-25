@@ -74,10 +74,15 @@ test("dialogs stay clear of the status bar and home indicator; related pages fit
   if (await unfold.isVisible()) await unfold.click();
   await entry.getByRole("button", { name: `${dateName}: leer, ändern` }).first().click();
   const empty = page.locator(".record-value-editor .date-input[data-placeholder]").first();
-  // The hint shows while the field is not focused (opening focuses it).
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  // The hint shows while the field is not focused (opening focuses it, once
+  // more after a frame – components/record-property-value.tsx).
   await expect(empty).toHaveAttribute("data-placeholder", "Datum wählen");
-  expect(await empty.evaluate((d) => getComputedStyle(d, "::before").content)).toBe('"Datum wählen"');
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      return empty.evaluate((d) => getComputedStyle(d, "::before").content);
+    })
+    .toBe('"Datum wählen"');
   await page.keyboard.press("Escape");
   await expect(empty).toHaveCount(0);
 

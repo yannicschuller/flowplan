@@ -130,7 +130,7 @@ const PAGES = [
   { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 917, ready: ".settings-detail .setting-group" },
   // The start page of an admin: the instance at a glance (#532, the former
   // administration landing page).
-  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 836, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 836, ready: ".sv-glance-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
   { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 864, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).

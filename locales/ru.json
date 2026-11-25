@@ -7466,6 +7466,7 @@
   "Name": "Имя",
   "Name (optional)": "Имя (необязательно)",
   "Name & icon": "Название и значок",
+  "Name & version": "Название и версия",
   "Name and e-mail": "Имя и эл. почта",
   "Name and icon, inbound e-mail, leaving and deleting.": "Название и значок, входящая почта, выход и удаление.",
   "Name not found (DNS)": "Имя не разрешается (DNS)",

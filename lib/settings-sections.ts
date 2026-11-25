@@ -855,7 +855,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     area: "admin",
     group: "operations",
     icon: "SlidersHorizontal",
-    title: { de: "Allgemein", en: "General" },
+    title: { de: "Name & Version", en: "Name & version" },
     description: { de: "Name, öffentliche Demo, Version und Aktualisierung der Instanz.", en: "Name, public demo, version and update of the instance." },
     keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe formatierungsleiste startinhalt onboarding", en: "instance name demo version update commit admin group formatting toolbar starter content onboarding" },
     entries: [

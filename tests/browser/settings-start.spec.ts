@@ -235,9 +235,12 @@ test("an admin: live panels on top of the tiles, only what is on, each linked", 
     await expect.poll(() => ids(page)).toEqual(["people", "requests", "storage", "errors", "server", "accounts", "signins", "backups", "background"]);
     for (const id of await ids(page)) await expect(instance.locator(`[data-panel="${id}"] h3 a`)).toHaveAttribute("href", LINKS[id!]);
     // Each a group named by its title, with a number and a chart that has words.
-    const people = instance.getByRole("group", { name: "Aktive Personen" });
+    // (The chart's own legend is a group with the same name: the panel by its id.)
+    const people = instance.locator('[data-panel="people"]');
+    await expect(people).toHaveRole("group");
+    await expect(people).toHaveAccessibleName(/^Aktive Personen/);
     await expect(people).toContainText("gerade aktiv");
-    await expect(instance.getByRole("group", { name: "Anfragen pro Minute" }).getByRole("img")).toHaveAccessibleName(/Anfragen pro Minute/);
+    await expect(instance.locator('[data-panel="requests"]').getByRole("img").first()).toHaveAccessibleName(/Anfragen pro Minute/);
     // Above the tiles, on phones too.
     const tiles = instance.locator(".sv-start-tiles");
     await expect(tiles).toBeVisible({ timeout: 30_000 });
