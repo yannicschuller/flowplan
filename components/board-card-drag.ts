@@ -64,6 +64,9 @@ export function startBoardCardDrag(options: {
     y: (scroller?.scrollTop ?? 0) - scroll0.y,
   });
 
+  // Set before measuring: an empty "Ohne Gruppe" column shows only while a
+  // card is dragged (app/globals.css), and its box must count.
+  board.dataset.cardDragging = "true";
   const columns: Column[] = [
     ...board.querySelectorAll<HTMLElement>(
       ":scope > .board-column[data-group-key]:not(.collapsed)",
@@ -86,7 +89,10 @@ export function startBoardCardDrag(options: {
   });
   const source = columns.find((c) => c.key === options.groupKey);
   const sourceIndex = source?.cards.findIndex((c) => c.id === rowId) ?? -1;
-  if (!source || sourceIndex < 0) return null;
+  if (!source || sourceIndex < 0) {
+    delete board.dataset.cardDragging;
+    return null;
+  }
   const sourceBox = source.cards[sourceIndex].box;
   const height = sourceBox.bottom - sourceBox.top;
   // The spacing between two cards (their margin sits outside the wrap).
@@ -133,7 +139,6 @@ export function startBoardCardDrag(options: {
   else face.style.transform = `rotate(${TILT}deg)`;
 
   wrap.dataset.drag = "source";
-  board.dataset.cardDragging = "true";
   const touched = new Set<HTMLElement>([wrap]);
   const offsets = new Map<HTMLElement, number>();
   const offset = (el: HTMLElement, y: number) => {
@@ -145,6 +150,12 @@ export function startBoardCardDrag(options: {
   };
   const grow = (column: Column, px: number) => {
     column.el.style.setProperty("--drop-gap", `${px}px`);
+    touched.add(column.el);
+  };
+  // The column the card would land in is highlighted (app/globals.css).
+  const mark = (column: Column, on: boolean) => {
+    if (on) column.el.dataset.dropTarget = "";
+    else delete column.el.dataset.dropTarget;
     touched.add(column.el);
   };
 
@@ -176,6 +187,7 @@ export function startBoardCardDrag(options: {
     for (const column of columns) {
       const others = column.cards.filter((c) => c.id !== rowId);
       const here = target?.column === column ? target.index : -1;
+      mark(column, target?.column === column && column !== source);
       if (column === source) {
         // Same column: the placeholder travels to its new slot and the cards
         // in between make room for it.
@@ -267,6 +279,7 @@ export function startBoardCardDrag(options: {
       el.style.translate = "";
       el.style.removeProperty("--drop-gap");
       if (el.dataset.drag) delete el.dataset.drag;
+      if (el.dataset.dropTarget !== undefined) delete el.dataset.dropTarget;
     }
     delete board.dataset.cardDragging;
     preview.remove();

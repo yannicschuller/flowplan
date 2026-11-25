@@ -1304,6 +1304,13 @@ export default function DatabaseView({
       : null;
   // Plain boards (no swimlanes) drag cards with pointer events.
   const plainBoard = view.type === "board" && !lanes;
+  // A board's "Ohne Gruppe" without cards stays out of the way (design
+  // review); it shows while a card is dragged or lifted, to drop it there
+  // (app/globals.css).
+  const ungroupedEmpty = (g: DatabaseGroup) =>
+    g.value === null && !g.missing && !g.rows.length && groups.length > 1
+      ? " ungrouped-empty"
+      : "";
   const subgroups = new Map<string, DatabaseGroup[]>(
     subField
       ? groups.map((g) => [
@@ -4280,7 +4287,7 @@ export default function DatabaseView({
             {groups.map((g) => (
               <header
                 key={g.key}
-                className={`board-lane-column${collapsed(g.key) ? " collapsed" : ""}`}
+                className={`board-lane-column${collapsed(g.key) ? " collapsed" : ""}${ungroupedEmpty(g)}`}
                 aria-label={t(`Spalte ${g.label}`, `Column ${g.label}`)}
               >
                 <button
@@ -4349,7 +4356,7 @@ export default function DatabaseView({
                           key={g.key}
                           role="group"
                           aria-label={`${g.label} · ${lane.label}`}
-                          className={`board-cell${collapsed(g.key) ? " collapsed" : ""}`}
+                          className={`board-cell${collapsed(g.key) ? " collapsed" : ""}${ungroupedEmpty(g)}`}
                           {...rowZone(target)}
                         >
                           {collapsed(g.key) ? (
@@ -4395,10 +4402,10 @@ export default function DatabaseView({
         </div>
       )}
       {view.type === "board" && !lanes && (
-        <ScrollFade className="board">
+        <ScrollFade className={`board${keyLift ? " board-lifting" : ""}`}>
           {groups.map((g) => (
             <section
-              className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}`}
+              className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}${ungroupedEmpty(g)}`}
               key={g.key}
               data-group-key={g.key}
               aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
