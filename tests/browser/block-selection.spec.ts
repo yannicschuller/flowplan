@@ -105,7 +105,13 @@ test("a rectangle from the margin chooses blocks; keys act on all of them", asyn
   await expect(page.locator(".document-block-marked")).toHaveCount(0);
 
   // ⇧-click on a handle extends the choice to that block.
-  await p("Alpha").click();
+  // As above: after the move the page may still settle; click until the
+  // caret is in Alpha (in CI the first click sometimes left it in Bravo).
+  await expect(async () => {
+    await p("Alpha").click();
+    const caret = await page.evaluate(() => window.getSelection()?.anchorNode?.textContent ?? "");
+    expect(caret).toBe("Alpha");
+  }).toPass({ timeout: 10_000 });
   await page.keyboard.press("Escape");
   await expect.poll(() => marked(page)).toEqual(["Alpha"]);
   await p("Delta").hover();
