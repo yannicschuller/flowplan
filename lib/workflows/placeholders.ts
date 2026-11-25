@@ -285,7 +285,7 @@ function zonedParts(ms: number, timeZone: string) {
   return { y: Number(get("year")), m: Number(get("month")), d: Number(get("day")), H: Number(get("hour")) % 24, M: Number(get("minute")), S: Number(get("second")) };
 }
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
-const localeTagOf = (locale: Locale) => (locale.startsWith("de") ? "de-DE" : locale.startsWith("fr") ? "fr-FR" : locale.startsWith("zh") ? "zh-CN" : locale.startsWith("ru") ? "ru-RU" : "en-GB");
+const localeTagOf = (locale: Locale) => (locale.startsWith("de") ? "de-DE" : locale.startsWith("pl") ? "pl-PL" : locale.startsWith("fr") ? "fr-FR" : locale.startsWith("zh") ? "zh-CN" : locale.startsWith("ru") ? "ru-RU" : "en-GB");
 
 // Formats a date (YYYY-MM-DD, kept as the day) or a date-time (in the
 // workflow's time zone). `format`: "kurz"/"short", "lang"/"long" or a

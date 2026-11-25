@@ -147,7 +147,7 @@ const todayIso = () => {
 };
 const BUSY = new Set(["transcribing", "summarizing"]);
 // The languages by their own names (the same in every interface language).
-const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "Deutsch", en: "English", fr: "Français", zh: "中文", ru: "Русский" };
+const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "Deutsch", en: "English", fr: "Français", pl: "Polski", zh: "中文", ru: "Русский" };
 // The separators of a menu level without empty groups.
 const tidy = (items: (BlockMenuItem | false | null | undefined)[]): BlockMenuItem[] => {
   const out: BlockMenuItem[] = [];
@@ -469,7 +469,7 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const playConsent = () => {
     if (typeof speechSynthesis === "undefined") return;
     const utterance = new SpeechSynthesisUtterance(consentText);
-    utterance.lang = locale === "de" ? "de-DE" : locale === "fr" ? "fr-FR" : locale === "zh" ? "zh-CN" : locale === "ru" ? "ru-RU" : "en-US";
+    utterance.lang = locale === "de" ? "de-DE" : locale === "pl" ? "pl-PL" : locale === "fr" ? "fr-FR" : locale === "zh" ? "zh-CN" : locale === "ru" ? "ru-RU" : "en-US";
     speechSynthesis.cancel();
     speechSynthesis.speak(utterance);
   };
