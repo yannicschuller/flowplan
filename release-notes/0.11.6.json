@@ -81,6 +81,16 @@
     {
       "de": "Mit Maus oder Finger erscheint kein blauer Fokusrahmen mehr auf Menüeinträgen und auf dem „⋯“, nachdem ein Menü geschlossen wurde; mit der Tastatur bleibt er.",
       "en": "With a mouse or finger, no blue focus ring shows on menu items or on the \"⋯\" after a menu closes any more; with the keyboard it stays."
+    },
+    {
+      "de": "Über Seitenleiste, Menüs und Schaltflächen zeigt die Maus den Pfeil statt des Textcursors, ganze Seitenzeilen die Hand; Karten springen beim Überfahren nicht mehr nach oben, und Dokumente rechnen beim Bewegen der Maus weniger.",
+      "en": "Over the sidebar, menus and buttons the mouse shows the arrow instead of the text cursor, and whole page rows the hand; cards no longer jump up on hover, and documents do less work while the mouse moves.",
+      "issues": [
+        543,
+        544,
+        545,
+        546
+      ]
     }
   ],
   "improvements": [

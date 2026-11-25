@@ -161,6 +161,22 @@ html[data-modality="pointer"] :is(button, a, [role="menuitem"], [role="menuitemr
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  /* The arrow, not the text cursor over labels (#543); buttons, links,
+     fields and component cursors win (rules below, any specificity). */
+  cursor: default;
+}
+/* Links and what one types into keep their cursor inside the chrome (the
+   cursor is inherited, and a link the chrome rule matches itself, such as
+   a menu item, would show the arrow). Zero specificity: component cursors
+   still win. */
+:where(a[href]) {
+  cursor: pointer;
+}
+:where(input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea) {
+  cursor: text;
+}
+:where([contenteditable]:not([contenteditable="false"]), .ProseMirror) {
+  cursor: auto;
 }
 /* Content and everything one types into, also inside the chrome above. */
 input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
@@ -751,9 +767,6 @@ kbd,
     transition: none;
   }
 }
-.nav-section-title[draggable="true"] {
-  cursor: grab;
-}
 .nav-section-title[draggable="true"]:active {
   cursor: grabbing;
 }
@@ -774,6 +787,10 @@ kbd,
 }
 .page-nav:hover {
   background: var(--hover);
+}
+/* The whole row reacts to the mouse, so it shows the pointer (#544). */
+.page-nav {
+  cursor: pointer;
 }
 /* A long press opens the page menu instead of the system callout. */
 .page-nav,
@@ -1201,20 +1218,11 @@ kbd,
   border: 1px solid var(--border);
   border-radius: 9px;
   overflow: hidden;
-  transition:
-    box-shadow 0.16s,
-    transform 0.16s;
+  transition: box-shadow 0.16s;
 }
 .recent-card:hover {
   background: var(--bg);
   box-shadow: 0 4px 15px #202b4010;
-}
-/* Lifts only under a mouse (#377): iOS keeps :hover under the finger, and
-   a card that moves when touched is not how native apps behave. */
-@media (hover: hover) and (pointer: fine) {
-  .recent-card:hover {
-    transform: translateY(-2px);
-  }
 }
 .recent-illustration {
   height: 108px;
@@ -13924,24 +13932,17 @@ textarea {
 .record-layout {
   animation: fade-in var(--motion-base) ease both;
 }
-/* Cards lift slightly under the pointer – a mouse pointer (#377): a
-   finger's sticky :hover would move them. */
+/* Cards answer the pointer with their border and shadow; they do not move
+   (#545: a card that lifts jitters under a pointer at its edge). */
 .record-card,
 .recent-card {
   transition:
     border-color 0.15s ease,
-    box-shadow 0.18s ease,
-    translate 0.18s var(--ease-out);
+    box-shadow 0.18s ease;
 }
 .record-card:hover,
 .recent-card:hover {
   box-shadow: 0 6px 16px #1724390f;
-}
-@media (hover: hover) and (pointer: fine) {
-  .record-card:hover,
-  .recent-card:hover {
-    translate: 0 -1px;
-  }
 }
 /* Collapse arrows turn smoothly. */
 .group-toggle svg,
@@ -13966,10 +13967,6 @@ textarea {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
   }
-  .record-card:hover,
-  .recent-card:hover {
-    translate: none;
-  }
 }
 [data-motion="off"],
 [data-motion="off"] *,
@@ -13984,12 +13981,6 @@ textarea {
   transition-duration: 0.01ms !important;
   transition-delay: 0s !important;
   scroll-behavior: auto !important;
-}
-[data-motion="off"] .record-card:hover,
-[data-motion="off"] .recent-card:hover,
-[data-motion="reduced"] .record-card:hover,
-[data-motion="reduced"] .recent-card:hover {
-  translate: none;
 }
 /* ---------- Purposeful motion (lib/motion.ts, components/motion.tsx) ----------
    Shows what moved, where a jump landed and what just changed. Only
@@ -18048,8 +18039,7 @@ th[data-field-drop] {
     var(--bg);
   transition:
     border-color 0.15s ease,
-    box-shadow 0.18s ease,
-    translate 0.18s var(--ease-out);
+    box-shadow 0.18s ease;
 }
 .journal-today.draft {
   border-style: dashed;
@@ -18057,11 +18047,6 @@ th[data-field-drop] {
 .journal-today:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
   box-shadow: 0 10px 28px -12px #1d1a1433;
-}
-@media (hover: hover) and (pointer: fine) {
-  .journal-today:not(:disabled):hover {
-    translate: 0 -1px;
-  }
 }
 .journal-today-date {
   display: grid;
@@ -18357,15 +18342,10 @@ li[data-journal-since] > label::after {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
-  transition: border-color 0.15s ease, translate 0.18s var(--ease-out);
+  transition: border-color 0.15s ease;
 }
 .journal-memory:hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
-}
-@media (hover: hover) and (pointer: fine) {
-  .journal-memory:hover {
-    translate: 0 -1px;
-  }
 }
 .journal-memory img {
   width: 56px;
@@ -18594,7 +18574,7 @@ li[data-journal-since] > label::after {
   border-radius: 8px;
   font-size: 13px;
   border: 1px solid transparent;
-  transition: transform 0.15s var(--ease-out), background 0.15s ease;
+  transition: background 0.15s ease;
 }
 .journal-scale.mood button {
   font-size: 18px;
@@ -18603,11 +18583,6 @@ li[data-journal-since] > label::after {
 }
 .journal-scale button:not(:disabled):hover {
   background: var(--hover);
-}
-@media (hover: hover) and (pointer: fine) {
-  .journal-scale button:not(:disabled):hover {
-    transform: translateY(-1px);
-  }
 }
 .journal-scale button[aria-pressed="true"] {
   background: var(--bg);

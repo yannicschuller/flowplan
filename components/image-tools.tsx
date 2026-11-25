@@ -97,10 +97,19 @@ export function ImageTools({
   const [, redraw] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
+    // At most once a frame (#546), with the element last moved over.
+    let moveFrame = 0;
+    let moved: Element | null = null;
     const onMove = (event: PointerEvent) => {
-      if (event.pointerType === "touch" || editor.isDestroyed) return;
-      const target = event.target as Element | null;
-      if (!target || layer.current?.contains(target)) return;
+      if (event.pointerType === "touch") return;
+      moved = event.target as Element | null;
+      if (!moveFrame) moveFrame = requestAnimationFrame(hover);
+    };
+    const hover = () => {
+      moveFrame = 0;
+      const target = moved;
+      moved = null;
+      if (!target || editor.isDestroyed || layer.current?.contains(target)) return;
       const image = target.closest?.("[data-resize-container], img") ? imageAtDom(editor, target) : null;
       setHovered((prev) => (image ? (prev?.pos === image.pos && prev.src === image.src ? prev : image) : null));
     };
@@ -125,6 +134,7 @@ export function ImageTools({
     editor.on("transaction", later);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(moveFrame);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerdown", onDown, true);
       window.removeEventListener("scroll", later, true);
