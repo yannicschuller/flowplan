@@ -2,11 +2,13 @@
 // The start page of the settings (#settings, #532): the search over every
 // area on top, then the person's own state – storage and AI as rings and a
 // compact "Dein Setup" (appearance with a small preview, notifications,
-// devices) – and for admins "Instanz auf einen Blick": the live strip of
-// the former administration landing page (state, live numbers, charts of
-// 24 hours) and one tile each for accounts, storage and backup, monitoring,
-// failed sign-ins, features and the version. Every tile is a link into its
-// section; numbers are live (/api/admin/summary, the live strip's
+// devices) – and for admins "Instanz auf einen Blick": on top the state of
+// the instance and the live panels (admin/live-panels.tsx: people,
+// requests, AI, storage, errors, server, accounts, sign-ins, backups,
+// background work – charts of real data, each linked to its section), then
+// one tile each for accounts, storage and backup, monitoring, failed
+// sign-ins, features and the version. Every tile is a link into its
+// section; numbers are live (/api/admin/summary, the panels'
 // /api/admin/monitoring?view=live), a trend only where a history exists.
 // Phones stack it (rings first, the instance after them) and the list of
 // all sections follows (components/settings/nav.tsx).
@@ -44,7 +46,7 @@ import { useT } from "../i18n";
 import { LevelSwitch, useLevelName } from "../settings-level";
 import { StatusBadge, type Tone } from "../settings-ui";
 import { Sparkline } from "../sparkline";
-import { LiveStrip, type StripItem } from "./admin/live-strip";
+import { InstanceLive, type StripItem } from "./admin/live-panels";
 import { num, uptime } from "./admin/monitoring-format";
 import { moduleTexts } from "./user/feature-modules";
 import { PagePreview, Ring, ringText, sizeText, StorageStack } from "./previews";
@@ -278,21 +280,22 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
   const t = useT();
   const { off } = useFeatureModules();
   const texts = moduleTexts(t);
-  // The live strip's problems and notices: the tiles' errors and warnings.
+  // The state line's problems and notices: the tiles' errors and warnings.
   const listed = (tone: string): StripItem[] =>
     sections.filter((s) => tiles[s.id]?.tone === tone).map((s) => ({ id: s.id, title: t(s.title.de, s.title.en), badge: tiles[s.id].badge }));
   const problems = listed("error"),
     notices = listed("warn");
-  const strip = <LiveStrip problems={problems} notices={notices} version={summary?.general.version} uptimeSeconds={summary?.general.uptimeSeconds} loaded={!!summary} />;
+  // On top: the state and the live panels; the tiles below.
+  const live = <InstanceLive problems={problems} notices={notices} version={summary?.general.version} uptimeSeconds={summary?.general.uptimeSeconds} loaded={!!summary} />;
   if (!summary)
     return (
       <>
+        {live}
         <div className="sv-start-tiles placeholder" aria-hidden />
-        {strip}
       </>
     );
   const s = summary;
-  // The same count as the live strip's headline (the sections' problems
+  // The same count as the state line's headline (the sections' problems
   // and notices) plus the monitoring's own alerts and failing workers.
   const warnings = problems.length + notices.length + s.monitoring.alerts.length + s.monitoring.failingWorkers.length;
   const on = FEATURE_MODULES.filter((m) => !off.includes(m));
@@ -390,6 +393,7 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
   ];
   return (
     <>
+      {live}
       <ul className="sv-start-tiles">
         {list.map((tile) => (
           <li key={tile.id}>
@@ -414,7 +418,6 @@ function InstanceOverview({ summary, tiles, sections }: { summary: AdminSummary 
           </li>
         ))}
       </ul>
-      {strip}
     </>
   );
 }

@@ -133,12 +133,12 @@ state next to the control).
   results carry "Instanz"), the level switch, "Für dich" – storage and AI
   quota as rings (`boot.myLimits`, the AI quota) and "Dein Setup"
   (appearance with a small page preview, notifications, offline use on this
-  device) – and for admins "Instanz auf einen Blick": six tiles from
+  device) – and for admins "Instanz auf einen Blick": on top the state line
+  and the live panels (see below), then six tiles from
   `/api/admin/summary` (accounts & sessions with the real active-people
   series, storage & backup as a stacked bar database/files and the last
   backup, monitoring warnings, failed sign-ins of 24 hours, features on/off
-  from `useFeatureModules()`, version and update) and the live strip (state,
-  live numbers, charts of 24 hours from `/api/admin/monitoring?view=live`).
+  from `useFeatureModules()`, version and update).
   Every tile is a link into its section. A trend only where a history
   exists – no example data.
 - **Previews in sections** (`previews.tsx`): Darstellung (a page following
@@ -155,11 +155,31 @@ Planned: `settings/webhooks` (Webhooks out of `api`).
 
 ## Live overview and monitoring
 
-- The start page's "Instanz auf einen Blick" ends with the live strip
-  (`components/settings/admin/live-strip.tsx`): problems and notices of the
-  sections, the live numbers and the requests of 24 hours from
-  `/api/admin/monitoring?view=live`, polled every 15 s while visible
-  (`use-live.ts`, paused in a hidden tab, "Live" badge). Tiles may carry a
+- The start page's "Instanz auf einen Blick" starts with the live panels
+  (`components/settings/admin/live-panels.tsx`): one state line (problems
+  and notices of the sections, linked; "Live" badge) and a grid of panels
+  visible at once (three a row on wide screens, one on phones, where the
+  first four show and "Alle Diagramme" the rest, remembered on the device
+  in `flowplan-admin-live-expanded`). Each panel: its key number, a small
+  chart of real data (`components/charts.tsx`) and its title as the link
+  into its section. In this order, each only when its data or feature is
+  there: active people (`monitoring/people`; the 5-minute series with the
+  statistics), requests per minute (`monitoring/traffic`, statistics),
+  AI tokens per day with the top features and the number of people
+  (`ai/ai-statistics`, AI set up and statistics), storage per day and the
+  largest workspaces (`storage`), error rate and slowest endpoints
+  (`monitoring/errors`, statistics), CPU/RAM/disk (`monitoring/server`),
+  new accounts per day of 30 days (`users`), sign-ins per hour of 24 hours
+  (`monitoring/signins`; successful ones only with the statistics), the
+  size of the last backup runs (`storage/backup`, when the scheduled backup
+  is on or has run; `lib/scheduled-backup.ts` keeps the last 30 runs in
+  `instance_state.scheduledBackupRuns`) and the deliveries of 7 days with
+  the queues and background services (`monitoring/queues`). Data from
+  `/api/admin/monitoring?view=live` (`monitoringStart`: the live answer
+  plus `glance`, cached a minute per statistics switch), polled every 15 s
+  while visible (`use-live.ts`, paused in a hidden tab). Tests:
+  `tests/admin-start-glance.test.ts`, `tests/browser/settings-start.spec.ts`.
+  Tiles may carry a
   figure, a sparkline or a meter (`TileSummary.value/valueLabel/spark/meter`,
   series from `adminSummary().charts`).
 - `#settings/instance/monitoring` is the full dashboard (`components/settings/admin/monitoring.tsx`,

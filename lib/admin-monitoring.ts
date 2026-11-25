@@ -16,7 +16,7 @@ import { all, one } from "./db";
 import { buildInfo } from "./build-info";
 import { instanceMetrics } from "./instance-ops";
 import { mailStatus } from "./mail";
-import { scheduledBackupStatus } from "./scheduled-backup";
+import { backupRuns, scheduledBackupStatus } from "./scheduled-backup";
 import { markdownExportStatus } from "./scheduled-markdown-export";
 import { storageStatus } from "./storage";
 import { instanceAiSettings } from "./ai/settings";
@@ -48,6 +48,7 @@ import { recommendations } from "./recommendations-data";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
 import { systemOverview } from "./cluster/system";
+import { flushOpsEvents } from "./ops-events";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -135,7 +136,7 @@ export const activeSince = async (since: number) =>
 const events = async (kind: string, since: number) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind=? AND at>=?", kind, since))?.n || 0);
 
 // Whether AI is set up at all (switched on with a provider of the instance,
-// or own providers allowed) – the live strip shows its chart only then.
+// or own providers allowed) – the start page shows its AI panel only then.
 async function aiConfigured() {
   try {
     const s = await instanceAiSettings();
@@ -376,6 +377,114 @@ export async function monitoringEvents(now = Date.now(), update: UpdateStatus | 
     out.push({ kind: "admin", level: "info", at: Date.parse(a.created_at.replace(" ", "T") + "Z"), subject: a.action, detail: a.name || undefined });
   return out.filter((e) => Number.isFinite(e.at)).sort((a, b) => b.at - a.at).slice(0, limit);
 }
+
+/* ---------- The settings' start page (cached a minute) ---------- */
+
+// SQLite's CURRENT_TIMESTAMP (UTC, "YYYY-MM-DD HH:MM:SS") and back.
+const sqliteTime = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 19);
+const fromSqlite = (value: unknown) => {
+  if (value instanceof Date) return value.getTime();
+  const text = String(value ?? "");
+  return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text.replace(" ", "T") : `${text.replace(" ", "T")}Z`);
+};
+
+// Accounts: how many there are and the new ones per day (30 days) – the
+// accounts that still exist, without demo guests and deleted accounts.
+export async function accountsGlance(now = Date.now(), days = 30) {
+  const keys = lastDays(now, days);
+  const since = midnight(now) - (days - 1) * DAY;
+  const perDay = new Map(keys.map((day) => [day, 0]));
+  for (const r of await all<{ created_at: string }>("SELECT created_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' AND created_at>=?", sqliteTime(since))) {
+    const at = fromSqlite(r.created_at);
+    if (!Number.isFinite(at)) continue;
+    const day = localDay(at);
+    if (perDay.has(day)) perDay.set(day, perDay.get(day)! + 1);
+  }
+  return {
+    total: await count("SELECT COUNT(*) n FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%'"),
+    disabled: await count("SELECT COUNT(*) n FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' AND disabled=1"),
+    sessions: await count("SELECT COUNT(*) n FROM sessions WHERE expires>?", now),
+    perDay: [...perDay].map(([day, created]) => ({ day, created })),
+  };
+}
+
+// Sign-ins per hour, the last 24 hours (lib/ops-events.ts): failed ones
+// always, successful ones only with the statistics on (null otherwise).
+export async function signinsGlance(now = Date.now(), withSuccess = true) {
+  await flushOpsEvents();
+  const end = Math.floor(now / HOUR) * HOUR;
+  const start = end - 23 * HOUR;
+  const hours = new Map<number, { at: number; ok: number; failed: number }>();
+  for (let at = start; at <= end; at += HOUR) hours.set(at, { at, ok: 0, failed: 0 });
+  for (const r of await all<{ hour: number; kind: string; n: number }>(
+    "SELECT (at/3600000)*3600000 AS hour,kind,COUNT(*) n FROM ops_events WHERE at>=? AND kind IN ('login_success','login_failure') GROUP BY (at/3600000)*3600000,kind",
+    start,
+  )) {
+    const h = hours.get(Number(r.hour));
+    if (!h) continue;
+    if (r.kind === "login_success") h.ok += Number(r.n);
+    else h.failed += Number(r.n);
+  }
+  const points = [...hours.values()];
+  return {
+    points: points.map((p) => ({ at: p.at, ok: withSuccess ? p.ok : null, failed: p.failed })),
+    ok: withSuccess ? points.reduce((a, p) => a + p.ok, 0) : null,
+    failed: points.reduce((a, p) => a + p.failed, 0),
+  };
+}
+
+// The scheduled backup: switched on, how often, where, and its last runs
+// (outcome and size; lib/scheduled-backup.ts keeps 30).
+export async function backupsGlance() {
+  const status = await scheduledBackupStatus();
+  const runs = (await backupRuns()).slice(-14);
+  return { enabled: status.enabled, hourly: status.hourly, target: status.target, runs: runs.map((r) => ({ at: r.at, bytes: r.bytes, failed: !!r.error })) };
+}
+
+async function glanceUncached(now: number, statistics: boolean) {
+  const storage = await monitoringStorage(now);
+  const workers = await workerStatuses(now);
+  return {
+    accounts: await accountsGlance(now),
+    signins: await signinsGlance(now, statistics),
+    // Database and files now, the total per day (30 days, from the
+    // statistics' daily snapshot) and the largest workspaces.
+    storage: {
+      total: storage.total,
+      databaseBytes: storage.byType.find((b) => b.key === "database")?.bytes ?? 0,
+      uploadBytes: storage.byType.filter((b) => b.key !== "database").reduce((a, b) => a + b.bytes, 0),
+      trend: storage.trend,
+      weekDelta: storage.weekDelta,
+      workspaces: storage.workspaces.slice(0, 3).map((w) => ({ name: w.name, bytes: w.bytes })),
+    },
+    backups: await backupsGlance(),
+    // Deliveries per day (7 days), what waits and the background services.
+    background: {
+      deliveries: await deliveries(now, 7),
+      queues: await queues(),
+      workers: { active: workers.filter((w) => w.active).length, failing: workers.filter((w) => w.active && w.error && (w.errorAt ?? 0) >= now - DAY).map((w) => w.key) },
+    },
+  };
+}
+const glanceCache = globalThis as unknown as { flowplanMonitoringGlance?: { at: number; statistics: boolean; value: Awaited<ReturnType<typeof glanceUncached>> } };
+export async function monitoringGlance(now = Date.now(), statistics = true) {
+  const c = glanceCache.flowplanMonitoringGlance;
+  if (c && c.statistics === statistics && now - c.at < MINUTE && now >= c.at) return c.value;
+  const value = await glanceUncached(now, statistics);
+  glanceCache.flowplanMonitoringGlance = { at: now, statistics, value };
+  return value;
+}
+export function forgetMonitoringGlance() {
+  delete glanceCache.flowplanMonitoringGlance;
+}
+
+// The start page's live panels (?view=live): the live answer and the
+// slower facts of the instance (cached a minute).
+export async function monitoringStart(now = Date.now(), range: RequestRange = "24h") {
+  const live = await monitoringLive(now, range);
+  return { ...live, glance: await monitoringGlance(now, live.collecting.enabled) };
+}
+export type MonitoringStart = Awaited<ReturnType<typeof monitoringStart>>;
 
 /* ---------- The whole dashboard ---------- */
 
