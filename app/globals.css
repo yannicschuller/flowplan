@@ -111,6 +111,13 @@ input:is([type="checkbox"], [type="radio"]):focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
+/* Used with a mouse, finger or pen (components/input-modality.ts): no focus
+   ring on controls that menus and popovers focus by script – the hovered
+   menu item and the "⋯" a closed menu gives the focus back to. Text fields
+   keep theirs; with the keyboard every ring shows as before. */
+html[data-modality="pointer"] :is(button, a, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [role="tab"], [role="button"]):focus-visible {
+  outline: none !important;
+}
 
 /* ---------- Text selection ----------
    Only meaningful text can be selected and copied: a long press on the tab

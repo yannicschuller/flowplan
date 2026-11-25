@@ -77,6 +77,10 @@
       "issues": [
         542
       ]
+    },
+    {
+      "de": "Mit Maus oder Finger erscheint kein blauer Fokusrahmen mehr auf Menüeinträgen und auf dem „⋯“, nachdem ein Menü geschlossen wurde; mit der Tastatur bleibt er.",
+      "en": "With a mouse or finger, no blue focus ring shows on menu items or on the \"⋯\" after a menu closes any more; with the keyboard it stays."
     }
   ],
   "improvements": [
