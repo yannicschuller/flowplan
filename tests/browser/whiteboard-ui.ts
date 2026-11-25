@@ -27,8 +27,8 @@ export async function boardView(wb: Locator, name: string) {
 }
 
 // Pen, eraser and laser share the "Zeichnen" button; its options start with
-// a switch between the three.
-export async function boardDraw(wb: Locator, name: "Stift" | "Radierer" | "Laserpointer") {
+// a switch between them (pen, highlighter, eraser, laser).
+export async function boardDraw(wb: Locator, name: "Stift" | "Textmarker" | "Radierer" | "Laserpointer") {
   const choice = wb.locator(".wb-draw-switch").getByRole("button", { name, exact: true });
   if (!(await choice.isVisible())) await wb.getByRole("button", { name: "Zeichnen", exact: true }).click();
   await choice.click();

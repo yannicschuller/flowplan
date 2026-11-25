@@ -1,9 +1,10 @@
 "use client";
-// The pen's options on the board (#455): pen or highlighter, the colour
-// (palette and colour wheel), three widths and the opacity. Each kind keeps
+// The pen's options on the board (#455): the colour (palette and colour
+// wheel), three widths and the opacity of the pen or the highlighter – which
+// of the two is a segment of the drawing switch above. Each kind keeps
 // its own colour, width and opacity; the last used setting is remembered on
 // this device (lib/whiteboard-pen.ts).
-import { Highlighter, PencilSimple } from "@phosphor-icons/react";
+import { Highlighter } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { strokeColors } from "@/lib/whiteboard-model";
 import { HIGHLIGHTER_COLORS, HIGHLIGHTER_OPACITY, HIGHLIGHTER_WIDTHS, MIN_OPACITY, OPACITY_STEP, PEN_WIDTHS, cleanOpacity, strokeLook, type PenSettings, type PenStyle } from "@/lib/whiteboard-pen";
@@ -22,15 +23,9 @@ export function PenOptions({ settings, onChange }: { settings: PenSettings; onCh
   const percent = Math.round(style.opacity * 100);
   return (
     <>
-      <div className="wb-pen-modes" role="group" aria-label={t("Stiftart", "Pen type")}>
-        <button type="button" className={!highlighter ? "active" : ""} aria-pressed={!highlighter} aria-label={t("Normaler Stift", "Regular pen")} onClick={() => onChange({ ...settings, mode: "pen" })}>
-          <PencilSimple size={16} aria-hidden="true" /> {t("Stift", "Pen")}
-        </button>
-        <button type="button" className={highlighter ? "active" : ""} aria-pressed={highlighter} onClick={() => onChange({ ...settings, mode: "highlighter" })}>
-          <Highlighter size={16} aria-hidden="true" /> {t("Textmarker", "Highlighter")}
-        </button>
-      </div>
-      {/* Colours as a compact grid, then the width, then the opacity. */}
+      {/* Pen or highlighter are segments of the drawing tool's switch
+          (whiteboard.tsx); here the colours in one even row, then the
+          width, then the opacity. */}
       <div className="wb-pen-colors" role="group" aria-label={highlighter ? t("Textmarkerfarbe", "Highlighter colour") : t("Stiftfarbe", "Pen colour")}>
         {palette.map((c) => (
           <button

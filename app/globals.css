@@ -14548,13 +14548,36 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .wb-toolbar .wb-plus-toggle.active {
   box-shadow: 0 0 0 3px var(--blue-light);
 }
+/* Pen, highlighter, eraser and laser: one row of equal segments at the top
+   of their options (design review: two stacked tab rows before). */
 .wb-draw-switch {
   grid-column: 1 / -1;
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 2px;
-  padding-bottom: 4px;
-  margin-bottom: 2px;
-  border-bottom: 1px solid var(--border);
+  padding: 2px;
+  margin-bottom: 4px;
+  border-radius: 9px;
+  background: var(--hover);
+}
+.wb-shape-menu .wb-draw-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--secondary);
+}
+.wb-shape-menu .wb-draw-switch button:hover {
+  color: var(--text);
+}
+.wb-shape-menu .wb-draw-switch button.active {
+  background: var(--bg);
+  color: var(--blue);
+  box-shadow: 0 1px 2px #0002;
 }
 .wb-plus {
   position: absolute;
@@ -16107,8 +16130,14 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 /* Administration's "Aktualisieren": an icon button in the header. */
 .settings-refresh {
   width: 34px;
+  height: 32px;
   padding: 0;
   justify-content: center;
+}
+/* Alone, it sits in the title's row – centred on the title's first line,
+   not on the whole block with the description (design review). */
+.settings-detail-actions:has(> .settings-refresh:only-child) {
+  align-self: flex-start;
 }
 .settings-loading {
   color: var(--muted);
@@ -17563,8 +17592,18 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   .mon-check {
     min-height: 44px;
   }
+  /* A quiet icon button, its 44 px target centred on the title's first
+     line (22 px × 1.2) instead of a big framed box beside it. */
   .settings-detail-actions .settings-refresh {
     width: 44px;
+    margin: -9px -10px 0 0;
+    border-color: transparent;
+    background: none;
+    color: var(--secondary);
+  }
+  .settings-detail-actions .settings-refresh:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .mon-storage {
     grid-template-columns: minmax(0, 1fr);
@@ -21136,8 +21175,9 @@ h3 .block-reactions {
 .wb-panel .wb-check {
   grid-column: 1 / -1;
 }
-/* The pen's options (design review): colours as a compact 4 × 2 grid,
-   then the three widths, then the switches – one column, no gaps. */
+/* The pen's options (design review): the drawing switch, the colours in
+   one row, the three widths, the opacity, then the switches – one column,
+   each section with the same spacing. */
 .wb-shape-menu.wb-pen-menu {
   grid-template-columns: minmax(0, 1fr);
   min-width: 168px;
@@ -21159,9 +21199,8 @@ h3 .block-reactions {
 .wb-pen-widths {
   display: flex;
   gap: 4px;
-  padding: 4px 2px 2px;
+  padding: 6px 2px;
   border-top: 1px solid var(--border);
-  margin-top: 2px;
 }
 .wb-shape-menu .wb-pen-widths button {
   flex: 1;
@@ -27926,7 +27965,14 @@ h3 .block-reactions {
   }
 }
 
-/* Admin: pages of the scheduled Markdown export. */
+/* Admin: pages of the scheduled Markdown export. Nothing chosen: a plain
+   empty state in the card – no dashed frame inside its frame (design
+   review) – with "Choose pages" beside it. */
+.markdown-export-empty .settings-empty {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
 .markdown-export-pages {
   margin: 0;
   padding: 0;

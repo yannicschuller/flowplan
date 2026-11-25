@@ -30,6 +30,7 @@ import {
   FileText,
   FrameCorners,
   Hand,
+  Highlighter,
   ImageSquare,
   LockSimple,
   LockSimpleOpen,
@@ -3437,24 +3438,37 @@ export default function Whiteboard({
       </button>
     );
   };
-  // Pen, eraser and laser: the switch at the top of their options.
+  // Pen, eraser and laser: the switch at the top of their options – one
+  // row of segments (design review): pen, highlighter (the pen in its
+  // highlighter mode, #455), eraser, laser pointer.
+  const setPenMode = (mode: PenSettings["mode"]) => {
+    if (penSettings.mode !== mode) {
+      const next = { ...penSettings, mode };
+      setPenSettings(next);
+      savePenSettings(next);
+    }
+    chooseTool("pen");
+  };
+  // Icons only, their names as label and tooltip: with the names under
+  // them the menu grew half as wide again over the board.
+  const drawChoices: { key: string; label: string; title: string; icon: React.ReactNode; pressed: boolean; run: () => void }[] = drawKeys.flatMap((key) => {
+    const [, label, icon, shortcut] = toolBy(key);
+    const choice = { key, label, title: `${label} (${shortcut})`, icon, pressed: tool === key, run: () => chooseTool(key) };
+    if (key !== "pen") return [choice];
+    const highlighter = penSettings.mode === "highlighter";
+    const marker = t("Textmarker", "Highlighter");
+    return [
+      { ...choice, pressed: tool === "pen" && !highlighter, run: () => setPenMode("pen") },
+      { key: "highlighter", label: marker, title: marker, icon: <Highlighter size={18} />, pressed: tool === "pen" && highlighter, run: () => setPenMode("highlighter") },
+    ];
+  });
   const drawSwitch = editable && (
     <div className="wb-draw-switch" role="group" aria-label={t("Zeichenwerkzeug", "Drawing tool")}>
-      {drawKeys.map((key) => {
-        const [, label, icon, shortcut] = toolBy(key);
-        return (
-          <button
-            key={key}
-            className={tool === key ? "active" : ""}
-            aria-pressed={tool === key}
-            aria-label={label}
-            title={`${label} (${shortcut})`}
-            onClick={() => chooseTool(key)}
-          >
-            {icon}
-          </button>
-        );
-      })}
+      {drawChoices.map((c) => (
+        <button key={c.key} type="button" className={c.pressed ? "active" : ""} aria-pressed={c.pressed} aria-label={c.label} title={c.title} onClick={c.run}>
+          {c.icon}
+        </button>
+      ))}
     </div>
   );
   type BoardAction = {

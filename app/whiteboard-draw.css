@@ -76,32 +76,14 @@
   color: var(--muted);
 }
 
-/* Pen or highlighter, the highlighter's widths, the opacity. */
-/* Eight colours and the wheel in two rows of five. */
+/* The highlighter's widths, the opacity; the colours (eight and the
+   wheel) in one even row across the menu (design review: 5 + 4 before). */
 .wb-pen-menu .wb-pen-colors {
-  grid-template-columns: repeat(5, 32px);
-}
-.wb-pen-modes {
-  display: flex;
+  grid-template-columns: repeat(9, 24px);
+  justify-content: space-between;
+  justify-items: center;
   gap: 2px;
-  padding: 2px;
-  border-radius: 9px;
-  background: var(--hover);
-}
-.wb-shape-menu .wb-pen-modes button {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12.5px;
-  border-radius: 7px;
-}
-.wb-shape-menu .wb-pen-modes button.active {
-  background: var(--bg);
-  box-shadow: 0 1px 2px #0002;
+  padding: 4px 2px 6px;
 }
 .wb-pen-width-line.wh0 {
   height: 6px;
@@ -120,10 +102,18 @@
   grid-template-columns: auto minmax(0, 1fr) 3.2em;
   align-items: center;
   gap: 8px;
-  padding: 4px 2px 2px;
+  /* No label margin: the sections keep the same spacing (design review). */
+  margin: 0;
+  padding: 6px 2px;
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--secondary);
+}
+/* The switches below: one more section, separated like the others. */
+.wb-pen-menu .wb-pen-opacity + .wb-check {
+  margin: 0 0 4px;
+  padding: 8px 2px 0;
+  border-top: 1px solid var(--border);
 }
 .wb-pen-opacity input {
   width: 100%;
@@ -136,14 +126,18 @@
 }
 @media (pointer: coarse) {
   .wb-pen-menu .wb-pen-colors {
-    grid-template-columns: repeat(5, 40px);
+    grid-template-columns: repeat(9, 30px);
+  }
+  .wb-pen-menu .wb-pen-colors .wb-swatch {
+    width: 26px;
+    height: 26px;
   }
   .wb-own-color-button {
     width: 28px;
     height: 28px;
   }
-  .wb-shape-menu .wb-pen-modes button {
-    height: 38px;
+  .wb-shape-menu .wb-draw-switch button {
+    min-height: 44px;
   }
 }
 

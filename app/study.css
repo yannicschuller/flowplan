@@ -611,7 +611,11 @@
   .study-focus-title {
     flex: 1;
   }
+  /* Taller on phones: over half the screen instead of a third, so the card –
+     still centred between the counts and the answer bar – fills the view
+     instead of floating in empty space (design review). */
   .study-card {
+    min-height: clamp(240px, 56vh, 520px);
     padding: 22px 18px 24px;
   }
   .study-front .study-text {

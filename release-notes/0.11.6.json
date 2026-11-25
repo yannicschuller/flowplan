@@ -147,6 +147,10 @@
       "issues": [
         541
       ]
+    },
+    {
+      "de": "Feinschliff: Stift, Textmarker, Radierer und Laser in einer Zeile mit den Farben in einer Reihe; Lernkarten auf dem Handy größer; Markdown-Export ohne Seiten mit „Seiten wählen“ direkt im Hinweis, „Aktualisieren“ auf Höhe des Titels.",
+      "en": "Polish: pen, highlighter, eraser and laser in one row with the colours in a single line; flashcards larger on phones; Markdown export without pages has “Choose pages” right in the notice, and “Refresh” sits level with the title."
     }
   ],
   "features": [

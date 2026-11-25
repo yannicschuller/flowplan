@@ -106,9 +106,10 @@ export function MarkdownExportSettings({
           </>
         }
         actions={
-          !choices && (
+          !choices &&
+          status.pages.length > 0 && (
             <button type="button" className="button" onClick={() => void open()}>
-              {status.pages.length ? t("Auswahl ändern", "Change selection") : t("Seiten wählen", "Choose pages")}
+              {t("Auswahl ändern", "Change selection")}
             </button>
           )
         }
@@ -137,9 +138,20 @@ export function MarkdownExportSettings({
             })}
           </ul>
         ) : (
+          // Nothing chosen yet: a plain empty state in the card, with the
+          // button to choose right next to it (design review: a dashed box
+          // inside the card, the button far away in the header).
           !choices && (
-            <div className="setting-row wide">
-              <EmptyState icon={<FileText size={18} />} title={t("Keine Seiten gewählt", "No pages chosen")}>
+            <div className="setting-row wide markdown-export-empty">
+              <EmptyState
+                icon={<FileText size={18} />}
+                title={t("Keine Seiten gewählt", "No pages chosen")}
+                action={
+                  <button type="button" className="button" onClick={() => void open()}>
+                    {t("Seiten wählen", "Choose pages")}
+                  </button>
+                }
+              >
                 {t("Ohne Auswahl entsteht kein Markdown-Export.", "Without a selection there is no Markdown export.")}
               </EmptyState>
             </div>

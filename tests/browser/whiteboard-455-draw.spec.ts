@@ -101,7 +101,7 @@ test("highlighter with its opacity: drawn, stored per stroke, remembered", async
     .toMatchObject({ highlight: true, opacity: 0.5, strokeWidth: 20, stroke: "#ffd43b" });
 
   // The pen keeps its own setting; back to the highlighter after a reload.
-  await menu.getByRole("button", { name: "Normaler Stift", exact: true }).click();
+  await menu.getByRole("button", { name: "Stift", exact: true }).click();
   await expect(menu.getByRole("slider", { name: "Deckkraft" })).toHaveValue("100");
   await menu.getByRole("button", { name: "Textmarker", exact: true }).click();
   await page.reload();
