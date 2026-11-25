@@ -10,6 +10,7 @@ import {
   findSection,
   matchesQuery,
   parseSettingsHash,
+  redirectedSettingsHash,
   settingsHash,
 } from "../lib/settings-sections";
 
@@ -26,7 +27,8 @@ test("section ids are unique per area and belong to a group of that area", () =>
 
 test("addresses: landing page, section, anchor and back", () => {
   assert.deepEqual(parseSettingsHash("#settings"), { area: "settings", section: null, anchor: null, redirected: false });
-  assert.deepEqual(parseSettingsHash("#admin/users"), { area: "admin", section: "users", anchor: null, redirected: false });
+  assert.deepEqual(parseSettingsHash("#settings/instance/users"), { area: "admin", section: "users", anchor: null, redirected: false });
+  assert.deepEqual(parseSettingsHash("#settings/instance"), { area: "admin", section: null, anchor: null, redirected: false });
   assert.deepEqual(parseSettingsHash("#settings/account/passkeys"), { area: "settings", section: "account", anchor: "passkeys", redirected: false });
   assert.equal(parseSettingsHash("#home"), null);
   assert.equal(parseSettingsHash("#page=abc"), null);
@@ -35,8 +37,31 @@ test("addresses: landing page, section, anchor and back", () => {
   // Admin sections are not settings sections.
   assert.equal(parseSettingsHash("#settings/monitoring")?.section, null);
   for (const s of SETTINGS_SECTIONS) assert.deepEqual(parseSettingsHash(settingsHash({ area: s.area, section: s.id }))?.section, s.id);
-  assert.equal(settingsHash({ area: "admin" }), "#admin");
+  assert.equal(settingsHash({ area: "admin" }), "#settings/instance");
+  assert.equal(settingsHash({ area: "admin", section: "ai", anchor: "quotas" }), "#settings/instance/ai/quotas");
   assert.equal(settingsHash({ area: "settings", section: "account", anchor: "passkeys" }), "#settings/account/passkeys");
+});
+
+// #532: settings and administration are one screen; the instance's
+// sections have their own addresses, the old ones lead there.
+test("the administration's old addresses lead to the instance part of the settings", () => {
+  assert.deepEqual(parseSettingsHash("#admin"), { area: "admin", section: null, anchor: null, redirected: true });
+  assert.deepEqual(parseSettingsHash("#admin/users"), { area: "admin", section: "users", anchor: null, redirected: true });
+  assert.equal(redirectedSettingsHash("#admin"), "#settings/instance");
+  assert.equal(redirectedSettingsHash("#admin/monitoring/errors"), "#settings/instance/monitoring/errors");
+  assert.equal(redirectedSettingsHash("#admin/operations"), "#settings/instance/monitoring");
+  assert.equal(redirectedSettingsHash("#admin/threats/incident/abc"), "#settings/instance/threats/incident/abc");
+  assert.equal(redirectedSettingsHash("#settings/instance/threats/incident/abc"), null);
+  assert.equal(redirectedSettingsHash("#settings/account"), null);
+  assert.equal(redirectedSettingsHash("#home"), null);
+  // The ids both areas have (ai, security, extensions) stay apart.
+  for (const id of ["ai", "security", "extensions"]) {
+    assert.equal(parseSettingsHash(`#settings/${id}`)?.area, "settings");
+    assert.equal(parseSettingsHash(`#settings/instance/${id}`)?.area, "admin");
+    assert.equal(parseSettingsHash(`#settings/instance/${id}`)?.section, id);
+  }
+  // "instance" is no personal section (it is the instance's address).
+  assert.equal(findSection("settings", "instance"), null);
 });
 
 test("every tab of the old settings and administration leads to a section", () => {
@@ -48,6 +73,7 @@ test("every tab of the old settings and administration leads to a section", () =
     for (const [old, now] of Object.entries(map)) {
       assert.ok(findSection(area, now), `${area}/${old} → ${now} does not exist`);
       assert.equal(parseSettingsHash(`#${area}/${old}`)?.section, now);
+      assert.equal(parseSettingsHash(`${settingsHash({ area })}/${old}`)?.section, now);
     }
   assert.equal(parseSettingsHash("#settings/integrations")?.redirected, true);
   assert.equal(parseSettingsHash("#admin/operations")?.section, "monitoring");

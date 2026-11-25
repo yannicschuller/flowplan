@@ -78,10 +78,11 @@ export function pageLocationHash(target: PageLocation): string {
   return parsePageLocation(hash) ? hash : "#inbox";
 }
 // Where a notification leads beyond pages (notifications.link): only
-// in-app hash routes of the settings and the administration ("#admin/…",
-// "#settings/…" with plain path segments) and the screen "#study" (the
+// in-app hash routes of the settings ("#settings/…", the instance's
+// "#settings/instance/…" and the old "#admin/…" of notifications made
+// before #532, with plain path segments) and the screen "#study" (the
 // study reminder) – never another address.
-const notificationLink = /^(#(admin|settings)(\/[A-Za-z0-9_-]{1,64}){0,3}|#study)$/;
+const notificationLink = /^(#admin(\/[A-Za-z0-9_-]{1,64}){0,3}|#settings(\/instance)?(\/[A-Za-z0-9_-]{1,64}){0,3}|#study)$/;
 export const isNotificationLink = (link: unknown): link is string =>
   typeof link === "string" && link.length <= 200 && notificationLink.test(link);
 export function notificationUrl(notification: {
@@ -96,7 +97,7 @@ export function notificationUrl(notification: {
     if (isNotificationLink(notification.link)) return `/${notification.link}`;
     // Incidents reported before notifications had a target (kind
     // "security", "Sicherheit: …"): the administration's security page.
-    if (notification.kind === "security" && notification.body?.startsWith("Sicherheit: ")) return "/#admin/threats";
+    if (notification.kind === "security" && notification.body?.startsWith("Sicherheit: ")) return "/#settings/instance/threats";
   }
   // A block of the page (a meeting's reminder, lib/meeting-reminders.ts): "block:<id>".
   const block = notification.page_id && typeof notification.link === "string" ? /^block:([\w-]{1,64})$/.exec(notification.link)?.[1] : undefined;

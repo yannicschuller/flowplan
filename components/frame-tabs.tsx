@@ -102,13 +102,14 @@ if (typeof window !== "undefined") window.addEventListener("hashchange", () => a
 // The page a place shows (null: a screen of the app).
 export const pageOfPlace = (place: string | null | undefined) => (place?.startsWith("page=") ? parsePageLocation(place)?.pageId ?? null : null);
 // Whether a kept place still exists for this person: pages they can read
-// and that are not in the trash, the administration only for admins.
+// and that are not in the trash, the instance's settings (and the old
+// administration, #532) only for admins.
 export const validPlaceIn =
   (pages: readonly { id: string; deleted_at: string | null }[], admin: boolean) =>
   (place: string) => {
     const page = pageOfPlace(place);
     if (page) return pages.some((p) => p.id === page && !p.deleted_at);
-    return !place.startsWith("admin") || admin;
+    return !(place.startsWith("admin") || place.startsWith("settings/instance")) || admin;
   };
 // Which frame an element belongs to (null: neither, e.g. the sidebar).
 export const frameOfElement = (el: Element | null | undefined) =>

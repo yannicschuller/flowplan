@@ -4,7 +4,7 @@
 // render a section are attached in components/settings/registry.tsx.
 //
 // Every section has a stable id: it is the address of the section
-// (#settings/<id>, #admin/<id>) and must not change once released. Texts are
+// (#settings/<id>, #settings/instance/<id>) and must not change once released. Texts are
 // { de, en } pairs (French and further languages come from locales/ via
 // `npm run i18n`).
 //
@@ -946,26 +946,66 @@ export type SettingsRoute = { area: SettingsArea; section: string | null; anchor
 export const findSection = (area: SettingsArea, id: string | null | undefined) =>
   id ? SETTINGS_SECTIONS.find((s) => s.area === area && s.id === id) || null : null;
 
-// "#settings", "#admin/users", "#settings/account/passkeys" → the route;
-// anything else → null. Unknown sections fall back to the landing page, old
-// tab ids to their new section.
-export function parseSettingsHash(hash: string): (SettingsRoute & { redirected: boolean }) | null {
+// One screen, one address space (#532): the personal settings at
+// #settings/<section>[/<anchor>], the instance (area "admin", admins only)
+// at #settings/instance/<section>[/<anchor>] – "instance" is no section id
+// of the personal settings, so both stay unique. #settings/instance alone
+// is the start page at its instance overview. The old addresses of the
+// separate administration (#admin, #admin/<section>/…) still lead there:
+// they come back as `redirected` (the screen replaces the address, no new
+// history step). `tail` keeps what follows the anchor (an incident's own
+// page, #settings/instance/threats/incident/<id>).
+export const INSTANCE_SEGMENT = "instance";
+export type ParsedSettingsHash = SettingsRoute & { redirected: boolean; tail?: string };
+export function parseSettingsHash(hash: string): ParsedSettingsHash | null {
   const parts = hash.replace(/^#/, "").split("/");
-  const area = parts[0];
-  if (area !== "settings" && area !== "admin") return null;
-  const raw = decodeURIComponent(parts[1] || "");
-  const anchor = parts[2] ? decodeURIComponent(parts[2]) : null;
-  if (!raw) return { area, section: null, anchor: null, redirected: false };
+  let area: SettingsArea;
+  let rest: string[];
+  let redirected = false;
+  if (parts[0] === "settings" && parts[1] === INSTANCE_SEGMENT) {
+    area = "admin";
+    rest = parts.slice(2);
+  } else if (parts[0] === "settings") {
+    area = "settings";
+    rest = parts.slice(1);
+  } else if (parts[0] === "admin") {
+    area = "admin";
+    rest = parts.slice(1);
+    redirected = true;
+  } else return null;
+  const raw = decodeURIComponent(rest[0] || "");
+  const anchor = rest[1] ? decodeURIComponent(rest[1]) : null;
+  const tail = rest.length > 2 ? rest.slice(2).join("/") : undefined;
+  const route = (section: string | null, a: string | null, moved: boolean): ParsedSettingsHash => ({
+    area,
+    section,
+    anchor: a,
+    redirected: redirected || moved,
+    ...(tail && section && a ? { tail } : {}),
+  });
+  if (!raw) return route(null, null, false);
   const moved = anchor ? LEGACY_ANCHORS[area][`${raw}/${anchor}`] : undefined;
-  if (moved && findSection(area, moved.section)) return { area, section: moved.section, anchor: moved.anchor, redirected: true };
-  if (findSection(area, raw)) return { area, section: raw, anchor, redirected: false };
+  if (moved && findSection(area, moved.section)) return route(moved.section, moved.anchor, true);
+  if (findSection(area, raw)) return route(raw, anchor, false);
   const legacy = LEGACY_SECTIONS[area][raw];
-  if (legacy && findSection(area, legacy)) return { area, section: legacy, anchor, redirected: true };
-  return { area, section: null, anchor: null, redirected: true };
+  if (legacy && findSection(area, legacy)) return route(legacy, anchor, true);
+  return route(null, null, true);
 }
 
-export function settingsHash(route: { area: SettingsArea; section?: string | null; anchor?: string | null }) {
-  return `#${route.area}${route.section ? `/${encodeURIComponent(route.section)}` : ""}${route.section && route.anchor ? `/${encodeURIComponent(route.anchor)}` : ""}`;
+// The address of a route; `tail` as parseSettingsHash returns it.
+export function settingsHash(route: { area: SettingsArea; section?: string | null; anchor?: string | null; tail?: string }) {
+  const base = route.area === "admin" ? `#settings/${INSTANCE_SEGMENT}` : "#settings";
+  if (!route.section) return base;
+  const anchor = route.anchor ? `/${encodeURIComponent(route.anchor)}${route.tail ? `/${route.tail}` : ""}` : "";
+  return `${base}/${encodeURIComponent(route.section)}${anchor}`;
+}
+
+// The address an old or moved one stands for ("#admin/users" →
+// "#settings/instance/users"), or null when it is current or no settings
+// address at all.
+export function redirectedSettingsHash(hash: string): string | null {
+  const parsed = parseSettingsHash(hash);
+  return parsed?.redirected ? settingsHash(parsed) : null;
 }
 
 // Matches a query against texts in every language at once: a French reader

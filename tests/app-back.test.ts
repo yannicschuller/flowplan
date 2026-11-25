@@ -17,7 +17,9 @@ test("places: pages with their records and threads, settings areas, screens", ()
   assert.equal(locationKey(`#page=${A}`), `page=${A}`);
   assert.equal(locationKey(`#page=${A}&row=${R}`), `page=${A}`);
   assert.equal(locationKey("#settings/account/passkeys"), "settings");
-  assert.equal(locationKey("#admin/monitoring"), "admin");
+  // One screen for the settings and the instance (#532), old addresses too.
+  assert.equal(locationKey("#settings/instance/monitoring"), "settings");
+  assert.equal(locationKey("#admin/monitoring"), "settings");
   assert.equal(locationKey("#inbox"), "inbox");
   // Quick actions and broken links are no place.
   assert.equal(locationKey("#search"), null);
@@ -32,7 +34,8 @@ test("parts of a page close before the page is left", () => {
 
 test("a section of the settings or the administration goes to its landing page", () => {
   assert.deepEqual(parentLocation("settings/account/passkeys", ["home", "settings"]), { hash: "settings", pop: false });
-  assert.deepEqual(parentLocation("admin/monitoring", ["admin"]), { hash: "admin", pop: false });
+  assert.deepEqual(parentLocation("settings/instance/monitoring", ["settings"]), { hash: "settings", pop: false });
+  assert.deepEqual(parentLocation("admin/monitoring", ["settings"]), { hash: "settings", pop: false });
   // The landing page goes where the person came from.
   assert.deepEqual(parentLocation("settings", [`page=${A}`, "settings"]), { hash: `page=${A}`, pop: true });
 });

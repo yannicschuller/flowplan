@@ -1155,7 +1155,7 @@ function migrate(d: DatabaseSync) {
   // Schema 81 – incidents of the instance as their own notification kind
   // "incident" (lib/notification-kinds.ts), for administrators: where a
   // notification leads beyond pages (notifications.link, e.g.
-  // "#admin/threats/incident/<id>") and from which severity an
+  // "#settings/instance/threats/incident/<id>") and from which severity an
   // administrator wants them (notification_prefs.min_severity of the
   // "incident" row). Until now incidents came as "security"; whoever
   // switched channels off there keeps them off for incidents – copied once,

@@ -11,10 +11,10 @@ export type PlaybookStep = Text & { action?: PlaybookAction; link?: { href: stri
 export type Playbook = { meaning: Text; harmless: Text; steps: PlaybookStep[] };
 
 const ACCOUNT_CHECK = { href: "#settings/security", de: "Sicherheitscheck", en: "Security check" };
-const PEOPLE = { href: "#admin/users", de: "Personen", en: "People" };
-const SIGN_IN = { href: "#admin/signin", de: "Anmeldung & SSO", en: "Sign-in & SSO" };
-const AUDIT = { href: "#admin/audit", de: "Aktivitätsprotokoll", en: "Activity log" };
-const SETUP = { href: "#admin/threats/setup", de: "Anbindung", en: "Setup" };
+const PEOPLE = { href: "#settings/instance/users", de: "Personen", en: "People" };
+const SIGN_IN = { href: "#settings/instance/signin", de: "Anmeldung & SSO", en: "Sign-in & SSO" };
+const AUDIT = { href: "#settings/instance/audit", de: "Aktivitätsprotokoll", en: "Activity log" };
+const SETUP = { href: "#settings/instance/threats/setup", de: "Anbindung", en: "Setup" };
 const RESOLVE: PlaybookStep = {
   de: "Wenn alles geklärt ist, den Vorfall als erledigt markieren. Kommt es wieder, öffnet die Regel einen neuen.",
   en: "Once everything is clear, mark the incident as resolved. If it happens again, the rule opens a new one.",
@@ -306,7 +306,7 @@ export const securityPlaybooks: Record<SecurityRule, Playbook> = {
     steps: [
       { de: "Im Verlauf nachsehen, welches Konto es war und was eingefügt wurde.", en: "See in the timeline which account it was and what was inserted." },
       { de: "Ist das Konto fremd oder übernommen: Konto sperren.", en: "If the account is foreign or taken over: disable it.", action: "disable" },
-      { de: "Kam es über einen Freigabelink: den Link unter Offene Zugänge widerrufen.", en: "If it came through a share link: revoke it under Open ways in.", link: { href: "#admin/threats/access", de: "Offene Zugänge", en: "Open ways in" } },
+      { de: "Kam es über einen Freigabelink: den Link unter Offene Zugänge widerrufen.", en: "If it came through a share link: revoke it under Open ways in.", link: { href: "#settings/instance/threats/access", de: "Offene Zugänge", en: "Open ways in" } },
       { de: "Die Adresse sperren.", en: "Block the address.", action: "block" },
       RESOLVE,
     ],

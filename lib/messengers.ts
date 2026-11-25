@@ -730,7 +730,7 @@ export async function queueOpsAlert(title: (say: (de: string, en: string) => str
         t.id,
         `${await instanceName()} · ${title(say)}`,
         detail,
-        `${appUrl()}/#admin/monitoring`,
+        `${appUrl()}/#settings/instance/monitoring`,
         now,
         now,
       );
