@@ -201,6 +201,15 @@ test("new tab with Alt+T and +, pinned tabs", async ({ page }, info) => {
   await page.getByRole("menuitem", { name: "Lösen" }).click();
   await expect(tabsOf(page).nth(0)).not.toHaveClass(/pinned/);
   await expect(tabsOf(page).nth(0).getByRole("button", { name: "Seite C schließen" })).toHaveCount(1);
+
+  // A command picked after "+" opens its screen in the new tab, not in the
+  // one in front (My tasks).
+  await bar(page).getByRole("button", { name: "Neuer Tab" }).click();
+  await pick("Meine Aufgaben");
+  await expect(titles(page)).toHaveCount(3);
+  await expect(titles(page)).toContainText(["Seite C", "Seite D", "Meine Aufgaben"]);
+  await expect(tabsOf(page).filter({ hasText: "Meine Aufgaben" })).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/#tasks$/);
   expect(errors).toEqual([]);
 });
 

@@ -70,6 +70,13 @@
       "issues": [
         539
       ]
+    },
+    {
+      "de": "Neuer Tab: Bildschirme wie „Meine Aufgaben“, „Posteingang“ oder „Einstellungen“ aus der Schnellsuche öffnen sich nach dem „+“ der Tableiste im neuen Tab statt im aktuellen.",
+      "en": "New tab: screens such as My tasks, Inbox or Settings picked in the quick search after the tab bar's \"+\" open in the new tab instead of the current one.",
+      "issues": [
+        542
+      ]
     }
   ],
   "improvements": [

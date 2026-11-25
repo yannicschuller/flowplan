@@ -951,6 +951,15 @@ export default function WorkspaceApp({
   // Tabs and frames (#279): on tablets and computers, not on phones.
   const tabletUp = useMedia("(min-width: 768px)");
   const newTabSearch = useRef<(frame: number) => void>(() => {});
+  // The frame a command picked for a new tab opens its screen in (runCommand).
+  const commandTab = useRef<number | null>(null);
+  // A screen or settings address for that new tab; false: open it here.
+  const toPlace = (place: string) => {
+    const frame = commandTab.current;
+    if (frame === null) return false;
+    commandTab.current = null;
+    return tabs.openPlace(place, "tab", frame);
+  };
   const tabs = useFrameTabs({
     onNewTab: (frame) => newTabSearch.current(frame),
     enabled: tabletUp,
@@ -2190,6 +2199,9 @@ export default function WorkspaceApp({
   // `keepNav`: the drawer on phones stays open – a workspace switched in
   // the sidebar shows its pages there to pick one (see switchWorkspace).
   function go(s: Screen, keepNav = false) {
+    // A command picked after the "+" of the tab bar: the screen opens in
+    // the new tab, not in the one in front.
+    if (toPlace(s)) return;
     screenRef.current = s;
     transitionView(
       () => {
@@ -4327,11 +4339,11 @@ export default function WorkspaceApp({
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
-    { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => (location.hash = "settings/about") },
+    { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => void (toPlace("settings/about") || (location.hash = "settings/about")) },
     { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
     // The instance's part of the settings (#532; formerly "Administration").
     ...(boot.user.isAdmin
-      ? [{ label: t("Einstellungen: Instanz", "Settings: instance"), keywords: t("admin administration instanz betrieb", "admin administration instanz betrieb instance operations"), icon: ShieldCheck, run: () => (location.hash = settingsHash({ area: "admin" })) }]
+      ? [{ label: t("Einstellungen: Instanz", "Settings: instance"), keywords: t("admin administration instanz betrieb", "admin administration instanz betrieb instance operations"), icon: ShieldCheck, run: () => void (toPlace(settingsHash({ area: "admin" }).slice(1)) || (location.hash = settingsHash({ area: "admin" }))) }]
       : []),
     { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
     { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
@@ -4432,8 +4444,17 @@ export default function WorkspaceApp({
           .slice(0, query.startsWith(">") ? 20 : 4)
       : [];
   const runCommand = (action: CommandAction) => {
+    const intoTab = paletteTab;
     closeSearch();
-    action.run();
+    // After the "+" of the tab bar (#444): a command that leads to a screen
+    // (My tasks, Inbox, Settings …) opens it in a new tab of that frame;
+    // dialogs and other commands run as usual.
+    commandTab.current = intoTab !== null && tabs.on ? intoTab : null;
+    try {
+      action.run();
+    } finally {
+      commandTab.current = null;
+    }
   };
   // The rows of the palette in order: hits, recently viewed pages (while
   // nothing is typed), then the commands – ">" shows commands only.
