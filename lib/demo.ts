@@ -144,7 +144,7 @@ export async function endDemo(userId: string) {
       userId,
     ))
       await purgeWorkspace(w.id);
-    for (const table of ["notifications", "favorites", "row_favorites", "push_subscriptions", "saved_searches", "collection_order", "notification_prefs"])
+    for (const table of ["notifications", "favorites", "row_favorites", "today_favorites", "push_subscriptions", "saved_searches", "collection_order", "notification_prefs"])
       try {
         await inSavepoint(async () => await run(`DELETE FROM ${table} WHERE user_id=?`, userId));
       } catch {}

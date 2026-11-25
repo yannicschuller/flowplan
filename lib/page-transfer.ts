@@ -71,6 +71,11 @@ export async function transferPages(
     toWorkspace,
   );
   await run(
+    `DELETE FROM today_favorites WHERE page_id IN (${placeholders}) AND user_id NOT IN (${member})`,
+    ...ids,
+    toWorkspace,
+  );
+  await run(
     `UPDATE pages SET workspace_id=? WHERE id IN (${placeholders})`,
     toWorkspace,
     ...ids,

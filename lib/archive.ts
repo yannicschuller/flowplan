@@ -218,6 +218,8 @@ export const archiveSchema = z.object({
   exportedBy: uid.optional(),
   workspace: z.object({ name: str, icon: symbol }),
   favorites: z.array(uid).max(500).default([]),
+  // Journals with a "Heute" favourite of the exporter (#537).
+  todayFavorites: z.array(uid).max(500).default([]),
   // The workspace's tags and property definitions (#70), also those no
   // exported page uses.
   pageTaxonomy: z
@@ -523,6 +525,12 @@ async function snapshotFor(user: Identity, wid: string) {
         })()),
     favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
+      user.id,
+    ))
+      .filter((f) => pageIds.has(f.page_id))
+      .map((f) => f.page_id),
+    todayFavorites: (await all<{ page_id: string }>(
+      "SELECT page_id FROM today_favorites WHERE user_id=? ORDER BY created_at,page_id",
       user.id,
     ))
       .filter((f) => pageIds.has(f.page_id))
@@ -1705,6 +1713,14 @@ async function importEntries(
             "INSERT INTO favorites(user_id,page_id) VALUES(?,?)",
             user.id,
             pageMap.get(favorite)!,
+          );
+      for (const favorite of data.todayFavorites)
+        if (pageMap.has(favorite) && data.pages.find((p) => p.id === favorite)?.kind === "journal")
+          await run(
+            "INSERT INTO today_favorites(user_id,page_id,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING",
+            user.id,
+            pageMap.get(favorite)!,
+            Date.now(),
           );
       for (const template of data.templates) {
         let payload;

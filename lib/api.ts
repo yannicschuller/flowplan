@@ -289,6 +289,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
+import { todayFavoriteIds, setTodayFavorite } from "./today-favorites";
 import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { applyOptionRenames } from "./option-renames-server";
@@ -507,6 +508,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
     )).map((f) => f.page_id),
+    // Journals with a "Heute" favourite (#537, lib/today-favorites.ts).
+    todayFavorites: await todayFavoriteIds(user.id, pages),
     // Own and shared collections, in the person's order (lib/collections.ts).
     collections: await listCollections(user, workspace.id),
     // Tags and property definitions, and the tags of the pages shown
@@ -2386,6 +2389,9 @@ async function runCommand(
             user.id,
             pid(),
           );
+        break;
+      case "favorite.today":
+        await setTodayFavorite(user, pid(), z.boolean().parse(b.value));
         break;
       case "linked.command":
         result = await mutateLinkedDatabase(user, b);
@@ -4509,6 +4515,7 @@ async function runCommand(
         "workflow.validate",
         "notification.read",
         "favorite",
+        "favorite.today",
         // Studying is private (docs/specs/flashcards.md §13.3): no trace in
         // the activity log.
         "study.queue",

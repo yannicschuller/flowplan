@@ -400,6 +400,8 @@ export type Bootstrap = {
   // Journals whose days show differently in the page tree (lib/journal-nav.ts).
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
+  // Journals whose "Heute" link is a favourite (#537, lib/today-favorites.ts).
+  todayFavorites?: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string; icon?: string }[];
   // Records that readable pages sit under (#231, lib/record-pages.ts).
   recordParents?: { pageId: string; rowId: string; title: string; icon: string }[];

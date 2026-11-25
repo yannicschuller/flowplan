@@ -152,6 +152,13 @@
       "issues": [
         535
       ]
+    },
+    {
+      "de": "Ein Journal kann mit „Heute zu Favoriten“ (Seitenmenü) als „<Journal> – Heute“ in die Favoriten: Der Link öffnet immer den aktuellen Tag und springt um Mitternacht weiter – unabhängig vom Favoriten der Journalseite.",
+      "en": "A journal can go into your favourites as “<journal> – Today” with “Add today to favourites” (page menu): the link always opens the current day and moves on at midnight – separate from the journal page's own favourite.",
+      "issues": [
+        537
+      ]
     }
   ]
 }
