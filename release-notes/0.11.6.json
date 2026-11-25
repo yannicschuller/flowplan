@@ -133,6 +133,13 @@
     {
       "de": "Einstellungen: „Aktive Personen und Serverlast“ ist zurück – Personen, CPU und RAM in einem breiten Diagramm oben in „Instanz auf einen Blick“. Neustarts kommen seitenweise (20, „Weitere laden“) und lassen sich auf unerwartete filtern.",
       "en": "Settings: “Active people and server load” is back – people, CPU and RAM in one wide chart on top of “Instance at a glance”. Restarts come in pages (20, “Load more”) and can be filtered to unexpected ones."
+    },
+    {
+      "de": "Formeln mit der Tastatur: Rückschritt hinter einer Formel und die Pfeiltasten öffnen sie zum Bearbeiten, statt sie zu löschen oder zu überspringen; an ihrem Rand führen die Pfeiltasten wieder hinaus. Der Editor erscheint direkt an der Formel.",
+      "en": "Formulas from the keyboard: Backspace after a formula and the arrow keys open it for editing instead of deleting or skipping it; at its edges the arrow keys lead back out. The editor appears right at the formula.",
+      "issues": [
+        541
+      ]
     }
   ],
   "features": [

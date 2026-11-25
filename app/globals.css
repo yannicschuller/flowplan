@@ -22181,6 +22181,42 @@ h3 .block-reactions {
   white-space: nowrap;
   max-width: 320px;
 }
+/* An existing formula's editor at the formula (#541,
+   components/math-editor.tsx): below it, above where there is no room;
+   placed by script with --popover-left / --popover-top (CSSOM). Hidden
+   until placed. On phones the dialog instead. */
+.math-popover {
+  position: fixed;
+  top: var(--popover-top, 0px);
+  left: var(--popover-left, 0px);
+  z-index: 60;
+  width: min(440px, calc(100vw - 16px));
+  max-height: var(--popover-max-height, 70vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.math-popover:not([data-side]) {
+  visibility: hidden;
+}
+.math-popover p.muted {
+  font-size: 13px;
+}
+.math-popover .math-preview {
+  margin: 8px 0;
+  padding: 10px 12px;
+  min-height: 40px;
+}
+.math-popover .modal-actions {
+  margin-top: 10px;
+}
 /* Formula editor: building blocks and results. */
 .math-snippets {
   display: flex;

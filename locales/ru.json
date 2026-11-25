@@ -10689,6 +10689,7 @@
   "Saving failed": "Не удалось сохранить",
   "Saving failed – trying again": "Не удалось сохранить – повторная попытка",
   "Saving failed.": "Не удалось сохранить.",
+  "Saving it empty removes the formula.": "Если сохранить пустой, формула будет удалена.",
   "Saving takes them out of the template.": "При сохранении они будут удалены из шаблона.",
   "Saving these options also changes records, filters and database rules:": "При сохранении этих вариантов также изменятся записи, фильтры и правила базы данных:",
   "Saw the latest state": "Видел(а) последнюю версию",
