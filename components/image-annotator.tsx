@@ -29,7 +29,7 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { drawsWith, isEraser, notePen, notePenActivity, onPencilAction, palmLikely, penOnlySetting, samples } from "@/lib/stylus";
+import { drawsWith, isEraser, notePen, notePenActivity, onPencilAction, palmLikely, penOnlySetting, samples, stylusTouch } from "@/lib/stylus";
 import { FRAME_VIEW, distance, frameZoom, framePan, framePinch, midpoint, pinchFactor, resizeView, settleView, wheelFactor, type FrameView, type XY } from "@/lib/pinch-zoom";
 import { MARKUP_ZOOM, clampView, imageToScreen, pixelScale, screenToImage, stepView, wheelPan } from "@/lib/image-markup-view";
 import { Modal } from "./ui";
@@ -470,16 +470,25 @@ export function ImageAnnotator({
       event.preventDefault();
       start = null;
     };
+    // The Apple Pencil on the image (#548): its touches are cancelled, so
+    // WebKit starts no Scribble, callout or text selection under it that
+    // would take the touch over and cut the stroke (the text field keeps it).
+    const penOnCanvas = (event: TouchEvent) => stylusTouch(event) && event.target === canvas.current;
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.cancelable && penOnCanvas(event)) event.preventDefault();
+    };
     const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length > 1 && event.cancelable) event.preventDefault();
+      if ((event.touches.length > 1 || penOnCanvas(event)) && event.cancelable) event.preventDefault();
     };
     const options = { passive: false } as const;
     box.addEventListener("wheel", onWheel, options);
     box.addEventListener("gesturestart", onGestureStart, options);
     box.addEventListener("gesturechange", onGestureChange, options);
     box.addEventListener("gestureend", onGestureEnd, options);
+    box.addEventListener("touchstart", onTouchStart, options);
     box.addEventListener("touchmove", onTouchMove, options);
     return () => {
+      box.removeEventListener("touchstart", onTouchStart);
       box.removeEventListener("wheel", onWheel);
       box.removeEventListener("gesturestart", onGestureStart);
       box.removeEventListener("gesturechange", onGestureChange);

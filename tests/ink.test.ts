@@ -1,6 +1,7 @@
 // The ink engine (lib/ink): coordinates, the stored format, geometry
 // (erasers, lasso, snapping), undo/redo, the Pencil setting and writing ink
 // into a PDF.
+import { penPolygons } from "../lib/pen-outline";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PDFDocument, PDFName, degrees } from "pdf-lib";
@@ -152,7 +153,7 @@ test("strokes: outline with pressure, plain line without; hits and bounds", () =
     [100, 0, 0.4],
   ]);
   assert.equal(strokePath(pressed).fill, true);
-  const outline = strokeOutline(strokePoints(pressed), 2);
+  const outline = penPolygons(strokeOutline(strokePoints(pressed), 2)).flat();
   // Thicker where pressed harder.
   const at = (x: number) => Math.max(...outline.filter(([px]) => Math.abs(px - x) < 0.01).map(([, y]) => Math.abs(y)));
   assert.ok(at(50) > at(0));

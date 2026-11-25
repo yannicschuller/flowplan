@@ -172,3 +172,65 @@ test("Scribble next to an open text field keeps it open", async ({ page }, testI
   await expect(editor).toHaveCount(0);
   await expect(wb.locator(".wb-sticky", { hasText: "Hallo" })).toBeVisible();
 });
+
+// #548: an Apple Pencil stroke had gaps – a slow, shaky stroke with sharp
+// turns and readings of 0 is one filled stroke without holes along the pen's
+// path (lib/pen-outline.ts); a pointercancel from the system keeps what was
+// drawn, and moves after it add no stray stroke.
+test("a shaky pen stroke with sharp turns has no gaps; a cancel keeps the stroke", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers the pen.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { wb, at } = await board(page);
+  const cdp = await page.context().newCDPSession(page);
+  await boardDraw(wb, "Stift");
+  const base = { pointerType: "pen" as const, button: "left" as const, buttons: 1 };
+  // A zigzag with hairpin turns in small steps, every third reading 0.
+  const path: Point[] = [];
+  for (let i = 0; i <= 120; i++) {
+    const leg = Math.floor(i / 20),
+      t = (i % 20) / 20;
+    path.push(at(-120 + i * 2, (leg % 2 ? 40 - 80 * t : -40 + 80 * t) + (i % 2 ? 0.5 : -0.5)));
+  }
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: path[0].x, y: path[0].y, clickCount: 1, ...base, force: 0 });
+  for (const [i, p] of path.entries()) await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: p.x, y: p.y, ...base, force: i % 3 ? 0.4 + (i % 7) * 0.05 : 0 });
+  const end = path[path.length - 1];
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: end.x, y: end.y, clickCount: 1, ...base });
+  await expect(wb.locator(".wb-pen")).toHaveCount(1);
+  const stroke = wb.locator(".wb-pen path").first();
+  await expect(stroke).toHaveAttribute("stroke", "none");
+  // Every point the pen passed is inside the filled stroke.
+  const missed = await stroke.evaluate((el, points) => {
+    const shape = el as SVGPathElement;
+    const toLocal = shape.getScreenCTM()!.inverse();
+    return points.filter((p) => !shape.isPointInFill(new DOMPoint(p.x, p.y).matrixTransform(toLocal))).length;
+  }, path.slice(2, -2));
+  expect(missed).toBe(0);
+
+  // The system cancels the pen halfway (pointercancel); the browser goes on
+  // sending moves for it.
+  await page.evaluate(() => {
+    const svg = document.querySelector(".wb-canvas")!;
+    svg.addEventListener(
+      "pointerdown",
+      (e) => {
+        const down = e as PointerEvent;
+        (window as unknown as { cancelPen: () => void }).cancelPen = () =>
+          svg.dispatchEvent(new PointerEvent("pointercancel", { pointerId: down.pointerId, pointerType: "pen", bubbles: true, clientX: down.clientX, clientY: down.clientY }));
+      },
+      { once: true },
+    );
+  });
+  const from = at(-120, 120),
+    to = at(120, 120);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: from.x, y: from.y, clickCount: 1, ...base, force: 0.5 });
+  for (let i = 1; i <= 10; i++) {
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: from.x + ((to.x - from.x) * i) / 10, y: from.y, ...base, force: 0.5 });
+    if (i === 5) await page.evaluate(() => (window as unknown as { cancelPen: () => void }).cancelPen());
+  }
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, clickCount: 1, ...base });
+  await expect(wb.locator(".wb-pen")).toHaveCount(2);
+  const kept = (await wb.locator(".wb-pen").nth(1).boundingBox())!;
+  expect(kept.width).toBeGreaterThan(80);
+  expect(errors).toEqual([]);
+});

@@ -3,6 +3,13 @@
     {
       "de": "Die Fußzeile von E-Mails erscheint jetzt auch auf Französisch, Russisch und Chinesisch statt auf Englisch.",
       "en": "The footer of e-mails now appears in French, Russian and Chinese too instead of English."
+    },
+    {
+      "de": "Mit dem Apple Pencil gezogene Linien haben in Notizbuch, PDF-Anmerkungen und Whiteboard keine Lücken mehr: Druckstriche werden ohne Löcher gefüllt, auch bei engen Kurven und langsamem Schreiben.",
+      "en": "Apple Pencil strokes in notebooks, PDF annotations and whiteboards no longer have gaps: pressure strokes are filled without holes, also in tight turns and when writing slowly.",
+      "issues": [
+        548
+      ]
     }
   ],
   "improvements": [],

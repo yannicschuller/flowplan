@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPalmGuard, drawsWith, forgetPen, isEraser, nearBox, notePenActivity, PALM_MS, PALM_SIZE, palmLikely, palmSized, penNear, pushPressure, SCRIBBLE_MARGIN, stylusTouch, writingInField, type PressureTrack } from "../lib/stylus";
-import { pressureOutline } from "../lib/whiteboard-tools";
+import { pressurePieces } from "../lib/whiteboard-tools";
+import { penPolygons } from "../lib/pen-outline";
 
 const track = (): PressureTrack => ({ pressures: [], measured: false });
 
@@ -52,8 +53,8 @@ test("pen pressure follows the pen, smoothed: no wobble from sensor noise", () =
     pushPressure(firm, 1);
     pushPressure(soft, 0.1);
   }
-  const outline = (p: number[]) => pressureOutline(p.map((v, i) => ({ x: i * 20, y: 0, p: v })), 10);
-  const spread = (path: string) => Math.max(...path.match(/-?\d+(\.\d+)?/g)!.map(Number).filter((_, i) => i % 2 === 1).map(Math.abs));
+  const outline = (p: number[]) => pressurePieces(p.map((v, i) => ({ x: i * 20, y: 0, p: v })), 10);
+  const spread = (pieces: ReturnType<typeof pressurePieces>) => Math.max(...penPolygons(pieces).flat().map(([, y]) => Math.abs(y)));
   assert.ok(spread(outline(firm.pressures)) > spread(outline(soft.pressures)) * 2);
 });
 
@@ -170,5 +171,22 @@ test("palm rejection: the hand stays the hand until it lifts; a finger with the 
   notePenActivity({ pointerType: "pen", buttons: 1 }, now + 10_010);
   assert.equal(guard.check([early], now + 10_020), true);
   guard.clear();
+  forgetPen();
+});
+
+test("palm rejection never takes the pen itself, also while it draws (#548)", () => {
+  forgetPen();
+  const now = 2_000_000;
+  // The pen down and drawing, with readings of 0 and buttons 0 in between.
+  notePenActivity({ pointerType: "pen", buttons: 1 }, now);
+  for (let t = 0; t < 3000; t += 16) {
+    notePenActivity({ pointerType: "pen", buttons: t % 160 ? 1 : 0 }, now + t);
+    assert.equal(palmLikely({ pointerType: "pen" }, now + t), false);
+    assert.equal(drawsWith({ pointerType: "pen" }, true), true);
+  }
+  // The pen's own touch in the touch events counts as the hand there only
+  // to cancel it (no scrolling), which the pen needs anyway.
+  const guard = createPalmGuard();
+  assert.equal(guard.check([{ identifier: 1 }], now + 3000), true);
   forgetPen();
 });

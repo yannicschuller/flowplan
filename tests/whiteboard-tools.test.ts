@@ -1,3 +1,4 @@
+import { penPolygons } from "../lib/pen-outline";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,6 +11,7 @@ import {
   mindmapRoot,
   recognizeStroke,
   pressureOutline,
+  pressurePieces,
   strokeHit,
   boardCopyText,
   pastesBoardItems,
@@ -99,11 +101,11 @@ test("drawn strokes become lines and shapes", () => {
 });
 
 test("pen pressure widens the stroke outline", () => {
-  const thin = pressureOutline([{ x: 0, y: 0, p: 0 }, { x: 100, y: 0, p: 0 }], 10);
-  const thick = pressureOutline([{ x: 0, y: 0, p: 1 }, { x: 100, y: 0, p: 1 }], 10);
-  const width = (path: string) => Math.max(...path.match(/-?\d+(\.\d+)?/g)!.map(Number).filter((_, i) => i % 2 === 1).map(Math.abs));
+  const thin = pressurePieces([{ x: 0, y: 0, p: 0 }, { x: 100, y: 0, p: 0 }], 10);
+  const thick = pressurePieces([{ x: 0, y: 0, p: 1 }, { x: 100, y: 0, p: 1 }], 10);
+  const width = (pieces: ReturnType<typeof pressurePieces>) => Math.max(...penPolygons(pieces).flat().map(([, y]) => Math.abs(y)));
   assert.ok(width(thick) > width(thin) * 2);
-  assert.match(thin, /^M .* Z$/);
+  assert.match(pressureOutline([{ x: 0, y: 0, p: 0 }, { x: 100, y: 0, p: 0 }], 10), /^M.*Z$/);
 });
 
 test("the eraser hits a pen stroke near its line, not inside its box", () => {

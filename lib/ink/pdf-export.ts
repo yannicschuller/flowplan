@@ -44,6 +44,7 @@ import {
   type PDFRef,
 } from "pdf-lib";
 import { viewToPdfMatrix, type Matrix } from "./coords";
+import { penPolygons } from "../pen-outline";
 import { lineWidth, strokeOutline, strokePoints, variesInWidth } from "./geometry";
 import type { InkDoc, InkImage, InkItem, InkStroke, InkText } from "./model";
 import { fullBox, imageCentre } from "./image";
@@ -64,8 +65,13 @@ function strokeOps(item: InkStroke, map?: ColorMap): PDFOperator[] {
   const points = strokePoints(item);
   if (!points.length) return [];
   if (variesInWidth(item)) {
-    const poly = strokeOutline(points, item.width);
-    return [setFillingColor(mapped(item.color, map)), moveTo(n(poly[0][0]), n(poly[0][1])), ...poly.slice(1).map(([x, y]) => lineTo(n(x), n(y))), closePath(), fill()];
+    // Discs and bands, one fill (non-zero): their union (lib/pen-outline.ts).
+    const polys = penPolygons(strokeOutline(points, item.width));
+    return [
+      setFillingColor(mapped(item.color, map)),
+      ...polys.flatMap((poly) => [moveTo(n(poly[0][0]), n(poly[0][1])), ...poly.slice(1).map(([x, y]) => lineTo(n(x), n(y))), closePath()]),
+      fill(),
+    ];
   }
   const path = points.length === 1 ? [points[0], { ...points[0], x: points[0].x + 0.01 }] : points;
   return [
