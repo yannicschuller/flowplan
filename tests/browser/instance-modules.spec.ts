@@ -52,7 +52,7 @@ test("workflows switched off for the instance: no workflow in new page, an exist
     // first page still hydrates is undone by Next.js, which writes the
     // address it was loaded with ("/") into the history when it starts.
     await page.goto("about:blank");
-    await page.goto(`${origin}/#admin/general`);
+    await page.goto(`${origin}/#settings/instance/general`);
     const card = page.locator("#modules-off");
     await expect(card).toBeVisible({ timeout: 30_000 });
     page.once("dialog", (d) => void d.accept());

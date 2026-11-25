@@ -119,7 +119,7 @@ test("an administrator marks unconfirmed accounts; confirming keeps one, the oth
 
     const page = await adminContext.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${origin}/#admin/users`);
+    await page.goto(`${origin}/#settings/instance/users`);
     await page.getByRole("button", { name: /^E-Mail unbestätigt/ }).click();
     await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(stamp);
     await expect(page.locator(".user-row", { hasText: rita.name })).toBeVisible({ timeout: 20_000 });

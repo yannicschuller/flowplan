@@ -35,7 +35,7 @@ test("workspaces show their owners and come in pages", async ({ page }, info) =>
   }
   d.close();
   await signInAdmin(page);
-  await page.goto("/#admin/workspaces");
+  await page.goto("/#settings/instance/workspaces");
   const section = page.locator("section[aria-labelledby='admin-workspaces-title']");
   await expect(section).toBeVisible({ timeout: 30_000 });
   const pager = section.getByRole("navigation", { name: "Seiten der Arbeitsbereiche" });

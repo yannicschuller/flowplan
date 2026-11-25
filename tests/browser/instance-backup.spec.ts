@@ -46,7 +46,7 @@ test("admins download an instance backup and stage or cancel a restore", async (
   ]);
   const admin = await context.newPage();
   try {
-    await admin.goto(`${origin}/#admin/storage`);
+    await admin.goto(`${origin}/#settings/instance/storage`);
     // Download in "Gesamte Instanz", restore in the danger zone at the end.
     const whole = admin.getByRole("region", { name: "Gesamte Instanz" });
     const section = admin.getByRole("region", { name: "Aus Sicherung wiederherstellen" });

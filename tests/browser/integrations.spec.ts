@@ -58,12 +58,12 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   await bare.dispose();
 
   // Administration: backup now, audit export, e-mail status.
-  await page.goto("/#admin/mail");
+  await page.goto("/#settings/instance/mail");
   await expect(page.getByRole("heading", { name: "E-Mail-Versand" })).toBeVisible();
-  await page.goto("/#admin/storage");
+  await page.goto("/#settings/instance/storage");
   await page.getByRole("button", { name: "Jetzt sichern" }).click();
   await expect(page.getByText("Sicherung erstellt.")).toBeVisible({ timeout: 20_000 });
-  await page.goto("/#admin/audit");
+  await page.goto("/#settings/instance/audit");
   await expect(page.getByRole("heading", { name: "Aktivitätsprotokoll", level: 1 })).toBeVisible();
   const csv = await page.request.get("/api/admin/audit.csv");
   expect(csv.headers()["content-type"]).toContain("text/csv");

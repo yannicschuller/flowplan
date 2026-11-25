@@ -88,16 +88,20 @@ test("Speicher & KI: tile, page, notice at 80 % and the old addresses", async ({
     db.prepare("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,'video.mp4','video/mp4',?,?)").run(randomUUID(), pageId, Math.round(8.5 * 1024 * 1024), uid);
     db.prepare("INSERT INTO ai_quota_usage(day,user_id,model,kind,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?,?,?)").run(new Date().toISOString().slice(0, 10), uid, "usage-model", "person", 2, 240, 100);
 
-    // The landing page: the tile first in "Persönlich", with both figures.
+    // The start page (#532): both rings with their figures, and the
+    // section first in "Persönlich" with where the storage comes from.
     await go("#settings");
-    const personal = page.locator(".settings-tile-group", { has: page.getByRole("heading", { name: "Persönlich" }) });
-    const tile = personal.locator(".settings-tile").first();
-    await expect(tile).toHaveAttribute("data-section", "usage", { timeout: 30_000 });
-    await expect(tile).toContainText("Speicher & KI");
-    await expect(tile).toContainText(group);
-    await expect(tile).toContainText("8,5 von 10 MB");
-    await expect(tile).toContainText("340 von 1.000 Tokens diesen Monat");
-    await expect(tile.locator("progress")).toHaveCount(2);
+    const card = page.locator(".sv-start-usage");
+    await expect(card).toContainText("Speicher & KI", { timeout: 30_000 });
+    await expect(card).toContainText("8,5 von 10 MB");
+    await expect(card).toContainText("340 von 1.000 Tokens diesen Monat");
+    await expect(card.getByRole("img", { name: "Speicher: 85 %" })).toBeVisible();
+    await expect(card.getByRole("img", { name: "KI-Kontingent: 34 %" })).toBeVisible();
+    const tile = card.locator(".sv-start-ring").first();
+    await expect(tile).toHaveAttribute("href", "#settings/usage/storage");
+    const nav = page.getByRole("navigation", { name: "Bereiche der Einstellungen" });
+    await expect(nav.locator("a[data-section]").first()).toHaveAttribute("data-section", "usage");
+    await expect(nav.locator("a[data-section='usage']")).toContainText(group);
 
     // The notice at 80 %: once, with both links.
     const notice = page.locator(".limits-notice[data-kind='storage']");
@@ -156,11 +160,12 @@ test("Speicher & KI: tile, page, notice at 80 % and the old addresses", async ({
     await expect(page.locator(".settings-results .settings-tile[data-section='usage']").first()).toBeVisible();
     await search.fill("upload");
     await expect(page.locator(".settings-results .settings-tile[data-section='usage']").first()).toBeVisible();
+    await search.fill("");
 
     // Below 80 % and up again: the notice comes back.
     db.prepare("UPDATE files SET size=? WHERE created_by=?").run(1024 * 1024, uid);
     await page.reload();
-    await expect(page.locator(".settings-tile[data-section='usage']")).toContainText("1 von 10 MB", { timeout: 20_000 });
+    await expect(page.locator(".sv-start-usage")).toContainText("1 von 10 MB", { timeout: 20_000 });
     await expect(page.locator(".limits-notice")).toHaveCount(0);
     db.prepare("UPDATE files SET size=? WHERE created_by=?").run(10 * 1024 * 1024, uid);
     await page.reload();

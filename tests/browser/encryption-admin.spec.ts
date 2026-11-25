@@ -14,7 +14,7 @@ test("the encryption status is shown in the administration", async ({ page }, in
   // A new account would see the introduction first.
   await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const admin = await (await page.request.get("/api/admin")).json();
-  await page.goto("/#admin/security");
+  await page.goto("/#settings/instance/security");
   const section = page.locator(".encryption-settings");
   if (admin.encryption.enabled) {
     await expect(section).toContainText("Verschlüsselung an");
@@ -26,11 +26,11 @@ test("the encryption status is shown in the administration", async ({ page }, in
   // The scheduled backup says whether it is encrypted (Speicher & Sicherung);
   // hourly backups are an instance setting (Instanz).
   if (admin.encryption.enabled) {
-    await page.goto("/#admin/storage");
+    await page.goto("/#settings/instance/storage");
     await expect(page.getByRole("region", { name: "Sicherungen" })).toContainText("verschlüsselt");
   }
   // The backup settings have one home: Speicher & Sicherung.
-  await page.goto("/#admin/storage");
+  await page.goto("/#settings/instance/storage");
   await expect(page.getByRole("switch", { name: "Stündlich statt täglich" })).toBeVisible();
   expect(errors).toEqual([]);
 });

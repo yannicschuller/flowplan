@@ -47,7 +47,7 @@ test("quotas: the administrator sets the default, the person sees what is left",
   test.setTimeout(120_000);
   const { command, userId } = await setup(page);
   try {
-    await page.goto("/#admin/ai");
+    await page.goto("/#settings/instance/ai");
     const limits = page.locator("section[aria-labelledby='quota-limits-title']");
     await expect(limits).toBeVisible({ timeout: 30_000 });
     const day = limits.getByRole("spinbutton", { name: "Standard je Person: Tag" });
@@ -69,7 +69,7 @@ test("quotas: the administrator sets the default, the person sees what is left",
     await expect(quota.locator("progress")).toHaveAttribute("value", "8500");
 
     // The usage per person in the administration.
-    await page.goto("/#admin/ai");
+    await page.goto("/#settings/instance/ai");
     const usage = page.locator("section[aria-labelledby='quota-usage-title']");
     await expect(usage).toBeVisible({ timeout: 30_000 });
     await usage.getByRole("combobox", { name: "Zeitraum" }).selectOption("day");
@@ -91,7 +91,7 @@ test("quotas: the continuation after the quota has a limit, the person sees what
   const { command, userId } = await setup(page);
   try {
     await command({ action: "admin.aiQuotas", rules: [{ scope: "default", target: "", exempt: false, limits: { month: 1000 } }] });
-    await page.goto("/#admin/ai");
+    await page.goto("/#settings/instance/ai");
     const limits = page.locator("section[aria-labelledby='quota-limits-title']");
     await expect(limits).toBeVisible({ timeout: 30_000 });
     await limits.getByRole("combobox", { name: "Standard je Person: nach Erreichen des Kontingents" }).selectOption("quota-model");

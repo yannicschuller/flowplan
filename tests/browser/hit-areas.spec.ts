@@ -136,7 +136,7 @@ test("touch targets are at least 44 × 44 px on a phone", async ({ page }, info)
   await page.keyboard.press("Escape");
 
   await page.goto("/#settings");
-  await expect(page.locator(".settings-tile").first()).toBeVisible();
+  await expect(page.locator(".sv-start-setup a").first()).toBeVisible();
   found.push(...report("settings", await smallTargets(page)));
 
   await page.goto("/#settings/account");

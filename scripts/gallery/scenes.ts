@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { SETTINGS_SECTIONS } from "../../lib/settings-sections";
+import { SETTINGS_SECTIONS, settingsHash } from "../../lib/settings-sections";
 import type { Scene, SceneContext } from "./types";
 
 // Every scene of the UI gallery (scripts/gallery/run.ts). A scene opens a
@@ -342,14 +342,16 @@ const pages: Scene[] = [
     steps: async (page, ctx) => {
       const name = `Gallery Plus ${ctx.variant.id}`;
       await ctx.command({ action: "admin.groupLimits", target: `dir:${name}`, limits: { storageMb: 25600 } });
-      await ctx.open("#admin/limits");
+      await ctx.open("#settings/instance/limits");
       await button(page, `Members of Directory · ${name}`).click();
       await waitDialog(page, `Members of “${name}”`);
     },
   },
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
-  { id: "settings-home", group: "Pages", title: "Settings landing page", path: "#settings" },
-  { id: "admin-home", group: "Pages", title: "Administration landing page", path: "#admin" },
+  { id: "settings-home", group: "Pages", title: "Settings start page", path: "#settings" },
+  // #532: the administration's landing page is the start page's "Instanz
+  // auf einen Blick" (an admin's start page, opened at the instance).
+  { id: "admin-home", group: "Pages", title: "Settings start page: instance at a glance", path: "#settings/instance" },
   { id: "document", group: "Pages", title: "Document", path: docPath, steps: documentReady },
   {
     id: "document-reading",
@@ -1960,7 +1962,7 @@ const sectionScenes: Scene[] = SETTINGS_SECTIONS.map((s) => ({
   id: `${s.area}-${s.id}`,
   group: s.area === "admin" ? "Admin" : "Settings",
   title: s.title.en,
-  path: `#${s.area}/${s.id}`,
+  path: settingsHash({ area: s.area, section: s.id }),
   steps: async (page: Page) => {
     await page.getByRole("heading", { name: s.title.en, level: 1 }).first().waitFor();
   },

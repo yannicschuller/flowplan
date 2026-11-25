@@ -30,7 +30,7 @@ test("settings file: export, check, apply", async ({ browser }, info) => {
   const savedName = db.prepare("SELECT value FROM instance_settings WHERE key='name'").get() as { value: string } | undefined;
   const name = `Spec ${Date.now()}`;
   try {
-    await page.goto(`${origin}/#admin/general/settings-file`);
+    await page.goto(`${origin}/#settings/instance/general/settings-file`);
     const section = page.locator("section#settings-file");
     await expect(section).toBeVisible({ timeout: 20_000 });
 

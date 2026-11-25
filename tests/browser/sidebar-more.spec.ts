@@ -45,15 +45,13 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(sheet(page)).toBeVisible();
   // (Behind the dialog the drawer is hidden from the accessibility tree.)
   await expect(sidebar(page).locator(".sidebar-more")).toHaveAttribute("aria-expanded", "true");
-  // Every place with its name, in the order of the row; no Administration
-  // for members.
+  // Every place with its name, in the order of the row.
   const items = sheet(page).locator(".sidebar-more-list button");
   await expect(items).toHaveText(PLACES);
   for (const name of PLACES) {
     const box = await sheet(page).getByRole("button", { name, exact: true }).boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-  await expect(sheet(page).getByRole("button", { name: "Administration" })).toHaveCount(0);
 
   // The account menu is part of the sheet (#197): no "⋯" in the profile
   // row; design, about and what's new (#223) below a line, signing out
@@ -157,7 +155,9 @@ async function sessionPage(browser: Browser, info: TestInfo, groups: string[]) {
   return { context, page: await context.newPage() };
 }
 
-test("administrators find Administration behind Mehr too", async ({ browser }, info) => {
+// #532: no Administration entry of its own – the instance is part of
+// Einstellungen, whose start page shows it to admins.
+test("administrators find the instance in Einstellungen behind Mehr", async ({ browser }, info) => {
   test.skip(info.project.name !== "mobile", "The drawer is the phone layout's.");
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "FLOWPLAN_DATA_DIR of the test server is required.");
   const { context, page } = await sessionPage(browser, info, ["flowplan-admins"]);
@@ -165,9 +165,9 @@ test("administrators find Administration behind Mehr too", async ({ browser }, i
     await page.goto(`${origin}/#home`);
     await openDrawer(page);
     await more(page).tap();
-    await expect(sheet(page).locator(".sidebar-more-list button")).toHaveText([...PLACES, "Administration"]);
-    await sheet(page).getByRole("button", { name: "Administration", exact: true }).tap();
-    await expect(page.getByRole("heading", { name: "Administration" }).first()).toBeVisible();
+    await expect(sheet(page).locator(".sidebar-more-list button")).toHaveText(PLACES);
+    await sheet(page).getByRole("button", { name: "Einstellungen", exact: true }).tap();
+    await expect(page.getByRole("heading", { name: "Instanz auf einen Blick" })).toBeVisible({ timeout: 30_000 });
     await expect(sheet(page)).toBeHidden();
   } finally {
     await context.close();

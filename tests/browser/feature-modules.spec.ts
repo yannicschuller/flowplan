@@ -157,7 +157,7 @@ test("the administration's default reaches new accounts, and can be applied to e
   const adminContext = await signedIn(browser, admin.token, false);
   const adminPage = await adminContext.newPage();
   try {
-    await adminPage.goto(`${origin}/#admin/general`);
+    await adminPage.goto(`${origin}/#settings/instance/general`);
     const card = adminPage.locator("#modules-default");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.getByRole("switch", { name: "Whiteboards" }).click();

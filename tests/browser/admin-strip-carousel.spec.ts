@@ -39,7 +39,7 @@ test("the live strip's charts are a carousel of what is switched on", async ({ b
   const open = async (p: Page) => {
     // A new load each time (going to the same address with a hash would not reload).
     await p.goto("about:blank");
-    await p.goto(`${origin}/#admin`);
+    await p.goto(`${origin}/#settings/instance`);
     // (The dev server may compile the page on first use.)
     await expect(carousel).toBeVisible({ timeout: 30_000 });
   };

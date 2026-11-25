@@ -36,7 +36,7 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
   try {
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${origin}/#admin/users`);
+    await page.goto(`${origin}/#settings/instance/users`);
     await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     const row = page.locator(".user-row", { hasText: name });
     // The whole row opens the account's panel.

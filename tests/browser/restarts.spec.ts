@@ -58,7 +58,7 @@ test("the restart history: list, a crash's log lines as text, download, phone wi
   page.on("request", (r) => {
     if (/view=restart/.test(r.url())) restartRequests.push(new URL(r.url()).search);
   });
-  await page.goto(`${origin}/#admin/monitoring`);
+  await page.goto(`${origin}/#settings/instance/monitoring`);
   // Its code loads only when the card comes into view.
   await page.locator("#restarts").first().scrollIntoViewIfNeeded();
   const card = page.getByTestId("restarts-card");
@@ -129,7 +129,7 @@ test("no restarts yet: an empty state", async ({ page }) => {
   const db = database();
   db.exec("DELETE FROM restart_events");
   db.close();
-  await page.goto(`${origin}/#admin/monitoring`);
+  await page.goto(`${origin}/#settings/instance/monitoring`);
   await expect(page.locator(".mon-health").first()).toBeVisible();
   await page.locator("#restarts").first().scrollIntoViewIfNeeded();
   const card = page.getByTestId("restarts-card");

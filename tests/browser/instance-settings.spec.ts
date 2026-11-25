@@ -52,17 +52,17 @@ test("admins set the instance name and an announcement for everyone", async ({
   const tag = Date.now();
   try {
     // Each setting saves on its own, in the section it belongs to.
-    await admin.goto(`${origin}/#admin/general`);
+    await admin.goto(`${origin}/#settings/instance/general`);
     const general = admin.getByRole("region", { name: "Instanz", exact: true });
     await general.getByLabel("Name der Instanz").fill(`Muster ${tag}`);
     await general.getByRole("button", { name: "Speichern", exact: true }).click();
     await expect(general.getByRole("status").filter({ hasText: "Gespeichert" })).toBeVisible();
-    await admin.goto(`${origin}/#admin/maintenance`);
+    await admin.goto(`${origin}/#settings/instance/maintenance`);
     const notice = admin.getByRole("region", { name: "Hinweis für alle" });
     await notice.getByLabel("Hinweis für alle Personen").fill(`Wartung ${tag}`);
     await notice.getByRole("button", { name: "Speichern", exact: true }).click();
     await expect(notice.getByRole("status").filter({ hasText: "Gespeichert" })).toBeVisible();
-    await admin.goto(`${origin}/#admin/limits`);
+    await admin.goto(`${origin}/#settings/instance/limits`);
     const upload = admin.getByLabel("Größte Datei beim Hochladen", { exact: true });
     await upload.fill("20");
     await upload.press("Enter");

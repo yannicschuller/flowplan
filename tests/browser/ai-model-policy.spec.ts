@@ -106,7 +106,7 @@ test("an administrator gives one person Opus while the instance runs on Haiku", 
     await command({ action: "ai.settings", enabled: true }, person.request);
 
     // Administration → Benutzer → the person → KI → Modell: Opus.
-    await page.goto("/#admin/users");
+    await page.goto("/#settings/instance/users");
     await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     await page.locator(".user-row", { hasText: name }).getByRole("button", { name, exact: true }).click();
     const sheet = page.getByRole("dialog", { name, exact: true });
@@ -148,7 +148,7 @@ test("an administrator gives one person Opus while the instance runs on Haiku", 
     await expect(row).toContainText(OPUS);
 
     // The limits table of Administration → KI → Kontingente shows the model too.
-    await page.goto("/#admin/ai");
+    await page.goto("/#settings/instance/ai");
     const limits = page.locator("section[aria-labelledby='quota-limits-title']");
     await expect(limits.getByRole("combobox", { name: new RegExp(`^Modell für ${name}`) })).toHaveValue(`m:${OPUS}`, { timeout: 30_000 });
   } finally {
