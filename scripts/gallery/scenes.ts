@@ -1003,6 +1003,20 @@ const databaseScenes: Scene[] = [
       await waitDialog(page, "Record");
     },
   },
+  // A property of the record opened for editing (#519): the panel below
+  // the compact value.
+  {
+    id: "record-property-edit",
+    group: "Databases",
+    title: "Record – edit a property",
+    path: recordPath,
+    covers: ["components/record-property-value.tsx"],
+    steps: async (page) => {
+      await waitDialog(page, "Record");
+      await page.locator("button.record-value").first().click();
+      await page.locator(".record-value-popover").first().waitFor();
+    },
+  },
   // Flashcards (docs/specs/flashcards.md): a database without a card
   // mapping gets "Set up cards" with a study view; the focus mode with
   // a revealed card and the rating buttons.
