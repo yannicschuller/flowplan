@@ -24,6 +24,7 @@
 // loaded only then). Plain questions go straight to the answer; the switch
 // "Nur antworten" turns plans off.
 import { AiQuotaNote } from "./ai-quota";
+import { AiModelRadios } from "./ai-model-choice";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowClockwise, ArrowSquareOut, ArrowUp, CalendarCheck, CaretDown, ChatText, Check, Copy, FileText, Info, Lifebuoy, ListBullets, ListChecks, MagnifyingGlass, PencilLine, Plus, PushPin, PushPinSlash, Sparkle, Stop, Warning, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -784,8 +785,13 @@ export function AskPanel({
                       <CaretDown size={11} aria-hidden="true" />
                     </>
                   }
-                  buttonLabel={t(`Modell: ${modelDisplayName(provider.model) || provider.kind}`, `Model: ${modelDisplayName(provider.model) || provider.kind}`)}
+                  buttonLabel={
+                    provider.choice
+                      ? t(`Modell: ${modelDisplayName(provider.model) || provider.kind} – ändern`, `Model: ${modelDisplayName(provider.model) || provider.kind} – change`)
+                      : t(`Modell: ${modelDisplayName(provider.model) || provider.kind}`, `Model: ${modelDisplayName(provider.model) || provider.kind}`)
+                  }
                 >
+                  {provider.choice && <AiModelRadios current={provider.model} choice={provider.choice} />}
                   <dl className="ai-ask-model-facts">
                     <dt>{t("Anbieter", "Provider")}</dt>
                     <dd>{t(AI_PROVIDER_NAMES[provider.kind], AI_PROVIDER_NAMES_EN[provider.kind])}</dd>

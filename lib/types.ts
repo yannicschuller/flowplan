@@ -48,6 +48,9 @@ export type Identity = User & {
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;
+  // A workflow runs as this person (lib/workflows/runner.ts): the AI uses
+  // the default model of their rules, not their personal choice (#538).
+  workflowRun?: boolean;
   // This request confirmed the account once more (lib/step-up.ts); set
   // only by the server after confirmStep, never from the request body.
   stepUp?: boolean;

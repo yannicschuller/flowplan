@@ -14,6 +14,7 @@ import { settingsHash } from "@/lib/settings-sections";
 import { useT } from "../../i18n";
 import { SettingGroup, SettingRow } from "../../settings-ui";
 import { QuotaBarList } from "../../ai-quota-bars";
+import { upToLabel } from "../../ai-model-choice";
 import { refreshAiQuota, resetText, useAiQuota } from "../../ai-quota";
 import { useUserSettings } from "../user-context";
 import { UsageOverview } from "../previews";
@@ -185,7 +186,9 @@ function AiCard({ ai, quota }: { ai: AiStatus | null | undefined; quota: ReturnT
           description={
             ai.provider.source === "user"
               ? t("Von deinem eigenen Anbieter.", "From your own provider.")
-              : ai.provider.assigned
+              : ai.provider.choice
+                ? t(`${upToLabel(ai.provider.choice.default, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} – unter KI-Einstellungen oder im KI-Fenster.`, `${upToLabel(ai.provider.choice.default, t)}: ${ai.provider.choice.models.map((m) => m.model).join(", ")} – in the AI settings or the AI panel.`)
+                : ai.provider.assigned
                 ? t("Für dich festgelegt von der Administration.", "Set for you by the administration.")
                 : t("Das Modell der Instanz.", "The instance's model.")
           }

@@ -2841,7 +2841,12 @@ export default function WorkspaceApp({
   useEffect(() => {
     const changed = () => void refresh().catch(() => {});
     window.addEventListener("flowplan:pages-changed", changed);
-    return () => window.removeEventListener("flowplan:pages-changed", changed);
+    // The person picked another AI model (#538, components/ai-model-choice.tsx).
+    window.addEventListener("flowplan:ai-changed", changed);
+    return () => {
+      window.removeEventListener("flowplan:pages-changed", changed);
+      window.removeEventListener("flowplan:ai-changed", changed);
+    };
   }, [refresh]);
   // The order of the spaces (issue #48, lib/space-order.ts): workspace
   // owners drag a space by its header or use "Nach oben"/"Nach unten" in its

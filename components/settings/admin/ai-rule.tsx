@@ -12,6 +12,7 @@ import { api } from "../../ui";
 import { Select } from "../../select";
 import { SaveState, useSaveState } from "../../settings-ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { upToLabel } from "../../ai-model-choice";
 import type { AiRuleView } from "@/lib/ai/admin-rule";
 import { QUOTA_PERIODS, quotaShare, type ModelPolicy, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "@/lib/ai/quota-shared";
 
@@ -148,7 +149,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
     }
   }, [scope, target]);
   useEffect(() => void load(), [load]);
-  const save = (patch: { model?: string | null; quota?: { exempt: boolean; limits: QuotaLimits; after?: string | null } | null }) =>
+  const save = (patch: { model?: string | null; choice?: boolean; quota?: { exempt: boolean; limits: QuotaLimits; after?: string | null } | null }) =>
     void run(async () => {
       setView(await api<AiRuleView>("/api/command", { action: "admin.aiRule", scope, target, ...patch }));
     });
@@ -185,8 +186,12 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
   const unitName = view.unit === "cost" ? view.currency : t("Tokens", "Tokens");
   // The model.
   const own = view.model.own;
-  const modelValue = !own ? "inherit" : own.model === "" ? "default" : `m:${own.model}`;
+  const modelValue = !own ? "inherit" : own.model === "" ? "default" : `${own.choice ? "c" : "m"}:${own.model}`;
   const options = [...new Set([...view.model.options, ...fetched, ...(own?.model ? [own.model] : [])])].sort((a, b) => a.localeCompare(b));
+  // "Bis … – frei wählbar" (#538): groups and roles only.
+  const ranges = view.model.ranges;
+  const choices = scope === "user" ? [] : [...new Set([...Object.keys(ranges), ...(own?.choice && own.model ? [own.model] : [])])].sort((a, b) => a.localeCompare(b));
+  const effective = view.model.effective;
   const inherited = view.model.inherited;
   // The quota: inherited (no own rule), own limits, or exempt.
   const quota = view.quota.own;
@@ -230,7 +235,9 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
               <small>
                 {own && !view.model.active
                   ? t("Für einen anderen Anbieter gewählt – gilt nicht, bis du es neu setzt.", "Chosen for another provider – it does not apply until you set it again.")
-                  : t(`Verwendet: ${view.model.effective?.model || view.provider.model} (${modelSource(view.model.effective, t, view.groupNames)})`, `In use: ${view.model.effective?.model || view.provider.model} (${modelSource(view.model.effective, t, view.groupNames)})`)}
+                  : effective?.allowed
+                    ? t(`Zur Wahl: ${effective.allowed.join(", ")} – Standard ${effective.model} (${modelSource(effective, t, view.groupNames)})`, `To choose from: ${effective.allowed.join(", ")} – default ${effective.model} (${modelSource(effective, t, view.groupNames)})`)
+                    : t(`Verwendet: ${effective?.model || view.provider.model} (${modelSource(effective, t, view.groupNames)})`, `In use: ${effective?.model || view.provider.model} (${modelSource(effective, t, view.groupNames)})`)}
               </small>
             </span>
             <span className="ai-rule-control">
@@ -240,7 +247,7 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
                 value={modelValue}
                 onChange={(e) => {
                   const v = e.target.value;
-                  save({ model: v === "inherit" ? null : v === "default" ? "" : v.slice(2) });
+                  save({ model: v === "inherit" ? null : v === "default" ? "" : v.slice(2), choice: v.startsWith("c:") });
                 }}
               >
                 {scope === "user" ? (
@@ -262,6 +269,11 @@ export function AiRulePanel({ scope, target, name, className = "" }: { scope: Sc
                       {m}
                     </option>
                   ))}
+                {choices.map((m) => (
+                  <option key={`c:${m}`} value={`c:${m}`} title={(ranges[m] || [m]).join(", ")}>
+                    {upToLabel(m, t)}
+                  </option>
+                ))}
               </Select>
               <button type="button" className="icon-button" disabled={fetching} aria-label={t("Modelle des Anbieters abrufen", "Fetch the provider's models")} title={t("Modelle des Anbieters abrufen", "Fetch the provider's models")} onClick={() => void fetchModels()}>
                 <ArrowsClockwise size={16} aria-hidden />

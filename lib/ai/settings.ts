@@ -79,6 +79,10 @@ const userSchema = z.object({
   provider: aiProviderSchema.nullable(),
   // The on-device model (features.ts DEVICE_AI_MODES).
   device: z.enum(DEVICE_AI_MODES).default("prefer"),
+  // The model of the instance's provider this person picked among those
+  // their groups and roles allow (#538, lib/ai/model-policy.ts); '' = the
+  // default (the most capable). Applied only while it is allowed.
+  instanceModel: z.string().max(200).catch("").default(""),
 });
 export type AiUserSettings = z.infer<typeof userSchema>;
 
@@ -256,6 +260,7 @@ const defaultUser = (): AiUserSettings => ({
   scope: "all",
   provider: null,
   device: "prefer",
+  instanceModel: "",
 });
 type UserRow = Row & { user_id: string };
 const userRow = async (userId: string) => await one<UserRow>("SELECT user_id,config,key_cipher,key_hint FROM ai_user_settings WHERE user_id=?", userId);
@@ -301,10 +306,21 @@ const prefsInput = z.object({
   source: z.enum(["instance", "user"]).optional(),
   scope: z.enum(["all", "selected"]).optional(),
   device: z.enum(DEVICE_AI_MODES).optional(),
+  // The personal model choice (#538): one of the allowed models; '' or
+  // null: the default again.
+  instanceModel: z.string().trim().max(200).nullable().optional(),
 });
 export async function saveUserAiPrefs(user: Identity, raw: unknown) {
   assertSettingsCaller(user);
   const b = prefsInput.parse(raw);
+  if (b.instanceModel === null) b.instanceModel = "";
+  if (b.instanceModel) {
+    // Only what the person's rules allow; the default is stored as ''.
+    const { modelPolicyFor } = await import("./model-policy");
+    const policy = await modelPolicyFor(user);
+    if (!policy.allowed?.includes(b.instanceModel)) throw new HttpError(400, "Dieses Modell ist für dich nicht freigegeben.");
+    if (b.instanceModel === policy.model) b.instanceModel = "";
+  }
   const current = await userAiSettings(user.id);
   const row = await userRow(user.id);
   const next = userSchema.parse({

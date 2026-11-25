@@ -108,10 +108,19 @@ export function tightest(periods: QuotaPeriodState[]): QuotaPeriodState | null {
 // instance's default. On a person, model '' means the instance's default
 // (whatever their groups say). `kind`: the provider kind the rule was
 // chosen for – a rule for another kind than the instance's provider is
-// inactive.
+// inactive. `choice` (#538, groups and roles only): "up to this model,
+// your choice" – the person may also pick the instance's smaller models
+// (lib/ai/model-policy.ts allowedByRule); without it exactly this model.
 export const MODEL_RULE_SCOPES = ["role", "group", "user"] as const;
 export type ModelRuleScope = (typeof MODEL_RULE_SCOPES)[number];
-export type ModelRule = { scope: ModelRuleScope; target: string; model: string; kind: string };
+export type ModelRule = { scope: ModelRuleScope; target: string; model: string; kind: string; choice?: boolean };
 // What applies to a person: the model, which level set it ('instance': the
 // instance's default, no rule) and the instance's default for comparison.
-export type ModelPolicy = { model: string; source: "user" | "group" | "role" | "instance"; target: string | null; default: string };
+// `allowed`: the models the person may choose from (#538) – the union of
+// their group and role rules, the most capable first; one entry when there
+// is nothing to choose. `model` is the default (the most capable) unless a
+// personal choice was applied (applyModelChoice); `chosen` marks that.
+export type ModelPolicy = { model: string; source: "user" | "group" | "role" | "instance"; target: string | null; default: string; allowed?: string[]; chosen?: boolean };
+// A model the person may pick in the AI panel (AiStatus.provider.choice):
+// "fast" the cheapest, "strong" the most capable, "balanced" in between.
+export type ModelTier = "fast" | "balanced" | "strong";

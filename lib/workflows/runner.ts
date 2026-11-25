@@ -13,7 +13,7 @@ export async function runnerIdentity(userId: string | null | undefined): Promise
   if (!userId) return null;
   const user = await one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
   if (!user || (user as { demo_until?: number | null }).demo_until) return null;
-  return { ...user, groups: [], isAdmin: false } as Identity;
+  return { ...user, groups: [], isAdmin: false, workflowRun: true } as Identity;
 }
 
 // Below a journal with a PIN: closed to workflows even while unlocked (§9.1,

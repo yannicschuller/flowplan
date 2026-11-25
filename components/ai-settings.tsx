@@ -29,6 +29,7 @@ import { aiReasonText } from "@/lib/ai/client";
 import { DEVICE_REASON_TEXT, deviceReason } from "@/lib/ai/device";
 import type { DeviceAiMode } from "@/lib/ai/features";
 import { useDeviceAi } from "./ai-context";
+import { AiModelSelect } from "./ai-model-choice";
 import type { Bootstrap } from "@/lib/types";
 
 type Provider = { kind: AiProviderKind; baseUrl: string; model: string; embeddingModel: string };
@@ -900,12 +901,33 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
             {status.provider && ` · ${status.provider.source === "user" ? t("dein eigener", "your own") : t("der Instanz", "the instance's")}`}
           </span>
         </SettingRow>
-        {status.provider?.source === "instance" && status.provider.model && (
+        {status.provider?.source === "instance" && status.provider.model && !status.provider.choice && (
           <SettingRow
             label={t("Modell", "Model")}
             description={status.provider.assigned ? t("Von der Administration festgelegt.", "Set by the administration.") : t("Der Standard der Instanz.", "The instance default.")}
           >
             <span className="setting-value">{status.provider.model}</span>
+          </SettingRow>
+        )}
+        {status.provider?.source === "instance" && status.provider.choice && (
+          <SettingRow
+            id="ai-default-model"
+            label={t("Standardmodell", "Default model")}
+            description={
+              status.provider.choice.costQuota
+                ? t("Dir stehen mehrere Modelle zur Wahl. Gilt sofort für alle KI-Funktionen auf allen Geräten; Workflows nutzen immer das stärkste. Dein Kontingent zählt Kosten – mit kleineren Modellen reicht es länger.", "You can choose from several models. Applies at once to every AI feature on all devices; workflows always use the most capable. Your quota counts cost – smaller models make it last longer.")
+                : t("Dir stehen mehrere Modelle zur Wahl. Gilt sofort für alle KI-Funktionen auf allen Geräten; Workflows nutzen immer das stärkste.", "You can choose from several models. Applies at once to every AI feature on all devices; workflows always use the most capable.")
+            }
+          >
+            <AiModelSelect
+              id="ai-default-model"
+              current={status.provider.model}
+              choice={status.provider.choice}
+              onChanged={async () => {
+                await load();
+                void onRefresh().catch(() => {});
+              }}
+            />
           </SettingRow>
         )}
         {blocked?.reason && (
