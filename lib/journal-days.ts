@@ -28,12 +28,12 @@ import {
   lockedPageIds,
   journalSettings,
   onlyTemplate,
+  readableText,
   templateNodesOf,
   templateTaskTexts,
 } from "./journal-extras";
-import { dayDoc, dayStart, dayTitle, hasOwnEntry, journalDate, rollJournal } from "./journal";
-import { dayTitle as localDayTitle } from "./journal-title";
-import { LOCALES } from "./i18n";
+import { dayDoc, dayStart, dayTitle, hasOwnEntry, journalDate, openTasks, rollJournal } from "./journal";
+import { automaticDayTitle } from "./journal-title";
 import type { Identity, Page, PageCounts } from "./types";
 import { filterAsync, flatMapAsync, someAsync } from "./each-async";
 
@@ -255,14 +255,6 @@ export async function journalDayLink(
 
 // ---- "Leere Tage entfernen" ----
 
-const plain = (title: string) => title.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
-// The title the day got automatically, in any language, or that title with
-// only spaces or capitals changed.
-function automaticTitle(title: string, date: string) {
-  const own = plain(title);
-  if (!own) return true;
-  return LOCALES.some((locale) => plain(localDayTitle(date, locale)) === own);
-}
 const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 // A day nobody wrote in, as conservatively as possible: nothing beyond the
 // template (the one it was created from or today's), no open task of its
@@ -271,7 +263,7 @@ const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 async function emptyDay(day: Page, today: string) {
   if (!day.journal_date || day.journal_date >= today || day.deleted_at) return false;
   if (day.locked || day.public_token || day.cover || day.icon !== "day") return false;
-  if (!automaticTitle(day.title, day.journal_date)) return false;
+  if (!automaticDayTitle(day.title, day.journal_date)) return false;
   if (await hasEntryData(day.id)) return false;
   const used = async (sql: string, ...args: string[]) => !!(await one(sql, ...args));
   if (
@@ -308,13 +300,8 @@ async function emptyDay(day: Page, today: string) {
   const created = await dayTemplateHtml(day.id);
   const templates = [templateNodesOf((await journalSettings(day.parent_id!)).template), ...(created ? [templateNodesOf(created)] : [])];
   // Open tasks that are not the template's own would get lost.
-  const daily = new Set(await flatMapAsync(templates, async (nodes) => [...await templateTaskTexts(day.parent_id!, nodes)]));
-  let openTask = false;
-  doc.descendants((node) => {
-    if (node.type.name === "taskItem" && !node.attrs.checked && !daily.has(node.textContent.trim())) openTask = true;
-    return !openTask;
-  });
-  if (openTask) return false;
+  const daily = new Set((await flatMapAsync(templates, async (nodes) => [...await templateTaskTexts(day.parent_id!, nodes)])).map(readableText));
+  if (openTasks(doc).some((task) => !daily.has(readableText(task.textContent)))) return false;
   return !hasOwnEntry(doc, day.journal_date) || await someAsync(templates, async (nodes) => await onlyTemplate(day.parent_id!, doc, day.journal_date!, nodes));
 }
 export async function emptyJournalDays(journal: Page, today: string) {

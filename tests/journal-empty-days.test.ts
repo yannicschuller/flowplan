@@ -128,7 +128,9 @@ test("opening the date of a day the journal put in the trash brings that day bac
   assert.ok(d2.deleted_at);
   const ensured = await ensureJournalDay(lena, await pageOf(jid), "2026-09-02", "2026-09-03");
   assert.deepEqual([ensured.dayId, ensured.created], [d2.id, true]);
-  assert.deepEqual(await datesOf(jid), ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]);
+  // Still empty, the day brought back by opening its date went again with
+  // the next new day (#547: the days of the last week are judged again).
+  assert.deepEqual(await datesOf(jid), ["2026-08-31", "2026-09-01 (trash)", "2026-09-02", "2026-09-03"]);
 });
 
 test("a day a person moved to the trash stays there, also one the journal had put there before", async () => {

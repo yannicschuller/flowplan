@@ -10,6 +10,13 @@
       "issues": [
         548
       ]
+    },
+    {
+      "de": "Leere Journaltage bleiben nicht mehr stehen: Auch Tage der letzten Woche, die aus dem Kalender geöffnet, zurückgeholt oder später geleert wurden, verschwinden mit dem nächsten Tag; Leerzeichen, leere Zeilen und leere Aufgaben gelten nicht als Eintrag.",
+      "en": "Empty journal days no longer stay: days of the last week that were opened from the calendar, brought back or emptied later also go with the next day; spaces, empty lines and empty tasks no longer count as an entry.",
+      "issues": [
+        547
+      ]
     }
   ],
   "improvements": [],

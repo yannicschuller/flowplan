@@ -13,3 +13,12 @@ export function dayTitle(date: string, locale: Locale) {
   }).format(new Date(`${date}T00:00:00Z`));
 }
 export const isAutoDayTitle = (title: string, date: string) => LOCALES.some((locale) => title === dayTitle(date, locale));
+// The automatic title in any language, or that title with only spaces or
+// capitals changed: not renamed (the automatic tidying of empty days,
+// lib/journal.ts, and "Leere Tage entfernen", lib/journal-days.ts).
+const plain = (title: string) => title.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+export function automaticDayTitle(title: string, date: string) {
+  const own = plain(title);
+  if (!own) return true;
+  return LOCALES.some((locale) => plain(dayTitle(date, locale)) === own);
+}
