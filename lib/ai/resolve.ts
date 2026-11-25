@@ -18,11 +18,14 @@ import { isIP } from "node:net";
 import { mapAsync } from "../each-async";
 import { tokenAiAllowed } from "./token-access";
 import { moduleOff } from "../instance-modules";
-import { modelPolicyFor } from "./model-policy";
+import { modelChoiceView, modelPolicyFor } from "./model-policy";
+import type { ModelPolicy } from "./quota-shared";
 
 // assigned: the model is the one the administration set for this person
-// (their own rule, a group or a role – lib/ai/model-policy.ts).
-export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user"; assigned?: boolean } | { ok: false; reason: AiReason };
+// (their own rule, a group or a role – lib/ai/model-policy.ts); chosen:
+// the person picked it among those their rules allow (#538); policy: the
+// rules' outcome, when there is more than one model to pick from.
+export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user"; assigned?: boolean; chosen?: boolean; policy?: ModelPolicy } | { ok: false; reason: AiReason };
 type Options = {
   // The workspace the feature works in: guests of it are judged by the guest switch.
   workspaceId?: string;
@@ -130,15 +133,24 @@ export async function draftProviderConfig(user: Identity, scope: "instance" | "u
 // Which provider applies: the person's own when they chose it, else the
 // instance's, else their own as the only one there is. The instance's with
 // the model the administration set for this person (lib/ai/model-policy.ts)
-// – here, so it holds for every feature.
-async function provider(user: Identity): Promise<AiResolution> {
+// – here, so it holds for every feature. With the person's own choice among
+// the models their rules allow (#538) – except for workflows, which run
+// with the default (the most capable allowed).
+async function provider(user: Identity, feature?: string): Promise<AiResolution> {
   const own = await userAiSettings(user.id);
   const mine = await userProviderConfig(user);
   const instance = await instanceProviderConfig();
   if (own.source === "user" && mine.ok) return { ...mine, source: "user" };
   if (instance.ok) {
-    const policy = await modelPolicyFor(user);
-    return { ok: true, config: { ...instance.config, model: policy.model || instance.config.model }, source: "instance", assigned: policy.source !== "instance" };
+    const policy = await modelPolicyFor(user, { personal: !user.workflowRun && feature !== "workflows" });
+    return {
+      ok: true,
+      config: { ...instance.config, model: policy.model || instance.config.model },
+      source: "instance",
+      assigned: policy.source !== "instance",
+      ...(policy.chosen ? { chosen: true } : {}),
+      ...(policy.allowed ? { policy } : {}),
+    };
   }
   if (mine.ok) return { ...mine, source: "user" };
   return { ok: false, reason: !mine.ok && mine.reason === "key-unreadable" ? mine.reason : !instance.ok ? instance.reason : "no-provider" };
@@ -154,7 +166,7 @@ export async function aiProviderSource(user: Identity): Promise<"instance" | "us
 export async function resolveAi(user: Identity, feature: AiFeature | string, options: Options = {}): Promise<AiResolution> {
   const reason = await gate(user, feature, options);
   if (reason) return { ok: false, reason };
-  return await provider(user);
+  return await provider(user, feature);
 }
 
 // Text stays on the server or in its own network: Ollama or another server
@@ -194,6 +206,8 @@ export async function aiStatus(user: Identity, workspaceId?: string, visiblePage
   // server's AI may not.
   const excluded = (enabled || device) && workspaceId ? (await aiExcludedPages(user, visiblePages, storedPages?.workspaceId === workspaceId ? storedPages : undefined)) : [];
   const config = resolved?.ok ? resolved.config : null;
+  // The models the person may pick in the AI panel (#538).
+  const choice = resolved?.ok && resolved.source === "instance" && resolved.policy ? await modelChoiceView(user, resolved.policy) : null;
   let host = "";
   try {
     host = config ? new URL(config.baseUrl).hostname : "";
@@ -201,7 +215,7 @@ export async function aiStatus(user: Identity, workspaceId?: string, visiblePage
   return {
     enabled,
     features,
-    provider: config && resolved?.ok ? { kind: config.kind, model: config.model, host, source: resolved.source, local: isLocalProvider(config), ...(resolved.assigned ? { assigned: true } : {}) } : null,
+    provider: config && resolved?.ok ? { kind: config.kind, model: config.model, host, source: resolved.source, local: isLocalProvider(config), ...(resolved.assigned ? { assigned: true } : {}), ...(choice ? { choice: { ...choice, chosen: !!resolved.chosen } } : {}) } : null,
     userProviders: !user.demo && !user.apiScope && instance.enabled && instance.userProviders,
     scope: own.scope,
     excludedPages: enabled ? excluded : [],

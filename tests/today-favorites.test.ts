@@ -32,7 +32,7 @@ async function fixture() {
 const boot = async (u: Identity, wid: string) => (await bootstrap(u, wid)) as unknown as { favorites: string[]; todayFavorites: string[] };
 
 test("schema 137 creates today_favorites with its own primary key", () => {
-  assert.equal(SCHEMA_VERSION, 137);
+  assert.ok(SCHEMA_VERSION >= 137);
   const columns = (db().prepare("PRAGMA table_info(today_favorites)").all() as { name: string; pk: number }[]);
   assert.deepEqual(columns.map((c) => c.name), ["user_id", "page_id", "created_at"]);
   assert.deepEqual(columns.filter((c) => c.pk).map((c) => c.name), ["user_id", "page_id"]);

@@ -36,6 +36,7 @@ export const CARD_STATES_NEW_STEP = "card-states-new-105";
 export const FEATURE_MODULES_STEP = "feature-modules-378";
 export const TEXT_LINKS_STEP = "text-links-107";
 export const INCIDENT_NOTICE_STEP = "incident-notice-wording-535";
+export const MODEL_CHOICE_STEP = "model-choice-538";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -56,6 +57,7 @@ export const dataSteps = (): DataStep[] => [
   { name: FEATURE_MODULES_STEP, run: modulesForExistingAccounts },
   { name: TEXT_LINKS_STEP, run: textLinksOfAllSources },
   { name: INCIDENT_NOTICE_STEP, run: incidentNoticeWording },
+  { name: MODEL_CHOICE_STEP, run: modelChoiceForAllModels },
 ];
 
 // Incident notifications stored before #532 named "Administration →
@@ -69,6 +71,24 @@ async function incidentNoticeWording() {
     "%Details unter Administration → Sicherheit.",
   );
   await run("UPDATE notifications SET link=replace(link,'#admin/threats/','#settings/instance/threats/') WHERE kind='incident' AND link LIKE '#admin/threats/%'");
+}
+
+// Schema 138 (#538): a plan's aiModels "all" was stored as the instance's
+// most capable model (lib/limits-file.ts allModel) – now it means "up to
+// that model, your choice". Rules of directory groups (the plans) for the
+// instance's provider whose model is that one get the mark; rules of
+// workspace groups, roles and people stay as they are (set by hand).
+async function modelChoiceForAllModels() {
+  if (!(await tableColumns("ai_model_rules")).includes("choice")) return;
+  const { instanceAiSettings } = await import("./ai/settings");
+  const { allModel } = await import("./ai/model-policy");
+  const { instanceModelOptions } = await import("./ai/quota");
+  const ai = await instanceAiSettings();
+  const provider = ai.provider;
+  if (!provider?.model.trim()) return;
+  const top = allModel(await instanceModelOptions(provider.kind), ai.prices);
+  if (!top) return;
+  await run("UPDATE ai_model_rules SET choice=1 WHERE scope='group' AND target LIKE 'dir:%' AND kind=? AND model=? AND choice=0", provider.kind, top);
 }
 
 // Schema 108 (#383): the links of every page and record read once

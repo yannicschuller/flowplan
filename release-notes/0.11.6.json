@@ -163,6 +163,13 @@
       "issues": [
         537
       ]
+    },
+    {
+      "de": "KI-Modell selbst wählen: Erlaubt dein Tarif oder deine Gruppe mehrere Modelle („Bis Opus – frei wählbar“), wählst du im KI-Fenster oder unter Einstellungen → KI, etwa ein schnelleres, günstigeres – das schont ein Kostenkontingent. Standard bleibt das stärkste; Workflows nutzen immer den Standard.",
+      "en": "Choose the AI model yourself: when your plan or group allows several models (“Up to Opus – your choice”), pick one in the AI panel or under Settings → AI, e.g. a faster, cheaper one that stretches a cost quota. The default stays the most capable; workflows always use the default.",
+      "issues": [
+        538
+      ]
     }
   ]
 }

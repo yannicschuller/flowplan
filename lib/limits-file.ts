@@ -46,8 +46,10 @@
 //   no AI rule (and no model rule) unless aiActions or aiTokens > 0;
 // - the model rule of the group (ai_model_rules, lib/ai/model-policy.ts):
 //   aiModels "haiku"/"sonnet" → the instance's model of that family, "all"
-//   → its most capable (Opus, else Sonnet, else Haiku, else the priciest),
-//   or an explicit aiModel.
+//   → "up to" its most capable (Opus, else Sonnet, else Haiku, else the
+//   priciest), your choice (#538: the rule's `choice` – members may pick
+//   that one or the instance's smaller models, "Bis Opus – frei wählbar"),
+//   or an explicit aiModel (exactly that one).
 // A key left out leaves that setting as it is; null removes it. Nothing
 // that is not in the file is removed, unless "removeMissing": true – then
 // the limits, AI rules and model rules of directory groups not in the file
@@ -69,9 +71,8 @@ import { groupLimitRules, type GroupLimits } from "./user-limits";
 import { directoryKey, directoryName, isDirectoryKey, MAX_DIRECTORY_NAME } from "./group-keys";
 import { instanceAiSettings, type AiPrice } from "./ai/settings";
 import { cleanLimits, instanceModelOptions, quotaRules, quotaSettings } from "./ai/quota";
-import { MODEL_NAME, modelRules, mostCapable } from "./ai/model-policy";
+import { allModel, familyModel, MODEL_FAMILIES, MODEL_NAME, modelRules, type ModelFamily } from "./ai/model-policy";
 import { QUOTA_PERIODS, type QuotaLimits, type QuotaPeriod, type QuotaUnit } from "./ai/quota-shared";
-import { costOf } from "./ai-statistics";
 import { MAX_UPLOAD_MB } from "./upload-limit";
 
 export const LIMITS_FILE_VERSION = 1;
@@ -86,8 +87,9 @@ export const DEFAULT_COST_PER_ACTION = 0.02;
 export const MAX_AI_TOKENS = 1_000_000_000_000;
 // Where the conversion of the last import is kept, for the export.
 const STATE_KEY = "limitsFile";
-export const MODEL_FAMILIES = ["haiku", "sonnet", "opus"] as const;
-type Family = (typeof MODEL_FAMILIES)[number];
+// The families and their models live in lib/ai/model-policy.ts (#538).
+export { allModel, familyModel, MODEL_FAMILIES };
+type Family = ModelFamily;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -386,7 +388,7 @@ type State = {
   settings: { defaultUserStorageMb: number | null; maxUploadMb: number; defaultUserWorkspaces: number | null; moreLimitsUrl: string };
   limits: Map<string, GroupLimits>;
   quota: Map<string, QuotaState>; // "scope|target"
-  models: Map<string, { model: string; kind: string }>; // group targets
+  models: Map<string, { model: string; kind: string; choice: boolean }>; // group targets
   unit: QuotaUnit;
   currency: string;
   prices: AiPrice[];
@@ -413,8 +415,8 @@ async function currentState(): Promise<State> {
   const provider = ai.provider?.model.trim() ? { kind: ai.provider.kind, model: ai.provider.model.trim() } : null;
   const quota = new Map<string, QuotaState>();
   for (const r of await quotaRules(q.unit)) quota.set(`${r.scope}|${r.target}`, { limits: r.limits, exempt: r.exempt, after: r.after ?? null, afterKind: r.afterKind ?? null, afterLimits: r.afterLimits ?? null });
-  const models = new Map<string, { model: string; kind: string }>();
-  for (const r of await modelRules()) if (r.scope === "group") models.set(r.target, { model: r.model, kind: r.kind });
+  const models = new Map<string, { model: string; kind: string; choice: boolean }>();
+  for (const r of await modelRules()) if (r.scope === "group") models.set(r.target, { model: r.model, kind: r.kind, choice: !!r.choice });
   const names = new Map<string, string>();
   for (const g of await all<{ id: string; name: string; workspace: string | null }>("SELECT g.id,g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id")) names.set(g.id, `${g.workspace ?? "–"} · ${g.name}`);
   return {
@@ -433,23 +435,6 @@ async function currentState(): Promise<State> {
 }
 const nameOf = (state: State, target: string) => (isDirectoryKey(target) ? directoryName(target) : (state.names.get(target) ?? target));
 
-// The instance's model of a family: the options whose id names it; among
-// several the most capable (price), then the newest-looking id.
-export function familyModel(family: Family, options: string[], prices: AiPrice[]) {
-  const list = options.filter((m) => m.toLowerCase().includes(family));
-  if (!list.length) return null;
-  const rank = (m: string) => costOf(prices, m, 1e6, 1e6) ?? -1;
-  return [...list].sort((a, b) => rank(b) - rank(a) || b.localeCompare(a, "en", { numeric: true }))[0];
-}
-// "all": the most capable model the instance knows.
-export function allModel(options: string[], prices: AiPrice[]) {
-  for (const f of ["opus", "sonnet", "haiku"] as const) {
-    const m = familyModel(f, options, prices);
-    if (m) return m;
-  }
-  return options.length && prices.length ? mostCapable(options, prices) : null;
-}
-
 // ---- Comparing ----
 
 // One change in plain data; the administration words it (components/
@@ -461,7 +446,7 @@ export type LimitsChange =
   | { area: "limits"; target: string; name: string; field: "storageMb" | "uploadMb" | "workspaces" | "storageMode"; before: number | string | null; after: number | string | null }
   | { area: "limitsRemoved"; target: string; name: string }
   | { area: "quota"; scope: "group" | "default" | "instance" | "role" | "user"; target: string; name: string; before: QuotaSide | null; after: QuotaSide | null; unit: QuotaUnit; currency: string }
-  | { area: "model"; target: string; name: string; before: string | null; after: string | null };
+  | { area: "model"; target: string; name: string; before: string | null; after: string | null; beforeChoice?: boolean; afterChoice?: boolean };
 
 type Plan = {
   changes: LimitsChange[];
@@ -470,7 +455,7 @@ type Plan = {
     unit: QuotaUnit | null;
     limits: { target: string; limits: GroupLimits | null }[];
     quota: { scope: string; target: string; rule: { limits: QuotaLimits; exempt: boolean; after: string | null; afterKind: string | null; afterLimits?: QuotaLimits | null } | null }[];
-    models: { target: string; model: string | null; kind: string }[];
+    models: { target: string; model: string | null; kind: string; choice?: boolean }[];
     conversion: { period: QuotaPeriod; tokensPerAction: number; costPerAction: number };
   };
 };
@@ -647,6 +632,8 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     quotaRule("group", g.target, g.name, ai.value, g.aiAfter, `${g.path}.aiAfter`, ai.isLimit, ai.direct, { value: g.aiAfterTokens, path: `${g.path}.aiAfterTokens` });
     // The model rule.
     let model: string | null | undefined = undefined;
+    // "all": up to the most capable, the person's choice (#538).
+    let choice = false;
     if (g.aiModel !== undefined) {
       if (g.aiModel === null) model = null;
       else if (needsProvider(`${g.path}.aiModel`)) model = g.aiModel;
@@ -655,15 +642,18 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
       if (needsProvider(path)) {
         const m = g.aiModels === "all" ? allModel(options, state.prices) : familyModel(g.aiModels, options, state.prices);
         if (!m) errors.push({ path, code: "no_family_model", value: g.aiModels, allowed: options });
-        else model = m;
+        else {
+          model = m;
+          choice = g.aiModels === "all";
+        }
       }
     }
     if (model !== undefined) {
       const cur = state.models.get(g.target) ?? null;
       const active = cur && state.provider && cur.kind === state.provider.kind ? cur.model : null;
-      if (model === null ? cur !== null : !(active === model)) {
-        changes.push({ area: "model", target: g.target, name: g.name, before: cur ? cur.model : null, after: model });
-        writes.models.push({ target: g.target, model, kind: state.provider?.kind ?? "" });
+      if (model === null ? cur !== null : !(active === model && cur!.choice === choice)) {
+        changes.push({ area: "model", target: g.target, name: g.name, before: cur ? cur.model : null, after: model, ...(cur?.choice ? { beforeChoice: true } : {}), ...(model !== null && choice ? { afterChoice: true } : {}) });
+        writes.models.push({ target: g.target, model, kind: state.provider?.kind ?? "", choice: model !== null && choice });
       }
     }
   }
@@ -683,7 +673,7 @@ async function plan(desired: Desired, state: State, errors: FileIssue[], notes: 
     }
     for (const [target, m] of state.models)
       if (isDirectoryKey(target) && !inFile.has(target)) {
-        changes.push({ area: "model", target, name: nameOf(state, target), before: m.model, after: null });
+        changes.push({ area: "model", target, name: nameOf(state, target), before: m.model, after: null, ...(m.choice ? { beforeChoice: true } : {}) });
         writes.models.push({ target, model: null, kind: m.kind });
       }
   }
@@ -768,10 +758,11 @@ export async function importLimitsFile(user: Identity, input: { file?: unknown; 
       if (m.model === null) await run("DELETE FROM ai_model_rules WHERE scope='group' AND target=?", m.target);
       else
         await run(
-          "INSERT INTO ai_model_rules(scope,target,model,kind,updated_at) VALUES('group',?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,updated_at=excluded.updated_at",
+          "INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES('group',?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,updated_at=excluded.updated_at",
           m.target,
           m.model,
           m.kind,
+          m.choice ? 1 : 0,
           now,
         );
     }
@@ -842,9 +833,14 @@ export async function exportLimitsFile(user: Identity) {
       if (!state.provider || m.kind !== state.provider.kind) skipped.push(`${what}: model rule for another provider (${m.kind})`);
       else {
         const f = modelName(m.model);
-        if (f === "haiku" || f === "sonnet") entry.aiModels = f;
-        else if (m.model === allModel(state.options, state.prices)) entry.aiModels = "all";
-        else entry.aiModel = m.model;
+        // "all" is the choice up to the most capable (#538); a fixed rule
+        // of the most capable model stays an explicit aiModel.
+        if (m.choice && m.model === allModel(state.options, state.prices)) entry.aiModels = "all";
+        else if (!m.choice && (f === "haiku" || f === "sonnet")) entry.aiModels = f;
+        else {
+          entry.aiModel = m.model;
+          if (m.choice) skipped.push(`${what}: "up to ${m.model}, your choice" (exported as exactly this model)`);
+        }
       }
     }
     // An add-on with AI actions keeps its kind; one without anything: none.

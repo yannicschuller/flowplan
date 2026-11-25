@@ -13,6 +13,7 @@ import { Select } from "../../select";
 import { ResponsiveTable, SaveState, SettingGroup, SettingRow, Switch, useSaveState } from "../../settings-ui";
 import { NumberInput } from "./parts";
 import { AfterLimitField, AfterSelect, LimitInput, modelSource, PERIOD_NAMES, ROLE_NAMES } from "./ai-rule";
+import { upToLabel } from "../../ai-model-choice";
 import { DirectoryGroupInput, GroupOptions, groupLabel } from "./group-picker";
 import { DirectoryMembersButton } from "./directory-groups";
 import { directoryName, isDirectoryKey } from "@/lib/group-keys";
@@ -60,7 +61,7 @@ export function AiQuotasSection() {
       await load();
     });
   // One row's model or both of its rules (admin.aiRule, lib/ai/admin-rule.ts).
-  const saveRule = (scope: string, target: string, patch: { model?: string | null; quota?: null }) =>
+  const saveRule = (scope: string, target: string, patch: { model?: string | null; choice?: boolean; quota?: null }) =>
     void run(async () => {
       await api("/api/command", { action: "admin.aiRule", scope, target, ...patch });
       await load();
@@ -259,7 +260,7 @@ function QuotaSettings({ view, save, status }: { view: AdminQuotaView; save: (pa
 // A row of the limits table; inherit: only a model is set for it, its
 // limits come from elsewhere (no quota rule) until one is entered.
 type LimitRow = QuotaRule & { inherit?: boolean };
-function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save: (patch: { rules: QuotaRule[] }) => void; saveRule: (scope: string, target: string, patch: { model?: string | null; quota?: null }) => void }) {
+function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save: (patch: { rules: QuotaRule[] }) => void; saveRule: (scope: string, target: string, patch: { model?: string | null; choice?: boolean; quota?: null }) => void }) {
   const t = useT();
   const rules = view.rules;
   const unit = view.settings.unit;
@@ -350,7 +351,7 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
             {
               key: "model",
               header: t("Modell", "Model"),
-              render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model) => saveRule(r.scope, r.target, { model })} />,
+              render: (r) => <ModelCell view={view} rule={r} label={name(r)} own={modelOf(r)} onChange={(model, choice) => saveRule(r.scope, r.target, { model, choice })} />,
             },
             {
               key: "after",
@@ -395,8 +396,8 @@ function QuotaLimitsTable({ view, save, saveRule }: { view: AdminQuotaView; save
       </div>
       <p className="ai-quota-model-note muted">
         {t(
-          `Modell: Eine Person nutzt ihr eigenes Modell, sonst das leistungsfähigste ihrer Gruppen und Rollen (das teuerste laut Preisliste), sonst den Standard der Instanz (${view.model.provider?.model || "–"}). Nur für den Anbieter der Instanz; eigene Anbieter und die KI auf dem Gerät wählen selbst.`,
-          `Model: a person uses their own model, else the most capable of their groups and roles (the most expensive by the price list), else the instance default (${view.model.provider?.model || "–"}). Only for the instance's provider; own providers and on-device AI choose their own.`,
+          `Modell: Eine Person nutzt ihr eigenes Modell, sonst das leistungsfähigste ihrer Gruppen und Rollen (das teuerste laut Preisliste), sonst den Standard der Instanz (${view.model.provider?.model || "–"}). „Bis … – frei wählbar“ erlaubt auch die kleineren Modelle der Instanz: Wer mehr als ein Modell darf, wählt selbst im KI-Fenster (Standard: das leistungsfähigste; Workflows nutzen immer den Standard). Nur für den Anbieter der Instanz; eigene Anbieter und die KI auf dem Gerät wählen selbst.`,
+          `Model: a person uses their own model, else the most capable of their groups and roles (the most expensive by the price list), else the instance default (${view.model.provider?.model || "–"}). “Up to … – your choice” also allows the instance's smaller models: whoever may use more than one model picks it in the AI panel (default: the most capable; workflows always use the default). Only for the instance's provider; own providers and on-device AI choose their own.`,
         )}
       </p>
       <SettingRow
@@ -480,7 +481,7 @@ function PeopleTable({ view, amount }: { view: AdminQuotaView; amount: (n: numbe
             { key: "limit", header: t("Grenze", "Limit"), align: "end", render: (p) => (p.exempt ? t("ausgenommen", "exempt") : p.limit === null ? "–" : amount(p.limit)) },
             { key: "left", header: t("Übrig", "Left||remaining"), align: "end", render: (p) => (p.exempt || p.limit === null ? "–" : amount(Math.max(0, p.limit - p.used))) },
             { key: "source", header: t("Woher", "From"), hideOnPhone: true, render: (p) => (p.after ? `${sourceLabel(p, t)} · ${t(`danach ${p.after}`, `then ${p.after}`)}` : sourceLabel(p, t)) },
-            { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={modelSource(p.model, t)}>{p.model.model}</span> : "–") },
+            { key: "model", header: t("Modell", "Model"), hideOnPhone: true, render: (p) => (p.model ? <span title={p.model.allowed ? `${modelSource(p.model, t)} · ${p.model.allowed.join(", ")}` : modelSource(p.model, t)}>{p.model.allowed ? upToLabel(p.model.allowed[0], t) : p.model.model}</span> : "–") },
           ]}
         />
       </div>
@@ -494,13 +495,17 @@ const sourceLabel = (p: Person, t: T) => {
 
 // The model of a row of the limits table: the instance's default for the
 // instance and the default per person, a choice for roles, groups and people.
-function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView; rule: QuotaRule; label: string; own?: AdminQuotaView["model"]["rules"][number]; onChange: (model: string | null) => void }) {
+// "Bis Opus – frei wählbar" (#538): groups and roles may also allow the
+// instance's smaller models (view.model.ranges: what each model allows).
+function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView; rule: QuotaRule; label: string; own?: AdminQuotaView["model"]["rules"][number]; onChange: (model: string | null, choice?: boolean) => void }) {
   const t = useT();
   const fallback = view.model.provider?.model || "";
   if (rule.scope === "instance") return <span className="muted">–</span>;
   if (rule.scope === "default" || !view.model.provider) return <span className="muted">{fallback || "–"}</span>;
-  const value = !own ? "inherit" : own.model === "" ? "default" : `m:${own.model}`;
+  const value = !own ? "inherit" : own.model === "" ? "default" : `${own.choice ? "c" : "m"}:${own.model}`;
   const options = [...new Set([...view.model.options, ...(own?.model ? [own.model] : [])])].filter((m) => m !== fallback || own?.model === m);
+  const ranges = view.model.ranges;
+  const choices = rule.scope === "user" ? [] : [...new Set([...Object.keys(ranges), ...(own?.choice && own.model ? [own.model] : [])])].sort((a, b) => a.localeCompare(b));
   return (
     <Select
       className="ai-quota-model"
@@ -508,7 +513,7 @@ function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView;
       value={value}
       onChange={(e) => {
         const v = e.target.value;
-        onChange(v === "inherit" ? null : v === "default" ? "" : v.slice(2));
+        onChange(v === "inherit" ? null : v === "default" ? "" : v.slice(2), v.startsWith("c:"));
       }}
     >
       {rule.scope === "user" ? (
@@ -521,7 +526,12 @@ function ModelCell({ view, rule, label, own, onChange }: { view: AdminQuotaView;
       )}
       {options.map((m) => (
         <option key={m} value={`m:${m}`}>
-          {own?.model === m && !own.active ? t(`${m} (anderer Anbieter – gilt nicht)`, `${m} (other provider – does not apply)`) : m}
+          {own?.model === m && !own.choice && !own.active ? t(`${m} (anderer Anbieter – gilt nicht)`, `${m} (other provider – does not apply)`) : m}
+        </option>
+      ))}
+      {choices.map((m) => (
+        <option key={`c:${m}`} value={`c:${m}`} title={(ranges[m] || [m]).join(", ")}>
+          {own?.model === m && own.choice && !own.active ? t(`${upToLabel(m, t)} (anderer Anbieter – gilt nicht)`, `${upToLabel(m, t)} (other provider – does not apply)`) : upToLabel(m, t)}
         </option>
       ))}
     </Select>

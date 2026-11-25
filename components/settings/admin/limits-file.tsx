@@ -10,6 +10,7 @@ import { SettingGroup } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { FileIssue, LimitsChange, LimitsImportResult, QuotaSide } from "@/lib/limits-file";
+import { upToLabel } from "../../ai-model-choice";
 
 type T = ReturnType<typeof useT>;
 const num = (n: number) => n.toLocaleString(LOCALE_TAG);
@@ -58,10 +59,13 @@ export function changeText(t: T, c: LimitsChange): string {
       return `${who}: ${quotaText(t, c.before, c.unit, c.currency, c.scope)} → ${quotaText(t, c.after, c.unit, c.currency, c.scope)}`;
     }
     case "model": {
-      const m = (v: string | null) => v || t("Standard der Instanz", "instance default");
-      if (!c.before) return t(`KI-Modell für ${c.name}: neu, ${m(c.after)}`, `AI model for ${c.name}: new, ${m(c.after)}`);
-      if (!c.after) return t(`KI-Modell für ${c.name}: entfernt (war ${m(c.before)})`, `AI model for ${c.name}: removed (was ${m(c.before)})`);
-      return t(`KI-Modell für ${c.name}: ${m(c.before)} → ${m(c.after)}`, `AI model for ${c.name}: ${m(c.before)} → ${m(c.after)}`);
+      // "all": "Bis Opus – frei wählbar" (#538).
+      const m = (v: string | null, choice?: boolean) => (v && choice ? `${upToLabel(v, t)} (${v})` : v || t("Standard der Instanz", "instance default"));
+      const before = m(c.before, c.beforeChoice),
+        after = m(c.after, c.afterChoice);
+      if (!c.before) return t(`KI-Modell für ${c.name}: neu, ${after}`, `AI model for ${c.name}: new, ${after}`);
+      if (!c.after) return t(`KI-Modell für ${c.name}: entfernt (war ${before})`, `AI model for ${c.name}: removed (was ${before})`);
+      return t(`KI-Modell für ${c.name}: ${before} → ${after}`, `AI model for ${c.name}: ${before} → ${after}`);
     }
   }
 }

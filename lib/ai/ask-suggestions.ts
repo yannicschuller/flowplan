@@ -104,3 +104,10 @@ export function modelDisplayName(model: string | null | undefined): string {
   if (m && (m[2] || m[3])) return `${word(m[1])}${m[2] ? ` ${m[2]}` : ""}${m[3] ? ` ${m[3]}B` : ""}`;
   return id;
 }
+// The family alone where Claude's naming has one ("Opus", "Sonnet",
+// "Haiku") – for "Bis Opus – frei wählbar" (#538); else the display name.
+export function modelFamilyName(model: string | null | undefined): string {
+  const lower = String(model || "").toLowerCase();
+  for (const f of ["opus", "sonnet", "haiku"]) if (lower.includes(f)) return f.charAt(0).toUpperCase() + f.slice(1);
+  return modelDisplayName(model) || String(model || "");
+}

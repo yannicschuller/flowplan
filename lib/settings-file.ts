@@ -18,7 +18,8 @@
 //                             workflowsCountInstance} (lib/ai/quota.ts),
 //                   "quotaRules": [{ scope: "instance"|"default"|"role"|"group",
 //                                    role?, group?, exempt, limits, after, afterLimits }],
-//                   "modelRules": [{ scope: "role"|"group", role?, group?, model }] },
+//                   "modelRules": [{ scope: "role"|"group", role?, group?, model,
+//                                    choice?: true ("up to this model, your choice", #538) }] },
 //     "limits":   { the limits file, version 1, unchanged (lib/limits-file.ts) } }
 //
 // Secrets are never in the file: where one belongs, the file says only
@@ -132,6 +133,7 @@ function buildSchemas() {
       role: z.enum(QUOTA_ROLES).optional(),
       group: groupName.optional(),
       model: z.string().trim().min(1).max(200).regex(MODEL_NAME, "Ungültiger Modellname."),
+      choice: z.boolean().optional(),
     })
     .strict();
   const ai = z
@@ -180,7 +182,7 @@ function refusal(error: unknown, path: string): SettingsIssue {
 // ---- The current settings, in the file's shape ----
 
 type QuotaRuleFile = { scope: (typeof RULE_SCOPES)[number]; role?: string; group?: string; exempt: boolean; limits: QuotaLimits; after: string | null; afterLimits: QuotaLimits | null };
-type ModelRuleFile = { scope: "role" | "group"; role?: string; group?: string; model: string };
+type ModelRuleFile = { scope: "role" | "group"; role?: string; group?: string; model: string; choice?: boolean };
 const ruleTarget = (r: { scope: string; role?: string; group?: string }) => (r.scope === "role" ? (r.role ?? "") : r.scope === "group" ? directoryKey((r.group ?? "").replace(/\s+/g, " ")) : "");
 const ruleKey = (r: { scope: string; role?: string; group?: string }) => `${r.scope}:${r.scope === "group" ? (r.group ?? "") : (r.role ?? "")}`;
 // A rule of a scope the file carries: not single accounts, not workspace groups.
@@ -234,7 +236,7 @@ async function currentSections() {
     );
   ai.modelRules = (await modelRules())
     .filter((r) => (r.scope === "role" || (r.scope === "group" && isDirectoryKey(r.target))) && r.kind === kind && r.model)
-    .map((r): ModelRuleFile => ({ scope: r.scope as "role" | "group", ...who(r.scope, r.target), model: r.model }));
+    .map((r): ModelRuleFile => ({ scope: r.scope as "role" | "group", ...who(r.scope, r.target), model: r.model, ...(r.choice ? { choice: true } : {}) }));
   return { instance, ai };
 }
 
@@ -460,11 +462,12 @@ async function applyAi(user: Identity, file: Obj, now: Obj, errors: SettingsIssu
       const at = Date.now();
       for (const r of list)
         await run(
-          "INSERT INTO ai_model_rules(scope,target,model,kind,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,updated_at=excluded.updated_at",
+          "INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,updated_at=excluded.updated_at",
           r.scope,
           ruleTarget(r),
           r.model,
           kind,
+          r.choice ? 1 : 0,
           at,
         );
     }

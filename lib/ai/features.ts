@@ -156,6 +156,16 @@ export type AiStatus = {
     local: boolean;
     // The administration set this person's model (lib/ai/model-policy.ts).
     assigned?: boolean;
+    // The person may pick among several models (#538): most capable first,
+    // with their tier; `default` the most capable, `chosen` whether `model`
+    // is the person's own pick; costQuota: their quota counts cost, so a
+    // smaller model stretches it.
+    choice?: {
+      models: { model: string; tier: "fast" | "balanced" | "strong" }[];
+      default: string;
+      chosen: boolean;
+      costQuota: boolean;
+    };
   } | null;
   // Whether the person may store an own provider.
   userProviders: boolean;

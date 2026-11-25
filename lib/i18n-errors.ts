@@ -43,6 +43,7 @@ const exact: Record<string, string> = {
   "Bitte eine Adresse mit http:// oder https:// angeben.": "Please enter an address with http:// or https://.",
   "Eine Grenze ist doppelt eingetragen.": "A limit is entered twice.",
   "Dieses Modell ist für die Instanz nicht vorgesehen.": "This model is not one of the instance's models.",
+  "Dieses Modell ist für dich nicht freigegeben.": "This model is not available to you.",
   "Unbekannte Zeitzone.": "Unknown time zone.",
   // Starter content for new accounts (lib/starter-content.ts, #381).
   "Ein Ende-zu-Ende-verschlüsselter Bereich kann kein Startinhalt sein.": "An end-to-end encrypted space cannot be starter content.",

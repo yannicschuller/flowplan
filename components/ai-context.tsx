@@ -15,6 +15,7 @@ import { AI_PROVIDER_NAMES, AI_PROVIDER_NAMES_EN, type AiFeature, type AiStatus 
 import { aiPageReadable, aiUsable } from "@/lib/ai/client";
 import { aiRoute, checkDeviceAi, deviceAiState, subscribeDeviceAi, type AiRoute, type DeviceAiState } from "@/lib/ai/device";
 import { useLocale, useT } from "./i18n";
+import { AiModelSelect } from "./ai-model-choice";
 
 type AiContextValue = { status: AiStatus | null; workspaceId: string | null };
 const AiContext = createContext<AiContextValue>({ status: null, workspaceId: null });
@@ -104,6 +105,15 @@ export function AiProviderFooter({ device = false }: { device?: boolean }) {
     );
   const provider = status?.provider || null;
   const Icon = provider?.local ? HardDrives : Cloud;
+  // Several models allowed (#538): the model can be picked right here.
+  if (provider?.choice)
+    return (
+      <div className={`ai-footer with-choice${!provider.local ? " external" : ""}`}>
+        <Icon size={13} aria-hidden />
+        <span>{aiProviderFooter({ ...provider, model: "" }, t)}</span>
+        <AiModelSelect className="ai-footer-model" current={provider.model} choice={provider.choice} label={t("Modell", "Model")} />
+      </div>
+    );
   return (
     <p className={`ai-footer${provider && !provider.local ? " external" : ""}`}>
       <Icon size={13} aria-hidden />

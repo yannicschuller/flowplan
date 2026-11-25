@@ -696,7 +696,7 @@ export async function adminQuotaView(period: QuotaPeriod = "month", now = Date.n
   const { quotaModelView } = await import("./admin-rule");
   const model = await quotaModelView(personView);
   return {
-    model: { provider: model.provider, rules: model.modelRules, options: model.modelOptions },
+    model: { provider: model.provider, rules: model.modelRules, options: model.modelOptions, ranges: model.modelRanges },
     settings,
     currency: ai.currency,
     priced: ai.prices.length > 0,

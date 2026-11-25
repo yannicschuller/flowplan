@@ -88,7 +88,7 @@ test("limits file: check, apply, the member sees the plan's limits", async ({ br
     await expect(result).toContainText(`Gruppe ${plus}: Speicher nicht festgelegt → 25.600 MB`);
     await expect(result).toContainText(`KI-Regel für ${pro}: neu, 5.000 Aktionen (25.000.000 Tokens) im Monat, danach claude-haiku-4-5`);
     await expect(result).toContainText(`KI-Modell für ${plus}: neu, claude-sonnet-4-6`);
-    await expect(result).toContainText(`KI-Modell für ${pro}: neu, claude-opus-4-1`);
+    await expect(result).toContainText(`KI-Modell für ${pro}: neu, Bis Opus – frei wählbar (claude-opus-4-1)`);
     // The check wrote nothing.
     expect(db.prepare("SELECT 1 FROM group_limits WHERE target=?").get(`dir:${plus}`)).toBeUndefined();
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-limits-file-check.png`, fullPage: true });

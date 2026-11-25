@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 137;
+export const SCHEMA_VERSION = 138;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1708,11 +1708,24 @@ function migrate(d: DatabaseSync) {
   migrateNotificationFields(d);
   // Schema 137 – "Heute" favourites of journals (#537, lib/today-favorites.ts).
   migrateTodayFavorites(d);
+  // Schema 138 – "Bis … – frei wählbar" for model rules (#538, lib/ai/model-policy.ts).
+  migrateModelRuleChoice(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 138 – ai_model_rules.choice (#538, lib/ai/model-policy.ts): 1
+// on a group or role rule means "up to this model, your choice" – its
+// members may also pick the instance's smaller models (allowedByRule); 0
+// (the default, every older rule) exactly this model. Rules of directory
+// groups the limits file wrote as aiModels "all" get it in a data step
+// (lib/data-steps.ts MODEL_CHOICE_STEP). An older version would ignore
+// the mark and give everyone the rule's model, hence the number.
+function migrateModelRuleChoice(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(ai_model_rules)").all() as { name: string }[]).some((c) => c.name === "choice"))
+    d.exec("ALTER TABLE ai_model_rules ADD COLUMN choice INTEGER NOT NULL DEFAULT 0");
 }
 // Schema 137 – today_favorites (#537, lib/today-favorites.ts): a journal
 // whose "Heute" link sits in this person's favourites – it opens the day of

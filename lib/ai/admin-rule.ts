@@ -16,7 +16,7 @@ import { instanceAiSettings } from "./settings";
 import { activeAfter, afterSchema, amountOf, checkedAfter, cleanLimits, instanceModelOptions, limitsSchema, periodBounds, personalLimits, quotaPerson, quotaRules, quotaSettings, type PersonalLimits } from "./quota";
 import { allGroupKeys, validGroupKey } from "../person-groups";
 import { directoryName, isDirectoryKey } from "../group-keys";
-import { chooseModel, MODEL_NAME, modelRules } from "./model-policy";
+import { allowedByRule, chooseModel, choiceRanges, MODEL_NAME, modelRules } from "./model-policy";
 import { MODEL_RULE_SCOPES, QUOTA_PERIODS, QUOTA_ROLES, type ModelPolicy, type ModelRule, type ModelRuleScope, type QuotaPeriod, type QuotaRule } from "./quota-shared";
 
 const target = z.string().trim().min(1).max(210);
@@ -35,6 +35,13 @@ async function requireTarget(scope: ModelRuleScope, id: string) {
 export async function modelOptions(kind: string | null, rules?: ModelRule[]) {
   return await instanceModelOptions(kind, rules ?? (await modelRules()));
 }
+// A group's or role's own rule as it applies to its members (#538): its
+// model, and with "Bis … – frei wählbar" the models they may pick.
+function rulePolicy(rule: ModelRule | null, scope: "group" | "role", id: string, provider: { kind: string; model: string }, options: string[], prices: Parameters<typeof allowedByRule>[2]): ModelPolicy {
+  if (!rule || rule.kind !== provider.kind || !rule.model) return { model: provider.model, source: "instance", target: null, default: provider.model };
+  const allowed = allowedByRule(rule, options, prices);
+  return { model: rule.model, source: scope, target: id, default: provider.model, ...(allowed.length > 1 ? { allowed } : {}) };
+}
 
 type UsageRow = { day: string; model: string; tokens_in: number; tokens_out: number };
 export type AiRuleUsage = { period: QuotaPeriod; used: number; limit: number | null; resetAt: number };
@@ -50,6 +57,7 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
   const provider = ai.provider?.model.trim() ? { kind: ai.provider.kind, model: ai.provider.model } : null;
   const ownQuota = rules.find((r) => r.scope === scope && r.target === id) ?? null;
   const ownModel = models.find((r) => r.scope === scope && r.target === id) ?? null;
+  const options = await modelOptions(provider?.kind ?? null, models);
   // Whose usage: the person, or the members of a group (the role: nobody –
   // a role has no fixed member list here).
   let people: string[] = [];
@@ -75,8 +83,9 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
         who,
         provider,
         ai.prices,
+        options,
       );
-      effectiveModel = chooseModel(models, who, provider, ai.prices);
+      effectiveModel = chooseModel(models, who, provider, ai.prices, options);
     }
     for (const g of await all<{ id: string; name: string; workspace: string | null }>("SELECT g.id,g.name,w.name workspace FROM groups g LEFT JOIN workspaces w ON w.id=g.workspace_id WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id=?)", id))
       names.set(g.id, `${g.workspace ?? "–"} · ${g.name}`);
@@ -86,9 +95,8 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
       ? [...(await allGroupKeys())].filter(([, keys]) => keys.includes(id)).map(([userId]) => userId)
       : (await all<{ user_id: string }>("SELECT user_id FROM group_members WHERE group_id=?", id)).map((m) => m.user_id);
     members = people.length;
-    if (provider) effectiveModel = ownModel && ownModel.kind === provider.kind && ownModel.model ? { model: ownModel.model, source: "group", target: id, default: provider.model } : { model: provider.model, source: "instance", target: null, default: provider.model };
-  } else if (provider)
-    effectiveModel = ownModel && ownModel.kind === provider.kind && ownModel.model ? { model: ownModel.model, source: "role", target: id, default: provider.model } : { model: provider.model, source: "instance", target: null, default: provider.model };
+    if (provider) effectiveModel = rulePolicy(ownModel, "group", id, provider, options, ai.prices);
+  } else if (provider) effectiveModel = rulePolicy(ownModel, "role", id, provider, options, ai.prices);
   // Usage of every period (also without a limit), in the quota's unit.
   const bounds = QUOTA_PERIODS.map((p) => ({ p, ...periodBounds(p, now, settings.timeZone, settings.weekStart) }));
   const since = bounds.reduce((a, b) => (b.start < a ? b.start : a), bounds[0].start);
@@ -138,7 +146,9 @@ export async function aiRuleView(user: Identity, raw: unknown, now = Date.now())
       active: !!ownModel && !!provider && ownModel.kind === provider.kind,
       inherited: inheritedModel,
       effective: effectiveModel,
-      options: await modelOptions(provider?.kind ?? null, models),
+      options,
+      // Per model: what "Bis … – frei wählbar" allows (#538).
+      ranges: choiceRanges(options, ai.prices),
     },
     groupNames: Object.fromEntries(names),
   };
@@ -149,6 +159,9 @@ const saveInput = scopeInput.extend({
   // Absent: unchanged; null: no own model (inherited); '' (people only):
   // the instance's default whatever their groups say.
   model: z.string().trim().max(200).regex(MODEL_NAME, "Ungültiger Modellname.").or(z.literal("")).nullable().optional(),
+  // With a model of a group or role: "up to this model, your choice"
+  // (#538); absent or false: exactly this model. Never for a person.
+  choice: z.boolean().optional(),
   // Absent: unchanged; null: no own limits (inherited); else the rule of
   // the quota table for this target.
   // afterLimits: the continuation's limit (absent: kept as it is).
@@ -167,14 +180,17 @@ export async function saveAiRule(user: Identity, raw: unknown) {
       if (b.model === "" && b.scope !== "user") throw new HttpError(400, "Für Gruppen und Rollen gibt es kein eigenes „Standard der Instanz“ – entferne das Modell stattdessen.");
       const provider = (await instanceAiSettings()).provider;
       if (!provider?.model.trim()) throw new HttpError(409, "Bitte zuerst einen KI-Anbieter der Instanz einrichten (Einstellungen → Instanz → KI).");
+      const choice = !!b.choice && b.scope !== "user" && !!b.model;
       await run(
-        "INSERT INTO ai_model_rules(scope,target,model,kind,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,updated_at=excluded.updated_at",
+        "INSERT INTO ai_model_rules(scope,target,model,kind,choice,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(scope,target) DO UPDATE SET model=excluded.model,kind=excluded.kind,choice=excluded.choice,updated_at=excluded.updated_at",
         b.scope,
         b.target,
         b.model,
         provider.kind,
+        choice ? 1 : 0,
         Date.now(),
       );
+      if (choice) detail.choice = true;
     }
     detail.model = b.model === null ? "inherited" : b.model || "instance-default";
   }
@@ -213,10 +229,12 @@ export async function quotaModelView(people: { id: string; roles: QuotaRule["tar
   const ai = await instanceAiSettings();
   const models = await modelRules();
   const provider = ai.provider?.model.trim() ? { kind: ai.provider.kind, model: ai.provider.model } : null;
+  const options = await modelOptions(provider?.kind ?? null, models);
   return {
     provider,
     modelRules: models.map((r) => ({ ...r, active: !!provider && r.kind === provider.kind })),
-    modelOptions: await modelOptions(provider?.kind ?? null, models),
-    effective: new Map(people.map((p) => [p.id, provider ? chooseModel(models, { userId: p.id, roles: p.roles as never, groups: p.groups }, provider, ai.prices) : null])),
+    modelOptions: options,
+    modelRanges: choiceRanges(options, ai.prices),
+    effective: new Map(people.map((p) => [p.id, provider ? chooseModel(models, { userId: p.id, roles: p.roles as never, groups: p.groups }, provider, ai.prices, options) : null])),
   };
 }
