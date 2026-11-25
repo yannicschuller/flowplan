@@ -92,6 +92,8 @@ test("a page moved to the trash comes back with Rückgängig", async ({ page }, 
   if (!mobile) await expect(tree(page, title)).toHaveCount(0, { timeout: 400 });
   const toast = page.locator(".toast-undo");
   await expect(toast).toContainText(`„${title}“ in den Papierkorb gelegt`);
+  // Not into the trash (#553): a top-level page leads to the start page.
+  await expect(page).toHaveURL(/#home$/);
   const undo = toast.getByRole("button", { name: /Rückgängig/ });
   await expect(undo).toBeVisible();
   if (shots) await page.screenshot({ path: `${shots}/ux-feel-undo-${info.project.name}.png` });

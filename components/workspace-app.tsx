@@ -3195,6 +3195,23 @@ export default function WorkspaceApp({
   const latestSwitch = useRef(0);
   // The first place of a workspace switched to: its tabs' active one
   // (#279), else the start page.
+  // The open page went to the trash (#553): on to its parent page – the
+  // nearest one that is still there – or the start page, instead of the
+  // trash. The undo note says where it went and takes it back.
+  function leaveDeleted(id: string | null) {
+    const pages = bootRef.current.pages;
+    let parent = id ? pages.find((p) => p.id === id)?.parent_id : null;
+    while (parent) {
+      const page = pages.find((p) => p.id === parent);
+      if (page && !page.deleted_at) {
+        void openPage(page.id);
+        return;
+      }
+      parent = page?.parent_id ?? null;
+    }
+    setPageId(null);
+    go("home");
+  }
   function goStart(b: Bootstrap, keepNav: boolean) {
     const place = tabsRef.current.switchTo(b.workspace.id, validPlaceIn(b.pages, !!b.user.isAdmin));
     if (!place || place === "home") return go("home", keepNav);
@@ -5976,8 +5993,7 @@ export default function WorkspaceApp({
                         // Gone at once; a refusal opens the page again.
                         const deleted = pageId;
                         const pending = act({ action: "page.delete", pageId: deleted });
-                        go("trash");
-                        setPageId(null);
+                        leaveDeleted(deleted);
                         if (!(await pending) && deleted) void openPage(deleted);
                       }}
                     >
@@ -8292,10 +8308,7 @@ export default function WorkspaceApp({
                           onSelect={async () => {
                             const open = screen === "page" && pageId === target.id;
                             const pending = act({ action: "page.delete", pageId: target.id });
-                            if (open) {
-                              go("trash");
-                              setPageId(null);
-                            }
+                            if (open) leaveDeleted(target.id);
                             if (!(await pending) && open) void openPage(target.id);
                           }}
                         >

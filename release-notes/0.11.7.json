@@ -26,6 +26,13 @@
       "issues": [
         551
       ]
+    },
+    {
+      "de": "Löschst du die offene Seite, geht es zu ihrer Elternseite (oder zur Startseite) statt in den Papierkorb; „Rückgängig“ holt sie zurück.",
+      "en": "Deleting the open page now takes you to its parent page (or the start page) instead of the trash; \"Undo\" brings it back.",
+      "issues": [
+        553
+      ]
     }
   ],
   "features": [
