@@ -2218,8 +2218,20 @@ export function DocumentBlockControls({
   useEffect(() => () => scoped.current?.classList.remove("toggle-scope"), []);
   useEffect(() => {
     if (!editor?.isEditable || picking) return;
+    // At most once a frame (#546): the pointer reports every pixel, the
+    // layout reads and the search below need only its latest position.
+    let frame = 0;
+    let latest: PointerEvent | null = null;
     const move = (event: PointerEvent) => {
-      if (event.pointerType === "touch" || dragging.current) return;
+      if (event.pointerType === "touch") return;
+      latest = event;
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    const update = () => {
+      frame = 0;
+      const event = latest;
+      latest = null;
+      if (!event || dragging.current) return;
       const host = surface.current;
       if (!host) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -2259,7 +2271,13 @@ export function DocumentBlockControls({
         .sort((a, b) => b.depth - a.depth)[0];
       if (under && under.pos !== hoverRef.current) setHovered(under.pos);
     };
-    const leave = () => hoverRef.current !== null && setHovered(null);
+    // A move still waiting for its frame does not bring the handle back.
+    const leave = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      latest = null;
+      if (hoverRef.current !== null) setHovered(null);
+    };
     // Typing hides the handle (#255, like Notion) until the mouse moves again.
     const typing = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || ["Shift", "Control", "Alt", "Meta", "CapsLock", "Escape", "Tab"].includes(event.key)) return;
@@ -2270,6 +2288,7 @@ export function DocumentBlockControls({
     document.documentElement.addEventListener("pointerleave", leave);
     dom.addEventListener("keydown", typing);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", move);
       document.documentElement.removeEventListener("pointerleave", leave);
       dom.removeEventListener("keydown", typing);
