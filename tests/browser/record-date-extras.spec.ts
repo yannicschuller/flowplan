@@ -56,7 +56,7 @@ test("documents: no recurrence or repeating task until the empty properties are 
   expect(errors).toEqual([]);
 });
 
-test("tasks: the repeating task is offered where a status can be done", async ({ page }, info) => {
+test("tasks: recurrence and repeating task only once set, added from the date's panel", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const { db, command } = await database(
@@ -74,13 +74,44 @@ test("tasks: the repeating task is offered where a status can be done", async ({
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   const properties = entry.locator(".row-properties");
   await expect(properties).toContainText("Fällig", { timeout: 30_000 });
-  await expect(properties.getByRole("button", { name: "Wiederholung: Keine, ändern" })).toBeVisible();
-  const repeat = properties.getByRole("button", { name: "Wiederkehrende Aufgabe: Nein, ändern" });
-  await expect(repeat).toBeVisible();
-  // Its controls in the editor, opened on the value.
-  await repeat.click();
+  // No "Keine" / "Nein" rows while nothing is set.
+  await expect(properties.locator(".recurrence-property")).toHaveCount(0);
+  await expect(properties.locator(".record-repeat")).toHaveCount(0);
+  // One date with a reminder row: plain "Erinnerung".
+  await expect(properties.locator(".reminder-property .row-property-label")).toHaveText(["Erinnerung"]);
+  // The date's own panel offers both.
+  const date = properties.getByRole("button", { name: /^Fällig: .+, ändern$/ });
+  await date.click();
+  await expect(page.getByRole("button", { name: "Wiederholung", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Wiederkehrende Aufgabe", exact: true }).click();
+  // The row appears with its controls open.
   await page.getByLabel("Wiederkehrende Aufgabe", { exact: true }).selectOption("weekly");
   await page.keyboard.press("Escape");
-  await expect(properties.getByRole("button", { name: "Wiederkehrende Aufgabe: Wöchentlich, ändern" })).toBeVisible();
+  const repeat = properties.getByRole("button", { name: "Wiederkehrende Aufgabe: Wöchentlich, ändern" });
+  await expect(repeat).toBeVisible();
+  await expect(repeat).toBeFocused();
+  // Set: the date's panel offers only the recurrence now.
+  await date.click();
+  await expect(page.getByRole("button", { name: "Wiederholung", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Wiederkehrende Aufgabe", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(date).toBeFocused();
   expect(errors).toEqual([]);
+});
+
+test("reminders of several dates say which date they belong to", async ({ page }, info) => {
+  const { db, command } = await database(
+    page,
+    `Termine ${info.project.name}`,
+    [
+      { id: "title", name: "Termin", type: "text" },
+      { id: "due", name: "Fällig", type: "date" },
+      { id: "start", name: "Start", type: "date" },
+    ],
+    false,
+  );
+  const row = await command({ action: "row.create", pageId: db.id, cells: { title: "Bericht", due: "2026-05-08", start: "2026-05-01" } });
+  await page.goto(`/#page=${db.id}&row=${row.id}`);
+  const properties = page.getByRole("dialog", { name: "Eintrag", exact: true }).locator(".row-properties");
+  await expect(properties.locator(".reminder-property .row-property-label")).toHaveText(["Erinnerung (Fällig)", "Erinnerung (Start)"], { timeout: 30_000 });
 });

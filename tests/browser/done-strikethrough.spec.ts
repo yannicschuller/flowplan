@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { withTaskFilters } from "./my-tasks-filters";
 
 // "Erledigte Aufgaben durchstreichen" (#458, lib/done-strike-pref.ts): on by
 // default. Off in Settings → Darstellung & Sprache → Editor, a class on
@@ -64,7 +65,7 @@ test("done tasks are struck through by default and only faded with the setting o
 
   // My tasks: the done task ticked, without the line.
   await page.goto("/#tasks");
-  await page.getByLabel("Erledigte zeigen").check();
+  await withTaskFilters(page, (filters) => filters.getByLabel("Erledigte zeigen").check());
   const inList = page.locator(".my-tasks-group li.checked", { hasText: text });
   await expect(inList).toBeVisible({ timeout: 30_000 });
   await expect(inList.getByRole("checkbox")).toBeChecked();
@@ -73,10 +74,10 @@ test("done tasks are struck through by default and only faded with the setting o
   // Back on: struck through again.
   await command(page, { action: "profile.strikeDoneTasks", strikeDoneTasks: true });
   await page.reload();
-  await page.getByLabel("Erledigte zeigen").check();
+  await withTaskFilters(page, (filters) => filters.getByLabel("Erledigte zeigen").check());
   await expect(inList).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("html")).not.toHaveClass(/done-tasks-plain/);
   await expect.poll(async () => (await look(inList.locator(".my-task-text"))).line).toBe("line-through");
-  await page.getByLabel("Erledigte zeigen").uncheck();
+  await withTaskFilters(page, (filters) => filters.getByLabel("Erledigte zeigen").uncheck());
   expect(errors).toEqual([]);
 });

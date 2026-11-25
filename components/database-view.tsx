@@ -43,7 +43,7 @@ import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import { RecordPropertyList } from "./record-property-order";
 import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
-import { recordDateExtras, summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
+import { recordDateExtras, reminderRowLabel, summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
 import { doneRule } from "@/lib/database-settings-schema";
 import type { RecordPropertiesChoice } from "@/lib/page-view-prefs";
 import {
@@ -320,6 +320,9 @@ export type DatabaseData = {
   // Whether this person folds the records' properties, on phones and on
   // larger screens (#186; null: the default applies).
   recordPropertiesCollapsed?: RecordPropertiesChoice;
+  // Whether this person folds "Verwandte Seiten" below the records (null:
+  // never chosen, folded).
+  recordRelatedCollapsed?: boolean | null;
 };
 // i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
@@ -715,6 +718,9 @@ export default function DatabaseView({
   // The address asks for the record as a page of its own (#231, "&full=1").
   const [fullFromUrl, setFullFromUrl] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false),
+    // The recurrence or repeating task added from the date's panel (#521):
+    // its row shows for this record, `open` with its controls opened.
+    [addedExtras, setAddedExtras] = useState<{ rowId: string; recurrence?: boolean; repeat?: boolean; open?: "recurrence" | "repeat" } | null>(null),
     [layoutOpen, setLayoutOpen] = useState(false),
     [accessOpen, setAccessOpen] = useState(false);
   // The record's Share menu (#231): links and publishing of this record only.
@@ -1222,9 +1228,11 @@ export default function DatabaseView({
   const recordFields = (
     showEmpty ? layoutFields : layoutFields.filter((f) => !emptyFields.has(f.id))
   ).filter((f) => f.id !== fields[0]?.id);
-  // The recurrence and repeating task below the first date (#521): only
-  // where they apply, hidden like empty properties while nothing is set.
+  // The recurrence and repeating task below the first date (#521): a row
+  // only once set (or added from the date's panel), where they apply.
   const firstDateId = fields.find((f) => f.type === "date")?.id;
+  // Another record: what was added for the last one goes.
+  if (addedExtras && addedExtras.rowId !== selected?.id) setAddedExtras(null);
   const dateExtras =
     selected && firstDateId && layoutFields.some((f) => f.id === firstDateId)
       ? recordDateExtras({
@@ -1233,8 +1241,10 @@ export default function DatabaseView({
           hasRecurrence: !!parseRecurrence(selected.recurrence),
           hasRepeat: !!parseRepeat(selected.repeat),
           canRepeat: !!doneRule(fields, data.database.settings),
+          revealed: addedExtras?.rowId === selected.id ? addedExtras : {},
         })
       : null;
+  const openExtra = selected && addedExtras?.rowId === selected.id ? addedExtras.open : undefined;
   const emptyHidden = emptyFields.size + (dateExtras?.hiddenEmpty ?? 0);
   // The folded properties (#186): a few values as chips, most telling first.
   const recordDevice = useRecordDevice();
@@ -2654,7 +2664,8 @@ export default function DatabaseView({
         display={recordValueDisplay(r, f)}
         links={isLinkField(f.type) ? <LinkValue type={f.type as LinkFieldType} value={cellText(v)} /> : f.type === "files" ? recordFileLinks(v) : undefined}
         wide={f.type === "relation" || f.type === "files" || isFormattedText(f, fields)}
-        editor={(done) => (
+        editor={(done, leave) => (
+          <>
           <CellInput
             field={f}
             value={v}
@@ -2675,6 +2686,36 @@ export default function DatabaseView({
             upload={uploadFile}
             files={data.files}
           />
+          {f.id === firstDateId && r.id === selected?.id && dateExtras && (dateExtras.canAddRecurrence || dateExtras.canAddRepeat) && (
+            // Not set yet, so no rows of their own (#521): added here.
+            <span className="record-date-more">
+              {dateExtras.canAddRecurrence && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setAddedExtras((x) => ({ ...(x?.rowId === r.id ? x : {}), rowId: r.id, recurrence: true, open: "recurrence" }));
+                    leave();
+                  }}
+                >
+                  <Plus size={13} aria-hidden /> {t("Wiederholung", "Recurrence")}
+                </button>
+              )}
+              {dateExtras.canAddRepeat && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setAddedExtras((x) => ({ ...(x?.rowId === r.id ? x : {}), rowId: r.id, repeat: true, open: "repeat" }));
+                    leave();
+                  }}
+                >
+                  <Plus size={13} aria-hidden /> {t("Wiederkehrende Aufgabe", "Repeating task")}
+                </button>
+              )}
+            </span>
+          )}
+          </>
         )}
       />
     );
@@ -2761,6 +2802,7 @@ export default function DatabaseView({
           <span className="row-property-value">
             <RecordPropertyValue
               name={t("Wiederholung", "Recurrence")}
+              autoOpen={openExtra === "recurrence"}
               text={rule ? recurrenceText(rule, t) : ""}
               emptyText={t("Keine", "None")}
               display={rule ? recurrenceText(rule, t) : null}
@@ -2880,6 +2922,10 @@ export default function DatabaseView({
       (r) => r.rowId === row.id && r.fieldId === field.id,
     );
     if (!validDateValue(value) && !reminder) return null;
+    // Several dates with a reminder row: each says which one (#521).
+    const rows = recordFields.filter(
+      (d) => d.type === "date" && (validDateValue(row.cells[d.id]) || data.reminders?.some((x) => x.rowId === row.id && x.fieldId === d.id)),
+    ).length;
     const offsets = reminderOffsets(value);
     const target =
       reminder && reminderTarget(value, reminder.offset, reminder.timeZone);
@@ -2901,7 +2947,7 @@ export default function DatabaseView({
       <label className="row-property reminder-property">
         <span className="row-property-name">
           <BellIcon size={13} aria-hidden />
-          <span className="row-property-label">{t("Erinnerung", "Reminder")}</span>
+          <span className="row-property-label">{reminderRowLabel(t("Erinnerung", "Reminder"), field.name, rows)}</span>
         </span>
         <span className="reminder-choice">
           <Select
@@ -6795,7 +6841,7 @@ export default function DatabaseView({
                       {f.type === "date" && reminderControl(selected, f)}
                       {f.id === firstDateId && dateExtras?.recurrence && recurrenceControl(selected)}
                       {f.id === firstDateId && dateExtras?.repeat && (
-                        <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
+                        <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} autoOpen={openExtra === "repeat"} />
                       )}
                     </Fragment>
                     )}
@@ -6831,7 +6877,7 @@ export default function DatabaseView({
                   onLinked={onRefresh}
                   onError={onError}
                 />
-                <RelatedPages key={`related-${selected.id}`} pageId={page.id} rowId={selected.id} />
+                <RelatedPages key={`related-${selected.id}`} pageId={page.id} rowId={selected.id} fold={{ choice: data.recordRelatedCollapsed }} />
                 </>)}
               </div>
               <div className="row-main">

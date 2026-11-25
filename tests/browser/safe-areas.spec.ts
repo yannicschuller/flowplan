@@ -54,6 +54,10 @@ test("dialogs stay clear of the status bar and home indicator; related pages fit
   });
   await page.goto(`/#page=${db.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  // Folded by default, with the count.
+  const relatedToggle = entry.getByRole("button", { name: "Verwandte Seiten · 1" });
+  await expect(relatedToggle).toHaveAttribute("aria-expanded", "false");
+  await relatedToggle.click();
   await expect(entry.locator(".related-page")).toBeVisible();
   await page.waitForTimeout(400); // the dialog rises in
   const dialog = await box(page, ".modal");

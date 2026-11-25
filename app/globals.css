@@ -7239,6 +7239,27 @@ button.record-value:focus-visible {
   gap: 6px;
   font-size: 13px;
 }
+/* "+ Wiederholung", "+ Wiederkehrende Aufgabe" in the panel of a record's
+   first date (#521): the rows only exist once set. */
+.record-date-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.record-date-more .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  font-size: 12.5px;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .record-date-more .text-button {
+    min-height: 44px;
+  }
+}
 .record-value-editor :where(input:not([type="checkbox"]):not([type="radio"]):not([type="number"]), .fp-select, textarea) {
   box-sizing: border-box;
   width: 100%;
@@ -30716,6 +30737,77 @@ h3 .block-reactions {
 .related-pages h3 {
   margin: 0 0 6px;
   font-size: 14px;
+}
+/* Below a record: a chevron and "Verwandte Seiten · 3" that
+   folds the list, the same look as "Eigenschaften" above it
+   (app/page-properties.css .record-properties-toggle). */
+.related-pages.foldable h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.related-pages.foldable.collapsed h3 {
+  margin-bottom: 0;
+}
+.related-pages-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  margin-left: -6px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.related-pages-toggle[aria-expanded="true"] .page-properties-caret {
+  transform: rotate(90deg);
+}
+[dir="rtl"] .related-pages-toggle[aria-expanded="false"] .page-properties-caret {
+  transform: scaleX(-1);
+}
+.related-pages-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.related-pages-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.related-pages-label {
+  font-weight: 500;
+}
+.related-pages.foldable h3 small {
+  font-size: 12px;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .related-pages-toggle {
+    min-height: 36px;
+  }
+}
+@media (pointer: coarse) and (max-width: 767.98px) {
+  .related-pages-toggle {
+    min-height: 44px;
+  }
+}
+.related-pages.foldable ul[hidden] {
+  display: none;
+}
+/* Printed: the list in full. */
+@media print {
+  .related-pages.foldable ul[hidden] {
+    display: grid;
+  }
 }
 .related-pages ul {
   display: grid;

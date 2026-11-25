@@ -9,7 +9,10 @@
 // On a database page (#186, schema 99): whether the properties of its
 // records are folded – one choice for all records of the database,
 // separately for phones and larger screens (record_properties_phone /
-// _desktop; the default: lib/record-properties.ts isRecordFolded).
+// _desktop; the default: lib/record-properties.ts isRecordFolded). And
+// whether "Verwandte Seiten" below a record's properties is folded
+// (related_collapsed; one choice for all records of the database; NULL:
+// never chosen, folded).
 // Looking is not changing: anyone who may open the page may choose, and the
 // choice is nobody else's business (no notification, no version, no event).
 import { z } from "zod";
@@ -83,9 +86,49 @@ export async function setRecordPropertiesCollapsed(user: Identity, body: unknown
   if (value === null)
     await run(
       `DELETE FROM page_view_prefs WHERE user_id=? AND page_id=? AND properties_collapsed IS NULL AND completed_mine IS NULL
-       AND record_properties_phone IS NULL AND record_properties_desktop IS NULL`,
+       AND record_properties_phone IS NULL AND record_properties_desktop IS NULL AND related_collapsed IS NULL`,
       user.id,
       page.id,
     );
   return { device: b.device, collapsed: b.collapsed };
+}
+
+// "Verwandte Seiten" below the properties of a database's records, folded
+// or open: the person's choice for all records of the database (null: none
+// yet – then folded, showing only the count).
+export async function recordRelatedCollapsed(user: Pick<Identity, "id">, databaseId: string): Promise<boolean | null> {
+  const row = await one<{ related_collapsed: number | null }>(
+    "SELECT related_collapsed FROM page_view_prefs WHERE user_id=? AND page_id=?",
+    user.id,
+    databaseId,
+  );
+  return bool(row?.related_collapsed);
+}
+
+const relatedInput = z.object({ pageId: z.string().uuid(), collapsed: z.boolean().nullable() });
+
+// The command `database.collapseRelated`: { pageId (the database),
+// collapsed } – null forgets the choice. Like the properties: anyone who
+// may open the database.
+export async function setRecordRelatedCollapsed(user: Identity, body: unknown): Promise<{ collapsed: boolean | null }> {
+  const b = relatedInput.parse(body);
+  const page = await requirePage(user, b.pageId);
+  if (!(await one("SELECT 1 AS ok FROM databases WHERE page_id=?", page.id))) throw new HttpError(400, "Keine Datenbank.");
+  const value = b.collapsed === null ? null : b.collapsed ? 1 : 0;
+  await run(
+    `INSERT INTO page_view_prefs(user_id,page_id,related_collapsed,updated_at) VALUES(?,?,?,?)
+     ON CONFLICT(user_id,page_id) DO UPDATE SET related_collapsed=excluded.related_collapsed,updated_at=excluded.updated_at`,
+    user.id,
+    page.id,
+    value,
+    Date.now(),
+  );
+  if (value === null)
+    await run(
+      `DELETE FROM page_view_prefs WHERE user_id=? AND page_id=? AND properties_collapsed IS NULL AND completed_mine IS NULL
+       AND record_properties_phone IS NULL AND record_properties_desktop IS NULL AND related_collapsed IS NULL`,
+      user.id,
+      page.id,
+    );
+  return { collapsed: b.collapsed };
 }

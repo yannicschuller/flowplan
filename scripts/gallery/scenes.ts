@@ -335,10 +335,32 @@ const pages: Scene[] = [
     group: "Pages",
     title: "My tasks – all records from databases",
     path: "#tasks",
-    steps: async (page) => {
+    steps: async (page, ctx) => {
+      // Phones: Quelle is a select, Person in the "Filters" sheet.
+      if (ctx.phone) {
+        await page.getByLabel("Source", { exact: true }).selectOption("databases");
+        await page.getByRole("button", { name: /^Filters/ }).click();
+        const sheet = page.getByRole("dialog", { name: "Filters" });
+        await sheet.locator(".my-tasks-person label", { hasText: "All" }).click();
+        await sheet.getByRole("group", { name: "Only for records from databases" }).waitFor();
+        return;
+      }
       await page.locator(".my-tasks-source label", { hasText: "Databases" }).click();
       await page.locator(".my-tasks-person label", { hasText: "All" }).click();
       await page.getByRole("group", { name: "Only for records from databases" }).waitFor();
+    },
+  },
+  // Phones: the filters other than the source and the date in a sheet.
+  {
+    id: "tasks-filters",
+    group: "Pages",
+    title: "My tasks – filters on phones",
+    covers: ["components/my-tasks.tsx"],
+    path: "#tasks",
+    devices: ["phone"],
+    steps: async (page) => {
+      await page.getByRole("button", { name: /^Filters/ }).click();
+      await page.getByRole("dialog", { name: "Filters" }).waitFor();
     },
   },
   { id: "graph", group: "Pages", title: "Graph", path: "#graph" },

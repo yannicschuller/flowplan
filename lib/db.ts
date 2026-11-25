@@ -1710,6 +1710,10 @@ function migrate(d: DatabaseSync) {
   migrateTodayFavorites(d);
   // Schema 138 – "Bis … – frei wählbar" for model rules (#538, lib/ai/model-policy.ts).
   migrateModelRuleChoice(d);
+  // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
+  // a new nullable column an older version leaves alone, so the schema
+  // number stays.
+  migrateRelatedPref(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -2464,6 +2468,13 @@ export function migrateRecordPropertyPrefs(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("record_properties_phone")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_phone INTEGER");
   if (!columns.includes("record_properties_desktop")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_desktop INTEGER");
+}
+// page_view_prefs.related_collapsed: whether the person folds "Verwandte
+// Seiten" below the properties of a database's records (NULL: never chosen,
+// folded).
+export function migrateRelatedPref(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).some((c) => c.name === "related_collapsed"))
+    d.exec("ALTER TABLE page_view_prefs ADD COLUMN related_collapsed INTEGER");
 }
 export function migrateGrantKinds(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(grants)").all() as { name: string }[]).map((c) => c.name);

@@ -28,12 +28,21 @@
 // the unassigned tasks without a date in pages I created (dated ones are
 // always there). Stored per person on the server (lib/unassigned-tasks-
 // pref.ts, command `tasks.unassigned`), so the widgets and the apps follow.
+//
+// Phones (design review): the filters in one row – Quelle as a select, the
+// date chip and "Filter (n)", n the filters that differ from the default –
+// so the tasks start on the first screen. "Filter" opens a bottom sheet
+// with the rest (Person, "Erledigte zeigen", the unassigned tasks, the
+// tools for records); the date range is a bottom sheet as well, above the
+// bottom navigation. Larger screens keep the row as it was.
 import { useLocale, useT } from "./i18n";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
-import { CalendarBlank, CheckSquare, Plus, Tray, X } from "@phosphor-icons/react";
+import { CalendarBlank, CaretDown, CheckSquare, FunnelSimple, Plus, Tray, X } from "@phosphor-icons/react";
 import { optimistic } from "@/lib/optimistic";
-import { api, PageIcon } from "./ui";
+import { api, Modal, PageIcon, SHEET_MEDIA } from "./ui";
+import { Select } from "./select";
+import { sheetFilterCount } from "@/lib/task-filter-count";
 import { RecordRow, RecordTools, RecordViews, type RecordsResult, type RecordView, type TaskRecord } from "./my-records";
 import { ChipPopover } from "./chip-popover";
 import { ListSkeleton } from "./skeleton";
@@ -97,6 +106,19 @@ const recordKey = (r: TaskRecord) => `record:${r.pageId}:${r.rowId}`;
 // The device's today, for "morgen", "Freitag" … in a new task and the date ranges.
 const today = () => localToday();
 
+// Phones: the compact filter row and the sheets.
+function usePhoneLayout(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia?.(SHEET_MEDIA);
+      query?.addEventListener("change", onChange);
+      return () => query?.removeEventListener("change", onChange);
+    },
+    () => !!window.matchMedia?.(SHEET_MEDIA).matches,
+    () => false,
+  );
+}
+
 function storedFilters(): Filters {
   try {
     const raw = localStorage.getItem(FILTERS_KEY);
@@ -144,6 +166,9 @@ export function MyTasks({
   const [query, setQuery] = useState("");
   const [view, setView] = useState("");
   const [rangeOpen, setRangeOpen] = useState(false);
+  // Phones: the sheet with the other filters.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const phone = usePhoneLayout();
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState("");
@@ -678,6 +703,91 @@ export function MyTasks({
       </fieldset>
     </ChipPopover>
   );
+  const sourceOptions: [Source, string, string][] = [
+    ["all", t("Alle", "All"), t("Aufgaben aus Dokumenten und Einträge aus Datenbanken", "Tasks from documents and records from databases")],
+    ["documents", t("Dokumente", "Documents"), t("Aufgaben mit Kästchen in Dokumenten, Journalen und deiner Seite „Aufgaben“", "Tasks with a checkbox in documents, journals and your page “Tasks”")],
+    ["databases", t("Datenbanken", "Databases"), t("Einträge aus Datenbanken mit Status oder Erledigt-Häkchen", "Records from databases with a status or a done checkbox")],
+  ];
+  const personFilter = segmented(
+    "my-tasks-person",
+    t("Person", "Person"),
+    person,
+    [
+      ["mine", t("Mir zugewiesen", "Assigned to me"), t("Dir mit @ gegebene, eigene und Journal-Aufgaben; Einträge, in denen du in einer Personen-Eigenschaft stehst", "Tasks given to you with @, your own and journal tasks; records that list you in a person property")],
+      ["all", t("Alle", "All"), t("Dazu alle Einträge aus Datenbanken, die du sehen kannst", "Plus every record from databases you can see")],
+      ["own", t("Eigene", "My own||tasks"), t("Nur deine Seite „Aufgaben“", "Only your page “Tasks”")],
+    ],
+    (value) => setFilters({ person: value }),
+    "my-tasks-person",
+  );
+  const rangeChoices = (
+    <fieldset className="chip-panel chip-options my-tasks-ranges">
+      <legend className="sr-only">{t("Fälligkeit", "Due")}</legend>
+      {DUE_RANGES.map((option) => (
+        <label key={option} data-active={range === option}>
+          <input
+            type="radio"
+            name="my-tasks-range"
+            checked={range === option}
+            onChange={() => {
+              setFilters({ range: option });
+              setRangeOpen(false);
+            }}
+          />
+          <span>
+            {rangeNames[option][0]}
+            <small>{rangeNames[option][1]}</small>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+  const doneFilter = (
+    <label className="my-tasks-done">
+      <input type="checkbox" checked={done} onChange={(e) => setFilters({ done: e.target.checked })} />
+      {t("Erledigte zeigen", "Show completed")}
+    </label>
+  );
+  const unassignedFilter = (
+    <label
+      className="my-tasks-done my-tasks-unassigned"
+      title={t(
+        "Offene Aufgaben ohne @Person und ohne Datum aus Seiten, die du angelegt hast – auf allen Geräten",
+        "Open tasks without an @person and without a date from pages you created – on all your devices",
+      )}
+    >
+      <input type="checkbox" checked={unassigned} disabled={unassignedBusy} onChange={(e) => void chooseUnassigned(e.target.checked)} />
+      {t("Auch Aufgaben ohne Person aus meinen Seiten", "Also unassigned tasks from my pages")}
+    </label>
+  );
+  const pageLink = intoDatabase ? (
+    <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(target.id, null)}>
+      {t(`„${targetName(target)}“ öffnen`, `Open “${targetName(target)}”`)}
+    </button>
+  ) : (
+    personal.pageId && (
+      <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(personal.pageId!, null)}>
+        {t("Seite „Aufgaben“ öffnen", "Open the page “Tasks”")}
+      </button>
+    )
+  );
+  const recordTools = records && (
+    <RecordTools
+      databases={records.databases}
+      database={database}
+      query={query}
+      onDatabase={(id) => {
+        setView("");
+        setDatabase(id);
+      }}
+      onQuery={(value) => {
+        setView("");
+        setQuery(value);
+      }}
+      onSave={saveView}
+    />
+  );
+  const sheetFilters = sheetFilterCount({ person, done, unassigned, database, query, records: wantRecords });
   return (
     <div className="utility-content my-tasks" ref={list}>
       <div className="utility-title">
@@ -736,105 +846,95 @@ export function MyTasks({
           {notice}
         </p>
       )}
-      <div className="my-tasks-bar">
-        {segmented(
-          "my-tasks-source",
-          t("Quelle", "Source"),
-          source,
-          [
-            ["all", t("Alle", "All"), t("Aufgaben aus Dokumenten und Einträge aus Datenbanken", "Tasks from documents and records from databases")],
-            ["documents", t("Dokumente", "Documents"), t("Aufgaben mit Kästchen in Dokumenten, Journalen und deiner Seite „Aufgaben“", "Tasks with a checkbox in documents, journals and your page “Tasks”")],
-            ["databases", t("Datenbanken", "Databases"), t("Einträge aus Datenbanken mit Status oder Erledigt-Häkchen", "Records from databases with a status or a done checkbox")],
-          ],
-          (value) => setFilters({ source: value }),
-          "my-tasks-source",
-        )}
-        {segmented(
-          "my-tasks-person",
-          t("Person", "Person"),
-          person,
-          [
-            ["mine", t("Mir zugewiesen", "Assigned to me"), t("Dir mit @ gegebene, eigene und Journal-Aufgaben; Einträge, in denen du in einer Personen-Eigenschaft stehst", "Tasks given to you with @, your own and journal tasks; records that list you in a person property")],
-            ["all", t("Alle", "All"), t("Dazu alle Einträge aus Datenbanken, die du sehen kannst", "Plus every record from databases you can see")],
-            ["own", t("Eigene", "My own||tasks"), t("Nur deine Seite „Aufgaben“", "Only your page “Tasks”")],
-          ],
-          (value) => setFilters({ person: value }),
-          "my-tasks-person",
-        )}
-        <ChipPopover
-          icon={<CalendarBlank size={15} />}
-          label={rangeLabel}
-          name={t(`Fälligkeit: ${rangeLabel}`, `Due: ${rangeLabel}`)}
-          active={range !== "any"}
-          panelLabel={t("Fälligkeit", "Due")}
-          className="my-tasks-range"
-          panelClassName="my-tasks-range-panel"
-          open={rangeOpen}
-          onOpenChange={setRangeOpen}
-        >
-          <fieldset className="chip-panel chip-options my-tasks-ranges">
-            <legend className="sr-only">{t("Fälligkeit", "Due")}</legend>
-            {DUE_RANGES.map((option) => (
-              <label key={option} data-active={range === option}>
-                <input
-                  type="radio"
-                  name="my-tasks-range"
-                  checked={range === option}
-                  onChange={() => {
-                    setFilters({ range: option });
-                    setRangeOpen(false);
-                  }}
-                />
-                <span>
-                  {rangeNames[option][0]}
-                  <small>{rangeNames[option][1]}</small>
-                </span>
-              </label>
+      <div className={`my-tasks-bar${phone ? " compact" : ""}`}>
+        {phone ? (
+          <Select
+            className="my-tasks-scope"
+            aria-label={t("Quelle", "Source")}
+            value={source}
+            onChange={(e) => setFilters({ source: e.target.value as Source })}
+          >
+            {sourceOptions.map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
             ))}
-          </fieldset>
-        </ChipPopover>
-        <label className="my-tasks-done">
-          <input type="checkbox" checked={done} onChange={(e) => setFilters({ done: e.target.checked })} />
-          {t("Erledigte zeigen", "Show completed")}
-        </label>
-        <label
-          className="my-tasks-done my-tasks-unassigned"
-          title={t(
-            "Offene Aufgaben ohne @Person und ohne Datum aus Seiten, die du angelegt hast – auf allen Geräten",
-            "Open tasks without an @person and without a date from pages you created – on all your devices",
-          )}
-        >
-          <input type="checkbox" checked={unassigned} disabled={unassignedBusy} onChange={(e) => void chooseUnassigned(e.target.checked)} />
-          {t("Auch Aufgaben ohne Person aus meinen Seiten", "Also unassigned tasks from my pages")}
-        </label>
-        {intoDatabase ? (
-          <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(target.id, null)}>
-            {t(`„${targetName(target)}“ öffnen`, `Open “${targetName(target)}”`)}
-          </button>
+          </Select>
         ) : (
-          personal.pageId && (
-            <button type="button" className="text-button my-tasks-page-link" onClick={() => onOpen(personal.pageId!, null)}>
-              {t("Seite „Aufgaben“ öffnen", "Open the page “Tasks”")}
+          segmented("my-tasks-source", t("Quelle", "Source"), source, sourceOptions, (value) => setFilters({ source: value }), "my-tasks-source")
+        )}
+        {!phone && personFilter}
+        {phone ? (
+          // A bottom sheet above the bottom navigation, not a panel it cuts off.
+          <div className="chip-popover-anchor my-tasks-range">
+            <button
+              type="button"
+              className={`toolbar-chip${range !== "any" ? " active" : ""}${rangeOpen ? " open" : ""}`}
+              aria-haspopup="dialog"
+              aria-expanded={rangeOpen}
+              aria-label={t(`Fälligkeit: ${rangeLabel}`, `Due: ${rangeLabel}`)}
+              onClick={() => setRangeOpen(true)}
+            >
+              <CalendarBlank size={15} />
+              <span className="toolbar-chip-text">{rangeLabel}</span>
+              <CaretDown size={11} className="toolbar-chip-caret" aria-hidden="true" />
             </button>
-          )
+            <Modal open={rangeOpen} sheet title={t("Fälligkeit", "Due")} className="my-tasks-sheet" onClose={() => setRangeOpen(false)}>
+              {rangeChoices}
+            </Modal>
+          </div>
+        ) : (
+          <ChipPopover
+            icon={<CalendarBlank size={15} />}
+            label={rangeLabel}
+            name={t(`Fälligkeit: ${rangeLabel}`, `Due: ${rangeLabel}`)}
+            active={range !== "any"}
+            panelLabel={t("Fälligkeit", "Due")}
+            className="my-tasks-range"
+            panelClassName="my-tasks-range-panel"
+            open={rangeOpen}
+            onOpenChange={setRangeOpen}
+          >
+            {rangeChoices}
+          </ChipPopover>
+        )}
+        {phone ? (
+          <>
+            <button
+              type="button"
+              className={`toolbar-chip my-tasks-more${sheetFilters ? " active" : ""}`}
+              aria-haspopup="dialog"
+              aria-expanded={filtersOpen}
+              aria-label={sheetFilters ? t(`Filter, ${sheetFilters} gesetzt`, `Filters, ${sheetFilters} set`) : t("Filter", "Filters")}
+              onClick={() => setFiltersOpen(true)}
+            >
+              <FunnelSimple size={15} aria-hidden />
+              <span className="toolbar-chip-text">
+                {t("Filter", "Filters")}
+                {sheetFilters > 0 && ` (${sheetFilters})`}
+              </span>
+            </button>
+            <Modal open={filtersOpen} sheet title={t("Filter", "Filters")} className="my-tasks-sheet my-tasks-filters-sheet" onClose={() => setFiltersOpen(false)}>
+              <div className="my-tasks-sheet-body">
+                {personFilter}
+                {doneFilter}
+                {unassignedFilter}
+                {wantRecords && records && recordTools}
+                {pageLink}
+              </div>
+            </Modal>
+          </>
+        ) : (
+          <>
+            {doneFilter}
+            {unassignedFilter}
+            {pageLink}
+          </>
         )}
       </div>
-      {wantRecords && records && (
+      {wantRecords && records && (!phone || records.views.length > 0) && (
         <div className="my-tasks-records">
-          <RecordTools
-            databases={records.databases}
-            database={database}
-            query={query}
-            onDatabase={(id) => {
-              setView("");
-              setDatabase(id);
-            }}
-            onQuery={(value) => {
-              setView("");
-              setQuery(value);
-            }}
-            onSave={saveView}
-          />
+          {!phone && recordTools}
           <RecordViews views={records.views} active={view} onPick={pickView} onDelete={(v) => void deleteView(v)} />
         </div>
       )}

@@ -32,10 +32,13 @@ export function RecordRepeat({
   fields,
   editable,
   act,
+  autoOpen = false,
 }: {
   row: Row;
   fields: Field[];
   editable: boolean;
+  // Just added from the date's panel (#521): its controls open.
+  autoOpen?: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
 }) {
   const t = useT();
@@ -64,6 +67,7 @@ export function RecordRepeat({
         <span className="row-property-value">
           <RecordPropertyValue
             name={t("Wiederkehrende Aufgabe", "Repeating task")}
+            autoOpen={autoOpen}
             text={summary}
             emptyText={t("Nein", "No")}
             display={summary || null}

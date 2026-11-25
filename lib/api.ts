@@ -85,7 +85,7 @@ import { OFFLINE_JOURNAL_MAX, offlineEntryHasText } from "./journal-offline";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { commentRecipients, commentTextMentions, mayHear } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
-import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed, setRecordPropertiesCollapsed } from "./page-view-prefs";
+import { propertiesCollapsed, recordPropertiesCollapsed, recordRelatedCollapsed, setPropertiesCollapsed, setRecordPropertiesCollapsed, setRecordRelatedCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, indexPageTasks, markTasksSeen, reindexRowTasks, syncDocTasks, taskBadges } from "./doc-tasks";
 import { addPersonalTask } from "./personal-tasks";
@@ -635,7 +635,11 @@ export async function pageData(user: Identity, pid: string, options: { presence?
   if ((data as { locked?: unknown }).locked) return data;
   // Whether this person folds the properties of the records (#186), per
   // kind of device, so a record opens in the right state without a jump.
-  const records = "database" in data && data.database ? { recordPropertiesCollapsed: await recordPropertiesCollapsed(user, data.page.id) } : {};
+  // Likewise "Verwandte Seiten" below them (null: never chosen, folded).
+  const records =
+    "database" in data && data.database
+      ? { recordPropertiesCollapsed: await recordPropertiesCollapsed(user, data.page.id), recordRelatedCollapsed: await recordRelatedCollapsed(user, data.page.id) }
+      : {};
   const properties = await pageMetaFor(data.page);
   // A draft of a saved page template (#461): which one, for its bar.
   const draft = data.page.template_draft ? { templateDraft: await templateDraftInfo(user, data.page) } : {};
@@ -2201,6 +2205,10 @@ async function runCommand(
       // The properties of a database's records, folded or open (#186).
       case "database.collapseRecordProperties":
         result = await setRecordPropertiesCollapsed(user, b);
+        break;
+      // "Verwandte Seiten" below a database's records, folded or open.
+      case "database.collapseRelated":
+        result = await setRecordRelatedCollapsed(user, b);
         break;
       // "Alle / Nur meine" below a journal day (#169), the reader's choice.
       case "journal.completedMine":
