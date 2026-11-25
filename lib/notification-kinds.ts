@@ -75,3 +75,51 @@ export function incidentPasses(threshold: IncidentThreshold, severity: string) {
   if (threshold === "all") return true;
   return (severityRank[severity as keyof typeof severityRank] ?? 2) >= severityRank[threshold];
 }
+
+// What a notification is within its kind (notifications.subtype): the
+// inbox builds its line from it and notifications.params in the reader's
+// language (lib/notification-display.ts). Rows without one (older ones, and
+// kinds that only have a text) show their `body`.
+export const notificationSubtypes = [
+  "mention", // in a page
+  "record_mention", // in a record's text
+  "comment_mention", // in a comment
+  "comment", // a page or record comment
+  "comment_text", // a comment on a passage of text
+  "comment_reply", // an answer in a passage's thread
+  "assignment", // a task given in a page
+  "task_due", // a task due today
+  "share", // a page shared with you
+  "workspace_added", // added to a workspace
+  "date_reminder", // a date property's reminder
+  "approval", // a workflow asks for approval
+  "incident", // a security incident of the instance
+  "change", // a followed page changed
+] as const;
+export type NotificationSubtype = (typeof notificationSubtypes)[number];
+export const isNotificationSubtype = (value: unknown): value is NotificationSubtype =>
+  typeof value === "string" && (notificationSubtypes as readonly string[]).includes(value);
+
+// The groups of the inbox: what concerns you most first.
+export const notificationCategories = ["share", "task", "mention", "comment", "security", "system"] as const;
+export type NotificationCategory = (typeof notificationCategories)[number];
+export function notificationCategory(kind: string | null | undefined, subtype?: string | null): NotificationCategory {
+  if (subtype === "assignment" || subtype === "task_due") return "task";
+  if (subtype === "approval") return "share";
+  switch (kind) {
+    case "mention":
+      return "mention";
+    case "comment":
+    case "guest":
+      return "comment";
+    case "reminder":
+      return "task";
+    case "share":
+      return "share";
+    case "security":
+    case "incident":
+      return "security";
+    default:
+      return "system";
+  }
+}

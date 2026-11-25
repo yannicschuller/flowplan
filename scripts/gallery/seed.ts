@@ -2,6 +2,8 @@ import type { APIRequestContext } from "@playwright/test";
 // @ts-ignore – plain JavaScript module
 import { ACCOUNT, seedAccount } from "../production-server.mjs";
 import type { Ids } from "./types";
+import { seedInboxNotifications } from "./inbox-seed";
+import { FIXED_TIME } from "../../tests/visual/shared";
 
 // The visual tests' example content (scripts/production-server.mjs, in its
 // English version) plus a page of every kind, a journal day, published
@@ -14,7 +16,9 @@ export const GALLERY_DAY = "2026-10-15"; // the day of FIXED_TIME
 
 const SANDBOX_TITLE = "Sandbox";
 
-export async function seedGallery(api: APIRequestContext, origin: string, { fresh }: { fresh: boolean }): Promise<Ids> {
+// `dataDir`: the data directory of the gallery's own server – the inbox's
+// example notifications go straight into its database (inbox-seed.ts).
+export async function seedGallery(api: APIRequestContext, origin: string, { fresh, dataDir }: { fresh: boolean; dataDir?: string }): Promise<Ids> {
   // A fresh server: the first account (an admin). An existing one (--url):
   // an account of its own, which only works while sign-up is open there.
   const account = fresh
@@ -78,6 +82,24 @@ export async function seedGallery(api: APIRequestContext, origin: string, { fres
   });
   await command({ action: "form.update", pageId: base.databaseId, enabled: true, internal: false, anonymous: true });
   const formToken = (await read(base.databaseId)).form?.token as string;
+
+  if (dataDir) {
+    const boot = await (await api.get("/api/bootstrap")).json();
+    const rows = (await read(base.databaseId)).rows as { id: string; cells: Record<string, unknown> }[];
+    seedInboxNotifications(
+      dataDir,
+      {
+        userId: boot.user.id,
+        documentId: base.documentId,
+        databaseId: base.databaseId,
+        workflowId: base.workflowId,
+        documentTitle: (await read(base.documentId)).page.title,
+        rowId: rows[0]?.id,
+        rowTitle: typeof rows[0]?.cells?.title === "string" ? rows[0].cells.title : undefined,
+      },
+      FIXED_TIME,
+    );
+  }
 
   return {
     workspaceId,

@@ -111,8 +111,6 @@ import {
   journalDayDetails,
   journalLocked,
   lockingJournal,
-  LOCKED_NOTICE,
-  lockedNotification,
   mayResetJournalLock,
   journalOf,
   journalSettings,
@@ -198,6 +196,8 @@ import {
   applyAppearance,
   snapshotAppearance,
 } from "./page-covers";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
+import { inboxNotifications, notificationBulk, unreadNotifications } from "./notification-inbox";
 import { documentPreview } from "./document-preview";
 import { recordPreviews } from "./record-previews";
 import {
@@ -419,7 +419,6 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   await workspaceRoles(user, workspace.id);
   const { pages, stored: storedPages, tag: pagesTag } = await sidebarPages(user, workspace.id, guestHere);
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
-  const lockedInbox = await lockedNotification();
   // Guests only see themselves; members see who is a guest.
   const { members, tag: membersTag } = await workspaceMembers(user, workspace.id, guestHere);
   return withKeptParts({
@@ -578,10 +577,12 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       })),
     members,
     // Behind a journal PIN not entered: only that the journal is locked.
-    notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
-      "SELECT * FROM notifications WHERE user_id=? AND push_only IS NULL ORDER BY created_at DESC,seq DESC LIMIT 100",
-      user.id,
-    ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE, markup: null } : n)),
+    // The newest 100 (older ones: GET /api/notifications/inbox) and
+    // how many are unread in all, for the badges.
+    ...(await (async () => {
+      const { notifications, more } = await inboxNotifications(user);
+      return { notifications, notificationsMore: more, notificationsUnread: await unreadNotifications(user.id) };
+    })()),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
     ai: await aiStatus(user, workspace.id, pages, { workspaceId: workspace.id, pages: storedPages }),
@@ -2452,11 +2453,12 @@ async function runCommand(
               await pageRole({ ...user, id: uid }, p)
             ) {
               await run(
-                "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'mention')",
+                `INSERT INTO notifications(id,user_id,body,page_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,'mention',${NOTIFICATION_FIELD_VALUES})`,
                 id(),
                 uid,
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
                 p.id,
+                ...notificationFields({ actorId: user.id, subtype: "mention", params: { actor: user.name, page: p.title } }),
               );
               await mentionWebhook(p.workspace_id, p.id, null, uid, user.name, user.id);
             }
@@ -3486,16 +3488,19 @@ async function runCommand(
           ? (await isGuest(user, p.workspace_id)) ? [] : commentMentions(formatted.content)
           : await commentTextMentions(user, p, body);
         const note = attachmentNote(formatted?.content);
+        // The comment's first words for the inbox – not from an encrypted space.
+        const excerpt = (await isEncryptedPage(p)) ? null : body;
         for (const recipient of await commentRecipients(user, p, commentRow, mentioned)) {
           const mention = mentioned.includes(recipient);
           await run(
-            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
+            `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,?,${NOTIFICATION_FIELD_VALUES})`,
             id(),
             recipient,
             (mention ? `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt` : `${user.name} kommentiert „${p.title}“`) + note,
             p.id,
             commentRow,
             mention ? "mention" : "comment",
+            ...notificationFields({ actorId: user.id, subtype: mention ? "comment_mention" : "comment", params: { actor: user.name, page: p.title }, excerpt }),
           );
           if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name, user.id);
         }
@@ -3565,13 +3570,14 @@ async function runCommand(
           for (const recipient of new Set(await mentionsOf(formatted?.content ?? null, body)))
             if (recipient !== user.id && !before.has(recipient) && await mayHear(recipient, p, comment.row_id)) {
               await run(
-                "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
+                `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,?,${NOTIFICATION_FIELD_VALUES})`,
                 id(),
                 recipient,
                 `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt`,
                 p.id,
                 comment.row_id,
                 "mention",
+                ...notificationFields({ actorId: user.id, subtype: "comment_mention", params: { actor: user.name, page: p.title }, excerpt: (await isEncryptedPage(p)) ? null : body }),
               );
               await mentionWebhook(p.workspace_id, p.id, comment.row_id, recipient, user.name, user.id);
             }
@@ -3637,6 +3643,10 @@ async function runCommand(
           "UPDATE notifications SET read_at=? WHERE user_id=? AND read_at IS NULL", nowText(),
           user.id,
         );
+        break;
+      // Several at once: read, unread or remove; only your own.
+      case "notification.bulk":
+        result = await notificationBulk(user, b);
         break;
       // Single notifications: mark read/unread or remove; only your own.
       case "notification.mark":

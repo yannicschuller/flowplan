@@ -157,6 +157,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "home_defaults.updated_by": "move",
   "journal_unlocks.user_id": "move",
   "notifications.user_id": "move",
+  // Who caused a notification: the merged account from now on.
+  "notifications.actor_id": "move",
   "notification_prefs.user_id": "move",
   // Mentions in whiteboard comment pins already told (#455): the target
   // is not told again.

@@ -12,6 +12,7 @@ import { rememberApprovalTarget } from "../notification-targets";
 import { securityEvent } from "../security-events";
 import { userLocale } from "../user-locale";
 import type { Identity, Page } from "../types";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields, type NotificationFields } from "../notification-fields";
 
 const HOUR = 3_600_000;
 type Text = (tr: (de: string, en: string) => string) => string;
@@ -19,7 +20,8 @@ type Text = (tr: (de: string, en: string) => string) => string;
 // Inserts one notification per member (never a guest of the workspace).
 // `approvalId`: the notification asks for that approval – the apps show
 // "Approve" / "Reject" on its push (lib/notification-targets.ts, §11.8).
-export async function opsNotify(userIds: (string | null | undefined)[], pageId: string, text: Text, rowId: string | null = null, approvalId: string | null = null) {
+// `fields`: what the inbox shows instead of the text (lib/notification-fields.ts).
+export async function opsNotify(userIds: (string | null | undefined)[], pageId: string, text: Text, rowId: string | null = null, approvalId: string | null = null, fields?: NotificationFields) {
   const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page) return 0;
   let sent = 0;
@@ -28,7 +30,12 @@ export async function opsNotify(userIds: (string | null | undefined)[], pageId: 
     if (!member) continue;
     const tr = translate((await userLocale(uid)) as Locale);
     const notificationId = id();
-    await run("INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)", notificationId, uid, text(tr).slice(0, 500), page.id, rowId, "workflow_ops");
+    if (fields)
+      await run(
+        `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,?,${NOTIFICATION_FIELD_VALUES})`,
+        notificationId, uid, text(tr).slice(0, 500), page.id, rowId, "workflow_ops", ...notificationFields(fields),
+      );
+    else await run("INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)", notificationId, uid, text(tr).slice(0, 500), page.id, rowId, "workflow_ops");
     if (approvalId) await rememberApprovalTarget(notificationId, approvalId);
     sent++;
   }

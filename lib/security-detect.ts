@@ -10,6 +10,7 @@
 import { id, one, run } from "./db";
 import { securityRules, type SecurityRule } from "./security-kinds";
 import { addressHash, type SecurityEvent } from "./security-events";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 const MINUTE = 60_000,
   HOUR = 60 * MINUTE,
@@ -294,11 +295,12 @@ async function report(incident: string, rule: SecurityRule, detail: string, now:
     for (const admin of await adminUserIds())
       if (incidentPasses(await incidentThreshold(admin), severity))
         await run(
-          "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'incident',?)",
+          `INSERT INTO notifications(id,user_id,body,kind,link,${NOTIFICATION_FIELDS}) VALUES(?,?,?,'incident',?,${NOTIFICATION_FIELD_VALUES})`,
           id(),
           admin,
           `${severity === "critical" ? "Kritischer Sicherheitsvorfall" : "Sicherheitsvorfall"}: ${title}${detail ? ` – ${detail}` : ""}. Details unter Einstellungen → Instanz → Sicherheit.`,
           `#settings/instance/threats/incident/${incident}`,
+          ...notificationFields({ subtype: "incident", severity: severity === "critical" ? "critical" : "warn", params: { rule, detail } }),
         );
     await dispatch();
     const { sendSecurityAlert } = await import("./admin-ops");

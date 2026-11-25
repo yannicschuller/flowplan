@@ -41,6 +41,8 @@ import { emojiPresentation } from "./emoji-presentation";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { COMMENT_COLORS, storedCommentColor } from "./comment-colors";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
+import { isEncryptedPage } from "./e2ee-server";
 // A colour sent with thread.create / thread.color (#450): a palette name, or
 // null/absent for the default. Anything else is refused.
 const commentColorSchema = z.enum(COMMENT_COLORS).nullable().optional();
@@ -271,6 +273,8 @@ async function notify(
   mentions: string[] = [],
   onlyMentions = false,
   note = "",
+  // The message's plain text: its first words go to the inbox.
+  text = "",
 ) {
   const target = await one<{ row_id: string | null }>(
     "SELECT row_id FROM inline_threads WHERE id=?",
@@ -290,11 +294,12 @@ async function notify(
           "SELECT DISTINCT author_id FROM inline_messages WHERE thread_id=? AND author_id IS NOT NULL",
           threadId,
         )).map((m) => m.author_id);
+  const encrypted = await isEncryptedPage(page);
   for (const uid of new Set([...recipients, ...mentions]))
     if (uid !== user.id && await mayHear(uid, page, rowId)) {
       if (mentions.includes(uid)) await mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name, user.id);
       await run(
-        "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
+        `INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,?,?,${NOTIFICATION_FIELD_VALUES})`,
         id(),
         uid,
         (mentions.includes(uid)
@@ -304,6 +309,12 @@ async function notify(
         target?.row_id || null,
         threadId,
         mentions.includes(uid) ? "mention" : "comment",
+        ...notificationFields({
+          actorId: user.id,
+          subtype: mentions.includes(uid) ? "comment_mention" : first ? "comment_text" : "comment_reply",
+          params: { actor: user.name, page: page.title },
+          excerpt: encrypted ? null : text,
+        }),
       );
     }
 }
@@ -394,6 +405,7 @@ export async function inlineCommentCommand(
       commentMentions(messageInputValue.content),
       false,
       attachmentNote(messageInputValue.content),
+      body,
     );
     await commentEvent(page.id, rowId || null, user.id, { id: messageId, text: body, inline: true, attachments: commentAttachments(messageInputValue.content).length });
     return { id: threadId };
@@ -514,6 +526,7 @@ export async function inlineCommentCommand(
       commentMentions(messageInputValue.content),
       false,
       attachmentNote(messageInputValue.content),
+      body,
     );
     await commentEvent(page.id, thread.row_id || null, user.id, { id: messageId, text: body, inline: true, attachments: commentAttachments(messageInputValue.content).length });
   } else {
@@ -596,6 +609,8 @@ export async function inlineCommentCommand(
             (uid) => !before.includes(uid),
           ),
           true,
+          "",
+          edited.body,
         );
       }
       if (action === "thread.deleteMessage")

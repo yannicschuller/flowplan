@@ -12,7 +12,6 @@ import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
 import { desktopApp, desktopPageLink, holdForProfileSwitcher, inDesktopApp, nativeApp, offerDesktopApp, openInWindow, openProfileSwitcher, useProfileSwitcherWay } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
-import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useT, writeLocaleCookie } from "./i18n";
 import { OfflineStatus } from "./offline-status";
@@ -101,7 +100,7 @@ import { IconLibraryPicker } from "./icon-library-picker";
 import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
-import { NotificationText } from "./notification-text";
+import { Inbox } from "./inbox";
 import { edgeScroller } from "./edge-scroll";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, touchHold as holdForTouch, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
 import { MediaLibrary } from "./media-library";
@@ -1083,7 +1082,6 @@ export default function WorkspaceApp({
       } catch {}
       return !on;
     });
-  const [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all");
   // Collections (#86): the one shown and the editor's draft.
   const [collectionId, setCollectionId] = useState<string | null>(null),
     [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
@@ -4538,6 +4536,39 @@ export default function WorkspaceApp({
     ...(legal?.imprint ? [{ id: "imprint", label: t("Impressum", "Legal notice"), icon: Scales, href: legal.imprint, external: true }] : []),
     ...(legal?.privacy ? [{ id: "privacy", label: t("Datenschutz", "Privacy"), icon: ShieldCheck, href: legal.privacy, external: true }] : []),
   ];
+  // Opens what a notification leads to (the inbox).
+  const openNotification = (n: Bootstrap["notifications"][number]) => {
+    if (!n.read_at)
+      void act({
+        action: "notification.mark",
+        notificationId: n.id,
+        read: true,
+      });
+    const url = notificationUrl(n);
+    const target = parsePageLocation(url.slice(1));
+    // Not a page: a place of the app (an incident of the instance).
+    if (!target) {
+      if (url !== "/#inbox") location.hash = url.slice(2);
+      return;
+    }
+    // The commented passage or the mention flashes.
+    jumpTo(
+      target,
+      target.threadId
+        ? bySelector(`[data-comment-thread="${CSS.escape(target.threadId)}"]`)
+        : bySelector(`[data-mention="${CSS.escape(boot.user.id)}"]`),
+    );
+    void openPage(target.pageId, target);
+  };
+  // Added to a workspace (#320): open it, or leave it with the
+  // confirmation of Settings → Allgemein.
+  const openAddedWorkspace = async (n: Bootstrap["notifications"][number], workspaceId: string, hash?: string) => {
+    if (!n.read_at) void act({ action: "notification.mark", notificationId: n.id, read: true });
+    if (workspaceId !== boot.workspace.id) await switchWorkspace(workspaceId);
+    if (hash) location.hash = hash;
+  };
+  // Unread in all, also beyond the first page of the inbox (the badges).
+  const unreadNotifications = boot.notificationsUnread ?? boot.notifications.filter((n) => !n.read_at).length;
   const signOutItem: SidebarAccountItem = { id: "sign-out", label: t("Abmelden", "Sign out"), icon: SignOut, onSelect: () => void signOut() };
   return (
     <AiProvider status={uiAi || null} workspaceId={boot.workspace.id}>
@@ -4713,9 +4744,9 @@ export default function WorkspaceApp({
             >
               <Bell size={19} />
               <span className="main-nav-label">{t("Posteingang", "Inbox")}</span>
-              {boot.notifications.some((n) => !n.read_at) && (
+              {unreadNotifications > 0 && (
                 <span className="notification-count">
-                    {boot.notifications.filter((n) => !n.read_at).length}
+                    {unreadNotifications}
                 </span>
               )}
             </button>
@@ -6535,176 +6566,19 @@ export default function WorkspaceApp({
             />
           )}
           {screen === "inbox" && (
-            <div className="utility-content">
-              <div className="utility-title">
-                <Bell size={30} />
-                <h1>{t("Posteingang", "Inbox")}</h1>
-                <p>{t("Neuigkeiten aus deinem Arbeitsbereich.", "News from your workspace.")}</p>
-              </div>
-              <div className="inbox-toolbar">
-                <div role="radiogroup" aria-label={t("Benachrichtigungen filtern", "Filter notifications")}>
-                  {(
-                    [
-                      ["all", t("Alle", "All")],
-                      ["unread", t("Ungelesen", "Unread")],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      role="radio"
-                      aria-checked={inboxFilter === id}
-                      className={`chip${inboxFilter === id ? " active" : ""}`}
-                      onClick={() => setInboxFilter(id)}
-                    >
-                      {label}
-                      {id === "unread" &&
-                        ` (${boot.notifications.filter((n) => !n.read_at).length})`}
-                    </button>
-                  ))}
-                </div>
-                {/* Only while there is something to mark. */}
-                {boot.notifications.some((n) => !n.read_at) && (
-                  <button
-                    className="button compact"
-                    onClick={() => void act({ action: "notification.read" })}
-                  >
-                    {t("Alle als gelesen markieren", "Mark all as read")}
-                  </button>
-                )}
-              </div>
-              {boot.notifications
-                .filter((n) => inboxFilter === "all" || !n.read_at)
-                .map((n) => (
-                  <div
-                    className={`notification-item${n.read_at ? "" : " unread"}`}
-                    key={n.id}
-                  >
-                    {(() => {
-                      const open = () => {
-                        if (!n.read_at)
-                          void act({
-                            action: "notification.mark",
-                            notificationId: n.id,
-                            read: true,
-                          });
-                        const url = notificationUrl(n);
-                        const target = parsePageLocation(url.slice(1));
-                        // Not a page: a place of the app (an incident of the instance).
-                        if (!target) {
-                          if (url !== "/#inbox") location.hash = url.slice(2);
-                          return;
-                        }
-                        // The commented passage or the mention flashes.
-                        jumpTo(
-                          target,
-                          target.threadId
-                            ? bySelector(`[data-comment-thread="${CSS.escape(target.threadId)}"]`)
-                            : bySelector(`[data-mention="${CSS.escape(boot.user.id)}"]`),
-                        );
-                        void openPage(target.pageId, target);
-                      };
-                      // A formatted message (#330) has its own links and
-                      // person chips – no controls inside a button: the row
-                      // opens on a click beside them, the arrow is the button.
-                      if (n.markup)
-                        return (
-                          <div
-                            className="notification-row formatted"
-                            data-notification-formatted
-                            onClick={(e) => {
-                              if ((e.target as Element).closest("a, button, [data-mention], .math-inline") || window.getSelection()?.toString()) return;
-                              open();
-                            }}
-                          >
-                            <ChatCircle size={22} />
-                            <span>
-                              {!n.read_at && <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />}
-                              <NotificationText value={n.markup} members={boot.members} />
-                              <small>{relativeTime(n.created_at, clock, locale)}</small>
-                            </span>
-                            <button type="button" className="icon-button notification-open" aria-label={t(`Öffnen: ${n.body}`, `Open: ${n.body}`)} onClick={open}>
-                              <ArrowUpRight />
-                            </button>
-                          </div>
-                        );
-                      return (
-                        <button className="notification-row" onClick={open}>
-                          <ChatCircle size={22} />
-                          <span>
-                            {!n.read_at && (
-                              <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />
-                            )}
-                            {serverMessage(n.body)}
-                            <small>{relativeTime(n.created_at, clock, locale)}</small>
-                          </span>
-                          <ArrowUpRight />
-                        </button>
-                      );
-                    })()}
-                    <div className="notification-actions">
-                      {/* Added to a workspace (#320): open it, or leave it
-                          with the confirmation of Settings → Allgemein. */}
-                      {(() => {
-                        const added = /^workspace:([0-9a-f-]{36})$/i.exec(n.link || "")?.[1];
-                        const ws = added ? boot.workspaces.find((w) => w.id === added) : undefined;
-                        if (!ws) return null;
-                        const open = async (hash?: string) => {
-                          if (!n.read_at) void act({ action: "notification.mark", notificationId: n.id, read: true });
-                          if (ws.id !== boot.workspace.id) await switchWorkspace(ws.id);
-                          if (hash) location.hash = hash;
-                        };
-                        return (
-                          <>
-                            <button className="text-button" data-notification-open onClick={() => void open()}>
-                              {t("Öffnen", "Open")}
-                            </button>
-                            <button className="text-button" data-notification-leave aria-label={t(`„${ws.name}“ verlassen`, `Leave “${ws.name}”`)} onClick={() => void open("settings/workspace/danger")}>
-                              {t("Verlassen", "Leave")}
-                            </button>
-                          </>
-                        );
-                      })()}
-                      <button
-                        className="text-button"
-                        onClick={() =>
-                          void act({
-                            action: "notification.mark",
-                            notificationId: n.id,
-                            read: !n.read_at,
-                          })
-                        }
-                      >
-                        {n.read_at
-                          ? t("Als ungelesen markieren", "Mark as unread")
-                          : t("Als gelesen markieren", "Mark as read")}
-                      </button>
-                      <button
-                        className="text-button"
-                        aria-label={t(`Benachrichtigung entfernen: ${n.body}`, `Remove notification: ${serverMessage(n.body)}`)}
-                        onClick={() =>
-                          void act({
-                            action: "notification.delete",
-                            notificationId: n.id,
-                          })
-                        }
-                      >
-                        {t("Entfernen", "Remove")}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              {inboxFilter === "unread" &&
-                !!boot.notifications.length &&
-                !boot.notifications.some((n) => !n.read_at) && (
-                  <p className="muted">{t("Keine ungelesenen Benachrichtigungen.", "No unread notifications.")}</p>
-                )}
-              {!boot.notifications.length && (
-                <div className="empty-state">
-                  <Bell size={38} />
-                  <h3>{t("Du bist auf dem Laufenden", "You are all caught up")}</h3>
-                  <p>{t("Neue Kommentare erscheinen hier.", "New comments appear here.")}</p>
-                </div>
-              )}
+            <div className="utility-content inbox-screen">
+              <Inbox
+                notifications={boot.notifications}
+                more={!!boot.notificationsMore}
+                unread={unreadNotifications}
+                members={boot.members}
+                workspaces={boot.workspaces}
+                clock={clock}
+                locale={locale}
+                act={act}
+                onOpen={openNotification}
+                onWorkspace={(n, id, hash) => void openAddedWorkspace(n, id, hash)}
+              />
             </div>
           )}
           {screen === "settings" && (
@@ -8388,7 +8262,7 @@ export default function WorkspaceApp({
       <HideKeyboardButton />
       <MobileTabBar
         active={mobile ? null : screen === "home" ? "home" : screen === "inbox" ? "inbox" : null}
-        unread={boot.notifications.filter((n) => !n.read_at).length}
+        unread={unreadNotifications}
         newTasks={screen === "tasks" ? 0 : boot.newTasks || 0}
         menuOpen={mobile}
         hidden={keyboardOpen || (focusMode && screen === "page")}

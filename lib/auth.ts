@@ -12,6 +12,7 @@ import { noteRequestCaller, noteRequestUpstream } from "./request-context";
 import { readOnlyRefusal } from "./instance-read-only";
 import { rememberPolicy, rememberedEnd, sessionTerms } from "./session-policy";
 import { proxySessionEnds } from "./proxy-auth-config";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -346,7 +347,7 @@ export async function acceptInvite(user: Pick<User, "id">, inv: Invite) {
     if (added) {
       joined = true;
       const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", inv.workspace_id);
-      const by = await one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
+      const by = await one<{ id: string; name: string }>("SELECT u.id,u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
       const page = await one<{ id: string; title: string }>(
         "SELECT p.id,p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE lower(g.email)=lower(?) AND g.workspace_id=? AND p.deleted_at IS NULL",
         inv.email,
@@ -354,7 +355,7 @@ export async function acceptInvite(user: Pick<User, "id">, inv: Invite) {
       );
       const sharedPage = inv.guest && page ? page : null;
       await run(
-        "INSERT INTO notifications(id,user_id,body,page_id,kind,link) VALUES(?,?,?,?,'share',?)",
+        `INSERT INTO notifications(id,user_id,body,page_id,kind,link,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,'share',?,${NOTIFICATION_FIELD_VALUES})`,
         id(),
         user.id,
         sharedPage
@@ -362,6 +363,11 @@ export async function acceptInvite(user: Pick<User, "id">, inv: Invite) {
           : `${by?.name || "Jemand"} hat dich zu „${ws?.name || ""}“ hinzugefügt`,
         page?.id ?? null,
         sharedPage ? null : `workspace:${inv.workspace_id}`,
+        ...notificationFields(
+          sharedPage
+            ? { actorId: by?.id, subtype: "share", params: { actor: by?.name, page: sharedPage.title } }
+            : { actorId: by?.id, subtype: "workspace_added", params: { actor: by?.name, workspace: ws?.name } },
+        ),
       );
     }
     // An existing membership is never downgraded to guest by an invite.

@@ -38,6 +38,7 @@ import "./settings-screen.css";
 import "./comment-margin.css";
 import "./comment-content.css";
 import "./side-panel.css";
+import "./inbox.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";

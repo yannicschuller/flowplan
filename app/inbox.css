@@ -1,0 +1,410 @@
+/* The inbox (components/inbox.tsx): days, groups, compact rows. The
+   app's tokens; a few tints of its own for the groups, light and dark. */
+.inbox {
+  --inbox-red: #b42318;
+  --inbox-red-bg: #fdecea;
+  --inbox-amber: #8a5200;
+  --inbox-amber-bg: #fdf1dc;
+  --inbox-green: #1f7a4d;
+  --inbox-green-bg: #e4f4ec;
+  --inbox-violet: #6b3fc4;
+  --inbox-violet-bg: #efe8fb;
+  max-width: 860px;
+}
+[data-theme="dark"] .inbox {
+  --inbox-red: #ff9b8f;
+  --inbox-red-bg: #3a1d1b;
+  --inbox-amber: #f1c27a;
+  --inbox-amber-bg: #33270f;
+  --inbox-green: #85d3a8;
+  --inbox-green-bg: #15301f;
+  --inbox-violet: #c8b2ff;
+  --inbox-violet-bg: #2a2142;
+}
+.inbox ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.inbox-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.inbox-header h1 {
+  font-size: 28px;
+  margin: 0;
+  line-height: 1.2;
+}
+.inbox-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.inbox-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.inbox-filter {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.inbox-filter button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.inbox-filter button[aria-checked="true"] {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px #0000001a;
+  font-weight: 500;
+}
+.inbox-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--hover);
+  color: var(--secondary);
+}
+
+/* Days and groups */
+.inbox-day + .inbox-day {
+  margin-top: 26px;
+}
+.inbox-day h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.inbox-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 2px;
+  padding-left: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+/* A row: the open button, the action that fits, the tools */
+.inbox .notification-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 8px;
+}
+.inbox .notification-item:hover,
+.inbox .notification-item:focus-within {
+  background: var(--hover);
+}
+.inbox .notification-item.nested {
+  margin-left: 28px;
+}
+/* The open ⋯ menu above the rows after it (each row fades in on its own layer). */
+.inbox .notification-item:has(> .inbox-menu) {
+  z-index: 6;
+}
+.inbox .notification-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px 8px 4px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  font-size: inherit;
+}
+.inbox .notification-row.formatted {
+  cursor: pointer;
+}
+.inbox .notification-row > svg,
+.inbox .notification-row .inbox-caret {
+  color: var(--muted);
+  flex: none;
+}
+.inbox-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-radius: 50%;
+}
+.inbox .unread > .notification-row .inbox-dot {
+  background: var(--blue);
+}
+.inbox-face {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--secondary);
+  background: var(--surface);
+}
+.inbox-face .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+.inbox-face-badge,
+.inbox-stack {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--secondary);
+  background: var(--surface);
+}
+.inbox .notification-item:is(:hover, :focus-within) :is(.inbox-face-badge, .inbox-stack) {
+  border-color: var(--hover);
+}
+:is(.inbox-face, .inbox-face-badge, .inbox-stack):is([data-category="mention"], [data-category="comment"]),
+.inbox-face[data-category="mention"] .inbox-stack,
+.inbox-face[data-category="comment"] .inbox-stack {
+  color: var(--accent-strong);
+  background: var(--blue-light);
+}
+:is(.inbox-face, .inbox-face-badge)[data-category="task"],
+.inbox-face[data-category="task"] .inbox-stack {
+  color: var(--inbox-green);
+  background: var(--inbox-green-bg);
+}
+:is(.inbox-face, .inbox-face-badge)[data-category="share"],
+.inbox-face[data-category="share"] .inbox-stack {
+  color: var(--inbox-violet);
+  background: var(--inbox-violet-bg);
+}
+:is(.inbox-face, .inbox-face-badge)[data-category="security"],
+.inbox-face[data-category="security"] .inbox-stack {
+  color: var(--inbox-amber);
+  background: var(--inbox-amber-bg);
+}
+.inbox-face[data-severity="critical"],
+.inbox-face[data-severity="critical"] .inbox-stack {
+  color: var(--inbox-red);
+  background: var(--inbox-red-bg);
+}
+.inbox-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.inbox-line {
+  font-size: 13.5px;
+  color: var(--secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-line strong,
+.inbox-line .inbox-plain {
+  color: var(--text);
+  font-weight: 600;
+}
+.inbox-line.formatted {
+  white-space: normal;
+  color: var(--text);
+}
+.inbox .notification-item:not(.unread) .inbox-line :is(strong, .inbox-plain) {
+  font-weight: 500;
+}
+.inbox-place {
+  color: var(--muted);
+}
+.inbox-detail {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-severity {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--inbox-amber);
+  background: var(--inbox-amber-bg);
+}
+.inbox-severity[data-severity="critical"] {
+  color: var(--inbox-red);
+  background: var(--inbox-red-bg);
+}
+.inbox time {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.inbox-cta {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+.inbox-tools {
+  display: none;
+  gap: 2px;
+  padding-right: 6px;
+}
+.inbox .notification-item:is(:hover, :focus-within) > .inbox-tools {
+  display: flex;
+}
+.inbox .notification-item:is(:hover, :focus-within) > .notification-row time {
+  display: none;
+}
+.inbox-more {
+  display: none;
+}
+.inbox-menu {
+  position: absolute;
+  right: 6px;
+  top: calc(100% - 4px);
+  z-index: 5;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.inbox-menu button {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 9px 10px;
+  border-radius: 6px;
+  text-align: left;
+}
+.inbox-menu button:hover {
+  background: var(--hover);
+}
+.inbox-note {
+  margin: 16px 10px;
+}
+.inbox-load {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+/* By touch: no hover – the ⋯ menu instead of the tools. */
+@media (hover: none) {
+  .inbox .notification-item:is(:hover, :focus-within) > .inbox-tools {
+    display: none;
+  }
+  .inbox .notification-item:is(:hover, :focus-within) > .notification-row time {
+    display: inline;
+  }
+  .inbox .notification-item:hover {
+    background: none;
+  }
+  .inbox-more {
+    display: inline-flex;
+    flex: none;
+    margin-right: 2px;
+  }
+  /* Similar ones: their two buttons stay (they have no menu). */
+  .inbox .inbox-cluster > .inbox-tools,
+  .inbox .inbox-cluster:is(:hover, :focus-within) > .inbox-tools {
+    display: flex;
+  }
+}
+
+/* Narrow: two lines of text, the action below it. */
+@container main (max-width: 640px) {
+  .inbox-header h1 {
+    font-size: 24px;
+  }
+  .inbox .notification-item {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .inbox .notification-row {
+    align-items: flex-start;
+    gap: 10px;
+    flex-basis: calc(100% - 40px);
+  }
+  .inbox .notification-row .inbox-dot {
+    margin-top: 13px;
+  }
+  .inbox-line {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+  }
+  .inbox .notification-row time {
+    font-size: 11px;
+    padding-top: 2px;
+  }
+  .inbox-more {
+    margin-top: 4px;
+  }
+  .inbox-cta {
+    order: 3;
+    flex-basis: 100%;
+    margin-top: -2px;
+    padding: 0 0 8px 59px;
+  }
+  .inbox-cta:not([data-urgent]) {
+    display: none;
+  }
+  .inbox .notification-item.nested {
+    margin-left: 14px;
+  }
+}

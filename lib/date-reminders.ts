@@ -22,6 +22,7 @@ import { rememberTaskTarget } from "./notification-targets";
 import type { Field, Identity, Page } from "./types";
 import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 export const MAX_REMINDERS_PER_USER = 1000;
 export {
@@ -307,12 +308,13 @@ export async function processDateReminders(
         return;
       const notificationId = id();
       await run(
-        "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
+        `INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,?,'reminder',${NOTIFICATION_FIELD_VALUES})`,
         notificationId,
         reminder.user_id,
         `Erinnerung: „${title}“ – ${field.name}: ${formatDateValue(occurrence, reminder.time_zone)}`,
         reminder.page_id,
         reminder.row_id,
+        ...notificationFields({ subtype: "date_reminder", params: { record: title, field: field.name, date: formatDateValue(occurrence, reminder.time_zone) } }),
       );
       // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
       await rememberTaskTarget(notificationId, { type: "row", pageId: reminder.page_id, rowId: reminder.row_id, fieldId: field.id });

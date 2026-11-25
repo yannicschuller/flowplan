@@ -14,6 +14,7 @@ import { queueShareMail } from "./mail";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { isGuest } from "./permissions";
 import type { Identity, Page, Role, Space } from "./types";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
 const input = z.object({
@@ -89,12 +90,13 @@ export async function sharePage(user: Identity, raw: unknown) {
     // The e-mail goes out right away; the summary then leaves this one out.
     const mailed = mailAllowed(email) && await queueShareMail({ userId: target.id, inviter: user.name, pageId: page.id, page: page.title, workspace: workspace?.name || "Flowplan" });
     await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,kind,emailed_at) VALUES(?,?,?,?,'share',?)",
+      `INSERT INTO notifications(id,user_id,body,page_id,kind,emailed_at,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,'share',?,${NOTIFICATION_FIELD_VALUES})`,
       id(),
       target.id,
       `${user.name} hat „${page.title}“ mit dir geteilt`,
       page.id,
       mailed ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
+      ...notificationFields({ actorId: user.id, subtype: "share", params: { actor: user.name, page: page.title } }),
     );
     return { status: "added" as const, name: target.name, mailed, ...(await pageShares(user, page.id)) };
   }

@@ -304,20 +304,35 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
         boot: (boot) => ({
           ...boot,
           notifications: boot.notifications.map((n) => (n.read_at ? n : { ...n, read_at: sqlNow(now) })),
+          notificationsUnread: 0,
         }),
       };
     case "notification.mark":
-    case "notification.delete": {
-      const id = str(b.notificationId);
-      if (!id) return null;
+    case "notification.delete":
+    case "notification.bulk": {
+      const ids = new Set(
+        b.action === "notification.bulk"
+          ? (Array.isArray(b.notificationIds) ? b.notificationIds : []).filter((v): v is string => typeof v === "string")
+          : [str(b.notificationId)].filter((v): v is string => !!v),
+      );
+      if (!ids.size) return null;
+      const remove = b.action === "notification.delete" || (b.action === "notification.bulk" && b.op === "delete");
+      const read = b.action === "notification.bulk" ? b.op === "read" : !!b.read;
       return {
-        boot: (boot) => ({
-          ...boot,
-          notifications:
-            b.action === "notification.delete"
-              ? boot.notifications.filter((n) => n.id !== id)
-              : boot.notifications.map((n) => (n.id === id ? { ...n, read_at: b.read ? sqlNow(now) : null } : n)),
-        }),
+        boot: (boot) => {
+          const touched = boot.notifications.filter((n) => ids.has(n.id));
+          // The unread count beyond the first page moves with what changes here.
+          const delta = remove
+            ? -touched.filter((n) => !n.read_at).length
+            : touched.filter((n) => !n.read_at === read).length * (read ? -1 : 1);
+          return {
+            ...boot,
+            notifications: remove
+              ? boot.notifications.filter((n) => !ids.has(n.id))
+              : boot.notifications.map((n) => (ids.has(n.id) ? { ...n, read_at: read ? n.read_at || sqlNow(now) : null } : n)),
+            ...(boot.notificationsUnread === undefined ? {} : { notificationsUnread: Math.max(0, boot.notificationsUnread + delta) }),
+          };
+        },
       };
     }
     case "row.update": {

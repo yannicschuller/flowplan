@@ -10,6 +10,7 @@ import type { Identity, Page } from "./types";
 import { notificationOn } from "./notification-kinds";
 import { filterAsync } from "./each-async";
 import { recordSearchVisit } from "./search-visits";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 const BASELINE_LIMIT = 300_000;
 const now = () => Date.now();
@@ -159,11 +160,12 @@ export async function recordPageEdit(user: Identity, pageId: string) {
   for (const follower of followers) {
     if (!(await pageRole({ ...follower, groups: await groupsOf(follower.id), isAdmin: false }, page))) continue;
     await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'change')",
+      `INSERT INTO notifications(id,user_id,body,page_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,'change',${NOTIFICATION_FIELD_VALUES})`,
       id(),
       follower.id,
       `${user.name} hat „${page.title || "Ohne Titel"}“ geändert`,
       page.id,
+      ...notificationFields({ actorId: user.id, subtype: "change", params: { actor: user.name, page: page.title } }),
     );
   }
 }
