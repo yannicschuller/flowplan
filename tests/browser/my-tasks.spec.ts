@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { chooseSource, withTaskFilters } from "./my-tasks-filters";
 
 test("a task gets a due date in the editor and is ticked off in Meine Aufgaben", async ({ page }, info) => {
   const errors: string[] = [];
@@ -66,7 +67,7 @@ test("a task gets a due date in the editor and is ticked off in Meine Aufgaben",
   // Ticked off, it leaves the list of open tasks.
   await item.getByRole("checkbox").click();
   await expect(page.locator(".my-tasks-group li", { hasText: taskText })).toHaveCount(0);
-  await page.getByLabel("Erledigte zeigen").check();
+  await withTaskFilters(page, (filters) => filters.getByLabel("Erledigte zeigen").check());
   await expect(page.locator(".my-tasks-group li.checked", { hasText: taskText })).toBeVisible();
   // The due date can be removed again; an own task without a date then
   // leaves the list (only tasks given to you stay without one).
@@ -136,14 +137,14 @@ test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to
   await expect(field).toHaveValue("");
   // Person "Eigene" keeps it, Quelle "Datenbanken" does not (#314); the
   // choices stay on this device.
-  const person = page.locator(".my-tasks-person");
-  const source = page.locator(".my-tasks-source");
-  await person.locator("label", { hasText: "Eigene" }).click();
+  await withTaskFilters(page, (filters) => filters.locator(".my-tasks-person label", { hasText: "Eigene" }).click());
   await expect(item).toBeVisible();
-  await source.locator("label", { hasText: "Datenbanken" }).click();
+  // On phones "Filter (1)": one filter of the sheet differs from the default.
+  if (info.project.name === "mobile") await expect(page.getByRole("button", { name: "Filter, 1 gesetzt" })).toHaveText("Filter (1)");
+  await chooseSource(page, "Datenbanken");
   await expect(item).toHaveCount(0);
   await expect(page.locator(".my-tasks .empty-state")).toBeVisible();
-  await source.locator("label", { hasText: "Dokumente" }).click();
+  await chooseSource(page, "Dokumente");
   await expect(item).toBeVisible();
   // The tools for records are gone while only documents are shown.
   await expect(page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" })).toHaveCount(0);
@@ -155,15 +156,18 @@ test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to
   await page.getByRole("dialog", { name: "Fälligkeit" }).getByRole("radio", { name: /^Nächste 7 Tage/ }).click();
   await expect(item).toBeVisible();
   await page.reload();
-  await expect(person.locator('label[data-active="true"]')).toHaveText("Eigene");
-  await expect(source.locator('label[data-active="true"]')).toHaveText("Dokumente");
+  await withTaskFilters(page, (filters) => expect(filters.locator('.my-tasks-person label[data-active="true"]')).toHaveText("Eigene"));
+  if (info.project.name === "mobile") await expect(page.locator(".my-tasks-bar").getByLabel("Quelle", { exact: true })).toHaveValue("documents");
+  else await expect(page.locator('.my-tasks-source label[data-active="true"]')).toHaveText("Dokumente");
   await expect(page.getByRole("button", { name: "Fälligkeit: Nächste 7 Tage" })).toBeVisible();
   await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
-  // The page is a normal page: it opens from My tasks.
+  // The page is a normal page: it opens from My tasks (on phones from the
+  // sheet "Filter").
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Filter, 1 gesetzt" }).click();
   await page.getByRole("button", { name: "Seite „Aufgaben“ öffnen" }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
   await page.goto("/#tasks");
-  await page.locator(".my-tasks-person label", { hasText: "Mir zugewiesen" }).click();
-  await page.locator(".my-tasks-source label", { hasText: "Alle" }).click();
+  await withTaskFilters(page, (filters) => filters.locator(".my-tasks-person label", { hasText: "Mir zugewiesen" }).click());
+  await chooseSource(page, "Alle");
   expect(errors).toEqual([]);
 });

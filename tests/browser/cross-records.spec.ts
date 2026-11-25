@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { chooseSource, withTaskFilters } from "./my-tasks-filters";
 
 // My tasks: records from databases among the tasks (#314), ticked off
 // there, saved as a view; a database without a status holds no tasks.
@@ -43,17 +44,20 @@ test("records across databases in My tasks", async ({ page }, info) => {
   await expect(row.locator(".my-record-status")).toHaveText("Offen");
   await expect(page.getByText(reading)).toHaveCount(0);
   // "Dokumente" hides it, "Datenbanken" shows it again.
-  await page.locator(".my-tasks-source label", { hasText: "Dokumente" }).click();
+  await chooseSource(page, "Dokumente");
   await expect(row).toHaveCount(0);
-  await page.locator(".my-tasks-source label", { hasText: "Datenbanken" }).click();
+  await chooseSource(page, "Datenbanken");
   await expect(row).toBeVisible();
-  // The tools for records say what they apply to.
-  const tools = page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" });
-  await expect(tools).toBeVisible();
-  await expect(tools.getByRole("combobox", { name: "Datenbank" }).locator("option", { hasText: `Leseliste ${stamp}` })).toHaveCount(0);
-  await tools.getByRole("button", { name: "Als Ansicht speichern" }).click();
-  await tools.getByLabel("Name der Ansicht").fill(`Tickets ${info.project.name} ${Date.now() % 100000}`);
-  await tools.getByRole("button", { name: "Speichern" }).click();
+  // The tools for records say what they apply to (on phones in the sheet
+  // "Filter").
+  await withTaskFilters(page, async (filters) => {
+    const tools = filters.getByRole("group", { name: "Nur für Einträge aus Datenbanken" });
+    await expect(tools).toBeVisible();
+    await expect(tools.getByRole("combobox", { name: "Datenbank" }).locator("option", { hasText: `Leseliste ${stamp}` })).toHaveCount(0);
+    await tools.getByRole("button", { name: "Als Ansicht speichern" }).click();
+    await tools.getByLabel("Name der Ansicht").fill(`Tickets ${info.project.name} ${Date.now() % 100000}`);
+    await tools.getByRole("button", { name: "Speichern" }).click();
+  });
   await expect(page.getByRole("button", { name: /^Tickets /, pressed: true })).toBeVisible();
   // Ticked off here, the record's status becomes "Erledigt".
   await row.getByRole("checkbox").click();
@@ -61,7 +65,7 @@ test("records across databases in My tasks", async ({ page }, info) => {
   await expect
     .poll(async () => (await (await page.request.get(`/api/pages/${db}`)).json()).rows.find((r: { cells: { title: string } }) => r.cells.title === title)?.cells.status)
     .toBe("Erledigt");
-  await page.getByLabel("Erledigte zeigen").check();
+  await withTaskFilters(page, (filters) => filters.getByLabel("Erledigte zeigen").check());
   const doneRow = page.locator(".my-tasks-group li.my-record.checked", { hasText: title });
   await expect(doneRow).toBeVisible();
   await doneRow.getByRole("button", { name: new RegExp(title) }).click();

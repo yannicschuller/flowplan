@@ -117,6 +117,40 @@ test("gone with the database and with the account", async () => {
 test("listed for the API", () => {
   assert.ok(commandActionNames.includes("database.collapseRecordProperties"));
   assert.ok(commandActions.some((a) => a.action === "database.collapseRecordProperties"));
+  assert.ok(commandActionNames.includes("database.collapseRelated"));
+  assert.ok(commandActions.some((a) => a.action === "database.collapseRelated"));
+});
+
+// "Verwandte Seiten" below a record (design review): one choice per person
+// and database, in the same row as the properties' choices.
+test("related pages: folded or open per person and database", async () => {
+  const related = async (pageId: string, as = owner) => ((await pageData(as, pageId)) as { recordRelatedCollapsed?: boolean | null }).recordRelatedCollapsed;
+  const setRelated = (pageId: string, collapsed: unknown, as = owner) => act({ action: "database.collapseRelated", pageId, collapsed }, as);
+  const db = await page("Verwandt", "database");
+  assert.equal(await related(db), null);
+  assert.deepEqual(await setRelated(db, false), { collapsed: false });
+  assert.equal(await related(db), false);
+  // Another person and another database are untouched; readers choose too.
+  assert.equal(await related(db, viewer), null);
+  assert.equal(await related(kunden), null);
+  await setRelated(db, true, viewer);
+  assert.equal(await related(db, viewer), true);
+  // It shares the row with the properties' choice and leaves it alone.
+  await fold(db, "phone", true);
+  await setRelated(db, null);
+  assert.deepEqual(await choice(db), { phone: true, desktop: null });
+  assert.equal(await related(db), null);
+  // With nothing left the row goes – either way round.
+  await setRelated(db, true);
+  await fold(db, "phone", null);
+  assert.equal(await related(db), true);
+  await setRelated(db, null);
+  assert.equal(await one("SELECT 1 FROM page_view_prefs WHERE user_id=? AND page_id=?", owner.id, db), undefined);
+  // Only databases one may open; ordinary pages carry no choice.
+  await assert.rejects(async () => await setRelated(db, true, stranger), /Seite|Berechtigung/);
+  await assert.rejects(async () => await setRelated(notiz, true), /Keine Datenbank/);
+  await assert.rejects(async () => await setRelated(db, "yes"));
+  assert.equal(await related(notiz), undefined);
 });
 
 test("default: open on desktop; on phones folded with more than four properties; a choice wins", () => {

@@ -50,29 +50,43 @@ export function summaryFields<F extends Pick<Field, "id" | "type">>(
 }
 
 // The recurrence and the repeating task below a record's first date
-// (#521): they are no properties, but count as such when nothing is set.
-// The repeating task only where it applies – a database with a done rule
-// (repeating needs "done") or a record that already repeats. Without a
-// rule, "Leere Eigenschaften ausblenden" hides them until the empty
-// properties are shown; with one they always show.
+// (#521): no properties of their own – a row only once something is set.
+// Otherwise the date's own panel offers them ("+ Wiederholung", "+
+// Wiederkehrende Aufgabe"), which shows the row (`revealed`) with its
+// controls open. The repeating task only where it applies – a database with
+// a done rule (repeating needs "done") or a record that already repeats.
+// With "Leere Eigenschaften ausblenden", "N leere Eigenschaften anzeigen"
+// counts and shows them as well.
 export function recordDateExtras({
   hideEmpty,
   showEmpty,
   hasRecurrence,
   hasRepeat,
   canRepeat,
+  revealed = {},
 }: {
   hideEmpty: boolean;
   showEmpty: boolean;
   hasRecurrence: boolean;
   hasRepeat: boolean;
   canRepeat: boolean;
-}): { recurrence: boolean; repeat: boolean; hiddenEmpty: number } {
+  revealed?: { recurrence?: boolean; repeat?: boolean };
+}): { recurrence: boolean; repeat: boolean; hiddenEmpty: number; canAddRecurrence: boolean; canAddRepeat: boolean } {
   const repeats = canRepeat || hasRepeat;
-  const empties = !hideEmpty || showEmpty;
+  const empties = hideEmpty && showEmpty;
+  const recurrence = hasRecurrence || !!revealed.recurrence || empties;
+  const repeat = repeats && (hasRepeat || !!revealed.repeat || empties);
   return {
-    recurrence: hasRecurrence || empties,
-    repeat: repeats && (hasRepeat || empties),
+    recurrence,
+    repeat,
     hiddenEmpty: hideEmpty ? (hasRecurrence ? 0 : 1) + (repeats && !hasRepeat ? 1 : 0) : 0,
+    canAddRecurrence: !recurrence,
+    canAddRepeat: repeats && !repeat,
   };
+}
+
+// The label of a reminder row: "Erinnerung" when the record has one date
+// with a reminder row, "Erinnerung (Fällig)" for each when it has several.
+export function reminderRowLabel(reminder: string, fieldName: string, rows: number): string {
+  return rows > 1 ? `${reminder} (${fieldName})` : reminder;
 }

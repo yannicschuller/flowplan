@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { withTaskFilters } from "./my-tasks-filters";
 
 // Where "Aufgabe hinzufügen" of My tasks writes (#457,
 // lib/my-task-target.ts): the chip at the end of the field switches from
@@ -36,7 +37,8 @@ test("Aufgabe hinzufügen writes into the chosen task database, and back to the 
     await panel.locator("label", { hasText: name }).click();
     await expect(panel).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Ziel: ${name}` })).toBeVisible();
-    await expect(page.getByRole("button", { name: `„${name}“ öffnen` })).toBeVisible();
+    // The link to it (on phones in the sheet "Filter").
+    await withTaskFilters(page, (filters) => expect(filters.getByRole("button", { name: `„${name}“ öffnen` })).toBeVisible());
 
     // A task becomes a record of it, with me as the person and tomorrow's date.
     const text = `Angebot ${Date.now()}`;

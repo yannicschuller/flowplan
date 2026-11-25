@@ -155,6 +155,10 @@
     {
       "de": "Feinschliff: Stift, Textmarker, Radierer und Laser in einer Zeile mit den Farben in einer Reihe; Lernkarten auf dem Handy größer; Markdown-Export ohne Seiten mit „Seiten wählen“ direkt im Hinweis, „Aktualisieren“ auf Höhe des Titels.",
       "en": "Polish: pen, highlighter, eraser and laser in one row with the colours in a single line; flashcards larger on phones; Markdown export without pages has “Choose pages” right in the notice, and “Refresh” sits level with the title."
+    },
+    {
+      "de": "Einträge und Meine Aufgaben: „Verwandte Seiten“ lässt sich einklappen (zeigt dann die Anzahl), Wiederholung und Wiederkehrende Aufgabe erst, wenn gesetzt (sonst im Menü des Datums), mehrere Erinnerungen nennen ihr Datum. Auf Handys: Filter in einer Zeile, der Rest und die Fälligkeit als Blatt.",
+      "en": "Records and My tasks: “Related pages” folds (folded with its count), recurrence and repeating task show only once set (otherwise in the date’s menu), several reminders name their date. On phones: filters in one row, the rest and the due range as a sheet."
     }
   ],
   "features": [

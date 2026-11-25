@@ -25,7 +25,11 @@ export function RecordPropertyValue({
   wide = false,
   emptyText,
   editor,
+  autoOpen = false,
 }: {
+  // Opens its panel as soon as it is shown: a row just added from another
+  // property's panel (the recurrence from the date's, #521).
+  autoOpen?: boolean;
   // What an empty value says (default „Leer“).
   emptyText?: string;
   // The property's name: the panel's title and the start of the button's.
@@ -39,8 +43,9 @@ export function RecordPropertyValue({
   links?: ReactNode;
   // A wider panel (relations, files, formatted text).
   wide?: boolean;
-  // The editor; `done` closes the panel and returns the focus.
-  editor: (done: () => void) => ReactNode;
+  // The editor; `done` closes the panel and returns the focus, `leave`
+  // closes it for a panel that opens next.
+  editor: (done: () => void, leave: () => void) => ReactNode;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -63,6 +68,11 @@ export function RecordPropertyValue({
   };
   const closeRef = useRef(close);
   closeRef.current = close;
+  // Once mounted (the panel anchors at the value).
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Opening: a field of the editor takes the focus at once, so typing
   // right after the click lands there (a search that focuses itself keeps
   // it) – once more after a frame, should the sheet's dialog have taken it.
@@ -150,7 +160,10 @@ export function RecordPropertyValue({
               close(false);
             }}
           >
-            {editor(() => close(true))}
+            {editor(
+              () => close(true),
+              () => close(false),
+            )}
           </div>
         </AnchoredPopover>
       )}

@@ -151,8 +151,11 @@ test("weekly repeating entries show occurrences that open the original record", 
   });
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  // The recurrence is chosen in its editor, opened on its value (#519).
-  await entry.getByRole("button", { name: "Wiederholung: Keine, ändern" }).click();
+  // No recurrence row while none is set: it is added from the date's panel
+  // and opens with its controls (#519, #521).
+  await expect(entry.getByRole("button", { name: "Wiederholung: Keine, ändern" })).toHaveCount(0);
+  await entry.getByRole("button", { name: /^Datum: .+, ändern$/ }).click();
+  await page.getByRole("button", { name: "Wiederholung", exact: true }).click();
   await page
     .getByLabel("Wiederholung", { exact: true })
     .selectOption("weekly");

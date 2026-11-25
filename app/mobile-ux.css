@@ -852,3 +852,56 @@ label.hit-check {
     margin-left: -8px;
   }
 }
+
+/* My tasks on phones (design review): Quelle, the date chip and "Filter
+   (n)" in one row, the rest in a bottom sheet (components/my-tasks.tsx). */
+.my-tasks-bar.compact {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.my-tasks-bar.compact .my-tasks-scope {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.my-tasks-bar.compact .my-tasks-range {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.my-tasks-bar.compact .toolbar-chip {
+  height: 40px;
+  max-width: 100%;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.my-tasks-bar.compact .my-tasks-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.my-tasks-sheet-body {
+  display: grid;
+  gap: 14px;
+}
+.my-tasks-sheet-body .my-tasks-done {
+  display: flex;
+  min-height: 44px;
+  margin: 0;
+}
+.my-tasks-sheet-body .record-filters {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.my-tasks-sheet-body .my-tasks-page-link {
+  justify-self: start;
+  min-height: 44px;
+  margin: 0;
+}
+.my-tasks-sheet .my-tasks-ranges {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
