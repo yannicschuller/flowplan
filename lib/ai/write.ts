@@ -48,7 +48,7 @@ const input = z.object({
   // A quick capture (#172): its shorthand (#tag @person !priority dates)
   // stays as typed (lib/ai/prompts.ts CAPTURE_RULES).
   capture: z.boolean().optional(),
-  locale: z.enum(["de", "en", "fr", "zh", "ru"]).default("de"),
+  locale: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).default("de"),
   // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
   zone: z.string().max(100).optional(),
 });

@@ -551,7 +551,7 @@ const finishInput = z.object({
   parts: z.partialRecord(trackSchema, z.number().int().min(1).max(MAX_PARTS)),
   durationMs: z.number().min(0).max(MEETING_MAX_SECONDS * 1000 + 60_000),
   // The block's language for speaker names and the summary.
-  language: z.enum(["de", "en", "fr", "zh", "ru"]).optional(),
+  language: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).optional(),
 });
 // The session is complete: transcription and summary run in the background.
 export async function finishMeetingSession(user: Identity, meetingId: string, input: unknown) {
@@ -1216,7 +1216,7 @@ export async function confirmMeetingAssignees(user: Identity, meetingId: string,
 const regenerateInput = z.object({
   instructions: z.enum(["auto", "status", "oneonone", "workshop", "customer", "custom"]).optional(),
   prompt: z.string().max(4000).optional(),
-  language: z.enum(["de", "en", "fr", "zh", "ru"]).optional(),
+  language: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).optional(),
 });
 // The summary again (other instructions), without transcribing again.
 export async function regenerateSummary(user: Identity, meetingId: string, input: unknown) {
@@ -1244,7 +1244,7 @@ export async function regenerateSummary(user: Identity, meetingId: string, input
 const retranscribeInput = z.object({
   force: z.boolean().optional(),
   dryRun: z.boolean().optional(),
-  language: z.enum(["de", "en", "fr", "zh", "ru"]).optional(),
+  language: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).optional(),
 });
 export async function retranscribeMeeting(user: Identity, meetingId: string, input: unknown) {
   await requireMeetingCaller(user);
@@ -1540,7 +1540,7 @@ export async function createMeetingFromUpload(user: Identity, input: MeetingUplo
     parts,
     // Unknown length (no player on the server): the transcript's end counts.
     durationMs,
-    language: input.language && ["de", "en", "fr", "zh", "ru"].includes(input.language) ? input.language : undefined,
+    language: input.language && ["de", "en", "fr", "pl", "zh", "ru"].includes(input.language) ? input.language : undefined,
   });
   return { id: meetingId, pageId, rowId, status: "transcribing", statusUrl: `/api/meetings/${meetingId}` };
 }

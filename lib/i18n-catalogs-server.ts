@@ -18,6 +18,7 @@ import { registerCatalog, registeredCatalog, setCatalogMissingHandler, type Cata
 
 const loaders: Record<string, () => Promise<{ default: Catalog }>> = {
   fr: () => import("../locales/fr.json", { with: { type: "json" } }),
+  pl: () => import("../locales/pl.json", { with: { type: "json" } }),
   zh: () => import("../locales/zh.json", { with: { type: "json" } }),
   ru: () => import("../locales/ru.json", { with: { type: "json" } }),
 };
