@@ -124,14 +124,15 @@ test("the search leaves journal days out on request and ranks them last", async 
 test("empty days are listed before they go to the trash", async ({ page }, info) => {
   const { boot, command, write } = await setup(page);
   const journal = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: `Leer ${info.project.name} ${Date.now()}`, kind: "journal" });
-  // Yesterday with an entry, and a day last week that stayed empty (from
-  // before empty days were removed by themselves).
+  // Yesterday with an entry, and a day more than a week ago that stayed
+  // empty (from before empty days were removed by themselves; the days of
+  // the last week a new day judges again, #547).
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const { dayId: written } = await command({ action: "journal.roll", pageId: journal.id, date: localDay(yesterday) });
   await write(written, "<p>Ein guter Tag.</p>");
   const old = new Date();
-  old.setDate(old.getDate() - 6);
+  old.setDate(old.getDate() - 10);
   const dayId = randomUUID();
   const d = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   d.exec("PRAGMA busy_timeout=5000;");

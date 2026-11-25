@@ -214,9 +214,60 @@ export async function templateTaskTexts(journalId: string, nodes?: Awaited<Retur
     });
   return texts;
 }
+// Text as a person reads it (#547): spaces of any kind (no-break, the
+// editor's, several in a row) count as one, invisible ones as none, and
+// none at the ends of a line.
+export const readableText = (text: string) =>
+  text.normalize("NFKC").replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, "").replace(/\s+/g, " ").trim();
+// What a day holds of its own, as a list of lines: the text of every line
+// and block (marks, attributes like block ids, headings or lists around it
+// do not matter), atoms such as images or dividers, and tasks with their
+// state. Left out: empty lines and line breaks, tasks carried over from an
+// earlier day and still open – or copied on from there (#469) –, empty
+// open tasks, and open tasks whose text is in `daily` (the template's own,
+// which come back every day). Empty: nothing of its own.
+export function contentLines(doc: PMNode, date: string, daily: Set<string> = new Set()) {
+  const lines: string[] = [];
+  const atomsIn = (node: PMNode) => {
+    const atoms: string[] = [];
+    node.descendants((child) => {
+      if (child.isAtom && !child.isText && child.type.name !== "hardBreak") atoms.push(child.type.name);
+      return true;
+    });
+    return atoms;
+  };
+  const visit = (node: PMNode) => {
+    if (node.type.name === "taskItem") {
+      const text = readableText(node.textContent);
+      const carried = typeof node.attrs.journalSince === "string" && node.attrs.journalSince < date;
+      const open = !node.attrs.checked;
+      if ((open || isContinuedTask(node.attrs)) && carried) return;
+      const atoms = atomsIn(node);
+      if (open && (daily.has(text) || (!text && !atoms.length))) return;
+      lines.push(`task:${taskStatusOf(node.attrs)}:${text}:${atoms.join(",")}`);
+      return;
+    }
+    if (node.isTextblock) {
+      const text = readableText(node.textContent);
+      const atoms = atomsIn(node);
+      if (text || atoms.length) lines.push(`${text}:${atoms.join(",")}`);
+      return;
+    }
+    if (node.isAtom && !node.isText) {
+      if (node.type.name !== "hardBreak") lines.push(`atom:${node.type.name}`);
+      return;
+    }
+    node.forEach(visit);
+  };
+  doc.forEach(visit);
+  return lines;
+}
 // A day that still reads exactly like the template (plus carried tasks,
 // open or copied on to a later day): the current one, or the version the
-// day was created from.
+// day was created from. Line by line (contentLines): what the editor does
+// to a day when it merely opens it – joining two lists, giving blocks ids,
+// an empty line at the end – and spaces or empty lines added do not count
+// as written (#547).
 export async function onlyTemplate(
   journalId: string,
   doc: PMNode,
@@ -225,29 +276,9 @@ export async function onlyTemplate(
 ) {
   if (nodes === undefined) nodes = await templateNodes(journalId);
   if (!nodes.length) return false;
-  const tasks = await templateTaskTexts(journalId, nodes);
-  const strip = (node: PMNode): unknown => {
-    if (node.isText) return node.text;
-    const kids: unknown[] = [];
-    node.forEach((child) => {
-      if (child.type.name === "taskItem") {
-        const carried =
-          typeof child.attrs.journalSince === "string" &&
-          child.attrs.journalSince < date;
-        if (!child.attrs.checked && (carried || tasks.has(child.textContent.trim())))
-          return;
-        if (carried && isContinuedTask(child.attrs)) return;
-      }
-      if (child.type.name === "paragraph" && !child.content.size) return;
-      const kept = strip(child);
-      if (Array.isArray(kept) && !kept.length && child.type.name === "taskList")
-        return;
-      kids.push(child.isText ? kept : [child.type.name, kept]);
-    });
-    return kids;
-  };
+  const tasks = new Set([...(await templateTaskTexts(journalId, nodes))].map(readableText));
   const template = schema().node("doc", null, nodes);
-  return JSON.stringify(strip(doc)) === JSON.stringify(strip(template));
+  return JSON.stringify(contentLines(doc, date, tasks)) === JSON.stringify(contentLines(template, date, tasks));
 }
 export async function setJournalTemplate(journal: Page, html: string) {
   await ensureSettings(journal.id);

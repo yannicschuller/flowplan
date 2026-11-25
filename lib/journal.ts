@@ -1,5 +1,5 @@
 import { journalDayEvent } from "./workflows/hooks";
-import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
+import { dayTitle as localDayTitle, automaticDayTitle } from "./journal-title";
 import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
 // its page is created and the open tasks of the last day move over to it –
@@ -28,6 +28,8 @@ import { placeBlocks, type BlockPlace } from "./journal-place";
 import { indexPageTasks } from "./doc-tasks";
 import { isContinuedTask, statusAttrs, taskStatusOf } from "./task-status";
 import {
+  contentLines,
+  readableText,
   hasEntryData,
   journalSettings,
   onlyTemplate,
@@ -144,25 +146,10 @@ export function withContinuedTasks(
 // Whether anything was written on that day: text, media, new or completed
 // tasks. Tasks carried over from an earlier day and still open – or copied
 // on to a later day from there (#469) – do not count; a task written on
-// that day and copied on does.
+// that day and copied on does. Spaces, empty lines and empty open tasks do
+// not count either (lib/journal-extras.ts contentLines, #547).
 export function hasOwnEntry(doc: PMNode, date: string) {
-  let own = false;
-  doc.descendants((node) => {
-    if (own) return false;
-    if (node.type.name === "taskItem") {
-      const carried =
-        (!node.attrs.checked || isContinuedTask(node.attrs)) &&
-        typeof node.attrs.journalSince === "string" &&
-        node.attrs.journalSince < date;
-      if (!carried) own = true;
-      return false;
-    }
-    if (node.isText) {
-      if (node.text?.trim()) own = true;
-    } else if (node.isAtom && node.type.name !== "hardBreak") own = true;
-    return true;
-  });
-  return own;
+  return contentLines(doc, date).length > 0;
 }
 // Open tasks prepared for the next day, marked with the day they are from.
 export function carryTasks(tasks: PMNode[], from: string) {
@@ -227,8 +214,9 @@ async function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
   documentChanged(pageId);
   await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
-// A page nobody touched: no own text, same title, no icon or cover set, no
-// comments, no sub pages, no files and not shared or published.
+// A page nobody touched: no own text, same title (spaces and capitals
+// aside), no icon or cover set, no comments, no sub pages, no files and not
+// shared or published.
 async function untouched(page: Page, doc: PMNode) {
   // Compared with the template the day was created from, so a later change
   // of the template does not keep untouched days (and with today's one).
@@ -240,7 +228,7 @@ async function untouched(page: Page, doc: PMNode) {
   )
     return false;
   if (await hasEntryData(page.id)) return false;
-  if (!isAutoDayTitle(page.title, page.journal_date!)) return false;
+  if (!automaticDayTitle(page.title, page.journal_date!)) return false;
   if (page.icon !== "day" || page.cover) return false;
   const used = async (sql: string) => !!(await one(sql, page.id));
   return !(
@@ -276,6 +264,52 @@ async function completedThatDay(user: Identity, day: Page, zone?: string) {
     ...(known ? {} : { window: { start: midnight - 14 * 3600e3, end: midnight + 36 * 3600e3 } }),
   });
   return list.items.length > 0;
+}
+// A day that goes to the trash when a later day begins: untouched, and
+// nothing under "An diesem Tag erledigt".
+async function emptyDay(user: Identity, day: Page, doc: PMNode, zone?: string) {
+  return (await untouched(day, doc)) && !(await completedThatDay(user, day, zone));
+}
+// How far back a new day looks at the days before it again (#547).
+export const TIDY_DAYS = 7;
+// The other days of the last week (besides the newest one before today,
+// which rollJournal judges as it hands on its tasks), judged by the same
+// rule once more: a day that was not judged when the next one began – one
+// made from the day picker or by a workflow, one brought back from the
+// trash by opening its date, one that held something then and was emptied
+// since, one judged without the person's time zone – would otherwise stay
+// for good (#547). A day that holds an open task of its own or carried
+// over (and not handed on) stays: the task would get lost; so does one
+// whose own tasks moved on to a later day, and one a person took back out
+// of the trash.
+async function tidyEarlierDays(user: Identity, journal: Page, today: string, judged: string | undefined, zone?: string) {
+  const days = await all<Page>(
+    "SELECT * FROM pages WHERE parent_id=? AND journal_date>=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date",
+    journal.id,
+    shiftDay(today, -TIDY_DAYS),
+    today,
+  );
+  for (const day of days) {
+    if (day.id === judged) continue;
+    // Taken back out of the trash by a person: kept on purpose.
+    if (await one("SELECT 1 FROM audit WHERE action='page.restore' AND resource_id=? LIMIT 1", day.id)) continue;
+    const doc = await dayDoc(day.id);
+    const created = await dayTemplateHtml(day.id);
+    const daily = new Set([
+      ...(await templateTaskTexts(journal.id)),
+      ...(created ? await templateTaskTexts(journal.id, templateNodesOf(created)) : []),
+    ].map(readableText));
+    if (openTasks(doc).some((task) => !daily.has(readableText(task.textContent)))) continue;
+    // Tasks written on that day and moved on since: something happened.
+    if (await one(
+      "SELECT 1 FROM documents d JOIN pages p ON p.id=d.page_id WHERE p.parent_id=? AND p.id<>? AND d.html LIKE ? LIMIT 1",
+      journal.id,
+      day.id,
+      `%data-journal-since="${day.journal_date}"%`,
+    ))
+      continue;
+    if (await emptyDay(user, day, doc, zone)) await trashDay(user, day);
+  }
 }
 // The audit entry that marks a day the journal moved to the trash by itself
 // (detail: its deleted_at). Only such a day comes back when its date is
@@ -385,10 +419,7 @@ export async function rollJournal(
   const { previous, before, carried, daily, doc, mode } = await dayStart(journal, today);
   if (previous && before) {
     const { ydoc, doc: previousDoc } = before;
-    const empty =
-      !options.keep &&
-      (await untouched(previous, previousDoc)) &&
-      !(await completedThatDay(user, previous, options.zone));
+    const empty = !options.keep && (await emptyDay(user, previous, previousDoc, options.zone));
     if (carried.length) {
       const isDaily = (task: PMNode) => daily.has(task.textContent.trim());
       await storeDocument(
@@ -409,6 +440,8 @@ export async function rollJournal(
     ydoc.destroy();
   }
   const { dayId, generation } = await storeNewDay(user, journal, today, doc);
+  // After the new day is stored: the tasks it took over are there.
+  if (!options.keep) await tidyEarlierDays(user, journal, today, previous?.id, options.zone);
   return { dayId, changed: true, ...(options.write ? { generation } : {}) };
 }
 // Stores a new day page with `doc` and announces it (page tree, My tasks,
