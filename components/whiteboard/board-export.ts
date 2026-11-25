@@ -23,6 +23,11 @@ export const EXPORT_CSS =
   // Highlighter strokes and collapsed frames (#455).
   ".wb-pen-highlight{mix-blend-mode:multiply}.wb-frame-folded{display:flex;align-items:center;height:100%;padding:0 12px;font:12px system-ui,sans-serif;color:#868e96}" +
   ".wb-card-body{display:flex;flex-direction:column;justify-content:center;height:100%;font:14px system-ui,sans-serif;color:#1f2937;overflow:hidden}.wb-card-body small{color:#868e96;font-size:12px}.wb-card-excerpt{font-size:12px;color:#495057}" +
+  // Page cards with the whole document (#549): what fits in the card.
+  ".wb-pagecard{justify-content:flex-start;gap:6px;padding-top:10px}.wb-pagecard-head{display:grid;flex:none}.wb-pagecard-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+  ".wb-pagecard-scroll{flex:1 1 auto;min-height:0;overflow:hidden;border-top:1px solid #e9ecef;padding:8px 8px 0 0}.wb-pagecard-doc{font-size:13px;line-height:1.6;overflow-wrap:anywhere}.wb-pagecard-doc>:first-child{margin-top:0}" +
+  ".wb-pagecard-doc p{margin:0 0 8px}.wb-pagecard-doc h1,.wb-pagecard-doc h2,.wb-pagecard-doc h3{margin:12px 0 6px;line-height:1.3}.wb-pagecard-doc ul,.wb-pagecard-doc ol{margin:0 0 8px;padding-left:1.4em}.wb-pagecard-doc img{max-width:100%;height:auto}" +
+  ".wb-pagecard-doc pre{white-space:pre-wrap;background:#f1f3f5;border-radius:6px;padding:8px;font:12px ui-monospace,monospace}.wb-pagecard-doc table{border-collapse:collapse}.wb-pagecard-doc td,.wb-pagecard-doc th{border:1px solid #dee2e6;padding:3px 6px}.wb-pagecard-note{display:flex;gap:6px;font-size:12px;color:#868e96}" +
   ".wb-connector-label{display:flex;align-items:center;justify-content:center;height:100%;font:13px system-ui,sans-serif;color:#1f2937}" +
   ".wb-table-grid{display:grid;width:100%;height:100%;font-family:system-ui,sans-serif;color:#1f2937}.wb-cell{border:1px solid #dee2e6;padding:4px 6px;overflow:hidden;white-space:pre-wrap}.wb-cell.head{font-weight:600;background:#f1f3f5}" +
   ".wb-emoji-glyph{display:flex;align-items:center;justify-content:center;height:100%}" +

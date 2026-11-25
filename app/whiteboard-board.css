@@ -81,6 +81,84 @@
   margin-top: 4px;
 }
 
+/* Large page cards with the whole document (#549): the title on top, the
+   document below it, read-only and scrollable. A finger scrolls it only
+   while the card is selected; otherwise it moves the board. */
+.wb-card-body.wb-pagecard {
+  justify-content: flex-start;
+  gap: 6px;
+  padding-top: 10px;
+}
+.wb-pagecard-head {
+  display: grid;
+  flex: none;
+  min-width: 0;
+  padding-right: 6px;
+}
+.wb-pagecard-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-pagecard-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: none;
+  border-top: 1px solid #e9ecef;
+  padding: 8px 8px 12px 0;
+  scrollbar-width: thin;
+}
+.wb-item.selected .wb-pagecard-scroll {
+  touch-action: pan-y;
+}
+.document-editor.wb-pagecard-doc {
+  min-height: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  user-select: none;
+}
+.wb-pagecard-doc > :first-child {
+  margin-top: 0;
+}
+.wb-pagecard-doc img,
+.wb-pagecard-doc video,
+.wb-pagecard-doc iframe {
+  max-width: 100%;
+  height: auto;
+}
+.wb-pagecard-doc pre,
+.wb-pagecard-doc .math-block {
+  overflow-x: auto;
+}
+.wb-pagecard-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #868e96;
+}
+/* The card stays white on the light canvas in dark mode: its document
+   keeps the light colours. */
+[data-theme="dark"] .whiteboard:not(.wb-dark-canvas) .wb-pagecard-doc {
+  --bg: #fcfbf8;
+  --surface: #f6f4ef;
+  --hover: #ebe8e0;
+  --border: #e4e0d6;
+  --text: #1d1c22;
+  --muted: #6f6b78;
+  --secondary: #5e5a66;
+  color: #212529;
+  color-scheme: light;
+}
+.wb-dark-canvas .wb-pagecard-scroll {
+  border-top-color: var(--border);
+}
+.wb-dark-canvas .wb-pagecard-note {
+  color: var(--muted);
+}
+
 /* ---------- Embeds and PDFs ---------- */
 .wb-embed {
   display: flex;

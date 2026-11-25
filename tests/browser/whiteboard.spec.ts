@@ -297,12 +297,14 @@ test("pen, frames, emoji, page cards, images, undo and export work", async ({
   const download = page.waitForEvent("download");
   await boardView(wb, "Als SVG exportieren");
   expect((await download).suggestedFilename()).toBe("whiteboard.svg");
-  // The card opens its page on double click (the image on top goes first).
+  // The card opens its page on double click (the image on top goes first):
+  // in wide windows beside the board, in the split view (#549).
   await wb.focus();
   await page.keyboard.press("Delete");
   await expect(wb.locator(".wb-image")).toHaveCount(0);
   await wb.locator(".wb-card").last().dblclick();
-  await expect(page).toHaveURL(new RegExp(`page=${target.id}`));
+  await expect(page).toHaveURL(new RegExp(`split=${target.id}`));
+  await expect(wb).toBeVisible();
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: board.id });
   await command({ action: "page.delete", pageId: target.id });

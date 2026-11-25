@@ -1,4 +1,5 @@
 "use client";
+import { announcePageSaved } from "@/lib/page-saved";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
@@ -1471,6 +1472,8 @@ export default function DocumentEditor({
           pending.current.splice(0, sent);
           if (all) sendAll.current = false;
           applyRemote(result.state);
+          // Page cards of whiteboards in this window show it anew (#549).
+          if (!rowId) announcePageSaved(pageId);
         }
         checkPending.current = false;
         onStatus(dirty.current ? "unsaved" : "saved");

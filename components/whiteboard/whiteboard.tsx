@@ -17,6 +17,9 @@ import { IndexeddbPersistence } from "y-indexeddb";
 import { createPortal, flushSync } from "react-dom";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
+import { requestOpen } from "@/lib/open-place";
+import { subPageCreator } from "../sub-page-create";
+import { newPageCard, wheelScrollsCard, type CardView } from "@/lib/whiteboard-page-cards";
 import {
   Eraser,
   ArrowCounterClockwise,
@@ -28,6 +31,8 @@ import {
   Cursor,
   DownloadSimple,
   FileText,
+  FilePlus,
+  SquareSplitHorizontal,
   FrameCorners,
   Hand,
   Highlighter,
@@ -1007,12 +1012,36 @@ export default function Whiteboard({
       return { zoom, x: wx - sx / zoom, y: wy - sy / zoom };
     });
   }, []);
+  // Page cards with their document (#549): the wheel scrolls inside one
+  // that is selected or that the pointer rests on (lib/whiteboard-page-cards.ts).
+  const lastWheelPan = useRef(0);
+  const cardHover = useRef<{ id: string; since: number } | null>(null);
+  const cardScrolls = useRef<(e: WheelEvent) => boolean>(() => false);
+  cardScrolls.current = (e) => {
+    const scroller = (e.target as Element | null)?.closest?.<HTMLElement>("[data-wb-scroll]");
+    const id = scroller?.closest("[data-item]")?.getAttribute("data-item");
+    if (!scroller || !id) return false;
+    return wheelScrollsCard({
+      selected: selection.has(id),
+      hoverSince: cardHover.current?.id === id ? cardHover.current.since : null,
+      lastPan: lastWheelPan.current,
+      now: Date.now(),
+      deltaY: e.deltaY,
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+    });
+  };
   // Wheel: pinch or Ctrl zooms, otherwise the board scrolls.
   useEffect(() => {
     const el = svg.current;
     if (!el) return;
     const wheel = (e: WheelEvent) => {
+      // Over the document of a large page card (#549): it scrolls itself
+      // when the card is selected or the pointer rests on it.
+      if (!e.ctrlKey && !e.metaKey && cardScrolls.current(e)) return;
       e.preventDefault();
+      lastWheelPan.current = Date.now();
       stopCamera.current();
       const rect = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey)
@@ -1079,6 +1108,8 @@ export default function Whiteboard({
     },
     [measureBar],
   );
+  // The board's size on screen: what of it is in view (page cards, #549).
+  const [boardSize, setBoardSize] = useState({ w: 1200, h: 800 });
   // Which layout fits the board: measured before painting, so phones never
   // see the desktop tool column first.
   useLayoutEffect(() => {
@@ -1090,6 +1121,7 @@ export default function Whiteboard({
       const dock = phone.matches || width < 420 || height < 360;
       const menu = dock || width < 760;
       setLayout((l) => (l.dock === dock && l.menu === menu ? l : { dock, menu }));
+      setBoardSize((b) => (b.w === width && b.h === height ? b : { w: width, h: height }));
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -1702,6 +1734,15 @@ export default function Whiteboard({
     if (folding.onPointerDownCapture(e)) return;
     // Links, embed and PDF buttons inside elements (board-extras.tsx).
     if (extras.onPointerDownCapture(e)) return;
+    // A finger on the document of a selected page card scrolls it (#549;
+    // the card's CSS lets the browser pan it then).
+    if (e.pointerType === "touch") {
+      const id = (e.target as Element | null)?.closest?.("[data-wb-scroll]")?.closest("[data-item]")?.getAttribute("data-item");
+      if (id && selection.has(id) && selection.size === 1) {
+        e.stopPropagation();
+        return;
+      }
+    }
     // Handwriting into the open text field (Scribble) past its edges.
     if (writingInField(e)) {
       e.stopPropagation();
@@ -2053,6 +2094,9 @@ export default function Whiteboard({
     // A mouse resting on a device (no button, no gesture): its card.
     if (e.pointerType !== "touch") {
       const over = !gesture.current && !e.buttons ? (e.target as Element).closest?.("[data-item]")?.getAttribute("data-item") : null;
+      // Since when the pointer rests on a page card's document (#549).
+      const onDoc = over && (e.target as Element).closest?.("[data-wb-scroll]") ? over : null;
+      if ((cardHover.current?.id ?? null) !== onDoc) cardHover.current = onDoc ? { id: onDoc, since: Date.now() } : null;
       deviceCard.hover(over && byId.get(over)?.type === "device" ? over : null);
     }
     if (extras.onMove(e)) return;
@@ -2413,7 +2457,7 @@ export default function Whiteboard({
       location.hash = `page=${item.pageId}&row=${item.rowId}`;
       return;
     }
-    if (item?.type === "card" && item.pageId) return onOpenPage(item.pageId);
+    if (item?.type === "card" && item.pageId) return openBeside(item.pageId);
     if (!editable) return;
     if (item?.type === "timeline" && !item.locked) return setDiagram({ kind: "timeline", id: item.id });
     if (item && (item.type === "rack" || item.type === "device" || isCable(item))) {
@@ -2678,6 +2722,63 @@ export default function Whiteboard({
     const rect = svg.current!.getBoundingClientRect();
     return toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
   };
+  // A page card's page beside the board (#549): in the other frame of the
+  // split view on wide windows (components/split-pane.tsx) – editable,
+  // with the board still in view, its card showing the edits. Elsewhere
+  // (phones, narrow windows, shared boards) it opens as before.
+  function openBeside(id: string) {
+    if (!guest && matchMedia("(min-width: 1025px)").matches && requestOpen(`#page=${id}`, "side", svg.current)) {
+      // Full screen would cover the frame beside the board.
+      if (fullscreen) void toggleFullscreen();
+      return;
+    }
+    onOpenPage(id);
+  }
+  // "Neue Seite" (#549): an empty document below the board ("Ohne Titel",
+  // made as "/Seite" makes sub-pages: components/sub-page-create.ts), its
+  // card – large enough for the document – in the middle of the view, then
+  // opened beside the board. Undo takes the card away; the page stays in
+  // the page tree, as with "/Seite".
+  const [madePages, setMadePages] = useState<PageRef[]>([]);
+  async function addNewPage() {
+    const creator = subPageCreator();
+    if (!creator) return;
+    let created: { id: string; title: string } | null = null;
+    try {
+      created = await creator.create(pageId, null);
+    } catch (error) {
+      onError((error as Error).message);
+      return;
+    }
+    if (!created) return;
+    const made = created;
+    setMadePages((list) => [...list, { id: made.id, title: made.title, kind: "document" }]);
+    const box = newPageCard(center(), visibleRect());
+    let id = "";
+    change(() => {
+      id = addItem({ type: "card", pageId: made.id, ...box, fill: "#3b3fd8" });
+    });
+    setSelection(new Set([id]));
+    openBeside(made.id);
+    // The board narrows for the frame beside it: the card back to the middle.
+    const middle = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+    setTimeout(() => {
+      const rect = svg.current?.getBoundingClientRect();
+      if (!rect?.width) return;
+      const { zoom } = viewRef.current;
+      moveCamera({ zoom, x: middle.x - rect.width / zoom / 2, y: middle.y - rect.height / zoom / 2 });
+    }, 350);
+  }
+  // What is in view: large page cards there show their document (#549).
+  const cardView = useMemo<CardView>(
+    () => ({ x: view.x, y: view.y, w: boardSize.w / view.zoom, h: boardSize.h / view.zoom, zoom: view.zoom }),
+    [view, boardSize],
+  );
+  // Pages made here a moment ago, until the page list has them.
+  const cardPagesShown = useMemo(
+    () => (madePages.length ? [...pages, ...madePages.filter((m) => !pages.some((p) => p.id === m.id))] : pages),
+    [pages, madePages],
+  );
   // AI and notes → records (components/whiteboard/ai-panel.tsx).
   const boardAi = useBoardAi({
     pageId, editable: editable && !guest, selection, read, itemsMap, change, addItem, setProps, undo, visibleRect, center, setSelection, onOpenPage,
@@ -3150,6 +3251,18 @@ export default function Whiteboard({
               </button>
             </>
           )}
+          {single?.type === "card" && single.pageId && !single.rowId && (
+            <>
+              <span className="wb-sep" />
+              <button
+                aria-label={t("Daneben öffnen", "Open beside")}
+                title={t("Daneben öffnen – die Seite neben dem Board bearbeiten", "Open beside – edit the page next to the board")}
+                onClick={() => openBeside(single.pageId!)}
+              >
+                <SquareSplitHorizontal size={16} />
+              </button>
+            </>
+          )}
           {types.has("table") && types.size === 1 && (
             <TableTools item={first} cell={cellEdit?.id === first.id ? cellEdit : null} set={set} resize={(rows, cols) => resizeTable(first, rows, cols)} />
           )}
@@ -3525,6 +3638,9 @@ export default function Whiteboard({
             action("emoji", t("Emoji", "Emoji"), t("Emoji oder Sticker", "Emoji or sticker"), <Smiley size={18} />, () => setEmojiOpen(true)),
             toolItem("stamp"),
             action("card", t("Seite verknüpfen", "Link page"), t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), <FileText size={18} />, () => setCardOpen(true)),
+            ...(subPageCreator()
+              ? [action("new-page", t("Neue Seite", "New page"), t("Neue Seite unter diesem Board anlegen und daneben öffnen", "Create a new page below this board and open it beside it"), <FilePlus size={18} />, () => void addNewPage())]
+              : []),
             ...extras.insertActions,
             action("timeline", t("Zeitleiste", "Timeline"), t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), <ChartBarHorizontal size={18} />, () => void insertLibraryShape(boardApi, "timeline", t)),
             action("import", t("Importieren …", "Import …"), t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)"), <UploadSimple size={18} />, () => importInput.current?.click()),
@@ -3545,7 +3661,7 @@ export default function Whiteboard({
     : [];
   // Guests (#280): nothing that uploads, searches foreign images, links
   // pages of the workspace, embeds files, uses templates or AI.
-  const GUEST_HIDDEN = new Set(["image", "media", "card", "import", "embed", "templates", "tool-stamp"]);
+  const GUEST_HIDDEN = new Set(["image", "media", "card", "new-page", "import", "embed", "templates", "tool-stamp"]);
   const panelFor = guest
     ? panelSections.filter((s) => s.key !== "ai").map((s) => ({ ...s, items: s.items.filter((i) => !GUEST_HIDDEN.has(i.key)) }))
     : panelSections;
@@ -4016,10 +4132,11 @@ export default function Whiteboard({
                 <WhiteboardShape
                   item={item}
                   items={byId}
-                  pages={pages}
+                  pages={cardPagesShown}
                   editing={editing === item.id ? "" : undefined}
                   cards={rowCards}
                   deviceCards
+                  fullCards={cardView}
                 />
               </g>
             ))}

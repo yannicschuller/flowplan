@@ -13,5 +13,13 @@
     }
   ],
   "improvements": [],
-  "features": []
+  "features": [
+    {
+      "de": "Seiten auf dem Whiteboard: „Neue Seite“ legt ein Dokument direkt vom Board an. Große Seitenkarten zeigen das ganze Dokument, live und scrollbar; ein Doppelklick oder „Daneben öffnen“ bearbeitet die Seite neben dem Board.",
+      "en": "Pages on whiteboards: “New page” creates a document right from the board. Large page cards show the whole document, live and scrollable; a double-click or “Open beside” edits the page next to the board.",
+      "issues": [
+        549
+      ]
+    }
+  ]
 }
