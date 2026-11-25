@@ -2,6 +2,131 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.11.6 – 2026-11-25
+
+### New
+
+- Number properties with their own unit, e.g. kg or m – also in sums; the values stay numbers ([#522](https://github.com/yannicschuller/flowplan/issues/522)).
+- Published pages show their title, the start of their text and their cover in messenger and social network previews – behind a password only the general preview ([#531](https://github.com/yannicschuller/flowplan/issues/531)).
+- Settings and administration are one screen: one sidebar, a start page with storage, AI and your setup, for admins with live charts of the instance (active people, requests, AI, storage, errors, server, accounts, sign-ins, backups) – and previews in the sections ([#532](https://github.com/yannicschuller/flowplan/issues/532)).
+- Person properties can hold several people: with “Several people” in the property's settings you pick members as chips with a search; the board shows a record under each of its people, and the notification goes only to people newly added ([#535](https://github.com/yannicschuller/flowplan/issues/535)).
+- A journal can go into your favourites as “<journal> – Today” with “Add today to favourites” (page menu): the link always opens the current day and moves on at midnight – separate from the journal page's own favourite ([#537](https://github.com/yannicschuller/flowplan/issues/537)).
+- Choose the AI model yourself: when your plan or group allows several models (“Up to Opus – your choice”), pick one in the AI panel or under Settings → AI. The administration sets whether you start on the smallest or the most capable; workflows use the most capable ([#538](https://github.com/yannicschuller/flowplan/issues/538)).
+
+### Improved
+
+- Writing alone in a document saves after a short pause in typing (2 s, at the latest every 10 s while typing on) instead of all the time; ticking off, status changes and leaving the page save at once ([#515](https://github.com/yannicschuller/flowplan/issues/515)).
+- Database pickers are grouped by space; databases with the same title show where they are, e.g. “Notes · Family” ([#520](https://github.com/yannicschuller/flowplan/issues/520)).
+- The save status at the top right shows only the cloud while you type (check when saved, arrow while saving); text appears only when something needs attention ([#527](https://github.com/yannicschuller/flowplan/issues/527)).
+- Published and link-shared pages take the page icon position, font and strike-through of done tasks from the person who shares them; changeable in the Web tab ([#526](https://github.com/yannicschuller/flowplan/issues/526)).
+- Record properties are compact: values as text and chips with a type icon, edited with a click in a small panel (a sheet on phones) ([#519](https://github.com/yannicschuller/flowplan/issues/519)).
+- The link dialog edits a link's text and address together ([#530](https://github.com/yannicschuller/flowplan/issues/530)).
+- Security: incidents can be searched and filtered by open, resolved and severity, in pages with “Load more”.
+- New inbox: grouped by day and type, compact rows with the person, page and start of a comment, similar ones collapsed, incidents with severity and “View incident”. Read and remove on hover (phones: ⋯), also for several at once; “Load older”; texts in your language.
+- With “Open tasks: copy”, a continued task keeps its box (open or in progress) on its day, with a small ➔ on the corner – “Continued on …”. It stays when you change the status there and still does not count as open ([#536](https://github.com/yannicschuller/flowplan/issues/536)).
+- Settings: “Active people and server load” is back – people, CPU and RAM in one wide chart on top of “Instance at a glance”. Restarts come in pages (20, “Load more”) and can be filtered to unexpected ones.
+- Formulas from the keyboard: Backspace after a formula and the arrow keys open it for editing instead of deleting or skipping it; at its edges the arrow keys lead back out. The editor appears right at the formula ([#541](https://github.com/yannicschuller/flowplan/issues/541)).
+- Polish: pen, highlighter, eraser and laser in one row with the colours in a single line; flashcards larger on phones; Markdown export without pages has “Choose pages” right in the notice, and “Refresh” sits level with the title.
+- Records and My tasks: “Related pages” folds (folded with its count), recurrence and repeating task show only once set (otherwise in the date’s menu), several reminders name their date. On phones: filters in one row, the rest and the due range as a sheet.
+- Boards are calmer: groups without grey column backgrounds, slightly more compact cards; the target column is lightly tinted while you drag. “No group” only appears when a card has no group or while you drag one.
+
+### Bug fixes
+
+- Backups and Markdown exports to S3 are uploaded with a known size: S3 servers that require Content-Length (VersityGW, AWS) rejected them with HTTP 411. Stored errors now also name their cause ([#518](https://github.com/yannicschuller/flowplan/issues/518)).
+- “New in Flowplan” fits its window in the iOS app again.
+- Date columns in tables start as wide as their format needs; dragged narrower, the date ends in “…” instead of being cut off ([#523](https://github.com/yannicschuller/flowplan/issues/523)).
+- “Publish on the web” also works in reading mode; when the switch is disabled, the reason is shown below it ([#524](https://github.com/yannicschuller/flowplan/issues/524)).
+- Shared pages say in a full sentence what the link allows (“With this link you can read this page.”); printouts and PDFs leave that part out ([#525](https://github.com/yannicschuller/flowplan/issues/525)).
+- “Recurrence” and “Repeating task” only appear where they apply and hide with the empty properties ([#521](https://github.com/yannicschuller/flowplan/issues/521)).
+- Titles of type date, number, select and more can be typed in the record (“23.11.2026”, “1,234.5 kg”); input that doesn't fit is explained at the field ([#529](https://github.com/yannicschuller/flowplan/issues/529)).
+- Present opens the slides even when a browser extension changes full screen, instead of stopping with “Something went wrong” ([#533](https://github.com/yannicschuller/flowplan/issues/533)).
+- Jira export: callouts become coloured panels that Jira renders, instead of literal {info} … {info} text ([#534](https://github.com/yannicschuller/flowplan/issues/534)).
+- The probing rule counts only different refused requests: signed-out tabs and deleted records no longer raise an incident.
+- In the iPhone and Android app, the “Flowplan could not be loaded completely” message now has “Switch server”: if your server moved to a new address, it takes you straight to the app's server switcher ([#539](https://github.com/yannicschuller/flowplan/issues/539)).
+- New tab: screens such as My tasks, Inbox or Settings picked in the quick search after the tab bar's "+" open in the new tab instead of the current one ([#542](https://github.com/yannicschuller/flowplan/issues/542)).
+- With a mouse or finger, no blue focus ring shows on menu items or on the "⋯" after a menu closes any more; with the keyboard it stays.
+- Over the sidebar, menus and buttons the mouse shows the arrow instead of the text cursor, and whole page rows the hand; cards no longer jump up on hover, and documents do less work while the mouse moves ([#543](https://github.com/yannicschuller/flowplan/issues/543), [#544](https://github.com/yannicschuller/flowplan/issues/544), [#545](https://github.com/yannicschuller/flowplan/issues/545), [#546](https://github.com/yannicschuller/flowplan/issues/546)).
+
+<details>
+<summary>All commits</summary>
+
+- Spec: block selection clicks until the caret is in Alpha after the move ([029022f](https://github.com/yannicschuller/flowplan/commit/029022fcf287e51f02b26b4383fbf45d8baa2b6d))
+- Spec: meeting attendees search a name no other member's name contains ([250e3e7](https://github.com/yannicschuller/flowplan/commit/250e3e7f9fe78dfa77592ae970d35b78a7bd5649))
+- Help docs: default model of a choice rule (#538) ([8231859](https://github.com/yannicschuller/flowplan/commit/82318599cdf0de4c2694388fe489e6f6677ee364))
+- AI: the administration chooses the default of a model choice – smallest or most capable ([b2efede](https://github.com/yannicschuller/flowplan/commit/b2efede2fb879b5ca7d9b021279dafe7d89146dc))
+- Calmer pointer: arrow over chrome, no hover lifts, fewer move handlers ([1fab547](https://github.com/yannicschuller/flowplan/commit/1fab54730b0b1cca8549053ab598098f3425269e))
+- Visual baselines from ubuntu-latest ([87ade7c](https://github.com/yannicschuller/flowplan/commit/87ade7c1dbe33d403b7251537d3702790d1f3a86))
+- Help docs: board "No group" ([7860fa5](https://github.com/yannicschuller/flowplan/commit/7860fa546dcce8f92b421f30fdbe3d5f232dbc99))
+- Design review: Databases – board groups without filled columns, compact cards, "No group" only when needed ([31297e9](https://github.com/yannicschuller/flowplan/commit/31297e9692ed482f6aa50b8f0b95fc4b3a4739f0))
+- Help docs: records and My tasks design review ([b62aef6](https://github.com/yannicschuller/flowplan/commit/b62aef6feeea456f3a6431fe057ddbd428274a0e))
+- Design review: Records & My tasks – related pages fold, recurrence rows only when set, phone filters in one row ([dc65daf](https://github.com/yannicschuller/flowplan/commit/dc65dafa2527bd63eda4ed60a926eae231426676))
+- No focus ring on menu items and menu buttons when used with a pointer ([41afa9b](https://github.com/yannicschuller/flowplan/commit/41afa9b4935e08a926c083ffe5138f152348f0a2))
+- Design review: Whiteboard, Flashcards, Export – one drawing switch, taller cards, plain empty state ([cd553b0](https://github.com/yannicschuller/flowplan/commit/cd553b0f210fddcf211afc77406f8a389ac661d5))
+- Help docs: formulas from the keyboard (#541) ([b3ba69a](https://github.com/yannicschuller/flowplan/commit/b3ba69a2dfdbf5fd8f00f9a4ecbf1b967265ec76))
+- Help docs: model choice (#538) ([dfa0f1c](https://github.com/yannicschuller/flowplan/commit/dfa0f1c3d8afb1c188b2816ea7356198e17b4899))
+- Formulas from the keyboard: Backspace and arrows open them in place (#541) ([cdf4e14](https://github.com/yannicschuller/flowplan/commit/cdf4e14745ad2b288379f710712d2686c1ebb5f6))
+- New tab: screens picked in the quick search open in the new tab (#542) ([ced2de1](https://github.com/yannicschuller/flowplan/commit/ced2de15abae1d0921e920bbe4614fce233c30a5))
+- AI: choose the model yourself among those your plan or group allows (#538) ([ee5e6e1](https://github.com/yannicschuller/flowplan/commit/ee5e6e10cc23368bd55917150e0067279ff4b535))
+- Help docs: switch server (#539) ([c36f1f5](https://github.com/yannicschuller/flowplan/commit/c36f1f500fe190134fbb8940af46af31223e4c07))
+- Stale-copy message: "Switch server" inside the app (#539) ([01e17bf](https://github.com/yannicschuller/flowplan/commit/01e17bfced8f133bd350e704b8280e4c6db8373e))
+- Restarts counts in portable SQL; person picker spec types the full name ([8ff2827](https://github.com/yannicschuller/flowplan/commit/8ff2827547e1129fa87bcd291a7c54e8f91f0a2b))
+- French: "par ex." in the incident search hint ([1e790e9](https://github.com/yannicschuller/flowplan/commit/1e790e90d4e828676178085466944ed53f61aeca))
+- Help docs: server load chart, restarts paging ([a7b3a16](https://github.com/yannicschuller/flowplan/commit/a7b3a16076455cb58fe1276b9da880ca7434829a))
+- Admin: "Aktive Personen und Serverlast" back on top; restarts in pages ([867f734](https://github.com/yannicschuller/flowplan/commit/867f7345fc34164001c9d90cfbac0606e1d6d139))
+- Quality: JS budgets after #535 and the new inbox (+8 KB database, +2 KB home) ([f607959](https://github.com/yannicschuller/flowplan/commit/f607959869db4e2ffb308afb2dbc96c35a80ec3c))
+- Help docs: today of a journal as a favorite (#537) ([0c1e9d3](https://github.com/yannicschuller/flowplan/commit/0c1e9d3b5c61099988132d6a6a1abe5ac93c9c2f))
+- Journal "Today" link as a favourite of its own (#537) ([1160a81](https://github.com/yannicschuller/flowplan/commit/1160a81237f382a80a3598f3abe3bbc08689ad89))
+- Help docs: continued journal tasks (#536) ([1b4d130](https://github.com/yannicschuller/flowplan/commit/1b4d1301014fb8831e48b3441e735d5c5e5dc952))
+- Journal: keep the original task status on source days (#536) ([5a87f1e](https://github.com/yannicschuller/flowplan/commit/5a87f1ea55f4243a10f065742b4e9e57a1b50325))
+- Help docs: the new inbox ([51fb3a2](https://github.com/yannicschuller/flowplan/commit/51fb3a203c337e23bba73e4d726731f255d32e60))
+- New inbox: grouped by day and type, structured notifications ([9fb67a5](https://github.com/yannicschuller/flowplan/commit/9fb67a575d9c1ec41faaab643f7035b05b71f7aa))
+- Help docs: several people in a Person property (#535) ([846e07a](https://github.com/yannicschuller/flowplan/commit/846e07abad95bb00f1b1706de2ff926057271c32))
+- Person property: allow several people per record (#535) ([1021bf0](https://github.com/yannicschuller/flowplan/commit/1021bf0214f4902e96884bc1f95d9288509feb74))
+- Help docs and release notes: incidents search, probing rule ([7b6d96f](https://github.com/yannicschuller/flowplan/commit/7b6d96f734bf68e0ebbcd8330378dceffbd563f9))
+- Incidents: search, filters and pages; probing counts different requests only ([f2f23e0](https://github.com/yannicschuller/flowplan/commit/f2f23e041c58f37c223e7ad9328fda52261515bb))
+- Present never fails on full screen (#533); Jira callouts as panels (#534) ([bf759f5](https://github.com/yannicschuller/flowplan/commit/bf759f582ec4633d71584473b1107a6c5d7f5389))
+- CI after #532: JS budgets for the one settings screen, two steady tests ([8aff1c5](https://github.com/yannicschuller/flowplan/commit/8aff1c5d9fe118860a03ff743dcc0ec92498d933))
+- Visual baselines from ubuntu-latest ([855599e](https://github.com/yannicschuller/flowplan/commit/855599eb7332a2cd31a5ff2e51f2c9a802b94a89))
+- Settings: fix CI after #532 ([c80caba](https://github.com/yannicschuller/flowplan/commit/c80caba4a6010c45e4d104b364b551c953688bba))
+- Help docs and release notes: #532 ([79b918b](https://github.com/yannicschuller/flowplan/commit/79b918bdb970ed24341835c218f6753421b37ea5))
+- Settings start page: live panels of the instance on top (#532) ([3b74823](https://github.com/yannicschuller/flowplan/commit/3b74823d3c1ced61b67bc25e76091e3c3dad2bfb))
+- Settings: the instance's general section is called Allgemein / General (#532) ([f8c0c87](https://github.com/yannicschuller/flowplan/commit/f8c0c8790c41912fbdb7e93b289e904255363468))
+- Gallery: a scene for editing a record property (#519) ([fd863be](https://github.com/yannicschuller/flowplan/commit/fd863be38463644a6d45f737992d5baef27f302f))
+- Docs: settings architecture for the one settings screen (#532) ([16bf032](https://github.com/yannicschuller/flowplan/commit/16bf032b01e03100841fdb45ab190512d75e69c9))
+- Settings start page: monitoring tile counts like the live strip (#532) ([fa1f59e](https://github.com/yannicschuller/flowplan/commit/fa1f59e8ecdcc2bd7b95687e0e87874f6b1c70dc))
+- Browser specs, gallery and quality check for the one settings screen (#532) ([dfcfe60](https://github.com/yannicschuller/flowplan/commit/dfcfe60f2a4e08b049217bbd6a2ade610c76779e))
+- Texts: "Einstellungen → Instanz → …" instead of "Administration → …" (#532) ([b7f9112](https://github.com/yannicschuller/flowplan/commit/b7f91125677dd33f05467723feee72fd56554eed))
+- Settings: one screen with one sidebar and a graphical start page (#532) ([3caee07](https://github.com/yannicschuller/flowplan/commit/3caee070ffc60a9956efd0e8ba2381462de8856b))
+- Settings addresses for the instance: #settings/instance/<section> (#532) ([6f09ed2](https://github.com/yannicschuller/flowplan/commit/6f09ed264ac52180db47c22295554070540bdcdd))
+- Limits file: accept the plan key "creem" from flowplan-billing ([f9d0df8](https://github.com/yannicschuller/flowplan/commit/f9d0df8d48503e80ef84432215d0a5c698aa161b))
+- Published pages: title, excerpt and cover in link previews (#531) ([8a064d2](https://github.com/yannicschuller/flowplan/commit/8a064d2df2e2962a6bbab0dfcc8c8b58252bc940))
+- Help docs and release notes: #530 ([99a1ae3](https://github.com/yannicschuller/flowplan/commit/99a1ae3dbda5b4ee07b8477ea3d69dfe5de7a188))
+- Link dialog: edit the link's text together with its address (#530) ([3c15a77](https://github.com/yannicschuller/flowplan/commit/3c15a776baf164266c0081208e81146eb31507ca))
+- Spec: number unit in the compact record view (#519, #522); release notes #529 ([a817d22](https://github.com/yannicschuller/flowplan/commit/a817d2292c2363af5b22bede475a9cd18e2c17b7))
+- Record view: titles of every type can be typed – dates, numbers and more (#529) ([8548d90](https://github.com/yannicschuller/flowplan/commit/8548d90b0c381cfe8b66e31fb4c609b3bb79e704))
+- Help docs and release notes: #519, #521 ([2415a0f](https://github.com/yannicschuller/flowplan/commit/2415a0f5818e7300946af0b4874aa5be5135118b))
+- Merge fix: number formatting in the record view uses the field's unit (#519, #522) ([bb68d7c](https://github.com/yannicschuller/flowplan/commit/bb68d7ceccf03aa918288773dc01a8859a043fa8))
+- Record view: recurrence and repeating task only where they apply (#521) ([2e8f495](https://github.com/yannicschuller/flowplan/commit/2e8f495d2077a52fc6410b21599df8ffa7c9b012))
+- Compact record properties: values as text and chips, editor on click (#519) ([a9d3927](https://github.com/yannicschuller/flowplan/commit/a9d3927f949b4f6691af06c541c48c9983d774cb))
+- Issue skill: replies in the first person singular, not "we" ([942ab5c](https://github.com/yannicschuller/flowplan/commit/942ab5cb8d9da2e758725400f1582fef23f13288))
+- Help docs and release notes: #526, #527 ([e42944c](https://github.com/yannicschuller/flowplan/commit/e42944c8ac98898bae78b1866039b3eed51f45f9))
+- Save status: only the cloud while typing, words when attention is needed (#527) ([107d165](https://github.com/yannicschuller/flowplan/commit/107d1652c2abb704d92c3f2b4ec7f947a424dba6))
+- Shared and published pages follow the publisher's page appearance (#526) ([ee12604](https://github.com/yannicschuller/flowplan/commit/ee12604a50a2e5432d2e5ae7379669dfa38e318f))
+- Shared pages: what the link allows in a full sentence, and not in printouts (#525) ([0590a37](https://github.com/yannicschuller/flowplan/commit/0590a37940e5631166fdd2db845b7529005519e1))
+- Help docs: publishing on its own page (#524) ([dc2fc66](https://github.com/yannicschuller/flowplan/commit/dc2fc660e5cb2bcc410c716b6cac4999b1e6a711))
+- Share dialog: publishing works in reading mode, a disabled switch says why (#524) ([514bcb1](https://github.com/yannicschuller/flowplan/commit/514bcb1825cb790a38b1a62c71f674d65f0d3db8))
+- Release notes: date columns (#523) ([89509f9](https://github.com/yannicschuller/flowplan/commit/89509f9f36f10bee237a301c33cdd9235fbd5890))
+- Table: date columns can be narrowed; default width fits the date format (#523) ([c6ea57c](https://github.com/yannicschuller/flowplan/commit/c6ea57c4576c3cef98d9c741a0d5d347a1183880))
+- Help docs and release notes: number units (#522) ([b611969](https://github.com/yannicschuller/flowplan/commit/b611969b026675184aba7036b7275c1f26b6c4a0))
+- Number properties: own unit, e.g. kg or m (#522) ([475d1e6](https://github.com/yannicschuller/flowplan/commit/475d1e67ef57463dea4d3829406d8baa80038921))
+- Help docs and release notes: database pickers by space (#520), saving after a pause (#515) ([9529d74](https://github.com/yannicschuller/flowplan/commit/9529d742a58355c9d4ca6c4ec874780008102546))
+- Editor alone: save after a 2 s pause in typing, at the latest every 10 s (#515) ([02bea33](https://github.com/yannicschuller/flowplan/commit/02bea3379ddf56c65f4d170823d1d1f0b8960ad1))
+- Database pickers: grouped by space, duplicates with their location (#520) ([d20f3fb](https://github.com/yannicschuller/flowplan/commit/d20f3fb33fc5ef1f46c03446783925b8b7bd8dd4))
+- "Neu in Flowplan": notes no wider than the sheet on iOS ([3917ebb](https://github.com/yannicschuller/flowplan/commit/3917ebb6776276425e13635326cf002c7c44b3a5))
+- S3: requests carry their body's length; backup errors name their cause (#518) ([105e4a2](https://github.com/yannicschuller/flowplan/commit/105e4a25884a59b33fdc93c1c9824dcce12af84c))
+
+</details>
+
 ## v0.11.5 – 2026-11-24
 
 ### Security
