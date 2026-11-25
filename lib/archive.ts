@@ -69,6 +69,7 @@ import {
   rowAccessSchema,
 } from "./archive-extras";
 import { fromBuffer, open as openZip, type Entry } from "yauzl";
+import { zipEntryName } from "./zip-names";
 import { ZipFile } from "yazl";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
@@ -871,10 +872,18 @@ export async function readZip(
         });
         zip.on("entry", (entry: Entry) => {
           if (failed) return;
+          // UTF-8 without bit 11 (macOS) and NFC, checked again (#556).
+          let name: string;
+          try {
+            name = zipEntryName(entry);
+          } catch {
+            fail(new HttpError(400, "Beschädigtes ZIP-Archiv."));
+            return;
+          }
           if (
             options.foreign &&
-            (entry.fileName.endsWith("/") ||
-              /(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(entry.fileName))
+            (name.endsWith("/") ||
+              /(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(name))
           ) {
             zip.readEntry();
             return;
@@ -883,10 +892,10 @@ export async function readZip(
           if (
             count > (options.maxEntries ?? 2001) ||
             entry.isEncrypted() ||
-            result.has(entry.fileName) ||
+            result.has(name) ||
             (!options.foreign &&
               !/^flowplan\.json$|^(?:files|template-files|fonts)\/[a-f0-9-]{36}$/.test(
-                entry.fileName,
+                name,
               ))
           ) {
             fail(
@@ -898,12 +907,12 @@ export async function readZip(
             return;
           }
           const max =
-            entry.fileName === "flowplan.json"
+            name === "flowplan.json"
               ? MANIFEST_LIMIT
-              : options.foreign && !options.own && (/\.zip$/i.test(entry.fileName) || options.largeEntries?.test(entry.fileName))
+              : options.foreign && !options.own && (/\.zip$/i.test(name) || options.largeEntries?.test(name))
                 ? Math.max(ARCHIVE_LIMIT, perFile)
                 : perFile;
-          if (!options.foreign && entry.fileName === "flowplan.json" && entry.uncompressedSize > MANIFEST_LIMIT) {
+          if (!options.foreign && name === "flowplan.json" && entry.uncompressedSize > MANIFEST_LIMIT) {
             fail(new HttpError(413, MANIFEST_TOO_LARGE));
             return;
           }
@@ -947,7 +956,7 @@ export async function readZip(
             });
             stream.once("end", () => {
               if (failed) return;
-              result.set(entry.fileName, Buffer.concat(chunks));
+              result.set(name, Buffer.concat(chunks));
               zip.readEntry();
             });
           });

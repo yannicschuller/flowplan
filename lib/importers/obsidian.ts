@@ -13,6 +13,7 @@ import { blockMarkers } from "../markdown-import";
 import { splitFrontmatter, type FrontmatterValue } from "../frontmatter";
 import { frontmatterAliases } from "../aliases";
 import { fileRef, mimeOf, pageRef } from "./html";
+import { nameKey } from "../zip-names";
 import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
 
 const NOTE = /\.(md|markdown)$/i;
@@ -93,7 +94,8 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
   const paths = [...entries.keys()].filter((p) => !hidden(p)).sort((a, b) => a.localeCompare(b));
   const notes = paths.filter((p) => NOTE.test(p));
   const attachments = paths.filter((p) => !NOTE.test(p) && !/\.canvas$/i.test(p));
-  const lower = (s: string) => s.toLowerCase();
+  // NFC as well: macOS names are NFD, the links in the notes mostly NFC (#556).
+  const lower = nameKey;
   // Obsidian resolves a name by its path, else by the file name anywhere.
   const notesByPath = new Map(notes.map((p) => [lower(p.replace(NOTE, "")), p]));
   const notesByName = new Map<string, string>();
@@ -146,10 +148,10 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
   for (const path of notes) {
     const source = entries.get(path)!.toString("utf8");
     const { data, body } = splitFrontmatter(source);
-    const title = posix.basename(path).replace(NOTE, "");
+    const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
     const folder = folderOfNote(path);
     const parent = folderKey(posix.dirname(folder ?? path));
-    const text = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "");
+    const text = body.normalize("NFC").replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "");
     const markdown = convertWikilinks(text, lookup(path), () => {
       warnings.add("Eingebettete Notizen werden als Link übernommen.");
       report.add("embed", ct("Eingebettete Notiz als Link übernommen", "Embedded note kept as a link"), path);

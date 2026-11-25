@@ -24,6 +24,13 @@
       "issues": [
         555
       ]
+    },
+    {
+      "de": "ZIP-Dateien vom Mac (Finder, Archivierungsprogramm) behalten beim Import ihre Umlaute und Akzente: „Diárias“ wird nicht mehr zu „Dia╠ürias“, und Links, eingebettete Bilder und Titel aus Obsidian-Tresoren mit solchen Namen funktionieren.",
+      "en": "ZIP files made on a Mac (Finder, Archive Utility) keep their accents and umlauts on import: “Diárias” no longer turns into “Dia╠ürias”, and links, embedded images and titles in Obsidian vaults with such names work.",
+      "issues": [
+        556
+      ]
     }
   ],
   "improvements": [

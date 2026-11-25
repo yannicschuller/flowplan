@@ -10,11 +10,12 @@ import {
   parseHtml, parseXml, renderNodes, taskItem, text, type ChildNode, type Element, type Rule,
 } from "./html";
 import { isoDate, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { decodeName } from "../zip-names";
 
 const CALLOUTS: Record<string, string> = { info: "note", information: "note", tip: "tip", note: "warning", warning: "caution", panel: "note" };
 const decodePath = (href: string) => {
   try {
-    return decodeURIComponent(href.split(/[?#]/)[0]);
+    return decodeName(href.split(/[?#]/)[0]);
   } catch {
     return href.split(/[?#]/)[0];
   }

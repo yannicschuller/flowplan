@@ -5,6 +5,7 @@
 // level; both are turned back into marks and nested lists. Google's
 // redirect links point to their target again.
 import { posix } from "node:path";
+import { decodeName } from "../zip-names";
 import { readZip } from "../archive";
 import { docxEntriesToHtml } from "./docx";
 import {
@@ -57,7 +58,7 @@ export function googleHtmlToHtml(source: string, path: string, entries: Map<stri
       if (/^https?:/i.test(src)) return `<img src="${esc(src)}" alt="${esc(attr(el, "alt"))}">`;
       let target: string;
       try {
-        target = posix.normalize(posix.join(dir, decodeURIComponent(src)));
+        target = posix.normalize(posix.join(dir, decodeName(src)));
       } catch {
         return "";
       }

@@ -6,6 +6,7 @@ import { id, one, onTransactionRollback, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requireMember, spaceRole } from "./permissions";
 import { readZip } from "./archive";
+import { decodeName } from "./zip-names";
 import { createPage } from "./seed";
 import { htmlState } from "./document-server";
 import { markdownToHtml, markdownToHtmlAsync } from "./markdown-import";
@@ -209,7 +210,7 @@ function flowplanLayout(entries: Map<string, Buffer>, nodes: Map<string, Node>, 
     for (const link of list.matchAll(/^- \[[^\n]*\]\(<?([^>\n)]+\.md)>?\)$/gm)) {
       let target: string;
       try {
-        target = nodeKey(posix.normalize(posix.join(posix.dirname(node.key), decodeURIComponent(link[1]))));
+        target = nodeKey(posix.normalize(posix.join(posix.dirname(node.key), decodeName(link[1]))));
       } catch {
         continue;
       }
@@ -397,7 +398,7 @@ export async function importZip(
           target = posix.normalize(
             posix.join(
               posix.dirname(from),
-              decodeURIComponent(href.split("#")[0]),
+              decodeName(href.split("#")[0]),
             ),
           );
         } catch {
@@ -637,7 +638,7 @@ export async function importZip(
       if (item.href) {
         if (!/^https?:/i.test(item.href))
           try {
-            const key = nodeKey(posix.normalize(posix.join(posix.dirname(from), decodeURIComponent(item.href))));
+            const key = nodeKey(posix.normalize(posix.join(posix.dirname(from), decodeName(item.href))));
             if (recordIds.has(key)) return [recordIds.get(key)!];
           } catch {}
         const nid = notionId(item.href);
