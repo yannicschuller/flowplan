@@ -4,7 +4,7 @@
 // the AI statistics (`&days=7|30|90`, per person too), `?view=errors` the
 // error details (lib/error-details.ts, with `range` for the counts and
 // trend), `?view=upstream` the failures of third-party services counted
-// apart from the server errors (#514, same `range`), `?view=restarts` the restart history and `?view=restart&id=…`
+// apart from the server errors (#514, same `range`), `?view=restarts` the restart history (`&offset=&limit=&only=unexpected`, 20 a page) and `?view=restart&id=…`
 // one restart with its saved log lines (lib/restarts/history.ts, loaded
 // when the section opens and when a row is opened); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
 // off (`metrics.save`), deletes them (`metrics.clear`) or the error
@@ -47,7 +47,11 @@ export const GET = withRequestLocale(async (req: Request) => {
     const user = await admin();
     const url = new URL(req.url);
     const view = url.searchParams.get("view");
-    if (view === "restarts" || view === "restart") return Response.json(await restartsForAdmin(user, view === "restart" ? url.searchParams.get("id") || "" : null), noStore);
+    if (view === "restart") return Response.json(await restartsForAdmin(user, url.searchParams.get("id") || ""), noStore);
+    if (view === "restarts") {
+      const n = (key: string) => (url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined);
+      return Response.json(await restartsForAdmin(user, null, { offset: n("offset"), limit: n("limit"), only: url.searchParams.get("only") === "unexpected" ? "unexpected" : "all" }), noStore);
+    }
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringStart(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);

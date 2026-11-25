@@ -6,16 +6,18 @@
 // and its last log lines (redacted on the server, shown as plain text) and
 // offers them as a .txt file. Data: /api/admin/monitoring?view=restarts
 // when the section opens, ?view=restart&id=… when a row is opened
-// (lib/restarts/history.ts). Its code loads only when the card comes into
+// (lib/restarts/history.ts). Newest first, 20 a page with "Weitere laden"
+// and the filter "Nur unerwartete" (the server pages and counts, like the
+// incidents in security-center.tsx). Its code loads only when the card comes into
 // view (monitoring.tsx, RestartsWhenVisible): the dashboard's JavaScript
 // budget is tight.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowClockwise, CheckCircle, DownloadSimple } from "@phosphor-icons/react";
-import type { RestartDetail, RestartHistory, RestartRow } from "@/lib/restarts/history";
+import type { RestartDetail, RestartFilter, RestartHistory, RestartRow } from "@/lib/restarts/history";
 import { useT } from "../../i18n";
 import { api, downloadBlob } from "../../ui";
 import { EmptyState, StatusBadge, type Tone } from "../../settings-ui";
-import { bytes, dateTime, percent, uptime } from "./monitoring-format";
+import { bytes, dateTime, num, percent, uptime } from "./monitoring-format";
 import { reasonLabel } from "./restart-labels";
 
 type T = (de: string, en: string) => string;
@@ -30,21 +32,46 @@ const memoryText = (r: RestartRow, t: T) => {
   return t(`${used} (keine Grenze)`, `${used} (no limit)`);
 };
 
+const PAGE = 20;
+
 export function RestartsCard() {
   const t = useT();
   const [data, setData] = useState<RestartHistory | null>(null);
+  const [only, setOnly] = useState<RestartFilter>("all");
+  const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState("");
-  const load = useCallback(async () => {
+  const asked = useRef(0);
+  // offset 0 replaces the list (filter, reload), a later one adds a page.
+  const load = useCallback(async (filter: RestartFilter, offset: number, limit: number) => {
+    const ask = ++asked.current;
+    setLoading(true);
     try {
-      setData(await api<RestartHistory>("/api/admin/monitoring?view=restarts"));
+      const query = new URLSearchParams({ view: "restarts", offset: String(offset), limit: String(limit), only: filter });
+      const answer = await api<RestartHistory>(`/api/admin/monitoring?${query}`);
+      if (ask !== asked.current) return;
+      setData((before) => (offset && before ? { ...answer, restarts: [...before.restarts, ...answer.restarts] } : answer));
       setFailed("");
     } catch (e) {
-      setFailed((e as Error).message);
+      if (ask === asked.current) setFailed((e as Error).message);
+    } finally {
+      if (ask === asked.current) setLoading(false);
     }
   }, []);
   useEffect(() => {
-    void load();
+    void load("all", 0, PAGE);
   }, [load]);
+  const choose = (filter: RestartFilter) => {
+    if (filter === only) return;
+    setOnly(filter);
+    void load(filter, 0, PAGE);
+  };
+  // Reload keeps as many rows as are shown (at most the server's 100).
+  const reload = () => void load(only, 0, Math.min(100, Math.max(PAGE, data?.restarts.length ?? 0)));
+  const segments = [
+    ["all", t("Alle", "All"), data?.counts.all ?? null],
+    ["unexpected", t("Nur unerwartete", "Unexpected only"), data?.counts.unexpected ?? null],
+  ] as const;
+  const rows = data?.restarts ?? [];
   return (
     <section className="setting-group mon-card mon-errors-card" id="restarts" aria-labelledby="restarts-title" data-testid="restarts-card">
       <header>
@@ -59,7 +86,7 @@ export function RestartsCard() {
           </p>
         </div>
         <div className="setting-group-actions">
-          <button type="button" className="button compact" onClick={() => void load()} aria-label={t("Neu laden", "Reload")} title={t("Neu laden", "Reload")}>
+          <button type="button" className="button compact" onClick={reload} aria-label={t("Neu laden", "Reload")} title={t("Neu laden", "Reload")}>
             <ArrowClockwise size={16} aria-hidden />
           </button>
         </div>
@@ -67,16 +94,43 @@ export function RestartsCard() {
       <div className="mon-card-body">
         {!data ? (
           failed ? <p className="muted">{failed}</p> : <p className="muted">{t("Lädt …", "Loading …")}</p>
-        ) : !data.restarts.length ? (
+        ) : !data.counts.all ? (
           <EmptyState icon={<CheckCircle size={20} />} title={t("Keine Neustarts in den letzten 30 Tagen.", "No restarts in the last 30 days.")}>
             {t("Startet Flowplan neu, steht hier, wann und warum.", "When Flowplan restarts, this shows when and why.")}
           </EmptyState>
         ) : (
-          <ul className="mon-errors" aria-label={t("Neustarts", "Restarts")}>
-            {data.restarts.map((r) => (
-              <Restart key={r.id} r={r} t={t} />
-            ))}
-          </ul>
+          <>
+            <div className="security-filters mon-restart-filters">
+              <div className="segmented" role="group" aria-label={t("Neustarts filtern", "Filter restarts")}>
+                {segments.map(([value, label, n]) => (
+                  <button key={value} type="button" aria-pressed={only === value} onClick={() => choose(value)} data-testid={`restarts-${value}`}>
+                    {label}
+                    {n !== null && <span className="security-segment-count"> {num(n)}</span>}
+                  </button>
+                ))}
+              </div>
+              <p className="security-incident-count muted" role="status" aria-live="polite" data-testid="restarts-count">
+                {data.total ? t(`${num(rows.length)} von ${num(data.total)}`, `${num(rows.length)} of ${num(data.total)}`) : ""}
+              </p>
+            </div>
+            {failed && <p className="muted">{failed}</p>}
+            {!rows.length ? (
+              <EmptyState icon={<CheckCircle size={20} />} title={t("Keine unerwarteten Neustarts in den letzten 30 Tagen.", "No unexpected restarts in the last 30 days.")}>
+                {t("Alle Neustarts dieser Zeit waren sauber beendet: Updates, Neustarts oder docker stop.", "Every restart of this time ended cleanly: updates, restarts or docker stop.")}
+              </EmptyState>
+            ) : (
+              <ul className="mon-errors" aria-label={t("Neustarts", "Restarts")}>
+                {rows.map((r) => (
+                  <Restart key={r.id} r={r} t={t} />
+                ))}
+              </ul>
+            )}
+            {data.more && (
+              <button type="button" className="button security-more" disabled={loading} onClick={() => void load(only, rows.length, PAGE)} data-testid="restarts-more">
+                {loading ? t("Wird geladen …", "Loading …") : t("Weitere laden", "Load more")}
+              </button>
+            )}
+          </>
         )}
       </div>
     </section>

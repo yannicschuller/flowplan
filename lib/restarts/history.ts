@@ -211,14 +211,46 @@ export async function sweepRestartEvents(now = Date.now()) {
 
 /* ---------- Administration ---------- */
 
-export type RestartHistory = { restarts: RestartRow[]; keepDays: number; unexpected24h: number; incident: Awaited<ReturnType<typeof openRestartIncident>> };
-export async function restartHistory(now = Date.now(), limit = 100): Promise<RestartHistory> {
-  const rows = await all<Db>(`SELECT ${COLUMNS} FROM restart_events WHERE at>=? ORDER BY at DESC LIMIT ?`, now - RESTARTS_KEEP_DAYS * DAY, limit);
-  const restarts = rows.map(row);
+// A page of the history, newest first (20 at a time, "Weitere laden"):
+// `only: "unexpected"` leaves out the clean ones. `total` counts what the
+// filter matches, `counts` both segments of the retention.
+export const RESTARTS_PAGE = 20;
+export const RESTARTS_PAGE_MAX = 100;
+export type RestartFilter = "all" | "unexpected";
+export type RestartPage = { offset?: number; limit?: number; only?: RestartFilter };
+export type RestartHistory = {
+  restarts: RestartRow[];
+  offset: number;
+  total: number;
+  more: boolean;
+  counts: { all: number; unexpected: number };
+  keepDays: number;
+  unexpected24h: number;
+  incident: Awaited<ReturnType<typeof openRestartIncident>>;
+};
+const whole = (n: unknown, fallback: number, max: number) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.min(max, Math.floor(n)) : fallback);
+export async function restartHistory(now = Date.now(), page: RestartPage = {}): Promise<RestartHistory> {
+  const since = now - RESTARTS_KEEP_DAYS * DAY;
+  const offset = whole(page.offset, 0, 100_000);
+  const limit = Math.max(1, whole(page.limit, RESTARTS_PAGE, RESTARTS_PAGE_MAX));
+  const only: RestartFilter = page.only === "unexpected" ? "unexpected" : "all";
+  const where = `at>=?${only === "unexpected" ? " AND reason<>'clean'" : ""}`;
+  const rows = await all<Db>(`SELECT ${COLUMNS} FROM restart_events WHERE ${where} ORDER BY at DESC, id DESC LIMIT ? OFFSET ?`, since, limit, offset);
+  const c = await one<{ n: number; unexpected: number; day: number }>(
+    "SELECT COUNT(*) n, COALESCE(SUM(reason<>'clean'),0) unexpected, COALESCE(SUM(reason<>'clean' AND at>=?),0) day FROM restart_events WHERE at>=?",
+    now - DAY,
+    since,
+  );
+  const counts = { all: Number(c?.n || 0), unexpected: Number(c?.unexpected || 0) };
+  const total = only === "unexpected" ? counts.unexpected : counts.all;
   return {
-    restarts,
+    restarts: rows.map(row),
+    offset,
+    total,
+    more: offset + rows.length < total,
+    counts,
     keepDays: RESTARTS_KEEP_DAYS,
-    unexpected24h: restarts.filter((r) => r.reason !== "clean" && r.at >= now - DAY).length,
+    unexpected24h: Number(c?.day || 0),
     incident: await openRestartIncident(now),
   };
 }
@@ -233,15 +265,15 @@ export async function restartDetail(restartId: string): Promise<RestartDetail> {
     heartbeat: parse<Heartbeat>(r.heartbeat),
   };
 }
-// The route (app/api/admin/monitoring/handler.ts ?view=restarts|restart):
-// administrators in the browser only.
-export async function restartsForAdmin(user: Identity, restartId?: string | null) {
+// The route (app/api/admin/monitoring/handler.ts ?view=restarts|restart,
+// `&offset=&limit=&only=unexpected` for a page): administrators in the browser only.
+export async function restartsForAdmin(user: Identity, restartId?: string | null, page: RestartPage = {}) {
   requireOpsAdmin(user);
   if (typeof restartId === "string") {
     if (!restartId) throw new HttpError(400, "Ungültige Eingabe.");
     return await restartDetail(restartId.slice(0, 80));
   }
-  return await restartHistory();
+  return await restartHistory(Date.now(), page);
 }
 
 /* ---------- Worker ---------- */

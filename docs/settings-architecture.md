@@ -163,12 +163,16 @@ Planned: `settings/webhooks` (Webhooks out of `api`).
   in `flowplan-admin-live-expanded`). Each panel: its key number, a small
   chart of real data (`components/charts.tsx`) and its title as the link
   into its section. In this order, each only when its data or feature is
-  there: active people (`monitoring/people`; the 5-minute series with the
-  statistics), requests per minute (`monitoring/traffic`, statistics),
+  there: first, across the whole grid width (below the state line on
+  phones), "Aktive Personen und Serverlast" (`monitoring/people`): active
+  people on the left axis (with the statistics, else a hint) and CPU and
+  RAM in % on the right axis, per 5 minutes over 24 hours, the legend with
+  the values now; then requests per minute (`monitoring/traffic`, statistics),
   AI tokens per day with the top features and the number of people
   (`ai/ai-statistics`, AI set up and statistics), storage per day and the
   largest workspaces (`storage`), error rate and slowest endpoints
-  (`monitoring/errors`, statistics), CPU/RAM/disk (`monitoring/server`),
+  (`monitoring/errors`, statistics), the server's disk (`monitoring/server`;
+  CPU and RAM are in the wide chart),
   new accounts per day of 30 days (`users`), sign-ins per hour of 24 hours
   (`monitoring/signins`; successful ones only with the statistics), the
   size of the last backup runs (`storage/backup`, when the scheduled backup
@@ -243,8 +247,10 @@ Planned: `settings/webhooks` (Webhooks out of `api`).
   Mark only failures of the other service, never Flowplan's own.
 - Restarts (`#settings/instance/monitoring/restarts`,
   `components/settings/admin/monitoring-restarts.tsx`,
-  `/api/admin/monitoring?view=restarts`, `?view=restart&id=…` when a row is
-  opened): `lib/restarts/tracker.ts` writes a heartbeat every 30 s and an
+  `/api/admin/monitoring?view=restarts&offset=&limit=&only=unexpected` –
+  newest first, 20 a page with "Weitere laden", "Alle"/"Nur unerwartete"
+  with counts, `total`/`more`/`counts` in the answer –, `?view=restart&id=…`
+  when a row is opened): `lib/restarts/tracker.ts` writes a heartbeat every 30 s and an
   exit marker (clean on SIGTERM/SIGINT via `lib/cluster/runtime.ts`, crash on
   an exit with another code) to `<data>/logs/`; the next start classifies
   the previous run (clean, crash, oom, killed) and `lib/restarts/history.ts`

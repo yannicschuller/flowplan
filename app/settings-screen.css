@@ -1057,6 +1057,14 @@
 .sv-glance-panel.alert {
   border-color: #e3b3b4;
 }
+/* "Aktive Personen und Serverlast": the whole width, on top. */
+.sv-glance-panel.wide {
+  grid-column: 1 / -1;
+}
+.sv-glance-panel.wide .sv-glance-body .vz-legend {
+  gap: 2px 16px;
+  font-size: 13px;
+}
 .sv-glance-panel h3 {
   margin: 0 0 2px;
   font-size: 14px;

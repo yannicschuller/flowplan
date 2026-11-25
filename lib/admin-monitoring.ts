@@ -456,6 +456,8 @@ async function glanceUncached(now: number, statistics: boolean) {
       trend: storage.trend,
       weekDelta: storage.weekDelta,
       workspaces: storage.workspaces.slice(0, 3).map((w) => ({ name: w.name, bytes: w.bytes })),
+      // The data folder's disk now (the start page's disk panel).
+      disk: storage.disk,
     },
     backups: await backupsGlance(),
     // Deliveries per day (7 days), what waits and the background services.

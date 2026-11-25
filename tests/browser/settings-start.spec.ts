@@ -236,10 +236,24 @@ test("an admin: live panels on top of the tiles, only what is on, each linked", 
     for (const id of await ids(page)) await expect(instance.locator(`[data-panel="${id}"] h3 a`)).toHaveAttribute("href", LINKS[id!]);
     // Each a group named by its title, with a number and a chart that has words.
     // (The chart's own legend is a group with the same name: the panel by its id.)
+    // First, across the whole grid: active people and the server's load in one chart.
     const people = instance.locator('[data-panel="people"]');
     await expect(people).toHaveRole("group");
-    await expect(people).toHaveAccessibleName(/^Aktive Personen/);
-    await expect(people).toContainText("gerade aktiv");
+    await expect(people).toHaveAccessibleName(/^Aktive Personen und Serverlast/);
+    await expect(people.locator(".vz-legend")).toContainText(/Aktive Personen\s*\d+.*CPU.*%.*RAM.*%/s);
+    await expect(people.getByRole("img").first()).toHaveAccessibleName(/Aktive Personen und Serverlast.*CPU und Arbeitsspeicher in % des Limits \(rechts\)/);
+    await expect(people.locator("h3 a")).toHaveAttribute("href", LINKS.people);
+    {
+      const grid = (await instance.locator(".sv-glance-grid").boundingBox())!;
+      const wide = (await people.boundingBox())!;
+      const state = (await instance.locator(".sv-glance-state").boundingBox())!;
+      expect(Math.abs(wide.width - grid.width)).toBeLessThan(2);
+      expect(wide.y).toBeGreaterThan(state.y + state.height - 1);
+    }
+    // Nothing twice: no separate CPU/RAM chart, the server panel shows the disk.
+    // (On phones it is past the first four, hidden: its title by text.)
+    await expect(instance.locator('[data-panel="server"] h3')).toHaveText("Server: Speicherplatz");
+    await expect(instance.locator('[data-panel="server"] .vz-legend')).toHaveCount(0);
     await expect(instance.locator('[data-panel="requests"]').getByRole("img").first()).toHaveAccessibleName(/Anfragen pro Minute/);
     // Above the tiles, on phones too.
     const tiles = instance.locator(".sv-start-tiles");
@@ -270,8 +284,10 @@ test("an admin: live panels on top of the tiles, only what is on, each linked", 
       await expect(panels.nth(8)).toBeVisible();
       await expect(instance.getByRole("group", { name: "Neue Konten" }).getByRole("img")).toHaveAccessibleName(/Neue Konten je Tag/);
       await expect(instance.getByRole("button", { name: /Alle \d+ Diagramme/ })).toBeHidden();
-      const [a, b, c] = await Promise.all([0, 1, 2].map(async (i) => (await panels.nth(i).boundingBox())!.y));
+      // Under the wide one: three a row.
+      const [top, a, b, c] = await Promise.all([0, 1, 2, 3].map(async (i) => (await panels.nth(i).boundingBox())!.y));
       expect(Math.abs(a - b) + Math.abs(b - c)).toBeLessThan(2);
+      expect(a).toBeGreaterThan(top);
     }
     // A panel's title opens its section.
     const accounts = instance.locator('[data-panel="accounts"] h3 a');
@@ -294,6 +310,9 @@ test("an admin: live panels on top of the tiles, only what is on, each linked", 
     await open(page, "#settings/instance");
     await expect.poll(() => ids(page), { timeout: 30_000 }).toEqual(["people", "storage", "server", "accounts", "signins", "backups", "background"]);
     await expect(people).toContainText("Aktive Personen nur mit eingeschalteter Statistik");
+    // CPU and RAM only, without the people's series.
+    await expect(people.locator(".vz-legend li")).toHaveText([/^CPU/, /^RAM/]);
+    await expect(people.getByRole("img").first()).toHaveAccessibleName(/Serverlast CPU und Arbeitsspeicher in % des Limits, je 5/);
     await expect(instance.getByRole("group", { name: "Anmeldungen", exact: true })).toContainText("fehlgeschlagen in 24 Std.");
   } finally {
     db.restore();

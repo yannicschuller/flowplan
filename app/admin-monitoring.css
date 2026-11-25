@@ -315,6 +315,13 @@
   max-height: 420px;
   overflow: auto;
 }
+/* Its filter and count, in the incidents' look (security-center.tsx). */
+.mon-restart-filters {
+  justify-content: space-between;
+}
+.mon-restart-filters .security-incident-count {
+  margin: 0;
+}
 .mon-errgroup summary > .status-badge {
   justify-self: start;
 }

@@ -11,7 +11,8 @@ import { join } from "node:path";
 // error and log lines – one of them looks like HTML and must stay text –
 // and a clean restart. Checked: the list with reason badges and memory,
 // the lines loaded only when a row is opened, the .txt download, and that
-// it fits a phone. Screenshots light and dark.
+// it fits a phone; 20 a page with "Weitere laden" and "Nur unerwartete".
+// Screenshots light and dark.
 function database() {
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   db.exec("PRAGMA busy_timeout=5000;");
@@ -136,4 +137,89 @@ test("no restarts yet: an empty state", async ({ page }) => {
   await expect(card).toBeVisible();
   await expect(card).toContainText("Keine Neustarts in den letzten 30 Tagen.");
   await expect(card.getByTestId("restart-row")).toHaveCount(0);
+});
+
+// Many restarts: newest first, 20 a page, "Weitere laden", the filter
+// "Nur unerwartete" with its count, the count announced politely.
+test("a long history: pages of 20, 'Weitere laden', 'Nur unerwartete'", async ({ page, browser }, testInfo) => {
+  test.setTimeout(120_000);
+  const origin = await signInAdmin(page);
+  const now = Date.now();
+  const db = database();
+  db.exec("DELETE FROM restart_events");
+  const insert = db.prepare("INSERT INTO restart_events(id,at,ended_at,instance,host,previous_start,uptime_ms,reason,signal,exit_code,version,heartbeat,error,line_count,log_lines,incident) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  // 45 restarts, one every 6 hours: every third unexpected (15).
+  for (let i = 0; i < 45; i++) {
+    const unexpected = i % 3 === 0;
+    const reason = !unexpected ? "clean" : i % 2 ? "oom" : "crash";
+    insert.run(`page-${i}`, now - i * 6 * 3600_000 - 60_000, now - i * 6 * 3600_000 - 61_000, "flowplan-1", "flowplan-1", now - (i + 1) * 6 * 3600_000, 6 * 3600_000 - 60_000, reason, unexpected ? null : "SIGTERM", unexpected ? 1 : 143, "0.11.6", heartbeat({ memWorkingSet: (unexpected ? 0.9 : 0.4) * GB }), unexpected ? `Error: run ${i} failed` : null, unexpected ? 1 : 0, unexpected ? JSON.stringify([`2026-11-18T13:59:59.000Z [err] run ${i}`]) : null, null);
+  }
+  db.close();
+  await page.goto(`${origin}/#settings/instance/monitoring`);
+  await page.locator("#restarts").first().scrollIntoViewIfNeeded();
+  const card = page.getByTestId("restarts-card");
+  const rows = card.getByTestId("restart-row");
+  const count = card.getByTestId("restarts-count");
+  await expect(rows).toHaveCount(20);
+  await expect(count).toHaveText("20 von 45");
+  await expect(count).toHaveAttribute("aria-live", "polite");
+  await expect(card.getByTestId("restarts-all")).toHaveText("Alle 45");
+  await expect(card.getByTestId("restarts-all")).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByTestId("restarts-unexpected")).toHaveText("Nur unerwartete 15");
+  await expect(rows.nth(0)).toContainText("Error: run 0 failed");
+  const more = card.getByRole("button", { name: "Weitere laden" });
+  await more.click();
+  await expect(rows).toHaveCount(40);
+  await expect(count).toHaveText("40 von 45");
+  await more.click();
+  await expect(rows).toHaveCount(45);
+  await expect(count).toHaveText("45 von 45");
+  await expect(more).toHaveCount(0);
+  // Newest first across the pages.
+  await expect(rows.nth(44)).toContainText("Sauber beendet");
+  // The reload keeps what is shown.
+  await card.getByRole("button", { name: "Neu laden" }).click();
+  await expect(count).toHaveText("45 von 45");
+  await expect(rows).toHaveCount(45);
+
+  await card.getByTestId("restarts-unexpected").click();
+  await expect(card.getByTestId("restarts-unexpected")).toHaveAttribute("aria-pressed", "true");
+  await expect(count).toHaveText("15 von 15");
+  await expect(rows).toHaveCount(15);
+  for (const text of await rows.allTextContents()) expect(text).not.toContain("Sauber beendet");
+  // The log of an unexpected one still opens.
+  await rows.nth(1).locator("summary").click();
+  await expect(rows.nth(1).getByTestId("restart-log")).toContainText("run 3");
+  await rows.nth(1).locator("summary").click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth) + 1);
+
+  // Screenshots for review (SETTINGS_SHOTS=<folder>, desktop project only):
+  // the first page, light and dark, and the phone, at twice the pixels.
+  const dir = process.env.SETTINGS_SHOTS;
+  if (dir && testInfo.project.name === "desktop")
+    for (const [name, options] of [
+      ["desktop-light", { viewport: { width: 1280, height: 2400 }, colorScheme: "light" }],
+      ["desktop-dark", { viewport: { width: 1280, height: 2400 }, colorScheme: "dark" }],
+      ["phone-light", { viewport: { width: 390, height: 3200 }, isMobile: true, hasTouch: true, colorScheme: "light" }],
+    ] as const) {
+      const context = await browser.newContext({ ...options, deviceScaleFactor: 2, locale: "de-DE" });
+      const shot = await context.newPage();
+      await signInAdmin(shot);
+      await shot.goto(`${origin}/#settings/instance/monitoring`);
+      // The placeholder is replaced by the card once its code has loaded.
+      const c = shot.getByTestId("restarts-card");
+      await expect(async () => {
+        await shot.locator("#restarts").first().scrollIntoViewIfNeeded({ timeout: 2000 });
+        await expect(c).toBeVisible({ timeout: 2000 });
+      }).toPass({ timeout: 30_000 });
+      await expect(c.getByTestId("restarts-count")).toHaveText("20 von 45", { timeout: 30_000 });
+      await c.getByTestId("restart-row").first().locator("summary").click();
+      await expect(c.getByTestId("restart-log")).toBeVisible();
+      await c.screenshot({ path: join(dir, `restarts-${name}.png`) });
+      await context.close();
+    }
+
+  const cleanup = database();
+  cleanup.exec("DELETE FROM restart_events WHERE id LIKE 'page-%'");
+  cleanup.close();
 });

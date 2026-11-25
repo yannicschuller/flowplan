@@ -1,9 +1,11 @@
 "use client";
 // The top of "Instanz auf einen Blick" on the settings' start page (#532):
 // the state of the instance in one line (problems and notices of the
-// sections, linked) and a grid of live panels – people, requests, AI,
-// storage, errors, server, accounts, sign-ins, backups and the background
-// work. Each panel has its key number, a small chart of real data and a
+// sections, linked) and a grid of live panels: first, across the whole
+// width, active people with CPU and RAM over them ("Aktive Personen und
+// Serverlast": does the load follow the people?), then requests, AI,
+// storage, errors, the server's disk, accounts, sign-ins, backups and the
+// background work. Each panel has its key number, a small chart of real data and a
 // link into its section; a panel only appears when its data exists or its
 // feature is on. Phones show the first four, "Alle Diagramme" the rest
 // (remembered on this device). Refreshed every 15 seconds while visible
@@ -42,7 +44,7 @@ import { markOpenedFromHome } from "../shell";
 
 type T = (de: string, en: string) => string;
 export type StripItem = { id: string; title: string; badge?: string; href?: string };
-type Panel = { id: string; section: string; anchor?: string; Icon: Icon; title: string; value: string; unit: string; line?: string; alert?: boolean; body: ReactNode };
+type Panel = { id: string; section: string; anchor?: string; Icon: Icon; title: string; value?: string; unit?: string; line?: string; alert?: boolean; wide?: boolean; body: ReactNode };
 
 const EXPANDED_KEY = "flowplan-admin-live-expanded";
 // Phones: how many panels show before "Alle Diagramme".
@@ -95,32 +97,71 @@ export function livePanels(d: MonitoringStart, t: T): Panel[] {
   const p = d.server.points;
   const panels: Panel[] = [];
 
-  // People: now, today and the last 24 hours; the 5-minute series with the statistics.
+  // Active people and the server's load in one chart across the grid: the
+  // people (left axis, with the statistics) and CPU and RAM in % of the
+  // limit (right axis), per 5 minutes, 24 hours; the legend has the values
+  // now. Without the statistics CPU and RAM only, and why.
   const people = p.map((x) => x.active);
+  const cpuLine = p.map((x) => x.cpu),
+    ramLine = p.map((x) => x.memory);
+  const hasPeople = on && known(people) > 0;
+  const rss = last(p.map((x) => x.rss));
+  const lastPct = (values: (number | null)[]) => {
+    const v = last(values);
+    return v === null ? "–" : percent(v);
+  };
   panels.push({
     id: "people",
     section: "monitoring",
     anchor: "people",
     Icon: UsersThree,
-    title: t("Aktive Personen", "Active people"),
-    value: num(k.activeNow),
-    unit: t("gerade aktiv", "active now"),
-    line: t(`${num(k.activeToday)} heute · ${num(k.active24h)} in 24 Std.`, `${num(k.activeToday)} today · ${num(k.active24h)} in 24 h`),
-    body:
-      on && known(people) >= 2 ? (
-        <LineChart
-          title={t("Aktive Personen", "Active people")}
-          description={t("Personen der letzten 5 Minuten, je 5 Minuten, 24 Stunden.", "People of the last 5 minutes, per 5 minutes, 24 hours.")}
-          x={p.map((x) => x.at)}
-          series={[{ key: "people", label: t("Aktive Personen", "Active people"), values: people, color: 0 }]}
-          formatX={clock}
-          formatTip={dateTime}
-          formatY={(n) => num(n, n < 10 && n % 1 ? 1 : 0)}
-          height={CHART}
+    title: t("Aktive Personen und Serverlast", "Active people and server load"),
+    wide: true,
+    line: [
+      on ? t(`${num(k.activeToday)} heute · ${num(k.active24h)} in 24 Std.`, `${num(k.activeToday)} today · ${num(k.active24h)} in 24 h`) : "",
+      rss !== null ? t(`Flowplan belegt ${bytes(rss)} Arbeitsspeicher`, `Flowplan uses ${bytes(rss)} of memory`) : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    body: (
+      <>
+        <Legend
+          items={[
+            ...(on ? [{ label: t("Aktive Personen", "Active people"), color: 0, value: num(k.activeNow) }] : []),
+            { label: "CPU", color: 1, value: lastPct(cpuLine), line: true },
+            { label: "RAM", color: 2, value: lastPct(ramLine), line: true },
+          ]}
         />
-      ) : !on ? (
-        <Off>{t("Aktive Personen nur mit eingeschalteter Statistik (Überwachung → Statistik).", "Active people only with statistics on (Monitoring → Statistics).")}</Off>
-      ) : null,
+        {p.length > 1 && (
+          <LineChart
+            title={t("Aktive Personen und Serverlast", "Active people and server load")}
+            description={
+              hasPeople
+                ? t(
+                    "Personen der letzten 5 Minuten (links) und CPU und Arbeitsspeicher in % des Limits (rechts), je 5 Minuten, 24 Stunden.",
+                    "People of the last 5 minutes (left) and CPU and memory in % of the limit (right), per 5 minutes, 24 hours.",
+                  )
+                : t("CPU und Arbeitsspeicher in % des Limits, je 5 Minuten, 24 Stunden.", "CPU and memory in % of the limit, per 5 minutes, 24 hours.")
+            }
+            x={p.map((x) => x.at)}
+            series={hasPeople ? [{ key: "people", label: t("Aktive Personen", "Active people"), values: people, color: 0 }] : []}
+            right={{
+              series: [
+                { key: "cpu", label: "CPU", values: cpuLine, color: 1 },
+                { key: "ram", label: "RAM", values: ramLine, color: 2 },
+              ],
+              format: percent,
+              max: 1,
+            }}
+            formatX={clock}
+            formatTip={dateTime}
+            formatY={(n) => num(n, n < 10 && n % 1 ? 1 : 0)}
+            height={150}
+          />
+        )}
+        {!on && <Off>{t("Aktive Personen nur mit eingeschalteter Statistik (Überwachung → Statistik).", "Active people only with statistics on (Monitoring → Statistics).")}</Off>}
+      </>
+    ),
   });
 
   if (on)
@@ -263,46 +304,31 @@ export function livePanels(d: MonitoringStart, t: T): Panel[] {
     });
   }
 
-  // The server: CPU, memory and disk in % of what there is.
-  const series = [
-    { key: "cpu", label: "CPU", values: p.map((x) => x.cpu), color: 1 },
-    { key: "ram", label: "RAM", values: p.map((x) => x.memory), color: 2 },
-    { key: "disk", label: t("Speicherplatz", "Disk"), values: p.map((x) => x.disk), color: 3 },
-  ];
-  const cpu = last(series[0].values),
-    rss = last(p.map((x) => x.rss));
+  // The server's disk (CPU and RAM are in the chart on top).
+  const disk = p.map((x) => x.disk);
   panels.push({
     id: "server",
     section: "monitoring",
     anchor: "server",
     Icon: Cpu,
-    title: t("Server: CPU, RAM, Speicherplatz", "Server: CPU, RAM, disk"),
-    value: cpu === null ? "–" : percent(cpu),
-    unit: "CPU",
-    line: [
-      last(series[1].values) !== null ? `RAM ${percent(last(series[1].values)!)}` : "",
-      last(series[2].values) !== null ? t(`Speicherplatz ${percent(last(series[2].values)!)}`, `Disk ${percent(last(series[2].values)!)}`) : "",
-      rss !== null ? t(`Flowplan belegt ${bytes(rss)} Arbeitsspeicher.`, `Flowplan uses ${bytes(rss)} of memory.`) : "",
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    title: t("Server: Speicherplatz", "Server: disk"),
+    value: lastPct(disk),
+    unit: t("des Speicherplatzes belegt", "of the disk used"),
+    line: g.storage.disk ? t(`${bytes(g.storage.disk.free)} frei von ${bytes(g.storage.disk.total)}`, `${bytes(g.storage.disk.free)} free of ${bytes(g.storage.disk.total)}`) : undefined,
     body:
-      p.length > 1 ? (
-        <>
-          <Legend items={series.map((x) => ({ label: x.label, color: x.color, line: true }))} />
-          <LineChart
-            title={t("Server: CPU, RAM, Speicherplatz", "Server: CPU, RAM, disk")}
-            description={t("Anteil am Limit des Containers (sonst des Rechners), je 5 Minuten, 24 Stunden.", "Share of the container's limit (else the machine's), per 5 minutes, 24 hours.")}
-            x={p.map((x) => x.at)}
-            series={series}
-            area={false}
-            maxY={1}
-            formatX={clock}
-            formatTip={dateTime}
-            formatY={percent}
-            height={CHART}
-          />
-        </>
+      known(disk) >= 2 ? (
+        <LineChart
+          title={t("Server: Speicherplatz", "Server: disk")}
+          description={t("Belegter Anteil des Datenträgers, je 5 Minuten, 24 Stunden.", "Used share of the disk, per 5 minutes, 24 hours.")}
+          x={p.map((x) => x.at)}
+          series={[{ key: "disk", label: t("Speicherplatz", "Disk"), values: disk, color: 3 }]}
+          area={false}
+          maxY={1}
+          formatX={clock}
+          formatTip={dateTime}
+          formatY={percent}
+          height={CHART}
+        />
       ) : null,
   });
 
@@ -525,7 +551,7 @@ export function InstanceLive({ problems, notices: tileNotices, version, uptimeSe
         <>
           <div className={`sv-glance-grid${expanded ? " expanded" : ""}`} id="sv-glance-panels">
             {panels.map((panel) => (
-              <div key={panel.id} className={`sv-glance-panel${panel.alert ? " alert" : ""}`} data-panel={panel.id} role="group" aria-labelledby={`sv-glance-${panel.id}`}>
+              <div key={panel.id} className={`sv-glance-panel${panel.alert ? " alert" : ""}${panel.wide ? " wide" : ""}`} data-panel={panel.id} role="group" aria-labelledby={`sv-glance-${panel.id}`}>
                 <h3 id={`sv-glance-${panel.id}`}>
                   <a href={settingsHash({ area: "admin", section: panel.section, anchor: panel.anchor })} onClick={markOpenedFromHome}>
                     <span className="sv-start-icon" aria-hidden>
@@ -535,9 +561,11 @@ export function InstanceLive({ problems, notices: tileNotices, version, uptimeSe
                     <CaretRight size={14} className="sv-start-caret" aria-hidden />
                   </a>
                 </h3>
-                <p className="sv-glance-value">
-                  <strong>{panel.value}</strong> <span>{panel.unit}</span>
-                </p>
+                {panel.value !== undefined && (
+                  <p className="sv-glance-value">
+                    <strong>{panel.value}</strong> <span>{panel.unit}</span>
+                  </p>
+                )}
                 {panel.line && <p className="sv-glance-line">{panel.line}</p>}
                 {panel.body && <div className="sv-glance-body">{panel.body}</div>}
               </div>
