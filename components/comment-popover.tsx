@@ -20,20 +20,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
 import { X } from "@phosphor-icons/react";
-import { COMMENT_SHEET_MAX_WIDTH, placeCommentPopover, placeFixed, unionBox } from "@/lib/comment-popover-layout";
+import { COMMENT_SHEET_MAX_WIDTH, placeCommentPopover, placeFixed, unionBox, visibleViewport } from "@/lib/comment-popover-layout";
 import { addBackCloser } from "@/lib/app-back";
 import { prefersReducedMotion } from "@/lib/motion";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useT } from "./i18n";
 
 const SHEET_MEDIA = `(max-width: ${COMMENT_SHEET_MAX_WIDTH}px)`;
-
-function viewportBox() {
-  const vv = window.visualViewport;
-  const top = vv?.offsetTop ?? 0,
-    left = vv?.offsetLeft ?? 0;
-  return { left, top, right: left + (vv?.width ?? window.innerWidth), bottom: top + (vv?.height ?? window.innerHeight) };
-}
 
 // The boxes of a thread's highlight in the editor.
 export function passageBox(editor: Editor, id: string) {
@@ -81,7 +74,7 @@ export default function CommentPopover({
   place.current = () => {
     const el = root.current;
     if (!el || editor.isDestroyed) return;
-    const view = viewportBox();
+    const view = visibleViewport();
     if (sheet) {
       // On the keyboard: the sheet's bottom where the visible area ends.
       el.style.setProperty("--sheet-bottom", `${Math.max(0, Math.round(window.innerHeight - view.bottom))}px`);

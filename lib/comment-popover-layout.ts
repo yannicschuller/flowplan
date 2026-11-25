@@ -81,6 +81,15 @@ export function shortComment(text: string, max = 140): string {
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
+// The visible area of the window (the visual viewport where there is one:
+// the on-screen keyboard and pinch zoom leave less of it).
+export function visibleViewport(): Box {
+  const vv = window.visualViewport;
+  const top = vv?.offsetTop ?? 0,
+    left = vv?.offsetLeft ?? 0;
+  return { left, top, right: left + (vv?.width ?? window.innerWidth), bottom: top + (vv?.height ?? window.innerHeight) };
+}
+
 // Sets --popover-left/--popover-top so the element's box lands at (x, y) on
 // screen, whatever its containing block is.
 export function placeFixed(el: HTMLElement, x: number, y: number) {

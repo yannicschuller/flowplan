@@ -10698,6 +10698,7 @@
   "Saving failed": "保存失败",
   "Saving failed – trying again": "保存失败——正在重试",
   "Saving failed.": "保存失败。",
+  "Saving it empty removes the formula.": "保存为空将删除该公式。",
   "Saving takes them out of the template.": "保存时会将它们从模板中移除。",
   "Saving these options also changes records, filters and database rules:": "保存这些选项还会更改记录、筛选和数据库规则：",
   "Saw the latest state": "已看到最新状态",

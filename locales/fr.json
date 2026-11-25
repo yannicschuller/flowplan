@@ -10698,6 +10698,7 @@
   "Saving failed": "L’enregistrement a échoué",
   "Saving failed – trying again": "Échec de l’enregistrement – nouvel essai en cours",
   "Saving failed.": "L’enregistrement a échoué.",
+  "Saving it empty removes the formula.": "Si vous l’enregistrez vide, la formule est supprimée.",
   "Saving takes them out of the template.": "L’enregistrement les retire du modèle.",
   "Saving these options also changes records, filters and database rules:": "Enregistrer ces options modifie aussi des enregistrements, des filtres et des règles de la base de données :",
   "Saw the latest state": "A vu la dernière version",
