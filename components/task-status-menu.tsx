@@ -6,7 +6,7 @@ import { Check } from "@phosphor-icons/react";
 import type { Editor } from "@tiptap/react";
 import { safeCollisionPadding } from "./safe-area";
 import { useT } from "./i18n";
-import { STATUS_SYMBOL, TASK_STATUSES, statusName, taskStatusOf, type TaskStatus } from "@/lib/task-status";
+import { STATUS_SYMBOL, TASK_STATUSES, continuedOn, shownStatusOf, statusName, uncontinuedAttrs, type TaskStatus } from "@/lib/task-status";
 import { setTaskStatus } from "@/lib/task-status-commands";
 import { formatCombo, isMacPlatform } from "@/lib/keymap";
 
@@ -22,7 +22,9 @@ export function TaskStatusMenu({ editor, target, onClose }: { editor: Editor | n
   if (!editor || !target) return null;
   const node = editor.state.doc.nodeAt(target.pos);
   if (node?.type.name !== "taskItem") return null;
-  const current = taskStatusOf(node.attrs);
+  // A continued journal task (#536): the state it shows on its day.
+  const current = shownStatusOf(node.attrs);
+  const continued = !!continuedOn(node.attrs);
   const { anchor } = target;
   return (
     <Dropdown.Root open modal={false} onOpenChange={(open) => !open && onClose()}>
@@ -63,6 +65,22 @@ export function TaskStatusMenu({ editor, target, onClose }: { editor: Editor | n
               </Dropdown.RadioItem>
             ))}
           </Dropdown.RadioGroup>
+          {continued && (
+            <>
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Item
+                className="dropdown-item task-status-uncontinue"
+                onSelect={() => {
+                  const now = editor.state.doc.nodeAt(target.pos);
+                  if (now?.type.name === "taskItem")
+                    editor.view.dispatch(editor.state.tr.setNodeMarkup(target.pos, undefined, { ...now.attrs, ...uncontinuedAttrs(now.attrs) }));
+                  onClose();
+                }}
+              >
+                {t("Nicht mehr als weitergeführt markieren", "Unmark as continued")}
+              </Dropdown.Item>
+            </>
+          )}
           <div className="task-status-hint">
             {t(`${formatCombo("Mod+L", isMacPlatform())}: nächster Status`, `${formatCombo("Mod+L", isMacPlatform())}: next status`)}
           </div>

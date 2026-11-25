@@ -25,7 +25,7 @@ import { leaderDuty } from "./cluster/leader";
 import { workersPaused } from "./instance-read-only";
 import { validBlockId } from "./block-ids";
 import { userUnassignedTasks } from "./unassigned-tasks-pref";
-import { TASK_STATUSES, isClosedStatus, isContinuedTask, isStoredStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
+import { TASK_STATUSES, isClosedStatus, isContinuedTask, isStoredStatus, taskStatusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
 import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 
 // The state as doc_tasks keeps it: NULL for open and done (`checked` says which).
@@ -434,7 +434,7 @@ export async function changeDocTask(user: Identity, input: unknown) {
       let target = false;
       if (node.type.name === "taskItem") {
         index++;
-        if (tickAll && !node.attrs.checked) attrs = { ...node.attrs, ...statusAttrs(tickAll === "cancelled" ? "cancelled" : "done") };
+        if (tickAll && !node.attrs.checked) attrs = { ...node.attrs, ...taskStatusAttrs(node.attrs, tickAll === "cancelled" ? "cancelled" : "done") };
         if (index === change.index) {
           const json = node.toJSON() as JsonNode;
           if (!sameTask(lineOf(json).text, change))
@@ -447,7 +447,7 @@ export async function changeDocTask(user: Identity, input: unknown) {
           const before = taskStatusOf(node.attrs);
           attrs = {
             ...node.attrs,
-            ...(status !== undefined && status !== before ? statusAttrs(status) : {}),
+            ...(status !== undefined && status !== before ? taskStatusAttrs(node.attrs, status) : {}),
             ...(change.due !== undefined ? { due: change.due } : {}),
           };
           if (status !== undefined && isClosedStatus(status)) tick = status === "cancelled" ? "cancelled" : true;

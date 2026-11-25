@@ -10,7 +10,7 @@
 import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
-import { taskStatusOf } from "./task-status";
+import { continuedSuffix, shownStatusOf } from "./task-status";
 import { ct } from "./content-locale";
 import { documentXhtml, xml } from "./export-xhtml";
 import { noteHtml } from "./footnote-format";
@@ -99,8 +99,10 @@ export function documentConfluence(html: string, context: TextExportContext): st
               first = false;
             } else rest += render.block(child);
           });
-          const status = taskStatusOf(node.attrs);
+          // A continued journal task: the state it shows, then "(→ day)" (#536).
+          const status = shownStatusOf(node.attrs);
           if (status === "cancelled") text = `<s>${text}</s>`;
+          text += xml(continuedSuffix(node.attrs));
           const due = /^\d{4}-\d{2}-\d{2}$/.test(String(node.attrs.due || "")) ? ` <time datetime="${node.attrs.due}" />` : "";
           return `<ac:task><ac:task-id>${taskId}</ac:task-id><ac:task-status>${taskDone(status) ? "complete" : "incomplete"}</ac:task-status><ac:task-body>${text}${due}${rest}</ac:task-body></ac:task>`;
         }

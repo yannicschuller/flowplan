@@ -6,7 +6,7 @@
 // (lib/archive.ts).
 import { tabTitle } from "./tabs-commands";
 import type { Node } from "@tiptap/pm/model";
-import { STATUS_BOX, taskStatusOf } from "./task-status";
+import { STATUS_BOX, continuedSuffix, shownStatusOf } from "./task-status";
 import { audit } from "./db";
 import { offThread, type PoolJobOptions } from "./worker-pool";
 import { appUrl, HttpError } from "./auth";
@@ -373,23 +373,26 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         if (child.type.name === "paragraph") {
           const prefix =
             kind === "taskList" && first
-              ? run({ text: `${STATUS_BOX[taskStatusOf(item.attrs)]} `, props: { fonts: "Segoe UI Symbol" } })
+              ? run({ text: `${STATUS_BOX[shownStatusOf(item.attrs)]} `, props: { fonts: "Segoe UI Symbol" } })
               : "";
           const due =
             kind === "taskList" && first && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || ""))
               ? run({ text: ` (${ct("fällig", "due")} ${item.attrs.due})`, props: { color: "666666" } })
               : "";
+          // A continued journal task (#536): "(→ day)" behind the state it shows.
+          const continued =
+            kind === "taskList" && first && continuedSuffix(item.attrs) ? run({ text: continuedSuffix(item.attrs), props: { color: "666666" } }) : "";
           // Only the first paragraph of an item carries the number or box;
           // the following ones hang below it.
           const props = first ? itemBlock : { ...itemBlock, numPr: undefined, indent: itemBlock.indent };
-          paragraph(prefix + inline(child, props) + due, paragraphProps(child, props, numId ? "ListParagraph" : undefined));
+          paragraph(prefix + inline(child, props) + due + continued, paragraphProps(child, props, numId ? "ListParagraph" : undefined));
           first = false;
           return;
         }
         blockNode(child, { ...itemBlock, numPr: undefined });
         first = false;
       });
-      if (first) paragraph(kind === "taskList" ? run({ text: STATUS_BOX[taskStatusOf(item.attrs)] }) : "", paragraphProps(null, itemBlock, numId ? "ListParagraph" : undefined));
+      if (first) paragraph(kind === "taskList" ? run({ text: STATUS_BOX[shownStatusOf(item.attrs)] + continuedSuffix(item.attrs) }) : "", paragraphProps(null, itemBlock, numId ? "ListParagraph" : undefined));
     });
   }
   function table(node: Node, block: Block) {

@@ -2,13 +2,14 @@
 // task, a task goes to its next state (open → in progress → done → open).
 // With several lines selected all of them follow the first one. And the
 // clean-up after a click on the box: a cancelled task unticked is open, an
-// in-progress task ticked is done.
+// in-progress task ticked is done; a continued journal task (#536) unticked
+// stays closed and shows open.
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Fragment, type Node as PMNode, type NodeType } from "@tiptap/pm/model";
 import { AttrStep, ReplaceAroundStep } from "@tiptap/pm/transform";
 import { wrapInList } from "@tiptap/pm/schema-list";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
-import { isTaskSymbol, nextStatus, statusAttrs, taskStatusOf, type TaskStatus } from "./task-status";
+import { continuedOn, isTaskSymbol, nextStatus, shownStatusOf, statusAttrs, taskStatusAttrs, type TaskStatus } from "./task-status";
 
 type Dispatch = ((tr: Transaction) => void) | undefined;
 const LISTS = ["bulletList", "orderedList"];
@@ -29,7 +30,8 @@ export function selectedTasks(state: EditorState) {
   return tasks;
 }
 
-// Gives every task in the selection this state.
+// Gives every task in the selection this state (a continued journal task
+// stays closed and shows it, #536).
 export function setTaskStatus(state: EditorState, dispatch: Dispatch, status: TaskStatus, positions?: number[]) {
   const targets = positions ?? selectedTasks(state).map((t) => t.pos);
   if (!targets.length) return false;
@@ -37,7 +39,7 @@ export function setTaskStatus(state: EditorState, dispatch: Dispatch, status: Ta
     const tr = state.tr;
     for (const pos of targets) {
       const node = tr.doc.nodeAt(pos);
-      if (node?.type.name === "taskItem") tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...statusAttrs(status) });
+      if (node?.type.name === "taskItem") tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...taskStatusAttrs(node.attrs, status) });
     }
     dispatch(tr.scrollIntoView());
   }
@@ -104,7 +106,7 @@ function listItemsToTasks(state: EditorState, dispatch: Dispatch) {
 // Ctrl/Cmd+L.
 export function cycleTaskStatus(state: EditorState, dispatch: Dispatch) {
   const tasks = selectedTasks(state);
-  if (tasks.length) return setTaskStatus(state, dispatch, nextStatus(taskStatusOf(tasks[0].node.attrs)), tasks.map((t) => t.pos));
+  if (tasks.length) return setTaskStatus(state, dispatch, nextStatus(shownStatusOf(tasks[0].node.attrs)), tasks.map((t) => t.pos));
   if (listItemsToTasks(state, dispatch)) return true;
   const taskList = state.schema.nodes.taskList;
   return !!taskList && wrapInList(taskList)(state, dispatch);
@@ -121,6 +123,13 @@ export function tidyTaskStatus(transactions: readonly Transaction[], _old: Edito
   state.doc.descendants((node, pos) => {
     if (node.type.name !== "taskItem") return true;
     const { checked, status, symbol } = node.attrs;
+    // A continued journal task unticked (#536): open, but still closed for
+    // everything that counts – it shows open with its badge.
+    if (!checked && continuedOn(node.attrs)) {
+      const open = status === "progress" || status === "deferred" ? status : "open";
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...taskStatusAttrs(node.attrs, open) });
+      return true;
+    }
     const fits = status == null || (checked ? status === "cancelled" : status === "progress" || status === "deferred");
     const keepSymbol = symbol == null || (!checked && status == null && isTaskSymbol(symbol));
     if (!fits || !keepSymbol)

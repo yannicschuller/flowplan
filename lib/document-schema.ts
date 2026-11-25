@@ -17,7 +17,19 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { subtasksPlugin } from "./task-subtasks";
 import { cycleTaskStatus, taskStatusPlugin } from "./task-status-commands";
-import { isContinuedTask, isStoredStatus, isTaskSymbol, statusHtmlAttrs, statusName, taskStatusOf, taskSymbolOf } from "./task-status";
+import { LOCALE_TAG } from "./locale-tag";
+import {
+  continuedOn,
+  isContinuedShown,
+  isLegacyContinued,
+  isStoredStatus,
+  isTaskSymbol,
+  shownStatusOf,
+  statusHtmlAttrs,
+  statusName,
+  taskStatusAttrs,
+  taskSymbolOf,
+} from "./task-status";
 import type { TaskItemOptions } from "@tiptap/extension-task-item";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
@@ -431,18 +443,41 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
       const label = view.dom.querySelector<HTMLElement>(":scope > label");
       const box = label?.querySelector<HTMLInputElement>("input");
       const hidden = label?.querySelector<HTMLElement>("span");
+      // "Weitergeführt am 26. November 2026" of a continued journal task
+      // (#536): the ➔ badge's tooltip and part of the box's name.
+      let continuedTitle = "";
+      const sync = () => {
+        if (!box) return;
+        const locked = !props.editor.isEditable;
+        box.classList.toggle("task-box-locked", locked);
+        if (locked) box.setAttribute("aria-disabled", "true");
+        else box.removeAttribute("aria-disabled");
+        const hint = locked ? options.readOnlyHint?.() || options.translate("Nicht änderbar", "Cannot be changed") : "";
+        const title = [continuedTitle, hint].filter(Boolean).join(" · ");
+        if (title) box.title = title;
+        else box.removeAttribute("title");
+      };
       const describe = (node: PMNode) => {
         if (!box) return;
-        const status = taskStatusOf(node.attrs);
+        // A continued journal task (#469) shows the state it kept (#536).
+        const status = shownStatusOf(node.attrs);
         const symbol = taskSymbolOf(node.attrs);
         const t = options.translate;
         const text = node.firstChild?.textContent.trim() || t("Leere Aufgabe", "Empty task");
-        // Copied on to a later journal day (#469): carried over, not cancelled.
-        const state = isContinuedTask(node.attrs) ? t("Übernommen in einen späteren Tag", "Carried over to a later day") : statusName(t, status);
-        const name = `${state}${symbol ? ` [${symbol}]` : ""}: ${text}`;
+        const on = continuedOn(node.attrs);
+        const date = on
+          ? new Date(`${on}T00:00:00Z`).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+          : "";
+        continuedTitle = on ? t(`Weitergeführt am ${date}`, `Continued on ${date}`) : "";
+        // Copied on before #536: carried over, not cancelled.
+        const state = isLegacyContinued(node.attrs) ? t("Übernommen in einen späteren Tag", "Carried over to a later day") : statusName(t, status);
+        const name = `${state}${symbol ? ` [${symbol}]` : ""}${continuedTitle && !isLegacyContinued(node.attrs) ? `, ${continuedTitle}` : ""}: ${text}`;
         box.setAttribute("aria-label", name);
         if (hidden) hidden.textContent = name;
         box.indeterminate = status === "progress";
+        // Stored as cancelled, ticked as the state it shows.
+        if (on) box.checked = status === "done" || status === "cancelled";
+        sync();
       };
       describe(props.node);
       // Not editable (reading mode, a locked page, only allowed to read,
@@ -452,18 +487,6 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
       // handler only reverts the box after the change). It stays
       // reachable by keyboard and says why it does not change.
       if (box) {
-        const sync = () => {
-          const locked = !props.editor.isEditable;
-          box.classList.toggle("task-box-locked", locked);
-          if (locked) {
-            box.setAttribute("aria-disabled", "true");
-            box.title = options.readOnlyHint?.() || options.translate("Nicht änderbar", "Cannot be changed");
-          } else {
-            box.removeAttribute("aria-disabled");
-            box.removeAttribute("title");
-          }
-        };
-        sync();
         // The editor can switch while the item stays (setEditable emits
         // "update"); checked again before a click or key counts.
         props.editor.on("update", sync);
@@ -479,7 +502,18 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
             if (!props.editor.isEditable) {
               event.preventDefault();
               event.stopPropagation();
+              return;
             }
+            // A continued journal task (#536) is ticked as the state it
+            // shows – an open or in-progress box becomes done, a done one
+            // open again – and stays closed and marked as continued.
+            const pos = typeof props.getPos === "function" ? props.getPos() : undefined;
+            const node = typeof pos === "number" ? props.editor.state.doc.nodeAt(pos) : null;
+            if (typeof pos !== "number" || node?.type.name !== "taskItem" || !continuedOn(node.attrs)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const next = shownStatusOf(node.attrs) === "done" ? "open" : "done";
+            props.editor.view.dispatch(props.editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...taskStatusAttrs(node.attrs, next) }));
           },
           true,
         );
@@ -598,7 +632,8 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
             : {},
       },
       // The day an original was copied on to (#469, lib/task-status.ts
-      // isContinuedTask): shown as carried over while it is closed.
+      // continuedOn): the ➔ badge on its box, kept whatever state it gets on
+      // its day (#536); removed only from the state menu.
       journalContinued: {
         default: null,
         keepOnSplit: false,
@@ -609,6 +644,21 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
         renderHTML: (attributes) =>
           attributes.journalContinued
             ? { "data-journal-continued": attributes.journalContinued }
+            : {},
+      },
+      // The state a continued task shows on its day (#536, lib/task-status.ts
+      // shownStatusOf): stored as cancelled, it keeps its open or in-progress
+      // look there, with the ➔ badge. Only beside the marker.
+      journalWas: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-journal-was");
+          return element.getAttribute("data-journal-continued") && isContinuedShown(value) ? value : null;
+        },
+        renderHTML: (attributes) =>
+          attributes.journalContinued && isContinuedShown(attributes.journalWas)
+            ? { "data-journal-was": attributes.journalWas }
             : {},
       },
       // In progress, cancelled or deferred (lib/task-status.ts); null: open

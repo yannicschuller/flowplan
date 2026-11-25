@@ -6,7 +6,7 @@
 // task, or the tasks in the chosen blocks) and in the right-click menu.
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { isClosedStatus, statusAttrs, taskStatusOf } from "./task-status";
+import { isClosedStatus, shownStatusOf, taskStatusAttrs } from "./task-status";
 import { selectedTasks } from "./task-status-commands";
 
 export type BulkTaskAction = "open" | "done";
@@ -75,8 +75,10 @@ export function selectionTasks(state: EditorState): number[] {
   );
 }
 
+// By the state it shows: a continued journal task (#536) shown open is
+// ticked off too, and stays closed and marked when opened again.
 const changes = (node: PMNode, action: BulkTaskAction) => {
-  const status = taskStatusOf(node.attrs);
+  const status = shownStatusOf(node.attrs);
   return action === "open" ? status !== "open" : !isClosedStatus(status);
 };
 
@@ -94,7 +96,7 @@ export function bulkTasks(state: EditorState, positions: number[], action: BulkT
   for (const pos of positions) {
     const node = tr.doc.nodeAt(pos);
     if (node?.type.name === "taskItem" && changes(node, action))
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...statusAttrs(action) });
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...taskStatusAttrs(node.attrs, action) });
   }
   return tr.docChanged ? tr : null;
 }

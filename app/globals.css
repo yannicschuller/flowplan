@@ -1907,6 +1907,57 @@ kbd,
   animation: none;
   opacity: 0.8;
 }
+/* A continued journal task that keeps its state (#536, data-journal-was on
+   the cancelled original, or done there since): the box of that state –
+   empty, half-filled, with → or × – and a small ➔ badge on its corner, like
+   the ↻ of the carried copy on the new day. Its text stays faded, without a
+   line (struck through when cancelled there, as done when done). */
+.document-editor ul[data-type="taskList"] > li[data-journal-continued]:is([data-journal-was], [data-checked="true"]:not([data-status])) > label::after {
+  content: "➔";
+  position: absolute;
+  top: auto;
+  inset-inline-start: auto;
+  right: -6px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--blue);
+  font: 700 8px/1 var(--font-sans, system-ui), sans-serif;
+  z-index: 1;
+  pointer-events: none;
+}
+.document-editor ul[data-type="taskList"] > li[data-journal-continued]:is([data-journal-was="open"], [data-journal-was="progress"], [data-journal-was="deferred"]) > label input[type="checkbox"] {
+  border-color: var(--blue);
+}
+.document-editor ul[data-type="taskList"] > li[data-journal-continued][data-journal-was="progress"] > label input[type="checkbox"] {
+  background: linear-gradient(90deg, var(--blue) 50%, var(--bg) 50%);
+}
+.document-editor ul[data-type="taskList"] > li[data-journal-continued]:is([data-journal-was="deferred"], [data-journal-was="cancelled"]) > label::before {
+  position: absolute;
+  top: 3px;
+  inset-inline-start: 4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font: 700 11px/1 var(--font-sans, system-ui), sans-serif;
+  color: var(--blue);
+  content: "→";
+  z-index: 1;
+  pointer-events: none;
+}
+.document-editor ul[data-type="taskList"] > li[data-journal-continued][data-journal-was="cancelled"] > label::before {
+  content: "×";
+  color: var(--muted);
+  font-size: 15px;
+}
+:root .document-editor ul[data-type="taskList"] > li[data-status="cancelled"][data-journal-continued][data-journal-was="cancelled"] > div > :not(ul, ol) {
+  text-decoration: line-through;
+}
 /* The state menu: a zero-size anchor on the box, the items with their box. */
 .task-status-anchor {
   position: fixed;
