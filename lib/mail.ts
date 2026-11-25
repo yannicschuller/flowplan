@@ -122,13 +122,20 @@ async function layout(
   locale: Locale = contentLocale(),
   customer = false,
 ) {
-  const footer = customer
-    ? locale === "de"
-      ? `Diese E-Mail kommt von ${escape(appUrl())}, weil du dort über ein Formular eine Anfrage gestellt hast.`
-      : `This e-mail comes from ${escape(appUrl())} because you sent a request there through a form.`
-    : locale === "de"
-      ? `Diese E-Mail kommt von ${escape(appUrl())}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.`
-      : `This e-mail comes from ${escape(appUrl())}. You can change e-mail notifications in Flowplan under Settings → Notifications.`;
+  // In the reader's language (fr, ru and zh from the catalogues); the
+  // address goes in afterwards so the text is the same for every instance.
+  const tr = translate(locale);
+  const footer = (
+    customer
+      ? tr(
+          "Diese E-Mail kommt von {url}, weil du dort über ein Formular eine Anfrage gestellt hast.",
+          "This e-mail comes from {url} because you sent a request there through a form.",
+        )
+      : tr(
+          "Diese E-Mail kommt von {url}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.",
+          "This e-mail comes from {url}. You can change e-mail notifications in Flowplan under Settings → Notifications.",
+        )
+  ).replace("{url}", escape(appUrl()));
   const body = paragraphs.map((p) => `<p style="margin:0 0 14px">${p}</p>`).join("");
   const button = action
     ? `<p style="margin:22px 0"><a href="${escape(action.url)}" style="background:#3b3fd8;color:#ffffff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">${escape(action.label)}</a></p>`

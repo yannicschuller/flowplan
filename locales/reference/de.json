@@ -13284,6 +13284,8 @@
   "This DWG version could not be read. {0}": "Diese DWG-Version ließ sich nicht lesen. {0}",
   "This e-mail address already belongs to another account.": "Diese E-Mail-Adresse gehört schon zu einem anderen Konto.",
   "This e-mail address belongs to another account by now.": "Diese E-Mail-Adresse gehört inzwischen zu einem anderen Konto.",
+  "This e-mail comes from {url} because you sent a request there through a form.": "Diese E-Mail kommt von {url}, weil du dort über ein Formular eine Anfrage gestellt hast.",
+  "This e-mail comes from {url}. You can change e-mail notifications in Flowplan under Settings → Notifications.": "Diese E-Mail kommt von {url}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.",
   "This element is no longer on the board.": "Dieses Element gibt es auf dem Board nicht mehr.",
   "This embed was changed. Please refresh the view.": "Diese Einbettung wurde geändert. Bitte die Ansicht aktualisieren.",
   "This emergency access request has already ended (denied, withdrawn or replaced by a new one). See where things stand in Flowplan under Settings → Account & security → Emergency access.": "Diese Anfrage auf Notfallzugriff ist schon beendet (abgelehnt, zurückgezogen oder durch eine neue ersetzt). Den aktuellen Stand siehst du in Flowplan unter Einstellungen → Konto & Sicherheit → Notfallzugriff.",

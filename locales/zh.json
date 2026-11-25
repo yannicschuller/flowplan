@@ -13284,6 +13284,8 @@
   "This DWG version could not be read. {0}": "无法读取此 DWG 版本。{0}",
   "This e-mail address already belongs to another account.": "此电子邮件地址已属于另一个账户。",
   "This e-mail address belongs to another account by now.": "此电子邮件地址现已属于另一个账户。",
+  "This e-mail comes from {url} because you sent a request there through a form.": "此邮件来自 {url}，因为你曾在那里通过表单提交了请求。",
+  "This e-mail comes from {url}. You can change e-mail notifications in Flowplan under Settings → Notifications.": "此邮件来自 {url}。你可以在 Flowplan 的“设置 → 通知”中更改邮件通知。",
   "This element is no longer on the board.": "此元素已不在白板上。",
   "This embed was changed. Please refresh the view.": "此嵌入已被更改。请刷新视图。",
   "This emergency access request has already ended (denied, withdrawn or replaced by a new one). See where things stand in Flowplan under Settings → Account & security → Emergency access.": "此紧急访问申请已经结束（被拒绝、撤回或被新的申请取代）。请在 Flowplan 的“设置 → 账户与安全 → 紧急访问”中查看当前状态。",

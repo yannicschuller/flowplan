@@ -13284,6 +13284,8 @@
   "This DWG version could not be read. {0}": "Не удалось прочитать эту версию DWG. {0}",
   "This e-mail address already belongs to another account.": "Этот адрес электронной почты уже принадлежит другой учётной записи.",
   "This e-mail address belongs to another account by now.": "Этот адрес электронной почты теперь принадлежит другой учётной записи.",
+  "This e-mail comes from {url} because you sent a request there through a form.": "Это письмо отправлено с {url}, потому что вы оставили там запрос через форму.",
+  "This e-mail comes from {url}. You can change e-mail notifications in Flowplan under Settings → Notifications.": "Это письмо отправлено с {url}. Уведомления по электронной почте можно изменить в Flowplan в разделе «Настройки → Уведомления».",
   "This element is no longer on the board.": "Этого элемента больше нет на доске.",
   "This embed was changed. Please refresh the view.": "Это встраивание изменилось. Обновите представление.",
   "This emergency access request has already ended (denied, withdrawn or replaced by a new one). See where things stand in Flowplan under Settings → Account & security → Emergency access.": "Этот запрос экстренного доступа уже завершён (отклонён, отозван или заменён новым). Текущее состояние смотрите в Flowplan в разделе «Настройки → Учётная запись и безопасность → Экстренный доступ».",

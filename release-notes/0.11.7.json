@@ -1,0 +1,10 @@
+{
+  "fixes": [
+    {
+      "de": "Die Fußzeile von E-Mails erscheint jetzt auch auf Französisch, Russisch und Chinesisch statt auf Englisch.",
+      "en": "The footer of e-mails now appears in French, Russian and Chinese too instead of English."
+    }
+  ],
+  "improvements": [],
+  "features": []
+}
