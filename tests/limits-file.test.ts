@@ -141,6 +141,14 @@ test("validation: every error with its JSON path, nothing written", async () => 
   assert.deepEqual(await snapshot(), before);
 });
 
+test("a file exported by flowplan-billing with Creem's plan keys is accepted", async () => {
+  const file = sample() as Json;
+  delete file.plans[0].paddle;
+  file.plans[0].creem = { name: "Flowplan Plus", description: "", taxCategory: "saas" };
+  const r = await importFile(JSON.stringify(file), true);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+});
+
 test("dry run lists every change and writes nothing; applying maps every plan; again: no changes", async () => {
   const before = await snapshot();
   const dry = await importFile(JSON.stringify(sample()), true);

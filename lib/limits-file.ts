@@ -98,8 +98,9 @@ const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.i
 // accepted (models, units); `max`: the limit a value was capped at.
 export type FileIssue = { path: string; code: string; allowed?: string[]; max?: number; value?: string };
 
-// Paddle's keys of a plan (flowplan-billing) and the top level: ignored here.
-const BILLING_PLAN_KEYS = ["status", "paddle", "prices", "name_de", "name_en", "description_de", "description_en", "prioritySupport", "order", "highlight", "studentDiscount", "minSeats", "taxCategory"];
+// The payment provider's keys of a plan (flowplan-billing: "creem", older
+// files "paddle") and the top level: ignored here.
+const BILLING_PLAN_KEYS = ["status", "creem", "paddle", "prices", "name_de", "name_en", "description_de", "description_en", "prioritySupport", "order", "highlight", "studentDiscount", "minSeats", "taxCategory"];
 const PLAN_KEYS = new Set(["group", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel", ...BILLING_PLAN_KEYS]);
 const GROUP_KEYS = new Set(["group", "workspaceGroup", "kind", "storageMb", "uploadMb", "workspaces", "aiActions", "aiTokens", "aiModels", "aiAfter", "aiAfterTokens", "aiModel"]);
 const TOP_KEYS = new Set(["version", "plans", "flowplan", "archiveMissing"]);
