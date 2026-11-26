@@ -74,12 +74,22 @@
       ]
     },
     {
-      "de": "Portugiesisch: natürlichere Begriffe für Web Clipper, den Notfallzugang und den zweiten Faktor.",
-      "en": "Portuguese: more natural terms for the web clipper, emergency access and the second factor.",
+      "de": "Portugiesisch: natürlichere Begriffe für Web Clipper, Notfallzugang, zweiten Faktor, Kommentare und Inhaltsverzeichnis.",
+      "en": "Portuguese: more natural terms for the web clipper, emergency access, the second factor, comments and contents.",
       "issues": [
         573,
         578,
-        582
+        582,
+        595,
+        596
+      ]
+    },
+    {
+      "de": "Sicherungen: „Jetzt sichern“ in normaler Größe, und das Auswahlfeld „Anmeldung“ beim SFTP-Ziel schneidet „Privater Schlüssel“ nicht mehr ab.",
+      "en": "Backups: “Back up now” at normal size, and the SFTP destination's “Sign-in” choice no longer cuts off “Private key”.",
+      "issues": [
+        592,
+        593
       ]
     }
   ]

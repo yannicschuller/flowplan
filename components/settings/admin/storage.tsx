@@ -122,7 +122,7 @@ function Backups({ data, storage, onChange }: { data: AdminData; storage: Awaite
       actions={
         <button
           type="button"
-          className="button primary"
+          className="button primary compact"
           disabled={status.state === "saving"}
           onClick={() =>
             void run(async () => {

@@ -1,7 +1,7 @@
 /* Backups via SFTP and the restore on the setup screen (#128):
    components/settings/admin/sftp-backup.tsx and components/setup-restore.tsx. */
 .sftp-form textarea,
-.sftp-form select,
+.sftp-form :is(select, .fp-select),
 .sftp-form input:not([type="checkbox"]) {
   width: 100%;
   max-width: 480px;
@@ -13,7 +13,8 @@
 }
 .sftp-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px;
+  /* Wide enough for "Privater Schlüssel" / "Palavra-passe" (#593). */
+  grid-template-columns: minmax(0, 1fr) 170px;
   gap: 8px 12px;
   max-width: 480px;
 }

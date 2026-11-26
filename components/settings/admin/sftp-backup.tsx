@@ -12,6 +12,7 @@ import { useT } from "../../i18n";
 import { api } from "../../ui";
 import { SettingGroup, SettingRow, StatusBadge, SwitchRow } from "../../settings-ui";
 import { bytes } from "../../admin-storage";
+import { Select } from "../../select";
 import { useDocs } from "./parts";
 import { ago } from "./format";
 
@@ -241,10 +242,10 @@ export function SftpBackup({ onError }: { onError: (message: string) => void }) 
           </label>
           <label>
             {t("Anmeldung", "Sign-in")}
-            <select value={form.auth} onChange={(e) => set({ auth: e.currentTarget.value as Settings["auth"] })}>
+            <Select value={form.auth} onChange={(e) => set({ auth: e.currentTarget.value as Settings["auth"] })}>
               <option value="password">{t("Passwort", "Password")}</option>
               <option value="key">{t("Privater Schlüssel", "Private key")}</option>
-            </select>
+            </Select>
           </label>
         </div>
         {form.auth === "password" ? (
