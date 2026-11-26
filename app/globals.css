@@ -18757,13 +18757,12 @@ li[data-journal-since] > label::after {
   flex: 1;
   min-width: 120px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
-  padding: 2px 0;
+  /* Room for the standard focus ring (#568); the text stays in line. */
+  padding: 2px 6px;
+  margin-inline-start: -6px;
   color: var(--text);
-}
-.journal-daybar-place input:focus {
-  outline: none;
-  box-shadow: 0 1px 0 var(--blue);
 }
 .journal-daybar-place a {
   color: var(--blue);

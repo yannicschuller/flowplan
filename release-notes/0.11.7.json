@@ -42,6 +42,13 @@
       "issues": [
         563
       ]
+    },
+    {
+      "de": "Journal: Das Feld „Ort“ zeigt beim Bearbeiten den üblichen Fokusrahmen statt einer blauen Linie darunter.",
+      "en": "Journal: the “Place” field shows the usual focus ring while editing instead of a blue line below it.",
+      "issues": [
+        568
+      ]
     }
   ],
   "improvements": [
