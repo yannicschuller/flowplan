@@ -1,4 +1,4 @@
-import { limitedRequest, readTextLimited } from "@/lib/request-body";
+import { limitedRequest, readFormData, readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withDevice } from "@/lib/mobile-device-route";
@@ -58,7 +58,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
       const max = Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * SHARE_MAX_FILES) + 1_000_000;
       const limited = limitedRequest(req, max);
       limitWidgets(user, "upload");
-      const form = await limited.formData();
+      const form = await readFormData(limited);
       // capture.share takes several "file" parts, capture.upload the first.
       const parts = form.getAll("file").filter((value): value is File => value instanceof File);
       if (parts.length > SHARE_MAX_FILES) throw new HttpError(413, "Anfrage zu groß.");

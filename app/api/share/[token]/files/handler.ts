@@ -1,3 +1,4 @@
+import { readFormData } from "@/lib/request-body";
 import { serverError } from "@/lib/request-context";
 import { NextResponse } from "next/server";
 import { requireBodySize } from "@/lib/upload-safety";
@@ -21,7 +22,7 @@ export async function POST(
     await checkOrigin(req);
     requireBodySize(req, MAX_GUEST_UPLOAD + 100000, "Gäste können Dateien bis 10 MB hochladen.");
     const { token } = await params,
-      form = await req.formData(),
+      form = await readFormData(req),
       file = form.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
     const pageId = z.string().uuid().parse(form.get("pageId"));

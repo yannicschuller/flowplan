@@ -23,7 +23,7 @@ import { hasCalDavAccess } from "@/lib/caldav";
 import { withMeetingNotes } from "@/lib/meeting-notes";
 import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
-import { limitedRequest, readJsonLimited, readTextLimited } from "@/lib/request-body";
+import { limitedRequest, readFormData, readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { requireBodySize, sanitizeFileName, stripLocationFile, uploadMime } from "@/lib/upload-safety";
 import { readFileSync, statSync } from "node:fs";
 import { uploadPath, uploadsDir } from "@/lib/storage";
@@ -1632,11 +1632,11 @@ async function handlePOST(
     // The denial from the e-mail's confirmation page (#281): no sign-in,
     // the signed link decides. The form holds only the token.
     if (path.length === 2 && path[0] === "emergency" && path[1] === "deny") {
-      const form = await limitedRequest(req, 16_384).formData();
+      const form = await readFormData(limitedRequest(req, 16_384));
       return await emergencyDenied(String(form.get("token") || ""));
     }
     if (path.length === 2 && path[0] === "deadman" && path[1] === "here") {
-      const form = await limitedRequest(req, 16_384).formData();
+      const form = await readFormData(limitedRequest(req, 16_384));
       return await deadmanHere(String(form.get("token") || ""));
     }
     const user = await requireUser();
@@ -1660,7 +1660,7 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "marketplace" && path[1] === "check") {
       await requireMarketplace();
       requireMarketplaceCheck(user);
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
@@ -1829,7 +1829,7 @@ async function handlePOST(
       if (user.demo) throw new HttpError(403, "Hier nicht verfügbar.");
       // API tokens only with "KI und Transkription" (#199).
       await requireTokenAi(user);
-      const data = await req.formData();
+      const data = await readFormData(req);
       // The recording would reach the transcription service as plaintext.
       await requirePlaintext(await requirePage(user, z.uuid().parse(data.get("pageId")), true));
       const file = data.get("file");
@@ -1861,7 +1861,7 @@ async function handlePOST(
           return NextResponse.json(saved);
         }
         requireBodySize(req, Math.min(100 * 1024 * 1024, (await maxUploadMbFor(user)) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
-        const form = await req.formData();
+        const form = await readFormData(req);
         const files = [];
         for (const file of form.getAll("file"))
           if (file instanceof File) files.push({ name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) });
@@ -1901,7 +1901,7 @@ async function handlePOST(
     // Nothing here ever contacts the marketplace.
     if (path.length === 2 && path[0] === "marketplace" && path[1] === "package") {
       await requireMarketplace();
-      const data = await req.formData();
+      const data = await readFormData(req);
       const previews: Buffer[] = [];
       for (const entry of data.getAll("preview")) {
         if (!(entry instanceof File)) continue;
@@ -1934,7 +1934,7 @@ async function handlePOST(
     }
     if (path.length === 2 && path[0] === "marketplace" && path[1] === "import") {
       await requireMarketplace();
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 25 * 1024 * 1024) throw new HttpError(413, "Die Vorlage darf höchstens 25 MB groß sein.");
@@ -1950,7 +1950,7 @@ async function handlePOST(
       );
     }
     if (path[0] === "templates" && path[1] === "import") {
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > ARCHIVE_LIMIT)
@@ -1968,7 +1968,7 @@ async function handlePOST(
     }
     if (path[0] === "import" && path[1] === "tracker") {
       // Jira (CSV) or Trello (JSON) into a new database.
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 30 * 1024 * 1024) throw new HttpError(413, "Die Datei darf maximal 30 MB groß sein.");
@@ -1983,7 +1983,7 @@ async function handlePOST(
     }
     // Markdown files (one, several or a ZIP) as records of a database.
     if (path.length === 3 && path[0] === "pages" && path[2] === "import-markdown") {
-      const data = await req.formData();
+      const data = await readFormData(req);
       const files = data.getAll("file").filter((f): f is File => f instanceof File);
       if (!files.length) throw new HttpError(400, "Datei fehlt.");
       if (files.reduce((sum, f) => sum + f.size, 0) > ARCHIVE_LIMIT)
@@ -2016,7 +2016,7 @@ async function handlePOST(
       let file: { name: string; bytes: Buffer } | { name: string; path: string };
       let kept: string | null = null;
       if (!rawImport) {
-        const data = await req.formData();
+        const data = await readFormData(req);
         const form = data.get("file");
         if (!(form instanceof File)) throw new HttpError(400, "Datei fehlt.");
         if (form.size > Math.min(ARCHIVE_LIMIT, upload.importLimitBytes(limitMb)))
@@ -2179,7 +2179,7 @@ async function handlePOST(
       return NextResponse.json({ job }, { status: 202 });
     }
     if (path[0] === "import" && path[1] === "zip") {
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > ARCHIVE_LIMIT)
@@ -2205,7 +2205,7 @@ async function handlePOST(
     // Excalidraw and draw.io files: onto a board (pageId) or as a new one.
     if (path.length === 2 && path[0] === "whiteboards" && path[1] === "import") {
       if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > BOARD_IMPORT_LIMITS.bytes)
@@ -2236,7 +2236,7 @@ async function handlePOST(
     if (path.length === 1 && path[0] === "workspace-fonts") {
       if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
       requireBodySize(req, FONT_LIMITS.bytes + 100_000, "Höchstens 5 MB pro Schrift.");
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       const bytes = Buffer.from(await file.arrayBuffer());
@@ -2247,7 +2247,7 @@ async function handlePOST(
     if (path.length === 1 && path[0] === "notebook-library") {
       if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
       requireBodySize(req, 21 * 1024 * 1024, "Maximal 20 MB pro Vorlage.");
-      const data = await req.formData();
+      const data = await readFormData(req);
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       const bytes = Buffer.from(await file.arrayBuffer());

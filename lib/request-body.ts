@@ -40,6 +40,20 @@ export async function readJsonLimited(req: Request, maxBytes: number, message?: 
   return JSON.parse(text || "{}") as unknown;
 }
 
+// A multipart (or urlencoded) form. A body that is no such form – a cut
+// one, a wrong or missing boundary – is the sender's mistake: 400, not the
+// TypeError `formData()` throws (an answer of 500). A limit of
+// limitedRequest keeps its 413.
+export async function readFormData(req: Request): Promise<FormData> {
+  try {
+    return await req.formData();
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    if (e instanceof TypeError && e.cause instanceof HttpError) throw e.cause;
+    throw new HttpError(400, "Ungültige Eingabe.");
+  }
+}
+
 // The same request with its body limited: a declared size above the limit
 // is refused at once, and reading the body (`text()`, `json()`,
 // `formData()` …) fails with 413 as soon as more than `maxBytes` arrived –

@@ -1,4 +1,4 @@
-import { readTextLimited } from "@/lib/request-body";
+import { readFormData, readTextLimited } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { HttpError } from "@/lib/auth";
 import { withDevice } from "@/lib/mobile-device-route";
@@ -46,7 +46,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     // Files: the size is known before anything is read.
     requireBodySize(req, Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
     limitWidgets(user, "upload");
-    const form = await req.formData();
+    const form = await readFormData(req);
     const files: UploadFile[] = [];
     for (const file of form.getAll("file")) {
       if (file instanceof File) files.push({ name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) });
