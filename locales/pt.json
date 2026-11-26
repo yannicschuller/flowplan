@@ -1448,7 +1448,6 @@
   "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.": "Conta criada. {0} recebe um e-mail com uma ligação para definir a palavra-passe. É válida durante 7 dias e apenas uma vez; pode obter uma nova na conta através de “Reenviar ligação”.",
   "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.": "Conta criada. Esta instância não envia e-mails: entregue a ligação a {0} pessoalmente. É válida durante 7 dias e apenas uma vez – quem a tiver define a palavra-passe. O endereço permanece por confirmar até o marcar como confirmado na conta.",
   "Account deleted": "Conta eliminada",
-  "Account menu": "Menu da conta",
   "Account not found.": "Conta não encontrada.",
   "account.": "conta.",
   "Accounting": "Contabilidade",
