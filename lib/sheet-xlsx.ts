@@ -40,14 +40,21 @@ const tooLarge = () =>
   new HttpError(413, ct("Die Tabelle ist entpackt zu groß für die Vorschau. Du kannst sie herunterladen.", "Unpacked, the spreadsheet is too large for the preview. You can download it."));
 const unreadable = () => new HttpError(422, ct("Die Tabelle konnte nicht gelesen werden.", "The spreadsheet could not be read."));
 
-type Part = { data: Buffer; cut: boolean };
+export type Part = { data: Buffer; cut: boolean };
 // The entries `want` names, each up to its cap; `cut` ones are kept
 // shortened instead of refused. Encrypted entries and the others are
-// skipped unread.
-function zipParts(bytes: Buffer, want: (name: string) => { max: number; cut?: boolean } | null, budget: { left: number }) {
+// skipped unread. Also for the Office preview (lib/office-preview.ts,
+// #562), with its own messages.
+export function zipParts(
+  bytes: Buffer,
+  want: (name: string) => { max: number; cut?: boolean } | null,
+  budget: { left: number },
+  errors: { tooLarge: () => HttpError; unreadable: () => HttpError } = { tooLarge, unreadable },
+) {
+  const { tooLarge: large, unreadable: broken } = errors;
   return new Promise<Map<string, Part>>((resolve, reject) =>
     fromBuffer(bytes, { lazyEntries: true, validateEntrySizes: true, strictFileNames: false }, (error, zip) => {
-      if (error || !zip) return reject(unreadable());
+      if (error || !zip) return reject(broken());
       const parts = new Map<string, Part>();
       let failed = false,
         count = 0;
@@ -55,7 +62,7 @@ function zipParts(bytes: Buffer, want: (name: string) => { max: number; cut?: bo
         if (failed) return;
         failed = true;
         zip.close();
-        reject(e instanceof HttpError ? e : unreadable());
+        reject(e instanceof HttpError ? e : broken());
       };
       zip.on("error", fail);
       zip.on("end", () => {
@@ -64,10 +71,10 @@ function zipParts(bytes: Buffer, want: (name: string) => { max: number; cut?: bo
       zip.on("entry", (entry: Entry) => {
         if (failed) return;
         // A workbook has a few dozen parts; tens of thousands are no workbook.
-        if (++count > 20_000) return fail(unreadable());
+        if (++count > 20_000) return fail(broken());
         const wanted = parts.has(entry.fileName) || entry.isEncrypted() ? null : want(entry.fileName);
         if (!wanted) return zip.readEntry();
-        if (!wanted.cut && (entry.uncompressedSize > wanted.max || entry.uncompressedSize > budget.left)) return fail(tooLarge());
+        if (!wanted.cut && (entry.uncompressedSize > wanted.max || entry.uncompressedSize > budget.left)) return fail(large());
         zip.openReadStream(entry, (err, stream) => {
           if (err || !stream) return fail(err);
           const chunks: Buffer[] = [];
@@ -89,7 +96,7 @@ function zipParts(bytes: Buffer, want: (name: string) => { max: number; cut?: bo
               if (!wanted.cut || room <= 0 && !size) {
                 done = true;
                 stream.destroy();
-                return fail(tooLarge());
+                return fail(large());
               }
               chunks.push(chunk.subarray(0, Math.max(0, room)));
               budget.left -= Math.max(0, room);
@@ -118,7 +125,7 @@ const el = (name: string) => `(?:[\\w.-]+:)?${name}`;
 // scans on to the end; a name starts only where no name character comes
 // before it; and lazy scans for a closing tag only run on the text up to
 // the last closing tag (throughLastClose).
-function attributes(text: string) {
+export function attributes(text: string) {
   const out: Record<string, string> = {};
   for (const m of text.matchAll(/(?<![\w.:-])([\w.:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) out[m[1]] = decode(m[2] ?? m[3] ?? "");
   return out;
@@ -273,7 +280,7 @@ export function sheetRows(xml: string, ctx: Context, limits: Pick<XlsxLimits, "r
 /* ---------- The workbook ---------- */
 
 // Relationship targets, relative to the part that names them.
-function relationships(xml: string | undefined, from: string) {
+export function relationships(xml: string | undefined, from: string) {
   const out: { id: string; type: string; target: string }[] = [];
   for (const m of (xml ?? "").matchAll(new RegExp(`<${el("Relationship")}\\b([^<>]*?)\\/?>`, "g"))) {
     const a = attributes(m[1]);
@@ -283,8 +290,8 @@ function relationships(xml: string | undefined, from: string) {
   }
   return out;
 }
-const relsOf = (part: string) => posix.join(posix.dirname(part), "_rels", `${posix.basename(part)}.rels`);
-const isType = (type: string, name: string) => type.endsWith(`/${name}`);
+export const relsOf = (part: string) => posix.join(posix.dirname(part), "_rels", `${posix.basename(part)}.rels`);
+export const isType = (type: string, name: string) => type.endsWith(`/${name}`);
 
 export async function readXlsx(bytes: Buffer, sheet: number, limits: XlsxLimits = XLSX_LIMITS) {
   if (bytes.subarray(0, 4).toString("latin1") !== "PK\x03\x04") throw unreadable();

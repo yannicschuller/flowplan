@@ -4990,6 +4990,72 @@ export class FlowplanClient {
   }>("GET", `/api/files/${encodeURIComponent(fileId)}/sheet`, { query }, options);
   }
 
+  /** Content of a presentation or text document — The same access as the download. Only files named `.pptx`, `.odp`, `.docx` or `.odt`, up to 20 MB (larger: 413; `.ppt`, `.doc` and other files: 415; an unreadable file: 422). Not the layout: a presentation's visible slides in their order, each with its title, its paragraphs with list levels, tables (cell text), pictures and speaker notes; a text document's headings, paragraphs, bulleted and numbered list items with their levels, tables and pictures, in order. At most 500 slides, 10,000 blocks, 500,000 characters and 500 pictures, tables up to 500 rows × 50 columns; `truncated` says more was left out. Pictures are listed only as PNG, JPEG, GIF or WebP. (GET /api/files/{fileId}/office) */
+  async officePreview(fileId: string, options?: RequestOptions): Promise<{
+    kind: "pptx" | "odp" | "docx" | "odt";
+    slides?: ({
+      title: string;
+      blocks: ({
+        type: "heading" | "paragraph" | "table" | "image";
+        text?: string;
+        /** Heading level 1–6, or list level from 0 */
+        level?: number;
+        list?: "bullet" | "number";
+        rows?: string[][];
+        /** The picture's part name, for `GET /api/files/{fileId}/office/image?name=` */
+        image?: string;
+      })[];
+      notes: string[];
+    })[];
+    blocks?: ({
+      type: "heading" | "paragraph" | "table" | "image";
+      text?: string;
+      /** Heading level 1–6, or list level from 0 */
+      level?: number;
+      list?: "bullet" | "number";
+      rows?: string[][];
+      /** The picture's part name, for `GET /api/files/{fileId}/office/image?name=` */
+      image?: string;
+    })[];
+    truncated: boolean;
+    limits: Record<string, number>;
+  }> {
+    return this.json<{
+    kind: "pptx" | "odp" | "docx" | "odt";
+    slides?: ({
+      title: string;
+      blocks: ({
+        type: "heading" | "paragraph" | "table" | "image";
+        text?: string;
+        /** Heading level 1–6, or list level from 0 */
+        level?: number;
+        list?: "bullet" | "number";
+        rows?: string[][];
+        /** The picture's part name, for `GET /api/files/{fileId}/office/image?name=` */
+        image?: string;
+      })[];
+      notes: string[];
+    })[];
+    blocks?: ({
+      type: "heading" | "paragraph" | "table" | "image";
+      text?: string;
+      /** Heading level 1–6, or list level from 0 */
+      level?: number;
+      list?: "bullet" | "number";
+      rows?: string[][];
+      /** The picture's part name, for `GET /api/files/{fileId}/office/image?name=` */
+      image?: string;
+    })[];
+    truncated: boolean;
+    limits: Record<string, number>;
+  }>("GET", `/api/files/${encodeURIComponent(fileId)}/office`, {}, options);
+  }
+
+  /** A picture of a presentation or text document — The same access as the download. Only a picture that `GET /api/files/{fileId}/office` lists (others: 404), with its type taken from its bytes: PNG, JPEG, GIF or WebP (anything else: 415), at most 20 MB. (GET /api/files/{fileId}/office/image) */
+  async officePreviewImage(fileId: string, query: { name: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/files/${encodeURIComponent(fileId)}/office/image`, { query }, options);
+  }
+
   /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;

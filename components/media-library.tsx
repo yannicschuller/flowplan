@@ -6,6 +6,7 @@ import { PdfThumbnail, openPdfPanel } from "./pdf-viewer";
 import { isDrawingFormat, isModelName, modelFormatOf } from "@/lib/model-formats";
 import { isHtmlName } from "@/lib/html-files";
 import { isPreviewableSheet, isSheetName, sheetKindOf } from "@/lib/sheet-files";
+import { isOfficeName, isPresentationKind, isPreviewableOffice, officeKindOf } from "@/lib/office-files";
 import { Modal } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,7 +15,9 @@ import {
   File as FileIcon,
   FileAudio,
   FileCsv,
+  FileDoc,
   FileHtml,
+  FilePpt,
   FileVideo,
   FileXls,
   Images,
@@ -257,6 +260,7 @@ export function MediaLibrary({
               data-model={item.kind === "model" || isModelName(item.name) ? item.name : undefined}
               data-html={isHtmlName(item.name) ? item.name : undefined}
               data-sheet={isPreviewableSheet(item.name) ? item.name : undefined}
+              data-office={isPreviewableOffice(item.name) ? item.name : undefined}
             >
               {item.kind === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -275,6 +279,8 @@ export function MediaLibrary({
                 <FileHtml size={36} weight="duotone" />
               ) : isSheetName(item.name) ? (
                 sheetKindOf(item.name) === "csv" ? <FileCsv size={36} weight="duotone" /> : <FileXls size={36} weight="duotone" />
+              ) : isOfficeName(item.name) ? (
+                isPresentationKind(officeKindOf(item.name)) ? <FilePpt size={36} weight="duotone" /> : <FileDoc size={36} weight="duotone" />
               ) : (
                 <FileIcon size={36} />
               )}

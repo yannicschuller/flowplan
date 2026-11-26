@@ -1,0 +1,354 @@
+/* ---------- Office preview (#562, components/office-viewer-dialog.tsx) ----------
+   Loaded with the viewer, on top of the 3D viewer's frame (viewer3d.css).
+   A presentation: one slide at a time on a card in the proportions of a
+   slide (taller when its text needs it), the list of slides beside it on
+   wide screens, the pager below. A text document: one scrolling page.
+   List levels are classes (office-level-0 … 8), never style attributes. */
+.office-viewer:focus {
+  outline: none;
+}
+.office-viewer-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.office-viewer-note svg {
+  flex-shrink: 0;
+}
+.office-viewer-stage {
+  background: var(--bg);
+}
+.office-viewer-problem {
+  flex-direction: column;
+  gap: 14px;
+}
+.office-viewer-problem p {
+  max-width: 420px;
+  margin: 0;
+}
+
+.office-slides {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.office-outline {
+  flex: 0 0 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.office-outline ol {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+}
+.office-outline button {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.office-outline button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.office-outline button[aria-current="true"] {
+  background: var(--blue-light);
+  color: var(--accent-strong, var(--text));
+  font-weight: 600;
+}
+.office-outline button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.office-outline-number {
+  flex: 0 0 22px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.office-outline-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.office-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 28px 24px 40px;
+  /* A sideways swipe turns the slide; scrolling stays vertical. */
+  touch-action: pan-y pinch-zoom;
+}
+.office-slides .office-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.office-scroll:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.office-slide,
+.office-page {
+  box-sizing: border-box;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 8%, transparent);
+  overflow-wrap: anywhere;
+}
+.office-slide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 920px;
+  aspect-ratio: 16 / 9;
+  padding: 40px 48px;
+  font-size: 18px;
+  line-height: 1.45;
+}
+.office-page {
+  max-width: 780px;
+  padding: 48px 56px;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.office-slide-title {
+  margin: 0 0 12px;
+  font-size: 28px;
+  line-height: 1.25;
+}
+.office-heading {
+  margin: 1.1em 0 0.4em;
+  line-height: 1.3;
+}
+.office-heading:first-child {
+  margin-top: 0;
+}
+.office-h1 {
+  font-size: 1.75em;
+}
+.office-h2 {
+  font-size: 1.4em;
+}
+.office-h3 {
+  font-size: 1.2em;
+}
+.office-h4,
+.office-h5,
+.office-h6 {
+  font-size: 1.05em;
+}
+.office-paragraph {
+  margin: 0 0 0.55em;
+  white-space: pre-wrap;
+}
+.office-slide .office-paragraph {
+  margin-bottom: 0.25em;
+}
+.office-item {
+  display: flex;
+  gap: 0.55em;
+}
+.office-marker {
+  flex: 0 0 auto;
+  min-width: 0.9em;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.office-item-text {
+  min-width: 0;
+}
+.office-level-1 {
+  margin-left: 1.5em;
+}
+.office-level-2 {
+  margin-left: 3em;
+}
+.office-level-3 {
+  margin-left: 4.5em;
+}
+.office-level-4 {
+  margin-left: 6em;
+}
+.office-level-5,
+.office-level-6,
+.office-level-7,
+.office-level-8 {
+  margin-left: 7.5em;
+}
+.office-slide .office-level-1,
+.office-slide .office-level-2,
+.office-slide .office-level-3,
+.office-slide .office-level-4,
+.office-slide .office-level-5,
+.office-slide .office-level-6,
+.office-slide .office-level-7,
+.office-slide .office-level-8 {
+  font-size: 0.9em;
+}
+.office-table-wrap {
+  max-width: 100%;
+  margin: 0.4em 0 0.9em;
+  overflow-x: auto;
+}
+.office-table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+.office-table td {
+  min-width: 60px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+.office-table tr:first-child td {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  font-weight: 600;
+}
+.office-image {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  margin: 0.6em auto;
+  border-radius: 6px;
+  object-fit: contain;
+}
+.office-image-missing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0.6em 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.office-empty {
+  margin: auto;
+  color: var(--secondary);
+  font-size: 15px;
+}
+.office-notes {
+  box-sizing: border-box;
+  max-width: 920px;
+  margin: 16px auto 0;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.office-notes summary {
+  color: var(--secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.office-notes summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.office-notes p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.office-pager {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.office-pager-count {
+  min-width: 72px;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .office-outline {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .office-viewer-note {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .office-scroll {
+    padding: 14px 12px 24px;
+  }
+  .office-slide {
+    aspect-ratio: auto;
+    min-height: 56%;
+    padding: 20px 18px;
+    font-size: 15px;
+  }
+  .office-slide-title {
+    font-size: 21px;
+  }
+  .office-page {
+    padding: 22px 18px;
+    font-size: 15px;
+  }
+  .office-level-1 {
+    margin-left: 1em;
+  }
+  .office-level-2 {
+    margin-left: 2em;
+  }
+  .office-level-3,
+  .office-level-4,
+  .office-level-5,
+  .office-level-6,
+  .office-level-7,
+  .office-level-8 {
+    margin-left: 3em;
+  }
+  .office-pager {
+    min-height: 52px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .office-pager .viewer3d-tool {
+    min-width: 44px;
+    min-height: 40px;
+  }
+}

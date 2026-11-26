@@ -2668,6 +2668,10 @@ SheetPreviewQuery = TypedDict("SheetPreviewQuery", {
     "sheet": int,  # Sheet number, from 0 (default 0)
 }, total=False)
 
+OfficePreviewImageQuery = TypedDict("OfficePreviewImageQuery", {
+    "name": Required[str],  # The picture's part name from the preview
+}, total=False)
+
 UploadFileForm = TypedDict("UploadFileForm", {
     "pageId": Required[str],
     "rowId": str,
@@ -3377,6 +3381,14 @@ class FlowplanClient:
     def sheet_preview(self, file_id: str, query: Optional["SheetPreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Cells of a spreadsheet file — The same access as the download. Only files named `.csv` or `.xlsx`, up to 20 MB (larger: 413; `.xls` and other files: 415; an unreadable file: 422). The names of the workbook's visible sheets and, of sheet `sheet` (from 0), the first 5,000 rows and 200 columns as the text the spreadsheet shows: numbers as stored, numbers with a date format as ISO dates, booleans as TRUE/FALSE, formulas as their saved value; `truncated` says more was left out. A CSV's delimiter is guessed; its encoding is UTF-8 (with or without byte order mark), UTF-16 with one, else Windows-1252. (GET /api/files/{fileId}/sheet)"""
         return self._json("GET", "/api/files/" + _p(file_id) + "/sheet", query=dict(query) if query else None, headers=headers)
+
+    def office_preview(self, file_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Content of a presentation or text document — The same access as the download. Only files named `.pptx`, `.odp`, `.docx` or `.odt`, up to 20 MB (larger: 413; `.ppt`, `.doc` and other files: 415; an unreadable file: 422). Not the layout: a presentation's visible slides in their order, each with its title, its paragraphs with list levels, tables (cell text), pictures and speaker notes; a text document's headings, paragraphs, bulleted and numbered list items with their levels, tables and pictures, in order. At most 500 slides, 10,000 blocks, 500,000 characters and 500 pictures, tables up to 500 rows × 50 columns; `truncated` says more was left out. Pictures are listed only as PNG, JPEG, GIF or WebP. (GET /api/files/{fileId}/office)"""
+        return self._json("GET", "/api/files/" + _p(file_id) + "/office", headers=headers)
+
+    def office_preview_image(self, file_id: str, query: "OfficePreviewImageQuery", headers: Optional[dict[str, str]] = None) -> bytes:
+        """A picture of a presentation or text document — The same access as the download. Only a picture that `GET /api/files/{fileId}/office` lists (others: 404), with its type taken from its bytes: PNG, JPEG, GIF or WebP (anything else: 415), at most 20 MB. (GET /api/files/{fileId}/office/image)"""
+        return self._bytes("GET", "/api/files/" + _p(file_id) + "/office/image", query=dict(query) if query else None, headers=headers)
 
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
         """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload)"""

@@ -41,6 +41,7 @@
     "components/notebook/notebook-presentation.tsx",
     "components/notebook/notebook-view.tsx",
     "components/notebook/sticker-panel.tsx",
+    "components/office-viewer-dialog.tsx",
     "components/offline-queue.tsx",
     "components/page-activity.tsx",
     "components/page-comment.tsx",
