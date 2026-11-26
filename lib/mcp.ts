@@ -3,6 +3,7 @@
 // exactly their rights: reads go through requirePage, the journal lock and
 // record access; writes go through command() like an edit in the browser
 // (versions, notifications, webhooks). Read tokens only get read tools.
+import { workspaceNavigation } from "./workspace-navigation-server";
 import { isMultiPerson } from "./person-values";
 import { moduleOff, moduleOffError, modulesOff, toolModule } from "./instance-modules";
 import { randomBytes } from "node:crypto";
@@ -112,6 +113,7 @@ async function workspaces(user: Identity) {
     user.id,
   ), async (w) => {
     const visible = new Set((await readablePages(user, w.id)).map((p) => p.space_id));
+    const nav = await workspaceNavigation(w.id);
     return {
       id: w.id,
       name: w.name,
@@ -124,8 +126,9 @@ async function workspaces(user: Identity) {
           id: s.id,
           name: s.name,
           visibility: s.visibility,
-          // Shown as a library of books (#329): get_library lists them.
-          library: !!s.library,
+          // Shown as a library of books (#329): get_library lists them –
+          // every space when the workspace is one (#564).
+          library: !!s.library || nav.library,
           role: await spaceRole(user, s) || "viewer",
         })),
     };

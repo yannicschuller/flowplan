@@ -19,6 +19,7 @@ import { HomeEnvContext, WidgetBody, WidgetFrame, widgetHidden, type HomeEnv, ty
 import { localDay, localZone } from "./format";
 import { headerStyle } from "./look";
 import { HOME_WIDGET_MODULE, moduleShownIn } from "@/lib/feature-modules";
+import { placeShownIn, widgetPlace } from "@/lib/workspace-navigation";
 import { useHiddenModules } from "@/lib/feature-modules-client";
 import { useMasonry } from "../use-masonry";
 
@@ -214,6 +215,7 @@ export default function HomeScreen(props: HomeProps) {
               isAdmin={boot.user.isAdmin}
               pages={props.pages}
               spaces={boot.spaces}
+              navigation={boot.navigation}
               onDone={finish}
               onError={notifyError}
             />
@@ -240,8 +242,9 @@ export default function HomeScreen(props: HomeProps) {
               <div className="home-grid-wrap">
                 <div className="home-grid" ref={gridRef}>
                   {layout.widgets
-                    // Widgets of a switched-off feature (#378) wait in the layout.
-                    .filter((w) => !widgetHidden(w, env) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[w.kind]))
+                    // Widgets of a switched-off feature (#378) or of a place
+                    // the workspace hides (#564) wait in the layout.
+                    .filter((w) => !widgetHidden(w, env) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[w.kind]) && placeShownIn(boot.navigation, widgetPlace(w)))
                     .map((w) => (
                       <WidgetFrame key={w.id} widget={w}>
                         <WidgetBody widget={w} />

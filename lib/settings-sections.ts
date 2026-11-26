@@ -390,10 +390,21 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "workspace",
     icon: "SlidersHorizontal",
     title: { de: "Allgemein", en: "General" },
-    description: { de: "Name und Symbol, E-Mail-Eingang, Verlassen und Löschen.", en: "Name and icon, inbound e-mail, leaving and deleting." },
-    keywords: { de: "arbeitsbereich name symbol icon emoji bild e-mail-eingang webhook imap verlassen löschen gefahrenzone", en: "workspace name icon emoji image inbound email webhook imap leave delete danger zone" },
+    description: { de: "Name und Symbol, Bibliothek, E-Mail-Eingang, Verlassen und Löschen.", en: "Name and icon, library, inbound e-mail, leaving and deleting." },
+    keywords: {
+      de: "arbeitsbereich name symbol icon emoji bild bibliothek handbuch e-mail-eingang webhook imap verlassen löschen gefahrenzone",
+      en: "workspace name icon emoji image library handbook inbound email webhook imap leave delete danger zone",
+    },
     entries: [
       { title: { de: "Name & Symbol des Arbeitsbereichs", en: "Workspace name & icon" }, anchor: "identity" },
+      {
+        title: { de: "Arbeitsbereich als Bibliothek", en: "Workspace as library" },
+        keywords: {
+          de: "bibliothek regale bücher handbuch wissensbasis wiki ausblenden seitenleiste meine aufgaben journal lernen graph",
+          en: "library shelves books handbook knowledge base wiki hide sidebar my tasks journal study graph",
+        },
+        anchor: "library-mode",
+      },
       { title: { de: "E-Mail-Eingang", en: "Inbound e-mail" }, keywords: { de: "weiterleiten mailgun postmark", en: "forward mailgun postmark" }, anchor: "inbound-mail", level: "expert" },
       { title: { de: "Arbeitsbereich verlassen", en: "Leave workspace" }, anchor: "danger" },
       { title: { de: "Arbeitsbereich löschen", en: "Delete workspace" }, anchor: "danger" },

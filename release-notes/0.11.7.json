@@ -109,6 +109,13 @@
       "issues": [
         560
       ]
+    },
+    {
+      "de": "Arbeitsbereich als Bibliothek (Einstellungen → Arbeitsbereich → Allgemein): Alle Bereiche erscheinen als Regale mit Büchern, etwa für ein Handbuch. Meine Aufgaben, Journal, Lernen und Graph lassen sich für alle ausblenden. Nichts wird gelöscht, ausgeschaltet ist alles wie zuvor.",
+      "en": "Workspace as library (Settings → Workspace → General): every space appears as shelves of books, e.g. for a handbook. My tasks, Journal, Study and Graph can be hidden for everyone. Nothing is deleted; switched off, everything is as before.",
+      "issues": [
+        564
+      ]
     }
   ]
 }

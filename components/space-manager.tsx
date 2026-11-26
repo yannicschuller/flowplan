@@ -7,6 +7,7 @@ import { SpaceGitExport } from "./space-git-export";
 import { useState } from "react";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import type { Space } from "@/lib/types";
+import { ownLibrary } from "@/lib/workspace-navigation";
 import { api, Modal } from "./ui";
 export function SpaceManager({
   space,
@@ -29,7 +30,9 @@ export function SpaceManager({
     [color, setColor] = useState(space.icon_color || "none"),
     [name, setName] = useState(space.name),
     [visibility, setVisibility] = useState(space.visibility),
-    [library, setLibrary] = useState(!!space.library),
+    // The space's own choice, also while the workspace shows every space
+    // as a library (#564: then `own_library`).
+    [library, setLibrary] = useState(ownLibrary(space)),
     [confirmation, setConfirmation] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -169,6 +172,14 @@ export function SpaceManager({
                       "Pages at the top of the space become books, their sub-pages chapters. The sidebar then shows just “Open library” – the page tree can still be expanded.",
                     )}
                   </small>
+                  {space.own_library !== undefined && (
+                    <small className="space-library-workspace">
+                      {t(
+                        "Der Arbeitsbereich zeigt gerade alle Bereiche als Bibliothek. Deine Wahl hier gilt, sobald das ausgeschaltet ist.",
+                        "The workspace currently shows every space as a library. Your choice here applies once that is switched off.",
+                      )}
+                    </small>
+                  )}
                 </span>
               </label>
             )}

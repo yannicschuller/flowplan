@@ -1,5 +1,6 @@
 "use client";
-// Settings → Arbeitsbereich → Allgemein: name and icon, inbound e-mail
+// Settings → Arbeitsbereich → Allgemein: name and icon, the workspace as a
+// library (#564), inbound e-mail
 // (owners), and – in the danger zone at the end – leaving and deleting.
 import { useState } from "react";
 import { useT } from "../../i18n";
@@ -8,6 +9,7 @@ import { WorkspaceIconPicker } from "../../workspace-icon";
 import { InboundMailSettings } from "../../inbound-mail-settings";
 import { WorkspaceLifecycle } from "../../workspace-lifecycle";
 import { useUserSettings } from "../user-context";
+import { WorkspaceLibrarySettings } from "./workspace-library";
 
 export default function WorkspaceSection() {
   const t = useT();
@@ -63,6 +65,8 @@ export default function WorkspaceSection() {
           </SettingRow>
         </form>
       </SettingGroup>
+      {/* The workspace as a library (#564): members see what applies. */}
+      {!boot.workspace.guest && <WorkspaceLibrarySettings />}
       {owner && <InboundMailSettings workspaceId={boot.workspace.id} pages={boot.pages} onError={onError} />}
       <WorkspaceLifecycle key={boot.workspace.id} boot={boot} onExit={onWorkspaceExit} />
     </>

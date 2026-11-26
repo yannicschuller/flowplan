@@ -42724,3 +42724,30 @@ td > span > .required-missing:only-child {
     max-width: none;
   }
 }
+/* The workspace as a library (#564, components/settings/user/workspace-library.tsx):
+   the places' heading, the question when it is switched on, and the note in
+   a space's settings while the workspace overrides its choice. */
+.setting-rows > .setting-note.ws-library-places {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.ws-library-confirm {
+  display: grid;
+  gap: 12px;
+}
+.ws-library-confirm > p {
+  margin: 0;
+  line-height: 1.5;
+}
+.ws-library-confirm > fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.space-library-toggle small.space-library-workspace {
+  color: var(--secondary);
+}

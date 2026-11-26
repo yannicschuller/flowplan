@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 139;
+export const SCHEMA_VERSION = 140;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1712,6 +1712,9 @@ function migrate(d: DatabaseSync) {
   migrateModelRuleChoice(d);
   // Schema 139 – the default of a choice: smallest or most capable (lib/ai/model-policy.ts).
   migrateModelRuleDefault(d);
+  // Schema 140 – the workspace as a library and its hidden places (#564,
+  // lib/workspace-navigation.ts).
+  migrateWorkspaceNavigation(d);
   // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
   // a new nullable column an older version leaves alone, so the schema
   // number stays.
@@ -1721,6 +1724,14 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 140 – workspaces.navigation (#564, lib/workspace-navigation.ts):
+// JSON { library, hidden }, NULL = every space as it is set, every place of
+// the sidebar shown. An older version would show the spaces as they are
+// set and every place, hence the number.
+function migrateWorkspaceNavigation(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "navigation"))
+    d.exec("ALTER TABLE workspaces ADD COLUMN navigation TEXT");
 }
 // Schema 139 – ai_model_rules.default_model (lib/ai/model-policy.ts): on a
 // rule with the choice ("Bis … – frei wählbar"), which allowed model its

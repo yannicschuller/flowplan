@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { exportNavigation, importNavigation } from "./workspace-navigation-server";
 import { IN_MEMORY_FILE_MB } from "./upload-limit";
 import { exportLook, FONT_LIMITS, importLook, storedTheme } from "./workspace-fonts";
 import { importLinkRules, workspaceLinkRules } from "./auto-link-rules";
@@ -257,6 +258,10 @@ export const archiveSchema = z.object({
   // The workspace's print presets (#215, lib/print-settings.ts), checked
   // preset by preset on import (importPrintPresets).
   printPresets: z.unknown().optional(),
+  // The workspace as a library and its hidden places (#564,
+  // lib/workspace-navigation-server.ts): taken over by an owner into a
+  // workspace that has none yet.
+  navigation: z.unknown().optional(),
   templates: z
     .array(
       z.object({
@@ -524,6 +529,8 @@ async function snapshotFor(user: Identity, wid: string) {
           const print = await workspacePrintPresets(wid);
           return print.presets.length ? { printPresets: print } : {};
         })()),
+    // The workspace as a library (#564), for members.
+    ...((await isGuest(user, wid)) ? {} : await exportNavigation(wid)),
     favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
@@ -800,6 +807,7 @@ export async function jsonExportWorkspace(wid: string) {
     theme: await storedTheme(wid),
     linkRules: await workspaceLinkRules(wid),
     printPresets: await workspacePrintPresets(wid),
+    ...(await exportNavigation(wid)),
   };
 }
 // Streams a workspace archive without holding its files in memory.
@@ -1855,6 +1863,7 @@ async function importEntries(
       }
       omittedSettings.linkRules = (await importLinkRules(user, wid, data.linkRules)).dropped;
       omittedSettings.printPresets = (await importPrintPresets(user, wid, data.printPresets)).dropped;
+      await importNavigation(user, wid, data.navigation);
       await audit(
         user.id,
         "workspace.archive.import",

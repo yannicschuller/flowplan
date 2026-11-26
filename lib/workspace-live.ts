@@ -105,6 +105,15 @@ export function notificationsChanged(userIds: Iterable<string | null | undefined
   ensureTimer();
 }
 
+// Something the sidebar of every member shows changed without moving a
+// version (the workspace as a library, #564): their tabs ask for the
+// bootstrap again.
+export function treeChanged(workspaceId: string) {
+  if (!needed()) return;
+  state.local.trees.add(workspaceId);
+  ensureTimer();
+}
+
 // The maintenance notice or the move state changed (#515): every open tab
 // asks for them again.
 export function instanceNoticesChanged() {

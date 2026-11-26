@@ -21,6 +21,8 @@ import { SPACE_ORDER } from "./space-order";
 import { MARK_START, searchWorkspace, type SearchResult } from "./search-index";
 import { foldText } from "./search-store";
 import type { Identity, Page, Space } from "./types";
+import { spacesAsShown } from "./workspace-navigation";
+import { workspaceNavigation } from "./workspace-navigation-server";
 
 // The pages the person may read among `pages` (stored rows of one
 // workspace): no titles of journals behind a PIN not entered or of
@@ -64,17 +66,23 @@ export async function spaceLibrary(user: Identity, spaceId: string) {
   // A space one may not open, with no page shared from it: not there.
   if (!(await spaceRole(user, space)) && !pages.length) throw new HttpError(404, "Bereich nicht gefunden.");
   return {
-    space: { id: space.id, name: space.name, library: !!space.library },
+    // As it shows: with the workspace as a library (#564) every space is one.
+    space: { id: space.id, name: space.name, library: !!space.library || (await workspaceNavigation(space.workspace_id)).library },
     books: libraryBooks(pages, space.id).map((book) => bookFull(book)),
   };
 }
 
 // The spaces shown as a library that the person sees (they may open the
 // space or a page of it is shared with them) and their readable pages: two
-// queries for all shelves, whatever their size.
+// queries for all shelves, whatever their size. With the workspace as a
+// library (#564, lib/workspace-navigation.ts) every space is a shelf.
 export async function libraryPages(user: Identity, workspaceId: string) {
   await requireMember(user, workspaceId);
-  const spaces = await all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL AND library=1 ORDER BY ${SPACE_ORDER}`, workspaceId);
+  const nav = await workspaceNavigation(workspaceId);
+  const spaces = spacesAsShown(
+    await all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL${nav.library ? "" : " AND library=1"} ORDER BY ${SPACE_ORDER}`, workspaceId),
+    nav,
+  );
   if (!spaces.length) return { spaces, pages: [] as Page[] };
   const pages = await readable(
     user,

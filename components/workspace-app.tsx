@@ -355,6 +355,7 @@ import { setToolbarLayoutFromServer } from "@/lib/toolbar-layout-client";
 import { setSettingsLevelFromServer } from "@/lib/settings-level-client";
 import { primeFeatureModules, setFeatureModulesFromServer, useFeatureModules } from "@/lib/feature-modules-client";
 import { moduleShownIn, PAGE_KIND_MODULE, type FeatureModule } from "@/lib/feature-modules";
+import { placeShownIn, type WorkspacePlace } from "@/lib/workspace-navigation";
 import { setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { motionAttribute, motionPrefOf } from "@/lib/motion-pref";
 import { setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -519,6 +520,9 @@ type CommandAction = {
   run: () => void;
   // The feature it belongs to: left out while that is switched off (#378).
   module?: FeatureModule;
+  // The place of the sidebar it leads to: left out while the workspace
+  // hides it (#564).
+  place?: WorkspacePlace;
 };
 // One row of the command palette: a search hit, a recently viewed page or a
 // command. The id names the option for aria-activedescendant.
@@ -777,6 +781,10 @@ export default function WorkspaceApp({
   useEffect(() => setFeatureModulesFromServer(boot.modules), [boot.modules]);
   const { effective: hiddenModules, off: offModules } = useFeatureModules();
   const featureShown = (module: FeatureModule | undefined) => moduleShownIn(hiddenModules, module);
+  // The sidebar's places the workspace does without (#564,
+  // lib/workspace-navigation.ts): their entries go, their screens still
+  // open from links.
+  const placeShown = (place: WorkspacePlace | undefined) => placeShownIn(boot.navigation, place);
   const uiAi = featureShown("ai") ? boot.ai : undefined;
   // "Animationen" (#260, lib/motion-pref.ts): data-motion on <html>, which
   // menus and dialogs outside the app's root follow; the root carries it
@@ -2642,7 +2650,7 @@ export default function WorkspaceApp({
         startPresentation();
         break;
       case "journalToday":
-        if (featureShown("journal")) openLastJournalToday();
+        if (featureShown("journal") && placeShown("journal")) openLastJournalToday();
         break;
       case "foldAll":
       case "unfoldAll":
@@ -2655,7 +2663,7 @@ export default function WorkspaceApp({
         goForward();
         break;
       case "study":
-        if (featureShown("flashcards")) go("study");
+        if (featureShown("flashcards") && placeShown("study")) go("study");
         break;
     }
   };
@@ -4305,6 +4313,7 @@ export default function WorkspaceApp({
       icon: CalendarCheck,
       run: () => void openJournalToday(journal.id),
       module: "journal" as const,
+      place: "journal" as const,
     })),
     { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook"), module: PAGE_KIND_MODULE.notebook },
     ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow"), module: PAGE_KIND_MODULE.workflow }]),
@@ -4331,14 +4340,14 @@ export default function WorkspaceApp({
       },
     },
     { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
-    { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
+    { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks"), place: "tasks" },
     { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     ...(hasLibrary ? [{ label: t("Bibliothek öffnen", "Open library"), keywords: t("bibliothek regale bücher wissen", "bibliothek regale bücher library shelves books knowledge"), icon: Books, run: openLibraryHome }] : []),
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
-    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards" },
+    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards", place: "study" },
     // Each deck with something left today (#study's counts, loaded when the
     // palette opens).
-    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || t("Ohne Titel", "Untitled")}`, `Study: ${d.title || t("Ohne Titel", "Untitled")}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const })),
+    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || t("Ohne Titel", "Untitled")}`, `Study: ${d.title || t("Ohne Titel", "Untitled")}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const, place: "study" as const })),
     // From the open page (a deck: into it), else from pasted text or a file.
     ...(aiUsable(uiAi, "flashcards") && !boot.workspace.guest && featureShown("flashcards")
       ? [
@@ -4357,7 +4366,7 @@ export default function WorkspaceApp({
           },
         ]
       : []),
-    { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
+    { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph"), place: "graph" },
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
@@ -4461,7 +4470,7 @@ export default function WorkspaceApp({
   const shownActions =
     query.startsWith(">") || commandQuery.length >= 2
       ? commandActions
-          .filter((a) => featureShown(a.module))
+          .filter((a) => featureShown(a.module) && placeShown(a.place))
           .filter((a) => !commandQuery || normalizeCommand(`${a.label} ${a.keywords}`).includes(commandQuery))
           .slice(0, query.startsWith(">") ? 20 : 4)
       : [];
@@ -4576,11 +4585,13 @@ export default function WorkspaceApp({
   const sidebarTools: SidebarTool[] = [
     { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => setTemplates(true) },
     { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
-    ...(featureShown("flashcards") || screen === "study"
+    ...((featureShown("flashcards") && placeShown("study")) || screen === "study"
       ? [{ id: "study", label: t("Lernen", "Study"), title: t("Lernkarten: fällige Karten", "Flashcards: due cards") + hint("study"), icon: Cards, selected: screen === "study", onSelect: () => go("study") }]
       : []),
     { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
-    { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
+    ...(placeShown("graph") || screen === "graph"
+      ? [{ id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") }]
+      : []),
     { id: "trash", label: t("Papierkorb", "Trash"), icon: Trash, selected: screen === "trash", onSelect: () => go("trash") },
     { id: "settings", label: t("Einstellungen", "Settings"), icon: GearSix, selected: screen === "settings", onSelect: () => go("settings") },
     {
@@ -4824,6 +4835,8 @@ export default function WorkspaceApp({
                 </span>
               )}
             </button>
+            {/* Hidden by the workspace (#564) – while open, it stays. */}
+            {(placeShown("tasks") || screen === "tasks") && (
             <button title={navCompact ? t("Meine Aufgaben", "My tasks") : undefined}
               className={screen === "tasks" ? "selected" : ""}
               data-open-place=""
@@ -4848,6 +4861,7 @@ export default function WorkspaceApp({
                 </span>
               )}
             </button>
+            )}
             <button
               className="main-nav-toggle"
               aria-expanded={!navCompact}

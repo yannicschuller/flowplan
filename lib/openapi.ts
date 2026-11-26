@@ -5,6 +5,7 @@
 // described by hand from the route handlers in app/api. Served at
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
+import { WORKSPACE_PLACES } from "./workspace-navigation";
 import { workspaceThemeSchema } from "./workspace-theme";
 import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
@@ -339,6 +340,21 @@ export const commandActions: ActionDoc[] = [
     summary: "Create a workspace",
     input: z.object({ action: z.literal("workspace.create"), name: str }),
     result: idResult,
+  },
+  {
+    action: "workspace.update",
+    summary: "Change a workspace's name, icon or library mode",
+    description:
+      "Needs the owner role. Fields left out keep their value. `library`: show every space of the workspace as a library (shelves of books, also spaces created later) without changing the spaces' own `library` – switched off, each space shows as it is set. `hidden`: places of the sidebar the workspace does without for every member (tasks: My tasks, journal: “Journal: Today”, study: flashcard study, graph: the graph of links) – their entries in the sidebar, the quick search and the start page's widgets go; nothing is deleted and their addresses still open. With either field the answer carries the new `navigation`. Members get it in the bootstrap (`navigation`); there the spaces carry `library: 1` while the workspace is a library and their own choice in `own_library`.",
+    input: z.object({
+      action: z.literal("workspace.update"),
+      workspaceId: uuid,
+      name: str.optional(),
+      icon: z.string().max(150_000).optional(),
+      library: z.boolean().optional().describe("Show every space as a library"),
+      hidden: z.array(z.enum(WORKSPACE_PLACES)).max(WORKSPACE_PLACES.length).optional().describe("Sidebar places hidden for every member"),
+    }),
+    result: z.object({ ok: z.literal(true), navigation: z.object({ library: z.boolean(), hidden: z.array(z.enum(WORKSPACE_PLACES)) }).optional() }),
   },
   {
     action: "workspace.theme",

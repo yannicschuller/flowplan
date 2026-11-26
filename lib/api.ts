@@ -24,6 +24,8 @@ import { adminResetFeatureModules, applyModulesToAll, setUserFeatureModules, use
 import { addedOffViews, kindModule, moduleOff, moduleOffError, modulesOff, pageModule, refuseOffCommand, requireModule } from "./instance-modules";
 import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
+import { importNavigation, saveWorkspaceNavigation, workspaceNavigation } from "./workspace-navigation-server";
+import { spacesAsShown } from "./workspace-navigation";
 import { importPrintPresets, saveWorkspacePrintPresets, setUserPrintSettings, userPrintSettings, workspacePrintPresets } from "./print-settings";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
@@ -407,12 +409,13 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     theme?: string | null;
     link_rules?: string | null;
     print_presets?: string | null;
+    navigation?: string | null;
   }>(
     "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
     // The look and the link rules come once, parsed, for the open
     // workspace (`look` and `linkRules` below).
-  )).map(({ theme: _theme, link_rules: _rules, print_presets: _print, ...w }) => w);
+  )).map(({ theme: _theme, link_rules: _rules, print_presets: _print, navigation: _navigation, ...w }) => w);
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
@@ -425,6 +428,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
   // Guests only see themselves; members see who is a guest.
   const { members, tag: membersTag } = await workspaceMembers(user, workspace.id, guestHere);
+  // The workspace as a library and its hidden places (#564).
+  const navigation = await workspaceNavigation(workspace.id);
   return withKeptParts({
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
@@ -495,8 +500,12 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     journalDayTitle: await journalDayTitleFormats(workspace.id),
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
+    // The workspace as a library (#564, lib/workspace-navigation.ts): every
+    // space shown as one, its own choice in own_library; the sidebar's
+    // places the workspace hides.
+    navigation,
     // In the workspace's order (lib/space-order.ts).
-    spaces: await visibleSpaces(user, workspace.id, visibleSpaceIds),
+    spaces: spacesAsShown(await visibleSpaces(user, workspace.id, visibleSpaceIds), navigation),
     trashedSpaces: await filterAsync(await all<Space>(
       `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
@@ -1403,6 +1412,9 @@ async function runCommand(
             );
           await run("UPDATE workspaces SET icon=? WHERE id=?", icon, wid());
         }
+        // "Arbeitsbereich als Bibliothek" and the hidden places (#564).
+        if (b.library !== undefined || b.hidden !== undefined)
+          result = { ok: true, navigation: await saveWorkspaceNavigation(user, wid(), { library: b.library, hidden: b.hidden }) };
         break;
       }
       case "workspace.delete":
@@ -1479,7 +1491,7 @@ async function runCommand(
             format: z.literal("flowplan-1"),
             // Look and link rules (#196, #202): exports from before have
             // none; checked like the ZIP archive's further down.
-            workspace: z.object({ theme: z.unknown().optional(), linkRules: z.unknown().optional(), printPresets: z.unknown().optional() }).optional(),
+            workspace: z.object({ theme: z.unknown().optional(), linkRules: z.unknown().optional(), printPresets: z.unknown().optional(), navigation: z.unknown().optional() }).optional(),
             pages: z
               .array(
                 z.object({
@@ -1659,6 +1671,9 @@ async function runCommand(
         // archive (lib/archive.ts): owners only, a look only into a
         // workspace without one, rules added; invalid ones are counted.
         const look = backup.workspace?.theme ? await importLook(user, wid(), { theme: backup.workspace.theme, fonts: [] }) : { droppedTheme: false };
+        // The workspace as a library (#564): like the look, into a
+        // workspace without one of its own.
+        await importNavigation(user, wid(), backup.workspace?.navigation);
         result = {
           pages: backup.pages.length,
           pageIds: Object.fromEntries(mapped),

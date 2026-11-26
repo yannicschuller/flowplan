@@ -75,6 +75,10 @@ export type Space = {
   version?: number;
   // 1: shown as a library of books (#329, lib/library.ts).
   library?: number;
+  // In the bootstrap while the workspace shows every space as a library
+  // (#564, lib/workspace-navigation.ts): `library` is then 1 and this the
+  // space's own choice (what its settings show and save).
+  own_library?: number;
 };
 export type Page = {
   id: string;
@@ -390,6 +394,9 @@ export type Bootstrap = {
   startScreen?: import("./start-screen").StartScreen;
   // "Neuigkeiten nach Updates" (#223, lib/user-update-notes.ts).
   updateNotes?: import("./update-notes-pref").UpdateNotesBoot;
+  // The workspace as a library and the sidebar's places it hides (#564,
+  // lib/workspace-navigation.ts); missing from older servers: neither.
+  navigation?: import("./workspace-navigation").WorkspaceNavigation;
   spaces: Space[];
   trashedSpaces?: Space[];
   // Days in the trash before deletion for good (0 = never; lib/trash.ts).

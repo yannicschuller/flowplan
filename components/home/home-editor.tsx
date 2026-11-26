@@ -25,6 +25,7 @@ import {
 import { safeCollisionPadding } from "../safe-area";
 import { useT } from "../i18n";
 import { HOME_WIDGET_MODULE, moduleShownIn, QUICK_ACTION_MODULE } from "@/lib/feature-modules";
+import { HOME_WIDGET_PLACE, placeShownIn, type WorkspaceNavigation } from "@/lib/workspace-navigation";
 import { useHiddenModules } from "@/lib/feature-modules-client";
 import { api, Modal } from "../ui";
 import { Select } from "../select";
@@ -69,6 +70,7 @@ export default function HomeEditor({
   isAdmin,
   pages,
   spaces,
+  navigation,
   onDone,
   onError,
 }: {
@@ -79,6 +81,8 @@ export default function HomeEditor({
   isAdmin: boolean;
   pages: Page[];
   spaces: Space[];
+  // The places the workspace hides (#564): their widgets are not offered.
+  navigation?: WorkspaceNavigation;
   onDone: (home?: HomeState) => void;
   onError: (error: unknown) => void;
 }) {
@@ -410,7 +414,7 @@ export default function HomeEditor({
         </div>
       </div>
       {!widgets.length && <p className="home-empty home-edit-empty">{t("Die Startseite ist leer – füge ein Widget hinzu.", "The home page is empty – add a widget.")}</p>}
-      {gallery && <Gallery widgets={widgets} isAdmin={isAdmin} onAdd={add} onClose={() => setGallery(false)} />}
+      {gallery && <Gallery widgets={widgets} isAdmin={isAdmin} navigation={navigation} onAdd={add} onClose={() => setGallery(false)} />}
       {editing && (
         <WidgetSettings
           key={editing.id}
@@ -455,7 +459,7 @@ export default function HomeEditor({
 
 // ---- Gallery ----
 
-function Gallery({ widgets, isAdmin, onAdd, onClose }: { widgets: HomeWidget[]; isAdmin: boolean; onAdd: (kind: HomeWidgetKind) => void; onClose: () => void }) {
+function Gallery({ widgets, isAdmin, navigation, onAdd, onClose }: { widgets: HomeWidget[]; isAdmin: boolean; navigation?: WorkspaceNavigation; onAdd: (kind: HomeWidgetKind) => void; onClose: () => void }) {
   const t = useT();
   const full = widgets.length >= MAX_HOME_WIDGETS;
   const groups: WidgetGroup[] = ["overview", "plan", "write", "tools"];
@@ -469,7 +473,7 @@ function Gallery({ widgets, isAdmin, onAdd, onClose }: { widgets: HomeWidget[]; 
           <h3>{t(groupNames[group].de, groupNames[group].en)}</h3>
           <div className="home-gallery-grid">
             {homeWidgetKinds
-              .filter((kind) => widgetMeta[kind].group === group && (!widgetMeta[kind].adminOnly || isAdmin) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[kind]))
+              .filter((kind) => widgetMeta[kind].group === group && (!widgetMeta[kind].adminOnly || isAdmin) && moduleShownIn(hiddenModules, HOME_WIDGET_MODULE[kind]) && placeShownIn(navigation, HOME_WIDGET_PLACE[kind]))
               .map((kind) => {
                 const meta = widgetMeta[kind];
                 const taken = !!meta.single && widgets.some((w) => w.kind === kind);
