@@ -155,6 +155,9 @@ export async function register() {
     // Operations dashboard: refusal counters, daily sweep and health alerts.
     const { startOpsWorker } = await import("./lib/admin-ops");
     startOpsWorker();
+    // The weekly error digest for the administrators (lib/error-digest.ts).
+    const { startErrorDigestWorker } = await import("./lib/error-digest");
+    startErrorDigestWorker();
     // Usage statistics: requests per minute, active people, storage per day
     // (lib/metrics.ts; FLOWPLAN_METRICS=off switches them off).
     const { startMetricsWorker } = await import("./lib/metrics-worker");

@@ -13,6 +13,10 @@
       "issues": [
         571
       ]
+    },
+    {
+      "de": "Serverfehler melden: Unter Überwachung → Fehler im Detail zeigt „GitHub-Issue öffnen“ genau, was ins Issue geht (ohne Fehler-IDs und Hostnamen), „Schon gemeldet?“ sucht die buildunabhängige Signatur. Montags nennt die „Wöchentliche Fehlerübersicht“ neue und wiedergekehrte Fehler.",
+      "en": "Report server errors: under Monitoring → Errors in detail, “Open GitHub issue” shows exactly what goes into the issue (no error IDs or host names), and “Already reported?” searches for its build-independent signature. On Mondays the “Weekly error summary” names new and returning errors."
     }
   ],
   "improvements": [

@@ -3,6 +3,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { ACCOUNT, seedAccount } from "../production-server.mjs";
 import type { Ids } from "./types";
 import { seedInboxNotifications } from "./inbox-seed";
+import { seedErrorGroups } from "./errors-seed";
 import { FIXED_TIME } from "../../tests/visual/shared";
 
 // The visual tests' example content (scripts/production-server.mjs, in its
@@ -99,6 +100,8 @@ export async function seedGallery(api: APIRequestContext, origin: string, { fres
       },
       FIXED_TIME,
     );
+    // An example for the monitoring's error details (errors-seed.ts).
+    seedErrorGroups(dataDir);
   }
 
   return {

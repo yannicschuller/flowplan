@@ -283,3 +283,157 @@ test("the test endpoint exists only in the browser specs' build", () => {
   const failure = readFileSync(join(import.meta.dirname, "../lib/e2e-failure.ts"), "utf8");
   assert.match(failure, /!demoSignInAllowed\(\)\) return null/);
 });
+
+/* ---------- The build-independent signature and the public report ---------- */
+
+const report = await import("../lib/error-report");
+type Frame = import("../lib/error-report").StackFrame;
+const compiled = (fn: string, file: string, line = 1, column = 4711): Frame => ({ fn, file, line, column, mapped: false });
+const baseGroup = {
+  kind: "request" as "request" | "worker" | "job",
+  route: "POST /api/command",
+  action: "row.update",
+  name: "TypeError",
+  message: "Cannot read properties of undefined (reading 'title')",
+  frames: [compiled("Zt", ".next/server/chunks/ssr/[root-of-the-server]__0a1b2c3d._.js")],
+  dbCode: "",
+};
+
+test("message templates: quoted values, numbers, paths, addresses and hosts become placeholders", () => {
+  const cases: [string, string][] = [
+    ['Unexpected token \'a\', "abc secret-value" is not valid JSON', 'Unexpected token "…", "…" is not valid JSON'],
+    ["Unexpected token < in JSON at position 1234", "Unexpected token < in JSON at position N"],
+    ["Expected property name or '}' in JSON at position 1 (line 1 column 2)", 'Expected property name or "…" in JSON at position N (line N column N)'],
+    ['invalid input syntax for type uuid: "anna-customer-42"', 'invalid input syntax for type uuid: "…"'],
+    ['duplicate key value violates unique constraint "pages_pkey"', 'duplicate key value violates unique constraint "…"'],
+    ["ENOENT: no such file or directory, open '/home/anna/data/files/Steuer 2025.pdf'", 'ENOENT: no such file or directory, open "…"'],
+    ["ENOENT: no such file or directory, stat /srv/flowplan/data/report-anna.pdf", "ENOENT: no such file or directory, stat [path]"],
+    ["EACCES: permission denied, mkdir C:\\Users\\anna\\flowplan\\data", "EACCES: permission denied, mkdir [path]"],
+    ["getaddrinfo ENOTFOUND wiki.acme-customer.com", "getaddrinfo ENOTFOUND [url]"],
+    ["connect ECONNREFUSED db.internal:5432", "connect ECONNREFUSED [url]"],
+    ["fetch failed for https://intranet.acme.de/wiki?page=anna", "fetch failed for [url]"],
+    ["request to flowplan.kunde.example:8443 timed out after 30000 ms", "request to [url] timed out after N ms"],
+    ["t.map is not a function", "t.map is not a function"],
+    ["can't use utf8 in v18 for E11000", "can't use utf8 in v18 for E11000"],
+    ['the value "cut off in the midd', 'the value "…"'],
+  ];
+  for (const [raw, expected] of cases) assert.equal(report.messageTemplate(details.scrubMessage(raw)), expected, raw);
+});
+
+test("signature v1: the same for other chunk names, minified functions and builds; different for another place", () => {
+  const sig = (g: Partial<typeof baseGroup>) => details.errorSignature({ ...baseGroup, ...g });
+  const a = sig({});
+  assert.match(a, /^fp-err-v1-[0-9a-f]{16}$/);
+  assert.ok(report.isErrorSignature(a));
+  // Another build: other chunk names and hashes, other minified names, other columns.
+  assert.equal(sig({ frames: [compiled("e", ".next/server/chunks/ssr/[root-of-the-server]__ffee9988._.js", 3, 12), compiled("n", ".next/server/chunks/ssr/lib_api_ts_77aa._.js")] }), a);
+  assert.equal(sig({ frames: [] }), a);
+  // Values in the message do not count; a minified class name neither.
+  assert.equal(sig({ message: "Cannot read properties of undefined (reading 'name')" }), a);
+  assert.equal(sig({ name: "t" }), sig({ name: "Ab" }));
+  // Another route, command, name, kind, database class or message: another signature.
+  for (const other of [{ route: "GET /api/bootstrap" }, { action: "row.create" }, { name: "RangeError" }, { kind: "job" as const }, { dbCode: "PostgreSQL 23505" }, { message: "Invalid time value" }])
+    assert.notEqual(sig(other), a, JSON.stringify(other));
+  // The database code by its class: 23505 and 23503 are both class 23.
+  assert.equal(sig({ dbCode: "PostgreSQL 23505" }), sig({ dbCode: "PostgreSQL 23503" }));
+  assert.equal(sig({ dbCode: "SQLite 2067 (UNIQUE constraint failed)" }), sig({ dbCode: "SQLite 19" }));
+  // A source-mapped frame of the project: its file and function count, not its line.
+  const mapped = (fn: string, line: number): Frame => ({ fn, file: "lib/api.ts", line, column: 3, mapped: true });
+  assert.equal(sig({ frames: [mapped("loadPage", 10)] }), sig({ frames: [mapped("loadPage", 99)] }));
+  assert.notEqual(sig({ frames: [mapped("loadPage", 10)] }), sig({ frames: [mapped("savePage", 10)] }));
+  assert.notEqual(sig({ frames: [mapped("loadPage", 10)] }), a);
+});
+
+test("signature v1 through the capture: two builds, two groups, one signature", async () => {
+  await details.clearErrorDetails();
+  const now = Date.now();
+  const thrown = (chunk: string, fn: string) => {
+    const e = new TypeError("Cannot read properties of undefined (reading 'title')");
+    e.stack = `TypeError: x\n    at ${fn} (${join(process.cwd(), ".next/server/chunks/ssr", chunk)}:1:${chunk.length * 31})`;
+    return e;
+  };
+  details.captureError({ route: "POST /api/command", action: "row.update", status: 500, error: thrown("[root-of-the-server]__0a1b2c._.js", "Zt"), at: now });
+  details.captureError({ route: "POST /api/command", action: "row.update", status: 500, error: thrown("[root-of-the-server]__99ffee._.js", "e"), at: now + 1 });
+  await details.flushErrorDetails(now + 10);
+  const view = await details.errorDetails(now + 20, "24h");
+  assert.equal(view.groups.length, 2);
+  assert.notEqual(view.groups[0].fingerprint, view.groups[1].fingerprint);
+  assert.equal(view.groups[0].signature, view.groups[1].signature);
+});
+
+test("file paths: a home directory outside the project is shortened in the view, dropped in public", () => {
+  assert.equal(details.shortFile("/home/anna/projects/other/x.js"), "~/projects/other/x.js");
+  assert.equal(details.shortFile("/Users/anna/x.js"), "~/x.js");
+  assert.equal(details.shortFile(join(process.cwd(), "lib/api.ts")), "lib/api.ts");
+  const frames = report.publicFrames([
+    { fn: "loadPage", file: "lib/api.ts", line: 12, column: 3, mapped: true },
+    { fn: "Zt", file: ".next/server/chunks/ssr/[root]__0a1b._.js", line: 1, column: 999, mapped: false },
+    { fn: "e", file: ".next/server/chunks/ssr/[root]__0a1b._.js", line: 1, column: 5, mapped: false },
+    { fn: "helper", file: "/home/anna/projects/x.ts", line: 1, column: 1, mapped: true },
+    { fn: "helper", file: "~/projects/x.ts", line: 1, column: 1, mapped: true },
+    { fn: "helper", file: "../outside.ts", line: 1, column: 1, mapped: true },
+    { fn: "route", file: "app/api/[...path]/handler.ts", line: 4, column: 9, mapped: true },
+  ]);
+  assert.deepEqual(frames, ["loadPage (lib/api.ts:12:3)", "[compiled]", "route (app/api/[...path]/handler.ts:4:9)"]);
+});
+
+test("the public report: no request ids, instance or host names, roles, address or occurrences", () => {
+  process.env.APP_URL = "https://flowplan.acme-customer.com";
+  const group = {
+    ...baseGroup,
+    fingerprint: "abcdef0123456789abcd",
+    signature: details.errorSignature(baseGroup),
+    mark: null,
+    message: details.scrubMessage("Cannot read properties of undefined (reading 'title') at flowplan.acme-customer.com for anna@example.com in /home/anna/flowplan/data"),
+    status: 500,
+    count: 7,
+    inRange: 3,
+    firstSeen: Date.UTC(2026, 10, 20, 8, 15),
+    lastSeen: Date.UTC(2026, 10, 25, 17, 40),
+    buckets: [] as [number, number][],
+    frames: [{ fn: "loadPage", file: "lib/api.ts", line: 12, column: 3, mapped: true }, compiled("Zt", ".next/server/chunks/ssr/[root-of-the-server]__0a1b2c._.js")],
+    occurrences: [
+      { at: Date.UTC(2026, 10, 25, 17, 40), requestId: "Req123abc456", status: 500, method: "POST", node: "flowplan-node-7", version: "0.12.1", role: "admin" as const, message: "" },
+      { at: Date.UTC(2026, 10, 24, 9, 0), requestId: "Xyz987qwe654", status: 500, method: "POST", node: "pod-acme-2", version: "0.12.0", role: "member" as const, message: "" },
+    ],
+  };
+  const r = report.publicReport(group, { version: "0.12.1", commit: "0123456789abcdef0123456789abcdef01234567" }, "the last 24 hours");
+  const issue = report.githubIssue(r);
+  const everything = [JSON.stringify(r), report.publicReportText(r), issue.url, decodeURIComponent(issue.url.replace(/\+/g, " ")), JSON.stringify(issue)].join("\n");
+  for (const leak of ["Req123abc456", "Xyz987qwe654", "flowplan-node-7", "pod-acme-2", "acme-customer", "anna", "admin", "member", "Zt", "[root-of-the-server]", "17:40", "2026-11-24"])
+    assert.ok(!everything.includes(leak), `${leak} in the public report`);
+  assert.equal(r.message, 'Cannot read properties of undefined (reading "…") at [url] for [e-mail] in [path]');
+  assert.deepEqual(r.frames, ["loadPage (lib/api.ts:12:3)", "[compiled]"]);
+  assert.equal(r.version, "0.12.1");
+  assert.equal(r.commit, "0123456789ab");
+  assert.equal(r.firstSeen, "2026-11-20");
+  assert.equal(r.lastSeen, "2026-11-25");
+  // The issue: the bug report template, the signature as the last line of its text.
+  const url = new URL(issue.url);
+  assert.equal(url.origin + url.pathname, "https://github.com/yannicschuller/flowplan/issues/new");
+  assert.equal(url.searchParams.get("template"), "bug_report.yml");
+  assert.equal(url.searchParams.get("title"), "Server error: TypeError in POST /api/command · row.update");
+  assert.equal(url.searchParams.get("version"), "0.12.1 (commit 0123456789ab)");
+  assert.equal(url.searchParams.get("what")!.split("\n").at(-1), `Error signature: ${group.signature}`);
+  assert.match(url.searchParams.get("logs")!, /at loadPage \(lib\/api\.ts:12:3\)\n {2}at \[compiled\]/);
+  // The template's field ids exist.
+  const template = readFileSync(join(import.meta.dirname, "../.github/ISSUE_TEMPLATE/bug_report.yml"), "utf8");
+  for (const field of Object.keys(issue.fields)) assert.match(template, new RegExp(`\\n\\s+id: ${field}\\n`), field);
+  // "Schon gemeldet?": GitHub's issue search for the quoted signature.
+  assert.equal(report.githubSearchUrl(group.signature), `https://github.com/yannicschuller/flowplan/issues?q=%22${group.signature}%22`);
+  // The message at most 200 characters.
+  assert.ok(report.publicReport({ ...group, message: "word ".repeat(200) }, { version: "", commit: "" }).message.length <= 200);
+  delete process.env.APP_URL;
+});
+
+test("the issue address is capped: the stack is shortened first, the signature stays", () => {
+  const r = report.publicReport({ ...baseGroup, signature: details.errorSignature(baseGroup), status: 500, count: 1, inRange: 1, firstSeen: 0, lastSeen: 0 }, { version: "0.12.1", commit: "" });
+  const long = { ...r, frames: Array.from({ length: 40 }, (_, i) => `${"veryLongFunctionName".repeat(6)}${i} (lib/${"deep/".repeat(20)}file${i}.ts:${i}:1)`) };
+  const issue = report.githubIssue(long);
+  assert.ok(issue.url.length <= report.ISSUE_URL_MAX, String(issue.url.length));
+  const lines = new URL(issue.url).searchParams.get("logs")!.split("\n").length - 1;
+  assert.ok(lines > 0 && lines < 40, String(lines));
+  assert.match(new URL(issue.url).searchParams.get("what")!, /Error signature: fp-err-v1-[0-9a-f]{16}$/);
+  // A short one is not touched.
+  assert.equal(new URL(report.githubIssue(r).url).searchParams.get("logs"), "Stack (Flowplan's code):\n  at [compiled]");
+});

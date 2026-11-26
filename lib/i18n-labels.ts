@@ -109,6 +109,7 @@ const labels: Record<string, string> = {
   "Sicherheitshinweise zu deinem Konto und deinen Seiten": "Security notices about your account and pages",
   "Sicherheitsvorfälle der Instanz": "Security incidents of the instance",
   "KI-Kontingent der Instanz": "AI quota of the instance",
+  "Wöchentliche Fehlerübersicht": "Weekly error summary",
   Lernerinnerungen: "Study reminders",
   // charts
   Standard: "Default",

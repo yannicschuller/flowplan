@@ -23,6 +23,10 @@ const exact: Record<string, string> = {
   "Der Server wird gerade neu gestartet. Bitte versuche es gleich noch einmal.": "The server is restarting. Please try again in a moment.",
   "Der Worker-Thread wurde beendet.": "The worker thread ended.",
   "Bei dir laufen schon mehrere Exporte oder Importe. Bitte warte, bis einer fertig ist.": "You already have several exports or imports running. Please wait until one has finished.",
+  // Error signatures of the monitoring (lib/error-digest.ts).
+  "Diese Fehlerart gibt es nicht mehr.": "This kind of error no longer exists.",
+  "Ungültige Fehlersignatur.": "Invalid error signature.",
+  "Bitte die Adresse des Issues angeben (https://…).": "Please give the issue's address (https://…).",
   // AI quotas (lib/ai/quota.ts, #382).
   "Kostengrenzen brauchen Preise je Modell (Einstellungen → Instanz → KI → Preise).": "Cost limits need prices per model (Settings → Instance → AI → Prices).",
   "Unbekannte Rolle.": "Unknown role.",
@@ -1703,6 +1707,10 @@ const exact: Record<string, string> = {
 const patterns: [RegExp, string][] = [
   // Directory groups by hand (lib/directory-groups.ts, #451).
   [/^Die Mitgliedschaft kommt aus (.+) – dort ändern\.$/, "The membership comes from $1 – change it there."],
+  // The weekly error digest for administrators (lib/error-digest.ts digestText).
+  [/^Wöchentliche Fehlerübersicht: 1 Fehlerart neu oder wieder aufgetreten – (.+)\.$/, "Weekly error summary: 1 kind of error new or back – $1."],
+  [/^Wöchentliche Fehlerübersicht: (\d+) Fehlerarten neu oder wieder aufgetreten – (.+) und (\d+) weitere\.$/, "Weekly error summary: $1 kinds of errors new or back – $2 and $3 more."],
+  [/^Wöchentliche Fehlerübersicht: (\d+) Fehlerarten neu oder wieder aufgetreten – (.+)\.$/, "Weekly error summary: $1 kinds of errors new or back – $2."],
   // The instance's AI quota for administrators (lib/ai/quota.ts instanceAlertText).
   [/^Das KI-Kontingent der Instanz für heute ist zu (\d+) % verbraucht\.$/, "$1 % of the instance's AI quota for today is used."],
   [/^Das KI-Kontingent der Instanz für heute ist aufgebraucht – bis (.+) ist KI über den Anbieter der Instanz gesperrt\.$/, "The instance's AI quota for today is used up – AI through the instance's provider is blocked until $1."],
