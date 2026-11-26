@@ -5081,12 +5081,14 @@ export class FlowplanClient {
     return this.request("GET", `/api/files/${encodeURIComponent(fileId)}/office/image`, { query }, options);
   }
 
-  /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload) */
+  /** Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. `purpose=page` makes a new page for the file instead (no `pageId`): a document titled with the file name (without its extension) that holds the file's block, at the top level of the space `spaceId` or below the page `parentId`; the answer adds `page` (`id`, `title`, `spaceId`, `parentId`). It needs the right to create pages there; not in encrypted spaces. Send `purpose` and `spaceId` before `file`. (POST /api/upload) */
   async uploadFile(form: {
-    pageId: string;
+    pageId?: string;
     rowId?: string;
+    spaceId?: string;
+    parentId?: string;
     file: Blob;
-    purpose?: "cover" | "e2ee" | "comment";
+    purpose?: "cover" | "e2ee" | "comment" | "page";
     fileId?: string;
   }, options?: RequestOptions): Promise<FileInfo> {
     return this.json<FileInfo>("POST", `/api/upload`, { form, idempotent: true }, options);

@@ -81,6 +81,7 @@ import { libraryOverview, searchLibrary, spaceLibrary } from "@/lib/library-serv
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload, storeUploadFile } from "@/lib/page-upload";
+import { createFilePage, filePagePlace } from "@/lib/file-pages";
 import { claimFileId } from "@/lib/client-ids";
 import { createTemplate, libraryFile } from "@/lib/notebook-library";
 import { FONT_LIMITS, fontResponse, uploadWorkspaceFont, workspaceFontFile } from "@/lib/workspace-fonts";
@@ -2292,6 +2293,10 @@ async function handlePOST(
           throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
         return { p, encrypted };
       };
+      // A new page for the file (#569, lib/file-pages.ts): where it goes,
+      // a space and maybe a page in it.
+      const filePlace = async (fields: Map<string, string>) =>
+        await filePagePlace(user, { spaceId: fields.get("spaceId"), parentId: fields.get("parentId") || null });
       sweepIncoming(uploadsDir());
       const data = await readMultipartStream(req.body, req.headers.get("content-type"), {
         uploads: uploadsDir(),
@@ -2300,10 +2305,35 @@ async function handlePOST(
         // Fields sent before the file (the apps send pageId first): a
         // page that refuses the upload does so before the file is read.
         beforeFile: async (fields) => {
-          if (fields.has("pageId")) await target(fields);
+          if (fields.get("purpose") === "page") {
+            if (fields.has("spaceId")) await filePlace(fields);
+          } else if (fields.has("pageId")) await target(fields);
         },
       });
       try {
+        if (data.fields.get("purpose") === "page") {
+          const place = await filePlace(data.fields);
+          const file = data.file;
+          if (!file) throw new HttpError(400, "Datei fehlt.");
+          if (file.size > maxUpload * 1024 * 1024) throw tooLarge();
+          await enforceQuota(place.workspaceId, file.size);
+          await enforceUserStorage(user, file.size);
+          const fid = id();
+          const mime = uploadMime(file.type, file.name, file.head);
+          if (await stripLocationFile(file.path, mime)) file.size = statSync(file.path).size;
+          const name = sanitizeFileName(file.name);
+          // Page and file in one transaction (checked again with the insert).
+          const page = await createFilePage(user, place, { id: fid, name, mime, size: file.size, path: file.path });
+          const placeholder = await placeholderForUpload(fid, mime, page.pageId, { size: file.size, read: () => readFileSync(uploadPath(fid)) });
+          return NextResponse.json({
+            id: fid,
+            url: `/api/files/${fid}`,
+            name,
+            mime,
+            ...(placeholder ? { placeholder } : {}),
+            page: { id: page.pageId, title: page.title, spaceId: place.spaceId, parentId: place.parentId },
+          });
+        }
         const { p, encrypted } = await target(data.fields);
         const pageId = p.id;
         const file = data.file;

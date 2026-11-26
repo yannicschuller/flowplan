@@ -286,10 +286,7 @@ import { isCancelled, sendWithProgress } from "@/lib/upload-progress";
 import { addPlaceholder, announce, placeholderPosition, removePlaceholder, UploadPlaceholders } from "@/lib/upload-placeholders";
 import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
 import { shortcutLetter } from "@/lib/keymap";
-import { isModelName } from "@/lib/model-formats";
-import { isHtmlName } from "@/lib/html-files";
-import { isSheetName } from "@/lib/sheet-files";
-import { isOfficeName } from "@/lib/office-files";
+import { fileBlock } from "@/lib/file-blocks";
 import { useDatabaseEntries } from "./database-picker";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
@@ -1991,23 +1988,9 @@ export default function DocumentEditor({
               { type: "paragraph", content: [{ type: "text", text: caption.text, marks: [{ type: "link", attrs: { href: caption.href } }] }] },
             ]
           : { type: "image", attrs: { src: data.url, alt: original.name } };
-      else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) content = { type: "media", attrs: { src: data.url, kind: "pdf", title: file.name } };
-      else if (isModelName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
-        // A 3D or CAD file (#384): a card that opens the 3D viewer.
-        content = { type: "media", attrs: { src: data.url, kind: "model", title: file.name } };
-      else if (isHtmlName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
-        // An HTML file (#398): a card that opens the sandboxed preview.
-        content = { type: "media", attrs: { src: data.url, kind: "html", title: file.name } };
-      else if (isSheetName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
-        // A spreadsheet (#402): a card that opens the table viewer (.xls: the download).
-        content = { type: "media", attrs: { src: data.url, kind: "sheet", title: file.name } };
-      else if (isOfficeName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
-        // A presentation or text document (#562): a card that opens the
-        // content preview (.ppt, .doc: the download).
-        content = { type: "media", attrs: { src: data.url, kind: "office", title: file.name } };
-      else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
-        content = { type: "media", attrs: { src: data.url, kind: file.type.startsWith("video/") ? "video" : "audio", title: file.name } };
-      else content = { type: "paragraph", content: [{ type: "text", text: file.name, marks: [{ type: "link", attrs: { href: data.url } }] }] };
+      // Any other file: the block for its kind (lib/file-blocks.ts, shared
+      // with pages made from a file, #569).
+      else content = fileBlock({ url: data.url, name: file.name, type: file.type }) as JSONContent;
       if (!editor || editor.isDestroyed) return;
       const at = slot ? placeholderPosition(editor.state, slot.id) : null;
       const drop = (tr: Transaction) => (slot && removePlaceholder(tr, slot.id), true);

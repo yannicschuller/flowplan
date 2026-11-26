@@ -14,12 +14,17 @@ import { enforceUserStorage } from "./user-limits";
 import type { Identity, Page } from "./types";
 import { publishUpload, unpublishUpload, uploadPath, uploadsDir } from "./storage";
 
+// The page a file belongs to: an existing one, or one made for it in the
+// same transaction, after the quota checks (a page made from a file,
+// lib/file-pages.ts) – a refusal leaves neither page nor file.
+export type UploadOwner = Pick<Page, "id" | "workspace_id"> | { workspace_id: string; create: () => Promise<string> };
+
 export async function storeUpload(
   user: Identity,
-  page: Pick<Page, "id" | "workspace_id">,
+  page: UploadOwner,
   file: { id: string; name: string; mime: string; content: Buffer },
 ) {
-  await store(user, page, { id: file.id, name: file.name, mime: file.mime, size: file.content.length }, (path) =>
+  return await store(user, page, { id: file.id, name: file.name, mime: file.mime, size: file.content.length }, (path) =>
     // Synchronous: a SQLite transaction awaits only the database.
     writeFileSync(path, file.content, { flag: "wx" }),
   );
@@ -34,7 +39,7 @@ export async function storeUpload(
 // failure before the link (and discards it).
 export async function storeUploadFile(
   user: Identity,
-  page: Pick<Page, "id" | "workspace_id">,
+  page: UploadOwner,
   file: { id: string; name: string; mime: string; size: number; path: string },
 ) {
   const path = uploadPath(file.id);
@@ -44,7 +49,7 @@ export async function storeUploadFile(
   rmSync(file.path, { force: true });
   try {
     await publishUpload(file.id);
-    await store(user, page, file, null);
+    return await store(user, page, file, null);
   } catch (error) {
     rmSync(path, { force: true });
     await unpublishUpload(file.id).catch(() => {});
@@ -54,7 +59,7 @@ export async function storeUploadFile(
 
 async function store(
   user: Identity,
-  page: Pick<Page, "id" | "workspace_id">,
+  page: UploadOwner,
   file: { id: string; name: string; mime: string; size: number },
   // Writes the file inside the transaction (null: it is in place already).
   write: ((path: string) => void) | null,
@@ -62,9 +67,11 @@ async function store(
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads"),
     path = resolve(dir, file.id);
   mkdirSync(dir, { recursive: true });
-  await transaction(async () => {
+  // The id of the page the file now belongs to.
+  return await transaction(async () => {
     await enforceQuota(page.workspace_id, file.size);
     await enforceUserStorage(user, file.size);
+    const pageId = "create" in page ? await page.create() : page.id;
     if (write) {
       // Fails when the name is taken (like the "wx" flag).
       write(path);
@@ -79,12 +86,13 @@ async function store(
     await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       file.id,
-      page.id,
+      pageId,
       file.name,
       file.mime,
       file.size,
       user.id,
     );
-    await audit(user.id, "file.upload", page.id, file.name);
+    await audit(user.id, "file.upload", pageId, file.name);
+    return pageId;
   }, user);
 }
