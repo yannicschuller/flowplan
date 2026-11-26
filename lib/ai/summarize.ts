@@ -112,7 +112,7 @@ const input = z.object({
   text: z.string().max(SUMMARY_LIMITS.maxText).optional(),
   // A voice note's summary: link relevant existing pages (lib/ai/links.ts).
   links: z.boolean().optional(),
-  locale: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).default("de"),
+  locale: z.enum(["de", "en", "fr", "pl", "pt", "zh", "ru"]).default("de"),
   // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
   zone: z.string().max(100).optional(),
 });

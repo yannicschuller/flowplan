@@ -2,7 +2,7 @@
   "views": 11,
   "fieldTypes": 24,
   "questionTypes": 19,
-  "languages": 6,
+  "languages": 7,
   "calloutTypes": 5,
   "exportFormats": 2,
   "templates": 30,
@@ -74,6 +74,7 @@
       "en-US": "English (US)",
       "fr": "Français",
       "pl": "Polski",
+      "pt": "Português",
       "zh": "简体中文",
       "ru": "Русский"
     },

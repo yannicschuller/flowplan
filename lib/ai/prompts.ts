@@ -10,10 +10,10 @@
 import type { PromptLink } from "./links";
 import type { AiRunInput } from "./run";
 
-export type AiLocale = "de" | "en" | "fr" | "pl" | "zh" | "ru";
+export type AiLocale = "de" | "en" | "fr" | "pl" | "pt" | "zh" | "ru";
 // Languages the answers are written in (a superset of the interface's: any
 // WRITE_LANGUAGES entry may be the language of the text being worked on).
-export type TextLanguage = "de" | "en" | "fr" | "pl" | "zh" | "ru";
+export type TextLanguage = "de" | "en" | "fr" | "pl" | "pt" | "zh" | "ru";
 
 // i18n-table: 2 4 – [id, German, English, German hint, English hint]
 export const WRITE_ACTIONS = [
@@ -68,8 +68,9 @@ const languageName = (code: string) => WRITE_LANGUAGES.find((l) => l[0] === code
 
 // ---- Which language a text is in ----
 
-const STOPWORDS: Record<"de" | "en" | "fr" | "pl", Set<string>> = {
+const STOPWORDS: Record<"de" | "en" | "fr" | "pl" | "pt", Set<string>> = {
   pl: new Set("i oraz ale jest nie to na w z do się dla jako przez lub czy że jak ten ta te być są mam mamy można trzeba twoje twoja który która tego więc oraz".split(" ")),
+  pt: new Set("o a os as um uma uns umas de do da dos das em no na nos nas por para com sem que não se é são foi foram ser está estão como mais mas ou também já muito este esta isto esse essa isso aqui onde quando porque qual quais".split(" ")),
   de: new Set("der die das und ist nicht ein eine einen mit für auf ich wir sie es zu den dem des von im sich auch wird werden sind bei oder aber wie noch nach über wenn dass kann man".split(" ")),
   en: new Set("the and is are not a an with for on i we you it to of in this that be will can or but as at by from have has was were if what which our your there".split(" ")),
   fr: new Set("le la les et est pas un une des du de avec pour sur je nous vous il elle ce cette qui que dans au aux sont être ou mais comme par plus se".split(" ")),
@@ -86,13 +87,14 @@ export function guessLanguage(text: string): TextLanguage | null {
   // Mostly Cyrillic and none of the letters only Ukrainian has (і ї є ґ).
   const cyrillic = (text.match(/[\u0400-\u04ff]/g) || []).length;
   if (cyrillic >= 10 && cyrillic / letters > 0.5) return /[іїєґ]/i.test(text) ? null : "ru";
-  const score = { de: 0, en: 0, fr: 0, pl: 0 };
+  const score = { de: 0, en: 0, fr: 0, pl: 0, pt: 0 };
   for (const word of words.slice(0, 600))
-    for (const lang of ["de", "en", "fr", "pl"] as const) if (STOPWORDS[lang].has(word)) score[lang]++;
+    for (const lang of ["de", "en", "fr", "pl", "pt"] as const) if (STOPWORDS[lang].has(word)) score[lang]++;
   score.de += Math.min(3, (text.match(/[äöüß]/gi) || []).length);
   score.fr += Math.min(3, (text.match(/[éèêàçù]/gi) || []).length);
   score.pl += Math.min(3, (text.match(/[ąćęłńóśźż]/gi) || []).length);
-  const ranked = (Object.entries(score) as ["de" | "en" | "fr" | "pl", number][]).sort((a, b) => b[1] - a[1]);
+  score.pt += Math.min(3, (text.match(/[ãõáíóôú]/gi) || []).length);
+  const ranked = (Object.entries(score) as ["de" | "en" | "fr" | "pl" | "pt", number][]).sort((a, b) => b[1] - a[1]);
   const [best, second] = ranked;
   if (best[1] < 2 || best[1] < second[1] * 1.5 + 1) return null;
   return best[0];
@@ -102,6 +104,7 @@ export function guessLanguage(text: string): TextLanguage | null {
 export function defaultTranslateTarget(text: string, locale: AiLocale): WriteLanguage {
   const lang = guessLanguage(text) || locale;
   if (locale === "pl") return lang === "pl" ? "en" : "pl";
+  if (locale === "pt") return lang === "pt" ? "en" : "pt";
   return lang === "de" ? "en" : "de";
 }
 
@@ -282,6 +285,7 @@ export type SummaryKind = "page" | "record" | "database" | "transcript" | "journ
 
 export const SUMMARY_HEADINGS: Record<TextLanguage, { summary: string; points: string; tasks: string; none: string }> = {
   pl: { summary: "Podsumowanie", points: "Najważniejsze informacje", tasks: "Otwarte zadania", none: "Brak" },
+  pt: { summary: "Resumo", points: "Pontos principais", tasks: "Tarefas pendentes", none: "Nenhuma" },
   de: { summary: "Zusammenfassung", points: "Kernpunkte", tasks: "Offene Aufgaben", none: "Keine" },
   en: { summary: "Summary", points: "Key points", tasks: "Open tasks", none: "None" },
   fr: { summary: "Résumé", points: "Points clés", tasks: "Tâches ouvertes", none: "Aucune" },
@@ -367,6 +371,7 @@ export function summaryPrompt(request: SummaryRequest): AiRunInput {
 // when days are written in another language).
 export const JOURNAL_SUMMARY_HEADINGS: Record<TextLanguage, { highlights: string; overview: string; open: string; none: string }> = {
   pl: { highlights: "Najważniejsze wydarzenia i osiągnięcia", overview: "Przegląd chronologiczny", open: "Otwarte sprawy i kolejne kroki", none: "Brak" },
+  pt: { highlights: "Destaques e conquistas", overview: "Resumo cronológico", open: "Pontos em aberto e próximos passos", none: "Nenhum" },
   de: { highlights: "Höhepunkte & Erfolge", overview: "Chronologischer Überblick", open: "Offene Punkte & nächste Schritte", none: "Keine" },
   en: { highlights: "Highlights & achievements", overview: "Chronological overview", open: "Open items & follow-ups", none: "None" },
   fr: { highlights: "Points forts et réussites", overview: "Aperçu chronologique", open: "Points ouverts et suites à donner", none: "Aucun" },

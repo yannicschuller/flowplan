@@ -30,7 +30,7 @@ export const journalSummaryInput = z.object({
   journalId: z.uuid(),
   from: journalDay,
   to: journalDay,
-  locale: z.enum(["de", "en", "fr", "pl", "zh", "ru"]).default("de"),
+  locale: z.enum(["de", "en", "fr", "pl", "pt", "zh", "ru"]).default("de"),
   // The reader's time zone: which day "An diesem Tag erledigt" covers (#273).
   zone: z.string().max(100).optional(),
 });
