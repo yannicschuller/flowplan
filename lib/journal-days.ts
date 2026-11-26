@@ -32,7 +32,7 @@ import {
   templateNodesOf,
   templateTaskTexts,
 } from "./journal-extras";
-import { dayDoc, dayStart, dayTitle, hasOwnEntry, journalDate, openTasks, rollJournal } from "./journal";
+import { dayDoc, dayStart, hasOwnEntry, journalDate, journalDayTitle, openTasks, rollJournal } from "./journal";
 import { automaticDayTitle } from "./journal-title";
 import type { Identity, Page, PageCounts } from "./types";
 import { filterAsync, flatMapAsync, someAsync } from "./each-async";
@@ -143,7 +143,7 @@ export async function journalDraftPage(user: Identity, pageId: string, now = new
     workspace_id: journal.workspace_id,
     space_id: journal.space_id,
     parent_id: journal.id,
-    title: dayTitle(row.date),
+    title: await journalDayTitle(journal.id, row.date),
     icon: "day",
     cover: "",
     kind: "document",
@@ -248,9 +248,9 @@ export async function journalDayLink(
   if (date !== today || (role !== "editor" && role !== "owner"))
     throw new HttpError(404, "Für diesen Tag gibt es keinen Eintrag.");
   const rolled = await rollJournal(user, journal, today, now);
-  if (rolled.draft) return answer(rolled.dayId, dayTitle(date), true);
+  if (rolled.draft) return answer(rolled.dayId, await journalDayTitle(journal.id, date), true);
   if (rolled.trashed) throw new HttpError(404, "Für diesen Tag gibt es keinen Eintrag.");
-  return answer(rolled.dayId, String((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", rolled.dayId))?.title || dayTitle(date)));
+  return answer(rolled.dayId, String((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", rolled.dayId))?.title || (await journalDayTitle(journal.id, date))));
 }
 
 // ---- "Leere Tage entfernen" ----

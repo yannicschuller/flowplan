@@ -75,6 +75,12 @@ test("a journal's days are exported as <journal folder>/YYYY/MM/YYYY-MM-DD.md wi
   await run("UPDATE pages SET title='Kürbistag' WHERE id=?", days.get("2026-10-27")!);
   const renamed = await readExportZip((await exportMarkdown(admin, { pageId: journal, format: "zip", includeSubpages: true })).bytes as Buffer);
   assert.match(renamed.get("2026/10/2026-10-27.md")!.toString("utf8"), /\n# Kürbistag\n/);
+  // A day titled with its ISO date ("Titel des Tages", #560) keeps that title.
+  await run("UPDATE pages SET title='2026-10-27' WHERE id=?", days.get("2026-10-27")!);
+  const iso = await readExportZip(
+    (await withContentLocale("en", () => exportMarkdown(admin, { pageId: journal, format: "zip", includeSubpages: true }))).bytes as Buffer,
+  );
+  assert.match(iso.get("2026/10/2026-10-27.md")!.toString("utf8"), /\n# 2026-10-27\n/);
   await run("UPDATE pages SET title='Dienstag, 27. Oktober 2026' WHERE id=?", days.get("2026-10-27")!);
 });
 

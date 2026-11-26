@@ -28,6 +28,7 @@ import { Temporal, validZone } from "./date-values";
 import { safeFetch } from "./safe-fetch";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, sidebarMode, type SidebarMode } from "./journal-nav";
+import { DAY_TITLE_FORMATS, type DayTitleFormat } from "./journal-title";
 import { findAsync, someAsync } from "./each-async";
 import { keepUntil } from "./read-memo";
 import { dropLiveProjections } from "./shared-live";
@@ -79,6 +80,9 @@ export const journalOptionsSchema = z.object({
   // new day (move, the default) or are copied there, the originals staying
   // on their day marked as carried over (copy; lib/journal.ts).
   carry: z.enum(["move", "copy"]).default("move"),
+  // "Titel des Tages" (#560): the automatic title of new days, long or the
+  // ISO date (lib/journal-title.ts). Existing days keep theirs.
+  dayTitleFormat: z.enum(DAY_TITLE_FORMATS).default("long"),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 async function settingsRow(journalId: string) {
@@ -93,7 +97,7 @@ export async function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers)).map(localizedTracker);
   } catch {}
-  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "", carry: "move" };
+  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE, carried: "top", carriedHeading: "", carry: "move", dayTitleFormat: "long" };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}
@@ -131,6 +135,20 @@ export async function journalSidebarModes(workspaceId: string): Promise<Record<s
     } catch {}
   }
   return modes;
+}
+// "Titel des Tages" of the journals of a workspace whose new days get the
+// ISO date (sent with the bootstrap, for the title of a day written offline).
+export async function journalDayTitleFormats(workspaceId: string): Promise<Record<string, DayTitleFormat>> {
+  const formats: Record<string, DayTitleFormat> = {};
+  for (const row of await all<{ page_id: string; options: string }>(
+    "SELECT s.page_id,s.options FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND p.kind='journal'",
+    workspaceId,
+  )) {
+    try {
+      if (JSON.parse(row.options || "{}").dayTitleFormat === "iso") formats[row.page_id] = "iso";
+    } catch {}
+  }
+  return formats;
 }
 // The journal a page belongs to: the journal itself or the one of a day.
 export async function journalOf(page: Page) {

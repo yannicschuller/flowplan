@@ -690,8 +690,9 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         : {}),
     };
     // A day's own title in the language of the export (it was named in the
-    // language of whoever opened it first), unless somebody renamed it.
-    const heading = day && isAutoDayTitle(page.title, day) ? localDayTitle(day, contentLocale()) : page.title;
+    // language of whoever opened it first), unless somebody renamed it. A
+    // title that is the ISO date ("Titel des Tages", #560) has no language.
+    const heading = day && page.title !== day && isAutoDayTitle(page.title, day) ? localDayTitle(day, contentLocale()) : page.title;
     let markdown = (Object.keys(front).length ? toFrontmatter(front) + "\n" : "") + `# ${markdownText(heading)}\n\n`;
     if (page.cover.startsWith("/api/files/")) {
       const cover = await ctx.url(page.cover);

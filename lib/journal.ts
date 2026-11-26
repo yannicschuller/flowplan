@@ -1,5 +1,5 @@
 import { journalDayEvent } from "./workflows/hooks";
-import { dayTitle as localDayTitle, automaticDayTitle } from "./journal-title";
+import { dayTitle as localDayTitle, automaticDayTitle, type DayTitleFormat } from "./journal-title";
 import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
 // its page is created and the open tasks of the last day move over to it –
@@ -61,7 +61,10 @@ export const journalDate = z
     },
     "Ungültiges Datum.",
   );
-export const dayTitle = (date: string) => localDayTitle(date, contentLocale());
+export const dayTitle = (date: string, format: DayTitleFormat = "long") => localDayTitle(date, contentLocale(), format);
+// The title a new day of `journalId` gets ("Titel des Tages", #560).
+export const journalDayTitle = async (journalId: string, date: string) =>
+  dayTitle(date, (await journalSettings(journalId)).options.dayTitleFormat);
 function shiftDay(date: string, days: number) {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -454,7 +457,7 @@ async function storeNewDay(user: Identity, journal: Page, today: string, doc: PM
     journal.workspace_id,
     journal.space_id,
     user.id,
-    dayTitle(today),
+    await journalDayTitle(journal.id, today),
     "document",
     journal.id,
     undefined,

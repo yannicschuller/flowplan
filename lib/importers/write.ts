@@ -11,7 +11,7 @@ import { all, id, one, onTransactionRollback, run, transaction, nowText } from "
 import { HttpError } from "../auth";
 import { isGuest, memberRole, pageRole, requireMember, spaceRole } from "../permissions";
 import { createPage } from "../seed";
-import { dayTitle } from "../journal";
+import { journalDayTitle } from "../journal";
 import { journalLocked } from "../journal-extras";
 import { isEncryptedPage } from "../e2ee-server";
 import { appendHtmlToPage } from "../mcp";
@@ -274,7 +274,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
             // A day lives in its journal's space.
             day = existing
               ? { id: existing.id, existing: true }
-              : { id: await createPage(workspaceId, journal.spaceId, user.id, dayTitle(page.journalDate), "document", journal.id), existing: false };
+              : { id: await createPage(workspaceId, journal.spaceId, user.id, await journalDayTitle(journal.id, page.journalDate), "document", journal.id), existing: false };
             if (!existing)
               await run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", page.journalDate, -Number(page.journalDate.replaceAll("-", "")), day.id);
             days.set(page.journalDate, day);

@@ -74,6 +74,13 @@
       "issues": [
         550
       ]
+    },
+    {
+      "de": "Titel des Tages: In den Einstellungen jedes Journals wählst du unter „Tage“, ob neue Tage lang („Donnerstag, 26. November 2026“) oder nur mit dem Datum („2026-11-26“) heißen. Bestehende und umbenannte Tage behalten ihren Titel.",
+      "en": "Day title: in each journal's settings under “Days” you choose whether new days are named in full (“Thursday, 26 November 2026”) or just by date (“2026-11-26”). Existing and renamed days keep their title.",
+      "issues": [
+        560
+      ]
     }
   ]
 }
