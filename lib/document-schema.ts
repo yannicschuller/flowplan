@@ -528,12 +528,31 @@ export const FlowTaskItem = TaskItem.extend<FlowTaskItemOptions>({
           return true;
         };
         // A right click leaves the selection alone (no toolbar over the menu).
+        // A tap or click on the box (or the drawn box beside it) does not
+        // put the caret into the text either: on iPhone and iPad that
+        // would bring up the keyboard just for ticking a task off.
         label.addEventListener("mousedown", (event) => {
           if (event.button !== 0 && options.onStatusMenu && props.editor.isEditable) {
             event.preventDefault();
             event.stopPropagation();
-          }
+          } else if (event.button === 0) event.preventDefault();
         });
+        // Ticking changes the task without focusing the editor: TipTap's own
+        // handler (on the box, so after this one on the label) focuses it
+        // first, which opens the keyboard on touch devices. The keyboard
+        // stays as it is – open while writing, closed otherwise.
+        label.addEventListener(
+          "change",
+          (event) => {
+            if (event.target !== box || !props.editor.isEditable) return;
+            const pos = typeof props.getPos === "function" ? props.getPos() : undefined;
+            const node = typeof pos === "number" ? props.editor.state.doc.nodeAt(pos) : null;
+            if (typeof pos !== "number" || node?.type.name !== "taskItem") return;
+            event.stopPropagation();
+            props.editor.view.dispatch(props.editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: box.checked }));
+          },
+          true,
+        );
         label.addEventListener("contextmenu", (event) => {
           // A long press opened it already (Android fires both).
           if (Date.now() - pressed < 800 || open()) {
