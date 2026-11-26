@@ -125,3 +125,13 @@ test("regression: a paragraph of only \"#\", \"+\" or \"1.\" stays a paragraph",
   }
   assert.equal(sourceView("<p>#</p>").markdown, "\\#\n");
 });
+test("regression: code with \"\\|\" in a table cell comes back as code", () => {
+  for (const html of [
+    "<table><tr><th><p>a</p></th></tr><tr><td><p><code>\\|</code>!</p></td></tr></table>",
+    "<table><tr><th><p>a</p></th></tr><tr><td><p><code>a\\|b *c* &amp;</code></p></td></tr></table>",
+  ]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+});

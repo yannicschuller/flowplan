@@ -104,11 +104,13 @@ function codeMeta(node: Node, language: string) {
 }
 // In a table cell "|" ends the cell: it is written "\|", which GitHub
 // Markdown reads back as "|" inside code too. Only code with line breaks
-// (or "\|" of its own) stays HTML there.
+// (or "\|" of its own) stays HTML there. Markdown still applies between
+// HTML tags, so every ASCII punctuation character inside is a character
+// reference ("\" would escape the "&" of "&#124;", "*" make emphasis).
 const htmlCodeInTable = (source: string) => /\n|\\\|/.test(source);
 function inlineCode(source: string, inTable = false) {
   if (inTable && htmlCodeInTable(source))
-    return `<code>${htmlText(source).replaceAll("|", "&#124;").replace(/\n/g, "<br>")}</code>`;
+    return `<code>${source.replace(/[!-/:-@[-`{-~]/g, (c) => `&#${c.charCodeAt(0)};`).replace(/\n/g, "<br>")}</code>`;
   const fence = "`".repeat(
     Math.max(1, ...(source.match(/`+/g) || []).map((run) => run.length + 1)),
   );
