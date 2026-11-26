@@ -6565,6 +6565,15 @@ mark[data-color],
   margin: 0;
   font-size: 15px;
 }
+/* Explanations in the inactivity message settings (#558). */
+.deadman-note {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .setting-group > header p {
   max-width: 62ch;
   margin: 4px 0 0;

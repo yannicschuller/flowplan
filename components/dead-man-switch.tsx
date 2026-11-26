@@ -115,7 +115,7 @@ export function DeadManSwitchSettings({ onError }: { onError: (message: string) 
       }
     >
       {!data.available && (
-        <SettingRow label={t("Nicht verfügbar", "Not available")}>
+        <SettingRow wide label={t("Nicht verfügbar", "Not available")}>
           <p className="deadman-note">
             {!data.enabled
               ? t(
