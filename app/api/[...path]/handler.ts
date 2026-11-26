@@ -206,6 +206,9 @@ function error(e: unknown) {
       { error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) },
       { status: 400 },
     );
+  // A body that is not JSON (JSON.parse, req.json()): the sender's mistake,
+  // as in the other route handlers – not a server error.
+  if (e instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Eingabe." }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
   const status = e instanceof HttpError ? e.status : serverError(e);
   // The request id (also in X-Request-Id) for a person to quote (lib/error-details.ts).
