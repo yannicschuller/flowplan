@@ -114,8 +114,10 @@ test("a file becomes a document of its own, titled with its name, with the file'
 test("a refused file leaves no page: quota and a failing write roll back together", async () => {
   const place = await F.filePagePlace(owner.user, { spaceId: sid });
   const before = await pageCount();
-  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 0.000001, wid);
-  await assert.rejects(F.createFilePage(owner.user, place, { id: id(), name: "Too big.pdf", mime: "application/pdf", content: pdf }), (e: { status: number }) => e.status === 413);
+  // (quota_mb is a whole number on PostgreSQL: 1 MB and a file just over it.)
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
+  const big = Buffer.concat([pdf, Buffer.alloc(1_100_000)]);
+  await assert.rejects(F.createFilePage(owner.user, place, { id: id(), name: "Too big.pdf", mime: "application/pdf", content: big }), (e: { status: number }) => e.status === 413);
   await run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
   // The upload's name is taken: the page made before it goes again.
   const taken = id();
@@ -166,8 +168,10 @@ test("capture/save with place pages: every file a page of its own, any file type
   await assert.rejects(save(owner.device, { place: "pages", spaceId: secret }), (e: { status: number }) => e.status === 409);
   // Over the quota: no page at all.
   const before = await pageCount();
-  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 0.000001, wid);
-  await assert.rejects(save(owner.device, { place: "pages", spaceId: sid }), (e: { status: number }) => e.status === 413);
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
+  // (Images are made smaller on saving: a file that stays as it is.)
+  const big = [{ name: "big.zip", type: "application/zip", bytes: Buffer.alloc(1_100_000) }];
+  await assert.rejects(save(owner.device, { place: "pages", spaceId: sid }, big), (e: { status: number }) => e.status === 413);
   await run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
   assert.equal(await pageCount(), before);
   // The shares of old apps are unchanged: a sub page with all files.
