@@ -91,3 +91,17 @@ test("regression: lists of the same kind one after the other stay apart", () => 
   assert.equal(sourceView("<ul><li><p>a</p></li></ul><ul><li><p>b</p></li></ul><ul><li><p>c</p></li></ul>").markdown, "- a\n\n* b\n\n- c\n");
   assert.equal(sourceView('<ol><li><p>a</p></li></ol><ol start="4"><li><p>b</p></li></ol>').markdown, "1. a\n\n4) b\n");
 });
+test("regression: no-break spaces and byte order marks at a block's ends, line separators in tables", () => {
+  for (const html of [
+    "<p>\u00a0indented\u00a0</p>",
+    "<h2>\u00a0x</h2>",
+    "<p>\ufeffx</p>",
+    "<table><tr><th><p>a</p></th></tr><tr><td><p>\ufeffx</p></td></tr></table>",
+    "<table><tr><th><p>a</p></th></tr><tr><td><p>b\u2028c|</p></td></tr></table>",
+  ]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+  assert.equal(sourceView("<p>\u00a0x</p>").markdown, "&#160;x\n");
+});

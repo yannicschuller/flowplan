@@ -67,8 +67,16 @@ export function markdownText(text: string) {
     // would make them links (with the backslashes above in the address).
     .replace(/(?<=[A-Za-z]):\/\//g, "\\://")
     .replace(/\b(www)\./gi, "$1\\.")
-    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@");
+    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@")
+    // The import (marked) ends a table row at a line or paragraph separator.
+    .replace(/[\u2028\u2029]/g, (c) => `&#${c.charCodeAt(0)};`);
 }
+// The import trims a block's text as JavaScript does, which also takes
+// no-break spaces, byte order marks and other Unicode spaces from its ends:
+// there they are written as character references.
+const UNICODE_SPACES = /^[^\S\t\n\v\f\r ]+|[^\S\t\n\v\f\r ]+$/g;
+const keepEdges = (markdown: string) =>
+  markdown.replace(UNICODE_SPACES, (run) => [...run].map((c) => `&#${c.codePointAt(0)};`).join(""));
 export function markdownUrl(url: string) {
   return url.replace(/[\s<>\\"()|]/g, (c) => encodeURIComponent(c));
 }
@@ -470,13 +478,13 @@ export function htmlToMarkdown(
     lose(node);
     switch (node.type.name) {
       case "paragraph":
-        return inline(node, inTable);
+        return keepEdges(inline(node, inTable));
       case "heading":
         return (
           "#".repeat(Math.max(1, Math.min(6, Number(node.attrs.level) || 1))) +
           " " +
           // A trailing "#" run would be read as the closing sequence.
-          inline(node, inTable).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
+          keepEdges(inline(node, inTable)).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
         );
       case "horizontalRule":
         return "---";
