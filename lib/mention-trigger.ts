@@ -35,3 +35,10 @@ export function typedMenu(
   if (text === "/") return from === to ? "slash" : null;
   return mentionStartsAt($from) ? "mention" : null;
 }
+
+// The same rule in a plain text field (whiteboard texts, #567): "@" at the
+// start, after a line break or space, or after an opening bracket or quote.
+export function atOpensMentionInText(text: string, caret: number) {
+  if (caret <= 0) return true;
+  return /^[\s\p{Ps}\p{Pi}"'«‹]$/u.test(text.slice(caret - 1, caret));
+}

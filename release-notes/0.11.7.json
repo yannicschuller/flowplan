@@ -137,6 +137,13 @@
       "issues": [
         566
       ]
+    },
+    {
+      "de": "Whiteboard: „@“ in Notizzetteln, Texten und Formen verlinkt wie in Dokumenten Seiten, Whiteboards, Journaltage, Einträge und Personen. Ein Klick öffnet die Seite, und dort steht das Whiteboard unter „Verlinkt von“ und im Graphen.",
+      "en": "Whiteboard: “@” in sticky notes, texts and shapes links pages, whiteboards, journal days, records and people as in documents. A click opens the page, which lists the whiteboard under “Linked from” and in the graph.",
+      "issues": [
+        567
+      ]
     }
   ]
 }

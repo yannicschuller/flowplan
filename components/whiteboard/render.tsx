@@ -42,6 +42,9 @@ export type PageRef = {
   title: string;
   icon?: string;
   kind?: string;
+  // For "@" in texts (#567): journal days and other names of the page.
+  journal_date?: string | null;
+  aliases?: string | null;
 };
 
 // Geometry lives in lib/whiteboard-geometry.ts so the server can draw boards

@@ -210,7 +210,9 @@ export function SplitPane({
         state={data.whiteboard.state}
         generation={data.whiteboard.generation}
         editable={editable}
-        pages={pages.map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind }))}
+        pages={pages.map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, journal_date: p.journal_date, aliases: p.aliases }))}
+        members={members}
+        workspaceId={data.page.workspace_id}
         onReload={reload}
         onError={onError}
         onOpenPage={onOpenPage}

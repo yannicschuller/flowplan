@@ -113,6 +113,11 @@ export async function followRename(user: Identity, workspaceId: string, target: 
           source.row_id,
         ))[0];
         await assertRowAccess(user, page, row, true);
+      } else if (page.kind === "whiteboard") {
+        // Mentions in a board's texts (#567, lib/whiteboard.ts).
+        const { retitleBoardMentions } = await import("./whiteboard");
+        await retitleBoardMentions(page, target, before, after);
+        continue;
       } else if (page.kind !== "document") continue;
       const result = await rewriteDocument(page.id, source.row_id, user.id, (doc) => retitleLinks(doc, target, before, after));
       if (result) publish.push(result.publish);

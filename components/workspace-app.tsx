@@ -6355,7 +6355,11 @@ export default function WorkspaceApp({
                         title: p.title,
                         icon: p.icon,
                         kind: p.kind,
+                        journal_date: p.journal_date,
+                        aliases: p.aliases,
                       }))}
+                      members={boot.members}
+                      workspaceId={data.page.workspace_id}
                       onReload={refresh}
                       onError={notifyError}
                       onOpenPage={(id) => void openPage(id)}

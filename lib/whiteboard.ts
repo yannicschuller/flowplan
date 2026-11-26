@@ -2,7 +2,9 @@ import * as Y from "yjs";
 import { z } from "zod";
 import { all, id, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
-import { requirePage } from "./permissions";
+import { pageRole, requirePage } from "./permissions";
+import { retitleMentions, summaryHtml } from "./whiteboard-richtext";
+import { NOTIFICATION_FIELDS, NOTIFICATION_FIELD_VALUES, notificationFields } from "./notification-fields";
 import { requireUnlocked } from "./journal-extras";
 import { escaped } from "./document-server";
 import { itemText, type WhiteboardItem } from "./whiteboard-model";
@@ -48,11 +50,70 @@ export function whiteboardSummary(items: WhiteboardItem[]) {
   return items
     // Covered cards stay out of search and previews until uncovered.
     .filter((item) => !item.covered)
-    .map(itemText)
-    .filter(Boolean)
-    .map((text) => `<p>${escaped(text.slice(0, 2000))}</p>`)
+    .map((item) => {
+      // Mentions (#567) stay links here: backlinks, the graph, renames and
+      // notifications read them from documents.html as in documents.
+      if (typeof item.text === "string" && MENTION_IN_TEXT.test(item.text)) {
+        const rest = itemText({ ...item, text: undefined });
+        const text = summaryHtml(item.text);
+        return text || rest ? `<p>${text}${text && rest ? " " : ""}${escaped(rest.slice(0, 2000))}</p>` : "";
+      }
+      const text = itemText(item);
+      return text ? `<p>${escaped(text.slice(0, 2000))}</p>` : "";
+    })
     .join("")
     .slice(0, 400000);
+}
+const MENTION_IN_TEXT = /\]\((?:\/?#page=|mention:)/;
+// People mentioned in a board's text for the first time are told, like in
+// documents (lib/api.ts document.update): not the writer, only people who
+// may open the board, once per mention (the summary before had none).
+async function notifyBoardMentions(user: Identity, page: Page, before: string, after: string) {
+  const seen = new Set<string>();
+  for (const match of after.matchAll(/data-mention="([^"]+)"/g)) {
+    const uid = match[1];
+    if (seen.has(uid) || uid === user.id || before.includes(`data-mention="${uid}"`)) continue;
+    seen.add(uid);
+    const person = await one<{ id: string }>("SELECT id FROM users WHERE id=?", uid);
+    if (!person || !(await pageRole({ ...user, id: uid }, page))) continue;
+    await run(
+      `INSERT INTO notifications(id,user_id,body,page_id,kind,${NOTIFICATION_FIELDS}) VALUES(?,?,?,?,'mention',${NOTIFICATION_FIELD_VALUES})`,
+      id(),
+      uid,
+      `${user.name} hat dich in „${page.title}“ erwähnt`,
+      page.id,
+      ...notificationFields({ actorId: user.id, subtype: "mention", params: { actor: user.name, page: page.title } }),
+    );
+    const { mentionWebhook } = await import("./webhooks");
+    await mentionWebhook(page.workspace_id, page.id, null, uid, user.name, user.id);
+  }
+}
+// A page or record was renamed (lib/link-titles.ts followRename): its
+// mentions on this board that read the old title get the new one. The
+// open boards sync the change like any other.
+export async function retitleBoardMentions(page: Page, target: { pageId: string; rowId?: string }, before: string, after: string) {
+  const s = await stored(page, true);
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, s.state);
+    const vector = Y.encodeStateVector(doc);
+    doc.transact(() => {
+      doc.getMap<Y.Map<unknown>>("items").forEach((map) => {
+        if (!(map instanceof Y.Map)) return;
+        const text = map.get("text");
+        if (typeof text !== "string") return;
+        const next = retitleMentions(text, target, before, after);
+        if (next !== null) map.set("text", next);
+      });
+    });
+    if (Y.encodeStateAsUpdate(doc, vector).length <= 2) return false;
+    await run("UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?", Y.encodeStateAsUpdate(doc), nowText(), page.id);
+    await run("UPDATE documents SET html=? WHERE page_id=?", whiteboardSummary(whiteboardItems(doc)), page.id);
+    boardChanged(page.id);
+    return true;
+  } finally {
+    doc.destroy();
+  }
 }
 // `forUpdate`: locked until the commit (PostgreSQL), for a merge.
 async function stored(page: Page, forUpdate = false): Promise<Stored> {
@@ -155,9 +216,12 @@ export async function syncWhiteboard(user: Identity, raw: unknown) {
           Y.encodeStateAsUpdate(doc), nowText(),
           page.id,
         );
+        const summary = whiteboardSummary(items);
+        const previous = (await one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", page.id))?.html || "";
+        if (summary.includes("data-mention=")) await notifyBoardMentions(user, page, previous, summary);
         await run(
           "UPDATE documents SET html=?,updated_at=? WHERE page_id=?",
-          whiteboardSummary(items), nowText(),
+          summary, nowText(),
           page.id,
         );
         await run(

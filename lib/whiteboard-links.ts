@@ -47,7 +47,8 @@ export function safeHref(raw: unknown): string | null {
   const value = raw.trim();
   if (!value || value.length > 2000 || /[\s<>"'`\\]/.test(value)) return null;
   if (/^#item=[\w-]{1,64}$/.test(value)) return value;
-  if (/^\/?#page=/.test(value)) return parseElementLink(value) ? value : null;
+  if (/^\/?#page=/.test(value)) return parseElementLink(value) || parseMention(value) ? value : null;
+  if (/^mention:/.test(value)) return parseMention(value) ? value : null;
   if (/^mailto:/i.test(value)) return /^mailto:[^@\s/?#]+@[^@\s/?#]+\.[^@\s/?#]+(\?[^\s]*)?$/i.test(value) ? value : null;
   let url: URL;
   try {
@@ -57,6 +58,27 @@ export function safeHref(raw: unknown): string | null {
   }
   if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password) return null;
   return url.href;
+}
+
+// Mentions in board texts (#567, "@" while editing a note, text or shape):
+// a link to a page, whiteboard, journal day or record – "/#page=<page>" or
+// "/#page=<database>&row=<record>", the same address as a page link in a
+// document, so backlinks, the graph and renames find it – or a person,
+// "mention:<user>". Kept in the text as [label](address) like every link.
+export type Mention = { kind: "page"; pageId: string; rowId?: string } | { kind: "person"; userId: string };
+const PAGE_MENTION = /^\/?#page=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:&row=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?$/i;
+const PERSON_MENTION = /^mention:([\w-]{1,64})$/;
+export function parseMention(raw: unknown): Mention | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  const page = PAGE_MENTION.exec(value);
+  if (page) return page[2] ? { kind: "page", pageId: page[1], rowId: page[2] } : { kind: "page", pageId: page[1] };
+  const person = PERSON_MENTION.exec(value);
+  return person ? { kind: "person", userId: person[1] } : null;
+}
+export function mentionHref(target: Mention) {
+  if (target.kind === "person") return `mention:${target.userId}`;
+  return `/#page=${target.pageId}${target.rowId ? `&row=${target.rowId}` : ""}`;
 }
 
 // What a click on a link does on the board with this page: jump to an
@@ -69,6 +91,8 @@ export type LinkTarget =
 export function linkTarget(href: string, pageId: string, origin: string): LinkTarget | null {
   const safe = safeHref(href) ?? (parseElementLink(href, origin) ? href : null);
   if (!safe) return null;
+  const mention = parseMention(safe);
+  if (mention) return mention.kind === "page" ? { kind: "page", href: mentionHref(mention) } : null;
   const element = parseElementLink(safe, origin);
   if (element && (!element.pageId || element.pageId === pageId)) return { kind: "item", itemId: element.itemId };
   if (element) return { kind: "page", href: `/#page=${element.pageId}&item=${encodeURIComponent(element.itemId)}` };

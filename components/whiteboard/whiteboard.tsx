@@ -173,6 +173,7 @@ import { LIBRARY_DRAG_TYPE, dropLibraryShape, insertLibraryShape } from "./shape
 import { PrototypeBadges } from "./prototype-player";
 import { remapLink } from "@/lib/whiteboard-diagram-model";
 import { useBoardExtras } from "./board-extras";
+import { useBoardMention } from "./board-mention";
 import { BoardCommentHover, BoardCommentPopover, useCommentFileCleanup } from "./board-comment";
 import type { CommentNode } from "@/lib/comment-content";
 import { editedBoardMessage, mayChangeBoardMessage, withoutBoardMessage } from "@/lib/whiteboard-comments";
@@ -326,6 +327,8 @@ function fitActionsMenu(menu: HTMLDivElement | null) {
   menu.style.maxHeight = `${Math.max(160, bottom - menu.getBoundingClientRect().top)}px`;
 }
 
+// No people to mention (guests, demo boards).
+const NO_MEMBERS: { id: string; name: string }[] = [];
 export default function Whiteboard({
   pageId,
   state,
@@ -339,7 +342,13 @@ export default function Whiteboard({
   userName = "",
   demo = false,
   guest,
+  members = NO_MEMBERS,
+  workspaceId,
 }: {
+  // For "@" in texts (#567, board-mention.tsx): the workspace's people and
+  // the workspace (records, journal days).
+  members?: { id: string; name: string }[];
+  workspaceId?: string;
   // A guest of an edit link (#280, lib/share-canvas.ts): the board syncs
   // through the link, without uploads, AI, templates, page links,
   // facilitation or exports.
@@ -2906,6 +2915,16 @@ export default function Whiteboard({
     );
   }
 
+  // "@" in texts: the mention dialog (#567). Not for guests of an edit link.
+  const mention = useBoardMention({
+    pageId,
+    workspaceId,
+    pages: guest ? [] : pages,
+    members: guest ? [] : members,
+    container,
+    write: (id, text) => change(() => setProps(id, { text })),
+    onError,
+  });
   const extras = useBoardExtras({
     pageId,
     title: pages.find((p) => p.id === pageId)?.title || t("Whiteboard", "Whiteboard"),
@@ -3450,12 +3469,15 @@ export default function Whiteboard({
                   : 10) * view.zoom,
           }}
           defaultValue={it.text || ""}
-          onChange={(e) =>
+          onChange={(e) => {
+            if (!guest && mention.onInput(e.currentTarget, it.id, it.type, (e.nativeEvent as InputEvent).data ?? null)) return;
             change(() =>
               setProps(it.id, { text: e.target.value.slice(0, 10000) }),
-            )
-          }
+            );
+          }}
           onBlur={(e) => {
+            // The mention dialog took the focus: still editing.
+            if (mention.holds()) return;
             // Scribble next to the field (lib/stylus.ts): still writing.
             if (stillWriting()) {
               const field = e.currentTarget;
@@ -3466,6 +3488,8 @@ export default function Whiteboard({
             setEditing(null);
           }}
           onKeyDown={(e) => {
+            // "@": the mention dialog (board-mention.tsx).
+            if (!guest && mention.onKeyDown(e, it.id, it.type)) return e.stopPropagation();
             // Lists, bold/italic/underline marks (board-extras.tsx).
             if (extras.onEditorKey(e, it.id)) return e.stopPropagation();
             if (
@@ -5130,6 +5154,7 @@ export default function Whiteboard({
           )}
         </div>
       )}
+      {mention.picker}
       <Modal
         open={emojiOpen}
         onClose={() => setEmojiOpen(false)}

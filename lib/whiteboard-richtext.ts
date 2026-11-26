@@ -5,8 +5,9 @@
 // Bare http(s) addresses become links. The parser gives spans, never HTML:
 // the board renders them as React elements, the SVG export escapes them
 // (richTextHtml), so nothing from the board ever runs as markup. Links pass
-// lib/whiteboard-links.ts safeHref (http, https, mailto, element links).
-import { safeHref } from "./whiteboard-links";
+// lib/whiteboard-links.ts safeHref (http, https, mailto, element links,
+// mentions of pages, records and people, #567).
+import { mentionHref, parseMention, safeHref, type Mention } from "./whiteboard-links";
 
 export type Span = { text: string; bold?: boolean; italic?: boolean; underline?: boolean; href?: string };
 export type Block =
@@ -127,7 +128,9 @@ function spansHtml(spans: Span[]) {
       if (s.bold) html = `<b>${html}</b>`;
       if (s.italic) html = `<i>${html}</i>`;
       if (s.underline) html = `<u>${html}</u>`;
-      if (s.href) html = `<a href="${escape(s.href)}" style="color:inherit;text-decoration:underline">${html}</a>`;
+      // A mention is its title as text: its address only works inside Flowplan.
+      if (s.href && parseMention(s.href)) html = `<span style="text-decoration:underline">${html}</span>`;
+      else if (s.href) html = `<a href="${escape(s.href)}" style="color:inherit;text-decoration:underline">${html}</a>`;
       return html;
     })
     .join("");
@@ -144,6 +147,60 @@ export function richTextHtml(raw: string) {
           : `<ol start="${block.start}" style="${list}">${block.items.map((i) => `<li>${spansHtml(i)}</li>`).join("")}</ol>`,
     )
     .join("");
+}
+
+// The board's text as HTML for documents.html (lib/whiteboard.ts
+// whiteboardSummary): plain text, with mentions as the page links and
+// person mentions documents use – what backlinks (lib/text-links.ts), the
+// graph, renames and notifications read there. Every text escaped.
+export function summaryHtml(raw: string, max = 2000) {
+  const html: string[] = [];
+  let left = max;
+  const add = (spans: Span[]) => {
+    for (const s of spans) {
+      if (left <= 0) return;
+      const text = escape(s.text.slice(0, left));
+      left -= s.text.length;
+      const mention = s.href ? parseMention(s.href) : null;
+      if (mention?.kind === "page") html.push(`<a href="${escape(mentionHref(mention))}">${text}</a>`);
+      else if (mention?.kind === "person") html.push(`<span data-mention="${escape(mention.userId)}">${text}</span>`);
+      else html.push(text);
+    }
+  };
+  const lines = parseRichText(raw).flatMap((block) => (block.kind === "p" ? [block.spans] : block.items));
+  lines.forEach((spans, i) => {
+    if (i && left > 0) {
+      html.push("\n");
+      left--;
+    }
+    add(spans);
+  });
+  return html.join("");
+}
+
+// The text of a mention: what the board shows and what a rename looks for.
+export const mentionLabel = (label: string) =>
+  label.replace(/[[\]\n\r]/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+// A mention as it is written into the text.
+export function mentionMarkup(label: string, target: Mention) {
+  return `[${mentionLabel(label) || "…"}](${mentionHref(target)})`;
+}
+// The mentions of a page or record whose text is its old title get the
+// new title (like links in documents, lib/link-titles.ts); a mention with
+// its own wording (an alias) stays as it is. Null: the text is unchanged.
+export function retitleMentions(raw: string, target: { pageId: string; rowId?: string }, before: string, after: string) {
+  const old = mentionLabel(before),
+    next = mentionLabel(after);
+  if (!old || !next || old === next || !raw.includes(target.rowId || target.pageId)) return null;
+  let changed = false;
+  const text = raw.replace(/\[([^\]\n]{1,500})\]\(([^()\s]{1,2000})\)/g, (all, label: string, href: string) => {
+    const mention = parseMention(href);
+    if (mention?.kind !== "page" || mention.pageId !== target.pageId || mention.rowId !== target.rowId) return all;
+    if (label.trim() !== old) return all;
+    changed = true;
+    return `[${next}](${href})`;
+  });
+  return changed ? text : null;
 }
 
 // ---- editing helpers (the text field of the board) ----
