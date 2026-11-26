@@ -267,7 +267,15 @@ type TaskRow = {
   own: number;
   assigned_at: number | null;
 };
-async function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
+// A list of ids: those of the person's workspaces among them (My tasks →
+// "Alle Arbeitsbereiche", #564), still in one query.
+async function taskRows(user: Identity, workspaceId: string | readonly string[] | null, includeDone: boolean) {
+  const some = Array.isArray(workspaceId) ? (workspaceId as readonly string[]) : null;
+  if (some && !some.length) return [];
+  const where =
+    typeof workspaceId === "string"
+      ? "t.workspace_id=?"
+      : `t.workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?)${some ? ` AND t.workspace_id IN (${some.map(() => "?").join(",")})` : ""}`;
   const undated = await userUnassignedTasks(user.id);
   const rows = await all<TaskRow>(
     `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.status,t.assignee,t.due,t.updated_at,t.assigned_at,p.title,p.icon,t.workspace_id,
@@ -276,7 +284,7 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
      LEFT JOIN pages j ON j.id=p.parent_id AND j.kind='journal' AND p.journal_date IS NOT NULL
        AND t.row_id='' AND (j.created_by=? OR p.created_by=?)
      LEFT JOIN personal_task_pages o ON o.page_id=t.page_id AND o.user_id=? AND t.row_id=''
-     WHERE ${workspaceId ? "t.workspace_id=?" : "t.workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?)"}
+     WHERE ${where}
        AND p.deleted_at IS NULL
        AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
        AND (t.assignee=?
@@ -288,7 +296,8 @@ async function taskRows(user: Identity, workspaceId: string | null, includeDone:
     user.id,
     user.id,
     user.id,
-    workspaceId || user.id,
+    typeof workspaceId === "string" ? workspaceId : user.id,
+    ...(some || []),
     user.id,
     user.id,
   );
@@ -337,6 +346,11 @@ export async function myTasks(user: Identity, workspaceId: string, includeDone =
 // Open tasks across all of the person's workspaces (widgets of the mobile app).
 export async function openTasksEverywhere(user: Identity) {
   return await taskRows(user, null, false);
+}
+// Tasks in the given workspaces of the person (one query, at most 1000),
+// for My tasks → "Alle Arbeitsbereiche" (lib/all-workspace-tasks.ts, #564).
+export async function tasksInWorkspaces(user: Identity, workspaceIds: readonly string[], includeDone = false) {
+  return await taskRows(user, workspaceIds, includeDone);
 }
 // The person's tasks in their other workspaces, per workspace.
 export async function otherWorkspaceTasks(user: Identity, workspaceId: string, includeDone = false) {

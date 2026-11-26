@@ -4213,7 +4213,12 @@ export class FlowplanClient {
   }>("GET", `/api/tasks/targets`, { query }, options);
   }
 
-  /** Records across all databases — With an optional filter (JSON, same shape as a view filter group) and the saved record views. (GET /api/records) */
+  /** My tasks of all workspaces — Tasks (as `/api/tasks`, each with `workspaceId`) and task records (as `/api/records`, each with `workspaceId`) of all the workspaces you are a member of, in one answer – My tasks → “All workspaces”. `workspaces` (comma-separated ids) narrows to some of them; `records=0` leaves the records out; `filter` is the records' filter as for `/api/records`. At most 50 workspaces (`workspacesLimited`), 1000 tasks (`tasksLimited`) and 500 records (`limited`). `workspaces` lists all your workspaces (id, name), `shown` those collected. `personal` and `unassigned` as in `/api/tasks`, for the workspace `workspace`. (GET /api/tasks/all) */
+  async tasksAllWorkspaces(query: { workspace: string; done?: "0" | "1"; workspaces?: string; records?: "0" | "1"; filter?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/tasks/all`, { query }, options);
+  }
+
+  /** Records across all databases — With an optional filter (JSON, same shape as a view filter group) and the saved record views. Each record carries `dueField` (the due date property it is read from, null without one) and `version`, as `row.update` takes them. (GET /api/records) */
   async records(query: { workspace: string; filter?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/records`, { query }, options);
   }

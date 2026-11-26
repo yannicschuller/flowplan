@@ -35,8 +35,23 @@
 // with the rest (Person, "Erledigte zeigen", the unassigned tasks, the
 // tools for records); the date range is a bottom sheet as well, above the
 // bottom navigation. Larger screens keep the row as it was.
+//
+// #564: "Dieser Arbeitsbereich / Alle Arbeitsbereiche" shows the tasks and
+// records of all the person's workspaces in one list (GET /api/tasks/all,
+// lib/all-workspace-tasks.ts), each with its workspace's label, narrowed
+// with the workspace chips; then the section "Aus anderen Arbeitsbereichen"
+// is not shown, nor the records' database tools and saved views (they
+// belong to one workspace). "Liste / Board" shows the due groups as
+// columns (components/my-tasks-board.tsx, loaded when chosen): a card moved
+// to another column gets that column's date (lib/board-due.ts). Both
+// choices, and the chosen workspaces, are kept on this device like the
+// filters.
 import { useLocale, useT } from "./i18n";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import dynamic from "next/dynamic";
+import { loadView } from "./view-fallback";
+import { WorkspaceIcon } from "./workspace-icon";
+import type { BoardCard } from "./my-tasks-board";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 import { CalendarBlank, CaretDown, CheckSquare, FunnelSimple, Plus, Tray, X } from "@phosphor-icons/react";
 import { optimistic } from "@/lib/optimistic";
@@ -101,6 +116,47 @@ const FILTERS_KEY = "flowplan.myTasks.filters";
 // Before #314 only "Alle / Aus Dokumenten & Datenbanken / Eigene" was kept;
 // "Eigene" carries over.
 const OLD_FILTER_KEY = "flowplan.myTasks.filter";
+// #564: which workspaces and how (kept on this device).
+type Scope = "here" | "all";
+type Layout = "list" | "board";
+const SCOPE_KEY = "flowplan.myTasks.scope";
+const LAYOUT_KEY = "flowplan.myTasks.layout";
+const WORKSPACES_KEY = "flowplan.myTasks.workspaces";
+type WorkspaceChoice = { id: string; name: string; icon?: string | null };
+type AllResult = {
+  workspaces: { id: string; name: string }[];
+  tasks: Task[];
+  records: (TaskRecord & { workspaceId: string })[];
+  limited: boolean;
+  tasksLimited?: boolean;
+  workspacesLimited?: boolean;
+  personal?: Personal;
+  unassigned?: boolean;
+};
+const MyTasksBoard = dynamic(() => loadView(() => import("./my-tasks-board").then((m) => ({ default: m.MyTasksBoard }))), {
+  ssr: false,
+  loading: () => <ListSkeleton rows={4} />,
+});
+const stored = <T extends string>(key: string, options: readonly T[], fallback: T): T => {
+  try {
+    const value = localStorage.getItem(key);
+    if (options.includes(value as T)) return value as T;
+  } catch {}
+  return fallback;
+};
+const keep = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+};
+function storedWorkspaces(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(WORKSPACES_KEY) || "[]");
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string").slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
 const taskKey = (task: Task) => `${task.pageId}:${task.rowId}:${task.index}`;
 const recordKey = (r: TaskRecord) => `record:${r.pageId}:${r.rowId}`;
 // The device's today, for "morgen", "Freitag" … in a new task and the date ranges.
@@ -142,8 +198,12 @@ export function MyTasks({
   onError,
   onChanged,
   onSeen,
+  workspaces = [],
 }: {
   workspaceId: string;
+  // The person's workspaces (the bootstrap's), for "Alle Arbeitsbereiche"
+  // and the labels' icons (#564).
+  workspaces?: WorkspaceChoice[];
   onOpen: (pageId: string, rowId: string | null) => void;
   onError: (message: string) => void;
   onChanged: () => void;
@@ -183,10 +243,46 @@ export function MyTasks({
   // The filters of this device come first; nothing loads before them, so
   // the list is not fetched twice (or shown with the wrong filters).
   const [ready, setReady] = useState(false);
+  const [scope, setScopeState] = useState<Scope>("here");
+  const [layout, setLayoutState] = useState<Layout>("list");
+  // The workspace chips of "Alle Arbeitsbereiche": none chosen means all.
+  const [chosen, setChosen] = useState<string[]>([]);
+  // All the person's workspaces as the server knows them (names), with the
+  // bootstrap's icons.
+  const [allWorkspaces, setAllWorkspaces] = useState<{ id: string; name: string }[]>([]);
+  const [allLimits, setAllLimits] = useState({ tasks: false, workspaces: false });
   useEffect(() => {
     setFiltersState(storedFilters());
+    setScopeState(stored<Scope>(SCOPE_KEY, ["here", "all"], "here"));
+    setLayoutState(stored<Layout>(LAYOUT_KEY, ["list", "board"], "list"));
+    setChosen(storedWorkspaces());
     setReady(true);
   }, []);
+  // Only with more than one workspace; a stored "all" waits for a second one.
+  const everywhere = scope === "all" && workspaces.length > 1;
+  const setScope = (next: Scope) => {
+    if (next === scope) return;
+    keep(SCOPE_KEY, next);
+    // The other list loads; nothing of the old one stays meanwhile.
+    setTasks(null);
+    setRecords(null);
+    setOthers([]);
+    // The database, search and saved view belong to one workspace.
+    setDatabase("");
+    setQuery("");
+    setView("");
+    setScopeState(next);
+  };
+  const setLayout = (next: Layout) => {
+    keep(LAYOUT_KEY, next);
+    setLayoutState(next);
+  };
+  const toggleWorkspace = (id: string | null) =>
+    setChosen((current) => {
+      const next = id === null ? [] : current.includes(id) ? current.filter((w) => w !== id) : [...current, id];
+      keep(WORKSPACES_KEY, JSON.stringify(next));
+      return next;
+    });
   const setFilters = (patch: Partial<Filters>, keepView = false) => {
     if (!keepView) setView("");
     setFiltersState((current) => {
@@ -205,12 +301,16 @@ export function MyTasks({
   // have folded away (height and opacity) – then the reload drops them.
   const [settling, setSettling] = useState<Set<string>>(new Set());
   const list = useRef<HTMLDivElement>(null);
+  // An answer for the other choice of workspaces, arriving late, is dropped.
+  const everywhereNow = useRef(everywhere);
+  everywhereNow.current = everywhere;
   const loadTasks = useCallback(async () => {
     if (!ready) return;
     try {
       const result = await api<{ tasks: Task[]; others?: Others; personal?: Personal; unassigned?: boolean }>(
         `/api/tasks?workspace=${workspaceId}${done ? "&done=1" : ""}`,
       );
+      if (everywhereNow.current) return;
       setTasks(result.tasks);
       setOthers(result.others || []);
       if (result.personal) setPersonal(result.personal);
@@ -249,19 +349,59 @@ export function MyTasks({
     try {
       const filter = { ...recordFilter, tasks: true, today: today() };
       const result = await api<RecordsResult>(`/api/records?workspace=${workspaceId}&filter=${encodeURIComponent(JSON.stringify(filter))}`);
-      if (turn === recordsTurn.current) setRecords(result);
+      if (turn === recordsTurn.current && !everywhereNow.current) setRecords(result);
     } catch (e) {
       if (turn === recordsTurn.current) onError((e as Error).message);
     }
   }, [ready, workspaceId, wantRecords, recordFilter, onError]);
+  // "Alle Arbeitsbereiche" (#564): tasks and records of every chosen
+  // workspace in one request; the records' filter without the database and
+  // the search (those belong to one workspace).
+  const chosenShown = useMemo(() => chosen.filter((id) => workspaces.some((w) => w.id === id)), [chosen, workspaces]);
+  // As text: a new bootstrap (after every change) does not load the list again.
+  const chosenKey = chosenShown.join(",");
+  const allTurn = useRef(0);
+  const loadAll = useCallback(async () => {
+    if (!ready) return;
+    const turn = ++allTurn.current;
+    try {
+      const filter = { mine: person === "mine", open: !done, due: range, tasks: true, today: today() };
+      const result = await api<AllResult>(
+        `/api/tasks/all?workspace=${workspaceId}${done ? "&done=1" : ""}&records=${wantRecords ? 1 : 0}` +
+          `&workspaces=${chosenKey}&filter=${encodeURIComponent(JSON.stringify(filter))}`,
+      );
+      if (turn !== allTurn.current || !everywhereNow.current) return;
+      setTasks(result.tasks);
+      setOthers([]);
+      setRecords({ records: result.records, databases: [], limited: result.limited, views: [] });
+      setAllWorkspaces(result.workspaces);
+      setAllLimits({ tasks: !!result.tasksLimited, workspaces: !!result.workspacesLimited });
+      if (result.personal) setPersonal(result.personal);
+      setUnassigned(result.unassigned === true);
+      const now = result.tasks.filter((task) => task.fresh).map(taskKey);
+      if (now.length) setFresh((current) => new Set([...current, ...now]));
+      if (!seen.current) {
+        seen.current = true;
+        void api("/api/command", { action: "tasks.seen" })
+          .then(() => onSeen?.())
+          .catch(() => {});
+      }
+    } catch (e) {
+      if (turn === allTurn.current) onError((e as Error).message);
+    }
+  }, [ready, workspaceId, done, wantRecords, chosenKey, person, range, onError, onSeen]);
+  const reloadTasks = everywhere ? loadAll : loadTasks;
+  const reloadRecords = everywhere ? loadAll : loadRecords;
   useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
+    if (everywhere) void loadAll();
+    else void loadTasks();
+  }, [everywhere, loadAll, loadTasks]);
   useEffect(() => {
+    if (everywhere) return;
     // Typing in the search waits for a pause.
     const timer = setTimeout(() => void loadRecords(), query ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [loadRecords, query]);
+  }, [everywhere, loadRecords, query]);
   const currentTarget = () => personal.target;
   const targetName = (target: TaskTarget | undefined) => (target?.kind === "database" ? target.title || t("Ohne Titel", "Untitled") : t("Aufgaben", "Tasks"));
   // Why a chosen database takes no tasks now.
@@ -340,9 +480,9 @@ export function MyTasks({
         // A record: shown with the records, so the filters must let it through.
         if (source === "documents") setFilters({ source: "all" }, true);
         if (person === "own") setFilters({ person: "mine" }, true);
-        void loadRecords();
+        if (!everywhere) void loadRecords();
       } else if (source === "databases") setFilters({ source: "all" }, true);
-      await loadTasks();
+      await reloadTasks();
       onChanged();
     } catch (e) {
       onError((e as Error).message);
@@ -359,7 +499,7 @@ export function MyTasks({
     setUnassigned(on);
     try {
       await api("/api/command", { action: "tasks.unassigned", unassigned: on });
-      await loadTasks();
+      await reloadTasks();
       onChanged();
     } catch (e) {
       setUnassigned(!on);
@@ -412,7 +552,7 @@ export function MyTasks({
     try {
       if (sent) {
         if (leaving) await foldAway(key);
-        await loadTasks();
+        await reloadTasks();
         onChanged();
       }
     } finally {
@@ -444,12 +584,38 @@ export function MyTasks({
     try {
       if (sent) {
         if (leaving) await foldAway(key);
-        await loadRecords();
+        await reloadRecords();
         onChanged();
       }
     } finally {
       setBusy("");
       if (leaving) settle(key, false);
+    }
+  };
+  // The board moved a record to another day (#564): its due date property
+  // through row.update, with the record's version – the same checks as
+  // editing the cell in its database (field rights, private records).
+  const moveRecord = async (record: TaskRecord, due: string | null) => {
+    if (!record.dueField) return;
+    const key = recordKey(record);
+    setBusy(key);
+    const put = (value: Partial<TaskRecord>) =>
+      setRecords((r) => r && { ...r, records: r.records.map((x) => (x.rowId === record.rowId ? { ...x, ...value } : x)) });
+    const sent = await optimistic({
+      key: `task:${key}`,
+      apply: () => put({ due }),
+      commit: () =>
+        api("/api/command", { action: "row.update", pageId: record.pageId, rowId: record.rowId, version: record.version, cells: { [record.dueField!]: due ?? "" } }),
+      rollback: () => put({ due: record.due }),
+      onError: (e) => onError((e as Error).message),
+    });
+    try {
+      if (sent) {
+        await reloadRecords();
+        onChanged();
+      }
+    } finally {
+      setBusy("");
     }
   };
   // Lets the struck-through task be seen briefly, then folds it away.
@@ -546,6 +712,20 @@ export function MyTasks({
   const loading = !tasks || (wantRecords && !records);
   const filtered = source !== DEFAULTS.source || person !== DEFAULTS.person || range !== DEFAULTS.range || !!database || !!query;
 
+  // The workspace a task or record is from, in "Alle Arbeitsbereiche".
+  const workspaceLabel = (id: string | undefined): ReactNode => {
+    if (!everywhere || !id) return null;
+    const known = workspaces.find((w) => w.id === id);
+    const name = allWorkspaces.find((w) => w.id === id)?.name ?? known?.name ?? "";
+    return (
+      <span className="my-task-workspace" title={t(`Arbeitsbereich: ${name}`, `Workspace: ${name}`)}>
+        <span aria-hidden="true" className="my-task-workspace-icon">
+          <WorkspaceIcon name={name || "?"} icon={known?.icon} small />
+        </span>
+        <span>{name}</span>
+      </span>
+    );
+  };
   const taskItem = (task: Task) => {
     const key = taskKey(task);
     const checked = task.checked || settling.has(key);
@@ -565,6 +745,7 @@ export function MyTasks({
               {t("Neu", "New||task")}
             </span>
           )}
+          {workspaceLabel(task.workspaceId)}
         </span>
         {task.status && task.status !== "open" && task.status !== "done" && !settling.has(key) && (
           <span className="my-task-status" data-status={task.status}>
@@ -621,14 +802,53 @@ export function MyTasks({
         settling={settling.has(entry.key)}
         onToggle={(checked) => void tick(entry.record, checked)}
         onOpen={() => onOpen(entry.record.pageId, entry.record.rowId)}
+        workspace={workspaceLabel(entry.record.workspaceId)}
       />
     );
+  // The same entries as cards of the board (#564).
+  const card = (entry: Entry): BoardCard => {
+    const settlingNow = settling.has(entry.key);
+    if (entry.kind === "task") {
+      const task = entry.task;
+      return {
+        key: entry.key,
+        title: task.text,
+        checked: task.checked || settlingNow,
+        due: task.due,
+        busy: busy === entry.key,
+        source: { title: task.title, icon: task.icon },
+        workspace: workspaceLabel(task.workspaceId),
+        people: [],
+        movable: true,
+        onOpen: () => onOpen(task.pageId, task.rowId),
+        onToggle: (checked) => void change(task, { checked }),
+        onMove: (due) => void change(task, { due }),
+      };
+    }
+    const record = entry.record;
+    return {
+      key: entry.key,
+      title: record.title || t("Ohne Titel", "Untitled"),
+      checked: record.done || settlingNow,
+      due: record.due,
+      busy: busy === entry.key,
+      source: { title: record.database, icon: record.icon },
+      workspace: workspaceLabel(record.workspaceId),
+      people: record.people,
+      // Only with a due date property to write and a version to write it with.
+      movable: !!record.dueField && record.version !== undefined,
+      onOpen: () => onOpen(record.pageId, record.rowId),
+      onToggle: (checked) => void tick(record, checked),
+      onMove: (due) => void moveRecord(record, due),
+    };
+  };
 
   // Why the list is empty, in the words of the filters that made it so.
   const empty = () => {
     if (person === "own")
       return t("Keine eigenen Aufgaben offen. Schreib oben eine – sie landet auf deiner Seite „Aufgaben“.", "No tasks of your own are open. Write one above – it goes to your page “Tasks”.");
-    if (filtered || done) return t("Nichts passt zu diesen Filtern.", "Nothing matches these filters.");
+    if (filtered || done || (everywhere && chosenShown.length)) return t("Nichts passt zu diesen Filtern.", "Nothing matches these filters.");
+    if (everywhere) return t("Keine offenen Aufgaben in deinen Arbeitsbereichen.", "No open tasks in your workspaces.");
     return (
       <>
         {t("Keine offenen Aufgaben in diesem Arbeitsbereich. Schreib in einem Dokument eine Aufgabe mit", "No open tasks in this workspace. Write a task in a document with")}{" "}<code>[]</code> {t("und erwähne jemanden mit", "and mention someone with")}{" "}
@@ -789,7 +1009,7 @@ export function MyTasks({
   );
   const sheetFilters = sheetFilterCount({ person, done, unassigned, database, query, records: wantRecords });
   return (
-    <div className="utility-content my-tasks" ref={list}>
+    <div className={`utility-content my-tasks${layout === "board" ? " my-tasks-wide" : ""}`} ref={list}>
       <div className="utility-title">
         <CheckSquare size={30} />
         <h1>{t("Meine Aufgaben", "My tasks")}</h1>
@@ -846,6 +1066,31 @@ export function MyTasks({
           {notice}
         </p>
       )}
+      <div className="my-tasks-modes">
+        {workspaces.length > 1 &&
+          segmented(
+            "my-tasks-everywhere",
+            t("Arbeitsbereiche", "Workspaces"),
+            everywhere ? "all" : "here",
+            [
+              ["here", t("Dieser Arbeitsbereich", "This workspace"), t("Nur die Aufgaben dieses Arbeitsbereichs, die der anderen darunter", "Only this workspace's tasks, the others' below")],
+              ["all", t("Alle Arbeitsbereiche", "All workspaces"), t("Die Aufgaben aller deiner Arbeitsbereiche in einer Liste", "The tasks of all your workspaces in one list")],
+            ],
+            (value) => setScope(value as Scope),
+            "my-tasks-workspace-scope",
+          )}
+        {segmented(
+          "my-tasks-layout",
+          t("Ansicht", "View"),
+          layout,
+          [
+            ["list", t("Liste", "List"), t("Die Aufgaben untereinander, nach Fälligkeit gruppiert", "The tasks one below the other, grouped by due date")],
+            ["board", t("Board", "Board"), t("Eine Spalte je Fälligkeit; zum Verschieben ziehen oder „Verschieben nach …“", "A column per due date; drag or use “Move to …” to move a task")],
+          ],
+          (value) => setLayout(value as Layout),
+          "my-tasks-layout",
+        )}
+      </div>
       <div className={`my-tasks-bar${phone ? " compact" : ""}`}>
         {phone ? (
           <Select
@@ -919,7 +1164,7 @@ export function MyTasks({
                 {personFilter}
                 {doneFilter}
                 {unassignedFilter}
-                {wantRecords && records && recordTools}
+                {wantRecords && records && !everywhere && recordTools}
                 {pageLink}
               </div>
             </Modal>
@@ -932,7 +1177,23 @@ export function MyTasks({
           </>
         )}
       </div>
-      {wantRecords && records && (!phone || records.views.length > 0) && (
+      {everywhere && (
+        <div className="my-tasks-workspaces" role="group" aria-label={t("Arbeitsbereiche filtern", "Filter workspaces")}>
+          <button type="button" className={`toolbar-chip${chosenShown.length ? "" : " active"}`} aria-pressed={!chosenShown.length} onClick={() => toggleWorkspace(null)}>
+            {t("Alle", "All")}
+          </button>
+          {(allWorkspaces.length ? allWorkspaces : workspaces).map((w) => {
+            const on = chosenShown.includes(w.id);
+            return (
+              <button key={w.id} type="button" className={`toolbar-chip${on ? " active" : ""}`} aria-pressed={on} onClick={() => toggleWorkspace(w.id)}>
+                <WorkspaceIcon name={w.name || "?"} icon={workspaces.find((x) => x.id === w.id)?.icon} small />
+                <span className="toolbar-chip-text">{w.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {wantRecords && records && !everywhere && (!phone || records.views.length > 0) && (
         <div className="my-tasks-records">
           {!phone && recordTools}
           <RecordViews views={records.views} active={view} onPick={pickView} onDelete={(v) => void deleteView(v)} />
@@ -945,6 +1206,8 @@ export function MyTasks({
           <CheckSquare size={28} />
           <p>{empty()}</p>
         </div>
+      ) : layout === "board" ? (
+        <MyTasksBoard cards={entries.map(card)} touch={phone} />
       ) : (
         groupByDue(entries).map(([name, group]) => (
           <section key={name} className={`my-tasks-group ${name === "Überfällig" ? "overdue" : ""}`}>
@@ -958,7 +1221,14 @@ export function MyTasks({
       {wantRecords && records?.limited && (
         <p className="muted">{t("Die ersten 500 Einträge – grenze die Suche ein.", "The first 500 records – narrow the search.")}</p>
       )}
-      {otherShown.length > 0 && (
+      {everywhere && (allLimits.tasks || allLimits.workspaces) && (
+        <p className="muted">
+          {allLimits.workspaces
+            ? t("Die ersten 50 Arbeitsbereiche – wähle oben die aus, die du sehen willst.", "The first 50 workspaces – choose the ones you want to see above.")
+            : t("Die ersten 1000 Aufgaben – wähle oben weniger Arbeitsbereiche.", "The first 1000 tasks – choose fewer workspaces above.")}
+        </p>
+      )}
+      {!everywhere && otherShown.length > 0 && (
         <section className="my-tasks-others" aria-labelledby="my-tasks-others">
           <h2 id="my-tasks-others">{t("Aus anderen Arbeitsbereichen", "From other workspaces")}</h2>
           {otherShown.map((w) => (

@@ -43,7 +43,9 @@ export { dueField };
 export const assignedTo = (people: Field[], cells: Record<string, unknown>, userId: string) =>
   people.some((f) => cells[f.id] === userId || (Array.isArray(cells[f.id]) && (cells[f.id] as unknown[]).includes(userId)));
 
-export async function crossRecords(user: Identity, workspaceId: string, input: unknown) {
+// `max`: at most this many records (fewer when My tasks collects them over
+// several workspaces, lib/all-workspace-tasks.ts).
+export async function crossRecords(user: Identity, workspaceId: string, input: unknown, max = MAX) {
   await requireMember(user, workspaceId);
   const filter = crossFilterSchema.parse(input ?? {});
   const today = filter.today ?? new Date().toISOString().slice(0, 10);
@@ -64,6 +66,11 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     // Whether the database knows "done" (a status or checkbox property).
     tracked: boolean;
     people: string[];
+    // For moving it to another day (the board of My tasks, #564): the due
+    // date property it is read from and the record's version, as row.update
+    // takes them. Null without a due date property the reader sees.
+    dueField: string | null;
+    version: number;
   }[] = [];
   const databases: { id: string; title: string }[] = [];
   // Databases behind a journal PIN the person has not entered stay out.
@@ -132,10 +139,12 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
           const v = r.cells[f.id];
           return (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string" && !!x);
         }))],
+        dueField: due?.id ?? null,
+        version: Number(r.version),
       });
-      if (out.length >= MAX) break;
+      if (out.length >= max) break;
     }
-    if (out.length >= MAX) break;
+    if (out.length >= max) break;
   }
   // Dated first (soonest), then the rest by database.
   out.sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : a.database.localeCompare(b.database, "de")));
@@ -150,7 +159,7 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
   return {
     records: out.map((r) => ({ ...r, people: r.people.filter((p) => names.has(p)).map((p) => ({ id: p, name: names.get(p)! })) })),
     databases,
-    limited: out.length >= MAX,
+    limited: out.length >= max,
   };
 }
 
