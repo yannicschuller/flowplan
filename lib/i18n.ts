@@ -19,6 +19,7 @@ export const LANGUAGES = {
   "en-US": { name: "English (US)", tag: "en-US", flag: "🇺🇸" },
   fr: { name: "Français", tag: "fr-FR", flag: "🇫🇷" },
   pl: { name: "Polski", tag: "pl-PL", flag: "🇵🇱" },
+  pt: { name: "Português", tag: "pt-PT", flag: "🇵🇹" },
   zh: { name: "简体中文", tag: "zh-CN", flag: "🇨🇳" },
   ru: { name: "Русский", tag: "ru-RU", flag: "🇷🇺" },
 } as const;

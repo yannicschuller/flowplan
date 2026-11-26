@@ -32,8 +32,8 @@ import type { AiRunInput } from "./ai/run";
 import { fence } from "./ai/prompts";
 
 export type MeetingTrack = "me" | "others" | "mixed";
-export type MeetingLanguage = "de" | "en" | "fr" | "pl" | "zh" | "ru";
-export const MEETING_LANGUAGES: readonly MeetingLanguage[] = ["de", "en", "fr", "pl", "zh", "ru"];
+export type MeetingLanguage = "de" | "en" | "fr" | "pl" | "pt" | "zh" | "ru";
+export const MEETING_LANGUAGES: readonly MeetingLanguage[] = ["de", "en", "fr", "pl", "pt", "zh", "ru"];
 // A passage of the transcript as stored in the document (meetingSegment).
 export type MeetingSegment = {
   sid: string;
@@ -117,6 +117,19 @@ export const MEETING_TEXT: Record<
     noSpeech: "W nagraniu nie rozpoznano mowy.",
     owner: "Osoba odpowiedzialna",
     title: "Nowe spotkanie",
+  },
+  pt: {
+    actions: "Ações",
+    decisions: "Decisões",
+    questions: "Questões em aberto",
+    summary: "Resumo",
+    open: "Pontos em aberto",
+    others: "Outros",
+    speaker: "Orador",
+    tooShort: "Para gerar um resumo é necessário pelo menos um minuto de gravação.",
+    noSpeech: "Não foi reconhecida fala na gravação.",
+    owner: "Responsável",
+    title: "Nova reunião",
   },
   de: {
     actions: "Aufgaben",
@@ -501,7 +514,7 @@ export function promptTranscript(segments: MeetingSegment[]) {
   return segments.map((s, i) => `S${i + 1} [${formatTimestamp(s.start)}]${s.speaker ? ` ${s.speaker}:` : ""} ${s.text}`).join("\n");
 }
 
-const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "German", en: "English", fr: "French", pl: "Polish", zh: "Chinese (simplified)", ru: "Russian" };
+const LANGUAGE_NAMES: Record<MeetingLanguage, string> = { de: "German", en: "English", fr: "French", pl: "Polish", pt: "Portuguese", zh: "Chinese (simplified)", ru: "Russian" };
 export function meetingPrompt(input: {
   segments: MeetingSegment[];
   // The participants' notes (the block's notes part), as they are now.
