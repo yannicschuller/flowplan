@@ -117,3 +117,11 @@ test("regression: \"!\" and \"^\" right before a link, \"^[\" in a link's text",
   }
   assert.equal(sourceView('<p>!<a href="https://example.test/">link</a></p>').markdown, "\\![link](<https://example.test/>)\n");
 });
+test("regression: a paragraph of only \"#\", \"+\" or \"1.\" stays a paragraph", () => {
+  for (const html of ["<p>#</p>", "<p>+</p>", "<p>1.</p>", "<blockquote><p>+</p></blockquote>", "<p>= <strong>x</strong></p>"]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+  assert.equal(sourceView("<p>#</p>").markdown, "\\#\n");
+});

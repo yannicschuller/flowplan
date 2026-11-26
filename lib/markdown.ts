@@ -58,9 +58,12 @@ export function markdownText(text: string) {
     .replaceAll("&", "&amp;")
     .replace(/\\/g, "\\\\")
     .replace(/[`*_{}\[\]<>|~$]/g, "\\$&")
-    .replace(/^(\s*)(#{1,6}|[-+])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*\d+)([.)])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
+    // Also at the end of the text: a line of only "#", "+" or "1." is an
+    // empty heading or list item.
+    .replace(/^(\s*)(#{1,6}|[-+])(?=\s|$)/gm, "$1\\$2")
+    .replace(/^(\s*\d+)([.)])(?=\s|$)/gm, "$1\\$2")
+    // The spaces after a setext underline stay (text may follow).
+    .replace(/^(\s*)(=+|-+)(?=\s*$)/gm, "$1\\$2")
     // " ^word" would read as a block id marker (lib/markdown-import.ts).
     .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^")
     // "^[" would read as an inline footnote inside a link's text.
