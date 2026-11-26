@@ -135,3 +135,51 @@ test("regression: code with \"\\|\" in a table cell comes back as code", () => {
     assert.equal(exported(html).back, before, markdown);
   }
 });
+
+/* ---------- Properties ---------- */
+
+// Each block's text in document order (whitespace collapsed): what the
+// export must keep.
+function blockTexts(html: string) {
+  const texts: string[] = [];
+  const walk = (node: { type: string; text?: string; content?: unknown[] }): string => {
+    if (node.type === "text") return node.text || "";
+    const inner = (node.content || []).map((child) => walk(child as typeof node)).join("");
+    if (["paragraph", "heading", "codeBlock"].includes(node.type) && inner.trim()) texts.push(inner.replace(/\s+/g, " ").trim());
+    return inner;
+  };
+  walk(htmlJson(html) as { type: string });
+  return texts;
+}
+
+test("property: the source view gives every document back as it was", () => {
+  check(
+    fc.property(documentHtml({ markdown: true }), (html) => {
+      const { before, markdown, back } = sourceView(html);
+      assert.equal(back, before, `Markdown:\n${markdown}`);
+    }),
+    75,
+  );
+});
+
+test("property: the Markdown export keeps the text of every block", () => {
+  check(
+    fc.property(documentHtml({ markdown: true }), (html) => {
+      const { before, markdown, back } = exported(html);
+      assert.deepEqual(blockTexts(back), blockTexts(before), `Markdown:\n${markdown}`);
+    }),
+    75,
+  );
+});
+
+test("property: pasted chat text never throws and gives clean HTML", () => {
+  check(
+    fc.property(fc.array(nastyText(8), { maxLength: 6 }).map((lines) => lines.join("\n")), (pasted) => {
+      looksLikeChatText(pasted);
+      const html = chatTextToHtml(pasted);
+      assert.doesNotMatch(html, /<script|<iframe|onerror=/i);
+      canonical(html);
+    }),
+    200,
+  );
+});
