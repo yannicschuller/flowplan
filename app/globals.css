@@ -746,6 +746,14 @@ kbd,
   text-align: left;
   cursor: pointer;
 }
+/* A space's name is the heading of the pages below it (#557): as large as
+   their titles (13 px) and a little bolder, not the 11 px of the quieter
+   section labels (Favourites, Collections). */
+.nav-section-title > .space-toggle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+}
 .space-toggle:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 1px;

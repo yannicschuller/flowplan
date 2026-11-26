@@ -47,6 +47,13 @@
       "issues": [
         553
       ]
+    },
+    {
+      "de": "Bereichsnamen in der Seitenleiste sind so groß wie die Seiten darunter und etwas kräftiger.",
+      "en": "Space names in the sidebar are as large as the pages below them and a little bolder.",
+      "issues": [
+        557
+      ]
     }
   ],
   "features": [
