@@ -27067,6 +27067,9 @@ h3 .block-reactions {
   border: 0;
   background: none;
   text-align: left;
+  /* Icon and label at the start, not centred like other buttons (#564:
+     labels of different lengths no longer stagger). */
+  justify-content: flex-start;
 }
 .record-menu .dropdown-item.danger {
   color: var(--signal);
@@ -42723,4 +42726,274 @@ td > span > .required-missing:only-child {
     flex-basis: 100%;
     max-width: none;
   }
+}
+
+/* ---------- My tasks: all workspaces and the board (#564) ----------
+   "Dieser Arbeitsbereich / Alle Arbeitsbereiche" and "Liste / Board" in one
+   row above the filters; the workspace chips below them; a small workspace
+   label after the text of every task (components/my-tasks.tsx). The board
+   (components/my-tasks-board.tsx): one column per due group, side by side;
+   on phones the columns scroll sideways, one and a bit in view. */
+.my-tasks-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.my-tasks-workspaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+.my-tasks-workspaces .toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding-left: 4px;
+}
+.my-tasks-workspaces .toolbar-chip:first-child {
+  padding-left: 10px;
+}
+.my-tasks-workspaces .workspace-letter.small,
+.my-task-workspace .workspace-letter.small {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  flex: none;
+}
+.my-tasks-workspaces .workspace-letter.small svg,
+.my-task-workspace .workspace-letter.small svg {
+  width: 12px;
+  height: 12px;
+}
+/* An inline-flex box: the line through a ticked-off task does not cross it. */
+.my-task-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  margin-left: 8px;
+  padding: 1px 7px 1px 2px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+.my-task-workspace > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-record-main .my-task-workspace {
+  margin-left: 0;
+  justify-self: start;
+}
+.my-task-card-meta .my-task-workspace {
+  margin-left: 0;
+  vertical-align: 0;
+}
+.utility-content.my-tasks.my-tasks-wide {
+  max-width: 1440px;
+}
+.my-tasks-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(180px, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  /* Its columns never widen the page: it scrolls inside. */
+  min-width: 0;
+  contain: inline-size;
+}
+.my-tasks-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 180px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--hover) 70%, transparent);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+.my-tasks-column h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 4px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.my-tasks-column.overdue h2 {
+  color: #b42318;
+}
+[data-theme="dark"] .my-tasks-column.overdue h2 {
+  color: #f97066;
+}
+/* While a card is dragged: where it can go is outlined, the columns that
+   take none fade. */
+.my-tasks-column.over {
+  border-color: var(--blue);
+  border-style: dashed;
+  background: var(--blue-light);
+}
+.my-tasks-column.closed {
+  opacity: 0.55;
+}
+.my-tasks-column ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.my-tasks-column-empty {
+  margin: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.my-task-card {
+  padding: 8px 8px 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+.my-task-card[draggable="true"] {
+  cursor: grab;
+}
+.my-task-card.dragging {
+  opacity: 0.45;
+}
+.my-task-card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 8px;
+}
+.my-task-card-head input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--blue);
+}
+.my-task-card-title {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.my-task-card-title:hover {
+  color: var(--blue);
+}
+.my-task-card.checked .my-task-card-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.my-task-card-move {
+  width: 24px;
+  height: 24px;
+  margin: -2px -2px 0 0;
+  color: var(--muted);
+}
+.my-task-card-move:hover,
+.my-task-card-move:focus-visible {
+  color: var(--text);
+}
+.my-task-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 6px;
+  padding-left: 24px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.my-task-card-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.my-task-card-source > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-task-card-source > :is(svg, img, span:first-child) {
+  flex: none;
+}
+@media (max-width: 600px) {
+  .my-tasks-modes .segmented.my-tasks-filter.my-tasks-layout {
+    width: auto;
+  }
+  .my-tasks-modes .my-tasks-workspace-scope {
+    flex: 1 1 auto;
+  }
+  /* The chips in one row that scrolls, not five rows of them. */
+  .my-tasks-workspaces {
+    flex-wrap: nowrap;
+    margin-inline: -21px;
+    padding: 0 21px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .my-tasks-workspaces .toolbar-chip {
+    flex: none;
+    height: 32px;
+  }
+  .my-tasks-board {
+    grid-auto-columns: 82%;
+    margin-inline: -21px;
+    padding: 0 21px 8px;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 21px;
+  }
+  .my-tasks-column {
+    scroll-snap-align: start;
+  }
+  .my-task-card-move {
+    width: 32px;
+    height: 32px;
+    margin: -6px -6px -4px 0;
+  }
+}
+.my-task-workspace-icon {
+  display: inline-flex;
+  flex: none;
+}
+/* A record's database and, in "Alle Arbeitsbereiche", its workspace in one line. */
+.my-record-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+  max-width: 100%;
+  min-width: 0;
 }

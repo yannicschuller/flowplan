@@ -2378,6 +2378,14 @@ TaskTargetsQuery = TypedDict("TaskTargetsQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
+TasksAllWorkspacesQuery = TypedDict("TasksAllWorkspacesQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "done": Literal["0", "1"],  # `1` for completed tasks
+    "workspaces": str,  # Comma-separated workspace ids
+    "records": Literal["0", "1"],  # `0` without records
+    "filter": str,  # Records' filter as JSON
+}, total=False)
+
 RecordsQuery = TypedDict("RecordsQuery", {
     "workspace": Required[str],  # Workspace ID
     "filter": str,  # Filter as JSON
@@ -3062,8 +3070,12 @@ class FlowplanClient:
         """Task databases for "Add a task" — The databases `task.target` accepts: those you may add records to that count for My tasks (a status or done checkbox you can see), outside end-to-end encrypted spaces – `databases` (id, title, icon, space) – and the current choice (`target`, as in GET /api/tasks). Full members with edit rights only. (GET /api/tasks/targets)"""
         return self._json("GET", "/api/tasks/targets", query=dict(query) if query else None, headers=headers)
 
+    def tasks_all_workspaces(self, query: "TasksAllWorkspacesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """My tasks of all workspaces — Tasks (as `/api/tasks`, each with `workspaceId`) and task records (as `/api/records`, each with `workspaceId`) of all the workspaces you are a member of, in one answer – My tasks → “All workspaces”. `workspaces` (comma-separated ids) narrows to some of them; `records=0` leaves the records out; `filter` is the records' filter as for `/api/records`. At most 50 workspaces (`workspacesLimited`), 1000 tasks (`tasksLimited`) and 500 records (`limited`). `workspaces` lists all your workspaces (id, name), `shown` those collected. `personal` and `unassigned` as in `/api/tasks`, for the workspace `workspace`. (GET /api/tasks/all)"""
+        return self._json("GET", "/api/tasks/all", query=dict(query) if query else None, headers=headers)
+
     def records(self, query: "RecordsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Records across all databases — With an optional filter (JSON, same shape as a view filter group) and the saved record views. (GET /api/records)"""
+        """Records across all databases — With an optional filter (JSON, same shape as a view filter group) and the saved record views. Each record carries `dueField` (the due date property it is read from, null without one) and `version`, as `row.update` takes them. (GET /api/records)"""
         return self._json("GET", "/api/records", query=dict(query) if query else None, headers=headers)
 
     def export_workspace(self, query: "ExportWorkspaceQuery", headers: Optional[dict[str, str]] = None) -> "WorkspaceExport":

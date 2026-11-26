@@ -138,6 +138,7 @@ import { pagePreview } from "@/lib/page-preview";
 import { blockPreview, searchBlocks } from "@/lib/block-links";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { allWorkspaceTasks } from "@/lib/all-workspace-tasks";
 import { userUnassignedTasks } from "@/lib/unassigned-tasks-pref";
 import { canAddPersonalTask, personalTaskPage } from "@/lib/personal-tasks";
 import { myTaskTarget, taskTargetDatabases } from "@/lib/my-task-target";
@@ -695,6 +696,33 @@ async function handleGET(
           // Where the field writes (#457): the page or a task database.
           personal: { pageId: (await personalTaskPage(user, wid))?.id ?? null, canAdd: await canAddPersonalTask(user, wid), target: await myTaskTarget(user, wid) },
           // "Auch Aufgaben ohne Person aus meinen Seiten" (#511, command `tasks.unassigned`).
+          unassigned: await userUnassignedTasks(user.id),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // My tasks → "Alle Arbeitsbereiche" (#564): tasks and task records of
+    // all the person's workspaces at once (lib/all-workspace-tasks.ts);
+    // `workspace` is the current one, for "Aufgabe hinzufügen".
+    if (path.length === 2 && path[0] === "tasks" && path[1] === "all") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      await requireMember(user, wid);
+      let filter: unknown = {};
+      try {
+        filter = JSON.parse(url.searchParams.get("filter") || "{}");
+      } catch {
+        throw new HttpError(400, "Ungültiger Filter.");
+      }
+      const workspaces = (url.searchParams.get("workspaces") || "").split(",").filter(Boolean);
+      return NextResponse.json(
+        {
+          ...(await allWorkspaceTasks(user, {
+            done: url.searchParams.get("done") === "1",
+            records: url.searchParams.get("records") !== "0",
+            workspaces,
+            filter,
+          })),
+          personal: { pageId: (await personalTaskPage(user, wid))?.id ?? null, canAdd: await canAddPersonalTask(user, wid), target: await myTaskTarget(user, wid) },
           unassigned: await userUnassignedTasks(user.id),
         },
         { headers: { "Cache-Control": "no-store" } },
