@@ -30,8 +30,8 @@ test("ticking a task leaves the focus where it was", async ({ page }, info) => {
   );
   await page.goto(`/#page=${host.id}`);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
-  await expect(editor.getByText("Zweite Aufgabe")).toBeVisible({ timeout: 30_000 });
-  const item = (text: string) => editor.locator('li[data-type="taskItem"]', { hasText: text });
+  await expect(editor.getByText("Zweite Aufgabe", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const item = (text: string) => editor.locator("li[data-checked]", { hasText: text });
   const box = (text: string) => item(text).locator("label").first();
   const tap = async (text: string) => {
     if (info.project.name === "mobile") await box(text).tap();
@@ -51,11 +51,11 @@ test("ticking a task leaves the focus where it was", async ({ page }, info) => {
   expect(await editorHasFocus(page)).toBe(false);
 
   // Writing: the caret stays in the text being written.
-  await editor.getByText("Einleitung").click();
+  await editor.getByText("Einleitung", { exact: true }).click();
   await expect.poll(() => editorHasFocus(page)).toBe(true);
   await tap("Zweite Aufgabe");
   await expect(item("Zweite Aufgabe")).toHaveAttribute("data-checked", "true");
   expect(await editorHasFocus(page)).toBe(true);
   await page.keyboard.type(" weiter");
-  await expect(editor.getByText("Einleitung weiter")).toBeVisible();
+  await expect(editor.getByText("Einleitung weiter", { exact: true })).toBeVisible();
 });
