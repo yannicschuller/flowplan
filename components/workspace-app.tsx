@@ -6977,7 +6977,7 @@ export default function WorkspaceApp({
               {boot.spaces.map((sp) => (
                 <optgroup key={sp.id} label={sp.name}>
                   <option value={`space:${sp.id}`}>
-                    {sp.name} (oberste Ebene)
+                    {t(`${sp.name} (oberste Ebene)`, `${sp.name} (top level)`)}
                   </option>
                   {/* Built only while the dialog is open: thousands of
                       journal days would cost every render (#49). Days are

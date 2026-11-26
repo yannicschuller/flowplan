@@ -28,6 +28,13 @@
     {
       "de": "Abhaken einer Aufgabe in der iPhone- und iPad-App öffnet nicht mehr die Tastatur: Der Haken wird gesetzt, ohne dass der Cursor in den Text springt.",
       "en": "Ticking a task off in the iPhone and iPad app no longer brings up the keyboard: the box changes without putting the caret into the text."
+    },
+    {
+      "de": "Im Dialog „Seiten verschieben“ für mehrere Seiten steht „(oberste Ebene)“ jetzt in der Sprache der Oberfläche.",
+      "en": "In the “Move pages” dialog for several pages, “(top level)” now appears in the interface language.",
+      "issues": [
+        572
+      ]
     }
   ]
 }
