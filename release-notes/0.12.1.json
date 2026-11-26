@@ -22,6 +22,18 @@
       "issues": [
         570
       ]
+    },
+    {
+      "de": "Einstellungen aufgeräumt: keine grauen „Aus“-/„Keiner“-Hinweise mehr neben dem Knopf, der es einrichtet, Status-Pillen ohne Punkt, ausgerichtete Kontrollkästchen bei API-Tokens und eine Speicherübersicht, die lange Übersetzungen umbricht.",
+      "en": "Tidier settings: no grey “Off”/“None” pills next to the button that sets it up, status pills without a dot, aligned checkboxes for API tokens and a usage overview that wraps long translations.",
+      "issues": [
+        574,
+        575,
+        576,
+        577,
+        579,
+        580
+      ]
     }
   ],
   "fixes": [
@@ -34,6 +46,22 @@
       "en": "In the “Move pages” dialog for several pages, “(top level)” now appears in the interface language.",
       "issues": [
         572
+      ]
+    },
+    {
+      "de": "Angemeldete Geräte zeigen beim Ablaufdatum das Jahr, wenn es nicht das laufende ist.",
+      "en": "Signed-in devices show the year of the expiry date when it is not this year.",
+      "issues": [
+        581
+      ]
+    },
+    {
+      "de": "Portugiesisch: natürlichere Begriffe für Web Clipper, den Notfallzugang und den zweiten Faktor.",
+      "en": "Portuguese: more natural terms for the web clipper, emergency access and the second factor.",
+      "issues": [
+        573,
+        578,
+        582
       ]
     }
   ]

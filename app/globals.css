@@ -16170,6 +16170,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   color: var(--secondary);
   font-size: 13px;
 }
+/* No dot in front (#580): colour and text say the state, and circles
+   already mark a setting's level in the settings. */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -16182,13 +16184,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   white-space: nowrap;
   background: #eff0f3;
   color: #636873;
-}
-.status-badge::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
 }
 .status-badge.ok {
   background: #e8f3ec;

@@ -48,8 +48,17 @@ export function MySessions({ onError }: { onError: (message: string) => void }) 
   useEffect(() => {
     void load();
   }, [load]);
+  // With the year when it is not this one – a long session ends next year (#581).
   const when = (ms: number | null) =>
-    ms ? new Date(ms).toLocaleString(LOCALE_TAG, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+    ms
+      ? new Date(ms).toLocaleString(LOCALE_TAG, {
+          day: "numeric",
+          month: "short",
+          ...(new Date(ms).getFullYear() !== new Date().getFullYear() ? { year: "numeric" as const } : {}),
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "–";
   const others = sessions ? sessions.filter((s) => !s.current).length : 0;
   const signOut = async (body: { id?: string; others?: boolean }) => {
     try {

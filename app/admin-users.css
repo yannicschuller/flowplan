@@ -277,9 +277,6 @@
   padding: 0 7px;
   font-size: 11px;
 }
-.admin-who strong .status-badge::before {
-  display: none;
-}
 .ux-table .status-badge {
   min-height: 20px;
   font-size: 11.5px;

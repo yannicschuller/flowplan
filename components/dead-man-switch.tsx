@@ -106,14 +106,8 @@ export function DeadManSwitchSettings({ onError }: { onError: (message: string) 
         "Nutzt du Flowplan eine gewählte Zeit lang nicht, verschickt Flowplan eine Notiz von dir an Menschen, die du auswählst – etwa damit deine Familie weiß, wie sie an deine Daten kommt. Vorher erinnern wir dich 7, 3 und 1 Tag vorher; jede Nutzung setzt die Frist zurück.",
         "If you do not use Flowplan for a chosen time, Flowplan sends a note of yours to people you choose – so your family knows how to reach your data, for example. We remind you 7, 3 and 1 day before; any use resets the period.",
       )}
-      actions={
-        !data.enabled ? (
-          <StatusBadge tone="off">{t("Von der Administration ausgeschaltet", "Switched off by the administration")}</StatusBadge>
-        ) : !data.mail ? (
-          <StatusBadge tone="off">{t("Nicht verfügbar", "Not available")}</StatusBadge>
-        ) : undefined
-      }
     >
+      {/* Not available: said once, by the row below with its reason (#579). */}
       {!data.available && (
         <SettingRow wide label={t("Nicht verfügbar", "Not available")}>
           <p className="deadman-note">
