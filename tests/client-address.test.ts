@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addressKey, clientAddress } from "../lib/client-address";
+import { addressKey, clientAddress, resetClientAddressWarnings } from "../lib/client-address";
 
 const h = (xff?: string, real?: string) => {
   const headers = new Headers();
@@ -49,4 +49,39 @@ test("X-Real-IP counts only behind exactly one trusted proxy", () => {
   process.env.FLOWPLAN_TRUSTED_PROXIES = "0";
   assert.equal(clientAddress(h(undefined, "198.51.100.7")), "");
   delete process.env.FLOWPLAN_TRUSTED_PROXIES;
+});
+
+test("behind more proxies than counted: one warning, the address unchanged (#583)", (t) => {
+  const warnings: string[] = [];
+  t.mock.method(console, "warn", (message: string) => warnings.push(message));
+  const env = process.env as Record<string, string | undefined>;
+  const node = env.NODE_ENV;
+  env.NODE_ENV = "production";
+  t.after(() => {
+    env.NODE_ENV = node;
+    delete process.env.FLOWPLAN_TRUSTED_PROXIES;
+    resetClientAddressWarnings();
+  });
+  resetClientAddressWarnings();
+  delete process.env.FLOWPLAN_TRUSTED_PROXIES;
+  // A tunnel or CDN in front of Traefik, counted as one: the Docker
+  // address of the inner proxy is used, and the log says why.
+  assert.equal(clientAddress(h("93.184.216.34, 172.22.0.5")), "172.22.0.5");
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /FLOWPLAN_TRUSTED_PROXIES \(1\)/);
+  assert.equal(clientAddress(h("93.184.216.34, 172.22.0.5")), "172.22.0.5");
+  assert.equal(warnings.length, 1, "once");
+  // Counted right: the public address, no warning.
+  resetClientAddressWarnings();
+  warnings.length = 0;
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "2";
+  assert.equal(clientAddress(h("93.184.216.34, 172.22.0.5")), "93.184.216.34");
+  // A client inside the network (no public hop before it), a public
+  // address chosen, or a single entry: nothing to say.
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "1";
+  assert.equal(clientAddress(h("10.0.0.7, 192.168.1.20")), "192.168.1.20");
+  assert.equal(clientAddress(h("10.0.0.7, 93.184.216.34")), "93.184.216.34");
+  assert.equal(clientAddress(h("172.22.0.5")), "172.22.0.5");
+  assert.equal(clientAddress(h("not-an-ip, 172.22.0.5")), "172.22.0.5");
+  assert.equal(warnings.length, 0);
 });
