@@ -1537,6 +1537,20 @@ const journalScenes: Scene[] = [
     },
   },
   {
+    // The "Days" tab: how new days are named (#560, #571).
+    id: "journal-settings-days",
+    group: "Journal",
+    title: "Journal settings: days",
+    path: (c) => `#page=${c.ids.journalId}`,
+    steps: async (page) => {
+      await button(page, "Set up journal").click();
+      await waitDialog(page, "Set up journal");
+      const settings = dialog(page, "Set up journal").first();
+      await settings.getByRole("tab", { name: "Days" }).click();
+      await settings.getByRole("group", { name: "Day title" }).scrollIntoViewIfNeeded();
+    },
+  },
+  {
     id: "journal-review",
     group: "Journal",
     title: "Review",
