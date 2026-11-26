@@ -52,7 +52,22 @@ test("a 5xx shows up in the error details with its stack frames and request id",
   await expect(stack).toContainText(/at .+:\d+:\d+\)/);
   await expect(group.getByRole("table", { name: "Vorkommen" }).or(group.locator(".responsive-table"))).toContainText(id);
   await expect(group).toContainText(uncaughtId);
-  await expect(group.getByRole("button", { name: "Kopieren für ein Issue" })).toBeVisible();
+  await expect(group.getByRole("button", { name: "Intern kopieren (mit Fehler-IDs)" })).toBeVisible();
+  // The GitHub issue: a preview of exactly the public report – the
+  // signature, never the request ids – and a link that opens it on GitHub.
+  await expect(group).toContainText(/fp-err-v1-[0-9a-f]{16}/);
+  await expect(group.getByRole("link", { name: "Schon gemeldet?" })).toHaveAttribute("href", /^https:\/\/github\.com\/yannicschuller\/flowplan\/issues\?q=%22fp-err-v1-[0-9a-f]{16}%22$/);
+  await group.getByRole("button", { name: "GitHub-Issue öffnen" }).click();
+  const preview = page.getByRole("dialog", { name: "GitHub-Issue: Vorschau" });
+  await expect(preview).toContainText(/Error signature: fp-err-v1-[0-9a-f]{16}/);
+  await expect(preview).not.toContainText(id);
+  await expect(preview).not.toContainText(uncaughtId);
+  const href = (await preview.getByRole("link", { name: "Auf GitHub öffnen" }).getAttribute("href")) || "";
+  expect(href).toMatch(/^https:\/\/github\.com\/yannicschuller\/flowplan\/issues\/new\?template=bug_report\.yml&title=/);
+  expect(href).not.toContain(id);
+  expect(href.length).toBeLessThanOrEqual(6000);
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
 
   // Phone width: the frames scroll inside their box, the card stays within the page.
   const boxes = await page.evaluate(() => {

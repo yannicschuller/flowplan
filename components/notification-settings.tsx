@@ -48,6 +48,10 @@ const kindHints: Record<NotificationKind, [string, string]> = {
     "Nur für Administratoren: wenn das KI-Kontingent der ganzen Instanz fast oder ganz verbraucht ist. Ein Tipp öffnet Einstellungen → Instanz → KI → Kontingente.",
     "Administrators only: when the AI quota of the whole instance is almost or fully used up. A tap opens Settings → Instance → AI → Quotas.",
   ],
+  error_digest: [
+    "Nur für Administratoren: montags, welche Serverfehler in der letzten Woche neu waren oder wiederkamen – nur Anzahl, Route und Fehlername. Ein Tipp öffnet Einstellungen → Administration → Überwachung.",
+    "Administrators only: on Mondays, which server errors were new or came back in the last week – only count, route and error name. A tap opens Settings → Administration → Monitoring.",
+  ],
 };
 
 // The severities the rules use (lib/security-kinds.ts): "from warning on"

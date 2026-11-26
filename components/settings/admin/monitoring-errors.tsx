@@ -3,8 +3,15 @@
 // where the 5xx answers come from – one row per kind of error (route or
 // command, error name, short message, count in the range, trend, last
 // time); opened, its occurrences (time, request id, status, instance,
-// version, role) and the stack frames, and a plain-text report to copy into
-// an issue. A click on the error chart above filters to that time slot.
+// version, role) and the stack frames. Per group its build-independent
+// signature, "GitHub-Issue öffnen" (a preview of exactly the public report –
+// lib/error-report.ts publicReport, no request ids or host names – then the
+// new issue in a new tab, built in the browser), "Schon gemeldet?" (GitHub's
+// search for the signature), "Als gemeldet markieren" and "Stummschalten"
+// (for the weekly digest, lib/error-digest.ts), and an internal plain-text
+// report with request ids for this instance's log. The switch
+// "Wöchentliche Fehlerübersicht" below the list. A click on the error chart
+// above filters to that time slot.
 // Data: /api/admin/monitoring?view=errors (lib/error-details.ts), loaded
 // when the section opens and whenever the dashboard counts new errors.
 //
@@ -14,18 +21,21 @@
 // server errors, per place, service and host with count and last time.
 // Data: /api/admin/monitoring?view=upstream.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowClockwise, CheckCircle, Copy, Trash, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, CheckCircle, Copy, GithubLogo, MagnifyingGlass, Trash, X } from "@phosphor-icons/react";
 import type { ErrorDetails, UpstreamFailures } from "@/lib/error-details";
-import { frameText, issueReport, type ErrorGroupView, type ErrorOccurrence, type UpstreamFailureView } from "@/lib/error-report";
+import { frameText, githubSearchUrl, issueReport, publicReport, type BuildVersion, type ErrorGroupView, type ErrorOccurrence, type UpstreamFailureView } from "@/lib/error-report";
 import { useT } from "../../i18n";
 import { api } from "../../ui";
 import { Sparkline } from "../../sparkline";
-import { EmptyState, ResponsiveTable } from "../../settings-ui";
+import { EmptyState, ResponsiveTable, SaveState, SettingRow, StatusBadge, Switch, useSaveState } from "../../settings-ui";
 import { useAdmin } from "../admin-context";
 import { ago, clock, dateTime, num } from "./monitoring-format";
+import { ErrorIssueDialog, MarkReportedDialog } from "./error-issue-dialog";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
+// The range in the public report (always English, like the issue).
+const RANGE_LABEL: Record<Range, string> = { "1h": "the last hour", "24h": "the last 24 hours", "7d": "the last 7 days" };
 export type ErrorSlot = { from: number; to: number };
 
 const roleName = (role: ErrorOccurrence["role"], t: T) =>
@@ -153,7 +163,7 @@ export function ErrorDetailsCard({ range, refreshKey, slot, onSlot }: { range: R
             ) : (
               <ul className="mon-errors" aria-label={t("Fehlerarten", "Kinds of errors")}>
                 {groups.map(({ g, n }) => (
-                  <ErrorGroup key={g.fingerprint} g={g} n={n} values={trend(g, data.since, now)} t={t} now={now} />
+                  <ErrorGroup key={g.fingerprint} g={g} n={n} values={trend(g, data.since, now)} t={t} now={now} build={data.build} range={data.range} onData={setData} />
                 ))}
               </ul>
             )}
@@ -162,13 +172,83 @@ export function ErrorDetailsCard({ range, refreshKey, slot, onSlot }: { range: R
             )}
           </>
         )}
+        {data?.digest && <DigestSwitch enabled={data.digest.enabled} onData={setData} />}
       </div>
     </section>
   );
 }
 
-function ErrorGroup({ g, n, values, t, now }: { g: ErrorGroupView; n: number; values: number[]; t: T; now: number }) {
+// "Wöchentliche Fehlerübersicht": on Mondays one notification to the
+// administrators (lib/error-digest.ts).
+function DigestSwitch({ enabled, onData }: { enabled: boolean; onData: (d: ErrorDetails) => void }) {
+  const t = useT();
+  const [status, run] = useSaveState();
+  const [on, setOn] = useState(enabled);
+  useEffect(() => setOn(enabled), [enabled]);
+  return (
+    <div className="mon-error-digest">
+      <SettingRow
+        label={t("Wöchentliche Fehlerübersicht", "Weekly error summary")}
+        description={t(
+          "Montags eine Benachrichtigung an die Administration: Fehler, die in der letzten Woche neu waren oder nach vier ruhigen Wochen wiederkamen – nur Anzahl, Route und Fehlername. Gemeldete und stummgeschaltete fehlen.",
+          "On Mondays one notification to the administrators: errors that were new in the last week or came back after four quiet weeks – only count, route and error name. Reported and muted ones are left out.",
+        )}
+      >
+        <SaveState status={status} />
+        <Switch
+          checked={on}
+          label={t("Wöchentliche Fehlerübersicht", "Weekly error summary")}
+          onChange={(next) => {
+            setOn(next);
+            void run(async () => {
+              try {
+                onData(await api<ErrorDetails>("/api/admin/monitoring", { action: "errors.digest", enabled: next }));
+              } catch (e) {
+                setOn(!next);
+                throw e;
+              }
+            });
+          }}
+        />
+      </SettingRow>
+    </div>
+  );
+}
+
+function ErrorGroup({
+  g,
+  n,
+  values,
+  t,
+  now,
+  build,
+  range,
+  onData,
+}: {
+  g: ErrorGroupView;
+  n: number;
+  values: number[];
+  t: T;
+  now: number;
+  build: BuildVersion;
+  range: Range;
+  onData: (d: ErrorDetails) => void;
+}) {
+  const { onError } = useAdmin();
   const [copied, setCopied] = useState<"" | "report" | "stack">("");
+  const [dialog, setDialog] = useState<"" | "issue" | "reported">("");
+  const [busy, setBusy] = useState(false);
+  const mark = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      onData(await api<ErrorDetails>("/api/admin/monitoring", { ...body, signature: g.signature }));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const act = (body: Record<string, unknown>) => void mark(body).catch((e) => onError((e as Error).message));
+  const reported = !!g.mark?.reportedAt;
+  const muted = g.mark?.mutedUntil ?? null;
   const copy = (what: "report" | "stack", text: string) =>
     void navigator.clipboard
       .writeText(text)
@@ -190,6 +270,12 @@ function ErrorGroup({ g, n, values, t, now }: { g: ErrorGroupView; n: number; va
               <strong>{g.name}</strong>
               {g.message && <span> {g.message}</span>}
             </span>
+            {(reported || muted) && (
+              <span className="mon-error-marks">
+                {reported && <StatusBadge tone="info">{t("Gemeldet", "Reported")}</StatusBadge>}
+                {muted && <StatusBadge tone="off">{t(`Stumm bis ${dateTime(muted)}`, `Muted until ${dateTime(muted)}`)}</StatusBadge>}
+              </span>
+            )}
             <small className="muted">
               {kind ? `${kind} · ` : ""}
               {t(`Status ${g.status} · zuletzt ${ago(g.lastSeen, t, now)} · insgesamt ${num(g.count)}`, `status ${g.status} · last ${ago(g.lastSeen, t, now)} · ${num(g.count)} in total`)}
@@ -233,9 +319,59 @@ function ErrorGroup({ g, n, values, t, now }: { g: ErrorGroupView; n: number; va
               { key: "role", header: t("Rolle", "Role"), render: (o) => roleName(o.role, t) },
             ]}
           />
+          <h3 className="mon-subhead">{t("Melden", "Report||verb")}</h3>
+          <p className="muted mon-error-hint">
+            {t("Signatur – gleich in jedem Build, damit ein Issue zu finden ist:", "Signature – the same in every build, so an issue can be found:")} <code>{g.signature}</code>
+            {reported && g.mark?.issueUrl && (
+              <>
+                {" · "}
+                <a href={g.mark.issueUrl} target="_blank" rel="noopener noreferrer">
+                  {t("Gemeldetes Issue", "Reported issue")} <ArrowSquareOut size={12} aria-hidden />
+                </a>
+              </>
+            )}
+          </p>
           <div className="mon-error-actions">
-            <button type="button" className="button compact" onClick={() => copy("report", issueReport(g))}>
-              <Copy size={15} aria-hidden /> {copied === "report" ? t("Kopiert", "Copied") : t("Kopieren für ein Issue", "Copy for an issue")}
+            <button type="button" className="button compact primary" onClick={() => setDialog("issue")}>
+              <GithubLogo size={15} aria-hidden /> {t("GitHub-Issue öffnen", "Open GitHub issue")}
+            </button>
+            <a className="button compact" href={githubSearchUrl(g.signature)} target="_blank" rel="noopener noreferrer">
+              <MagnifyingGlass size={15} aria-hidden /> {t("Schon gemeldet?", "Already reported?")}
+            </a>
+            {reported ? (
+              <button type="button" className="button compact" disabled={busy} onClick={() => act({ action: "errors.reported", reported: false })}>
+                {t("Nicht mehr als gemeldet markieren", "Unmark as reported")}
+              </button>
+            ) : (
+              <button type="button" className="button compact" disabled={busy} onClick={() => setDialog("reported")}>
+                {t("Als gemeldet markieren", "Mark as reported")}
+              </button>
+            )}
+            {muted ? (
+              <button type="button" className="button compact" disabled={busy} onClick={() => act({ action: "errors.mute", weeks: 0 })}>
+                {t("Stummschaltung aufheben", "Unmute")}
+              </button>
+            ) : (
+              <label className="mon-range">
+                <span>{t("Stummschalten", "Mute||error")}</span>
+                <select value="" disabled={busy} onChange={(e) => e.target.value && act({ action: "errors.mute", weeks: Number(e.target.value) })}>
+                  <option value="">{t("nicht stumm", "not muted")}</option>
+                  <option value="1">{t("1 Woche", "1 week")}</option>
+                  <option value="4">{t("4 Wochen", "4 weeks")}</option>
+                  <option value="12">{t("12 Wochen", "12 weeks")}</option>
+                  <option value="52">{t("1 Jahr", "1 year")}</option>
+                </select>
+              </label>
+            )}
+          </div>
+          <div className="mon-error-actions">
+            <button
+              type="button"
+              className="button compact"
+              onClick={() => copy("report", issueReport(g))}
+              title={t("Mit Fehler-IDs und Instanznamen – zum Suchen im Log dieser Instanz, nicht für ein öffentliches Issue.", "With error IDs and instance names – to search this instance's log, not for a public issue.")}
+            >
+              <Copy size={15} aria-hidden /> {copied === "report" ? t("Kopiert", "Copied") : t("Intern kopieren (mit Fehler-IDs)", "Copy internal report (with error IDs)")}
             </button>
             {!!g.frames.length && (
               <button type="button" className="button compact" onClick={() => copy("stack", stack)}>
@@ -245,6 +381,8 @@ function ErrorGroup({ g, n, values, t, now }: { g: ErrorGroupView; n: number; va
           </div>
         </div>
       </details>
+      {dialog === "issue" && <ErrorIssueDialog report={publicReport(g, build, RANGE_LABEL[range])} onClose={() => setDialog("")} />}
+      {dialog === "reported" && <MarkReportedDialog onClose={() => setDialog("")} onSave={(issueUrl) => mark({ action: "errors.reported", reported: true, ...(issueUrl ? { issueUrl } : {}) })} />}
     </li>
   );
 }

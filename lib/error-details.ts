@@ -48,7 +48,7 @@ import { buildInfo } from "./build-info";
 import { instanceId } from "./cluster/config";
 import { hasPeers } from "./cluster/processes";
 import { requestContext, roleOf, type CallerRole } from "./request-context";
-import type { ErrorGroupView, ErrorKind, ErrorOccurrence, StackFrame, UpstreamFailureView } from "./error-report";
+import { signatureParts, type ErrorGroupView, type ErrorKind, type ErrorOccurrence, type StackFrame, type UpstreamFailureView } from "./error-report";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -63,7 +63,7 @@ const MAX_PENDING = 1000;
 const MAX_UPSTREAM = 200;
 
 export type { ErrorKind, StackFrame, ErrorOccurrence, ErrorGroupView, UpstreamFailureView } from "./error-report";
-export { frameText, issueReport } from "./error-report";
+export { frameText, issueReport, publicReport } from "./error-report";
 type Pending = {
   at: number;
   kind: ErrorKind;
@@ -74,7 +74,11 @@ type Pending = {
   requestId: string;
   role: CallerRole | "";
   error: unknown;
+  stopping: boolean;
 };
+// Whether this instance is shutting down (lib/cluster/runtime.ts keeps it
+// on globalThis; not imported here, it would pull in the whole cluster).
+const stopping = () => (globalThis as { flowplanRuntime?: { stopping?: boolean } }).flowplanRuntime?.stopping === true;
 
 /* ---------- Scrubbing ---------- */
 
@@ -114,11 +118,13 @@ const sourcePath = (source: string) =>
     .replace(/^webpack:\/\/[^/]*\//, "")
     .replace(/^file:\/\//, "")
     .replace(/\?.*$/, "");
-const shortFile = (file: string) => {
+// Inside the project relative to it; outside, a home directory (which
+// names a person) as "~".
+export const shortFile = (file: string) => {
   const plain = file.replace(/^file:\/\//, "");
   if (!isAbsolute(plain)) return plain;
   const rel = relative(root(), plain);
-  return rel.startsWith("..") ? plain : rel;
+  return rel.startsWith("..") || isAbsolute(rel) ? plain.replace(/^(?:\/home|\/Users)\/[^/]+(?=\/)|^[A-Za-z]:\\Users\\[^\\]+(?=\\)/, "~") : rel;
 };
 // Flowplan's own code: not Node.js itself, not a dependency, not the
 // bundler's runtime.
@@ -153,7 +159,7 @@ function mapFrame(fn: string, file: string, line: number, column: number): Stack
   if (/\.(?:c|m)?js$/.test(plain) && isAbsolute(plain)) {
     const entry = sourceMapOf(plain)?.findEntry(line - 1, column - 1) as { originalSource?: string; originalLine?: number; originalColumn?: number; name?: string } | undefined;
     if (entry?.originalSource && typeof entry.originalLine === "number")
-      return { fn: entry.name || fn, file: sourcePath(entry.originalSource), line: entry.originalLine + 1, column: (entry.originalColumn ?? 0) + 1, mapped: true };
+      return { fn: entry.name || fn, file: shortFile(sourcePath(entry.originalSource)), line: entry.originalLine + 1, column: (entry.originalColumn ?? 0) + 1, mapped: true };
   }
   return { fn, file: shortFile(plain), line, column, mapped: false };
 }
@@ -206,6 +212,16 @@ function describe(error: unknown, status: number) {
   } catch {}
   return { name, message, frames, dbCode: databaseCode(error) };
 }
+// The build-independent signature (computed when reading, never stored in
+// error_groups): "fp-err-v1-" and 16 hex characters of a SHA-256 over the
+// kind, route, command, error name, class of the database code, the
+// message's template and the top frame only when it is mapped to the
+// project's source (lib/error-report.ts signatureParts). The same error in
+// the next build – other chunk names, other minified functions – has the
+// same signature, while its fingerprint (the group) may change.
+export function errorSignature(g: Pick<ErrorGroupView, "kind" | "route" | "action" | "name" | "message" | "frames" | "dbCode">) {
+  return `fp-err-v1-${createHash("sha256").update(signatureParts(g).join("\n")).digest("hex").slice(0, 16)}`;
+}
 export function fingerprintOf(route: string, action: string, name: string, frames: StackFrame[]) {
   // The top frame without its column (and, for a compiled file, without its
   // line: a new build moves it) – one group per place, not per build.
@@ -248,6 +264,7 @@ export function captureError(input: CaptureInput) {
       requestId: /^[A-Za-z0-9]{4,32}$/.test(input.requestId || "") ? input.requestId! : "",
       role: input.role || "",
       error: input.error,
+      stopping: stopping(),
     });
     schedule();
   } catch {
@@ -396,7 +413,7 @@ async function writePending(items: Pending[], now: number) {
     }
     addSlot(g.slots.f, Math.floor(item.at / FIVE) * FIVE, 1);
     addSlot(g.slots.h, Math.floor(item.at / HOUR) * HOUR, 1);
-    g.occurrences.push({ at: item.at, requestId: item.requestId, status: item.status, method: item.method, node, version: build.version, role: item.role, message: d.message });
+    g.occurrences.push({ at: item.at, requestId: item.requestId, status: item.status, method: item.method, node, version: build.version, role: item.role, message: d.message, ...(item.stopping ? { stopping: true } : {}) });
     groups.set(fingerprint, g);
   }
   for (const g of groups.values()) {
@@ -483,15 +500,19 @@ export async function errorDetails(now = Date.now(), range: ErrorRange = "24h", 
     // The hourly counts where the 5-minute ones no longer reach back.
     const list = step === FIVE ? slots.f : slots.h;
     const buckets = list.filter(([at]) => at + step > since).map(([at, n]) => [at, n] as [number, number]);
+    const frames = parse<StackFrame[]>(r.frames, []);
+    const kind = (r.kind as ErrorKind) || "request";
     return {
       fingerprint: r.fingerprint,
-      kind: (r.kind as ErrorKind) || "request",
+      signature: errorSignature({ kind, route: r.route, action: r.action, name: r.name, message: r.message, frames, dbCode: r.db_code }),
+      mark: null,
+      kind,
       route: r.route,
       action: r.action,
       name: r.name,
       message: r.message,
       status: Number(r.status),
-      frames: parse<StackFrame[]>(r.frames, []),
+      frames,
       dbCode: r.db_code,
       count: Number(r.count),
       inRange: buckets.reduce((a, [, n]) => a + n, 0),
@@ -501,7 +522,8 @@ export async function errorDetails(now = Date.now(), range: ErrorRange = "24h", 
       occurrences: parse<ErrorOccurrence[]>(r.occurrences, []).reverse(),
     };
   });
-  return { range, since, step, total, groups, keep: { ...ERROR_DETAILS_KEEP } };
+  const build = buildInfo();
+  return { range, since, step, total, groups, keep: { ...ERROR_DETAILS_KEEP }, build: { version: build.version, commit: build.commit }, digest: null as { enabled: boolean } | null };
 }
 
 /* ---------- Upstream failures (#514) ---------- */

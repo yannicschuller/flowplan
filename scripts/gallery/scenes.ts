@@ -398,6 +398,23 @@ const pages: Scene[] = [
       await waitDialog(page, `Members of “${name}”`);
     },
   },
+  // Errors in detail: "Open GitHub issue" shows exactly what goes to
+  // GitHub (the example error of errors-seed.ts; real time, the server
+  // keeps 14 days).
+  {
+    id: "admin-error-issue",
+    group: "Admin",
+    title: "Errors in detail: GitHub issue preview",
+    covers: ["components/settings/admin/error-issue-dialog.tsx"],
+    realTime: true,
+    steps: async (page, ctx) => {
+      await ctx.open("#settings/instance/monitoring/errors");
+      const group = page.locator("#errors .mon-errgroup").filter({ hasText: "GalleryExampleError" }).first();
+      await group.locator("summary").click();
+      await button(group, "Open GitHub issue").click();
+      await waitDialog(page, "GitHub issue: preview");
+    },
+  },
   { id: "tags", group: "Pages", title: "Tags", path: "#tags" },
   { id: "settings-home", group: "Pages", title: "Settings start page", path: "#settings" },
   // #532: the administration's landing page is the start page's "Instanz

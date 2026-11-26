@@ -8,7 +8,11 @@
 // one restart with its saved log lines (lib/restarts/history.ts, loaded
 // when the section opens and when a row is opened); `?range=1h|24h|7d` picks the request chart's span. POST switches the usage statistics on or
 // off (`metrics.save`), deletes them (`metrics.clear`) or the error
-// details (`errors.clear`, answers the empty list), checks the AI
+// details (`errors.clear`, answers the empty list), marks an error
+// signature as reported (`errors.reported`, with the issue's address the
+// administrator pasted) or mutes it for some weeks (`errors.mute`), switches
+// the weekly error digest (`errors.digest`; lib/error-digest.ts – these
+// three answer the error details), checks the AI
 // provider again (`ai.ping`) or changes the recommendations
 // (`recommendation.hide|snooze|restore`, `recommendations.settings`), or
 // rebuilds a stuck Litestream replica on the next start
@@ -27,7 +31,8 @@ import { applyRecommendationAction, recommendationAction, recommendations } from
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
 import { warmPushChecks } from "@/lib/push-status";
-import { clearErrorDetails, errorDetails, upstreamFailures } from "@/lib/error-details";
+import { clearErrorDetails, upstreamFailures } from "@/lib/error-details";
+import { applyErrorMark, errorDetailsView, errorMarkActions } from "@/lib/error-digest";
 import { litestreamActions, litestreamAdminAction } from "@/lib/litestream-health";
 import { restartsForAdmin } from "@/lib/restarts/history";
 export const runtime = "nodejs";
@@ -54,7 +59,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     }
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(await monitoringStart(Date.now(), range), noStore);
-    if (url.searchParams.get("view") === "errors") return Response.json(await errorDetails(Date.now(), range), noStore);
+    if (url.searchParams.get("view") === "errors") return Response.json(await errorDetailsView(Date.now(), range), noStore);
     if (url.searchParams.get("view") === "upstream") return Response.json(await upstreamFailures(Date.now(), range), noStore);
     // Administration → KI → Statistik: per model, workspace and person.
     if (url.searchParams.get("view") === "ai") {
@@ -89,6 +94,11 @@ export const POST = withRequestLocale(async (req: Request) => {
       if (input.action === "recommendations.settings") await audit(user.id, "admin.recommendations", "instance", JSON.stringify({ off: input.off?.length ?? null }));
       return Response.json(await recommendations(), noStore);
     }
+    // Error signatures: reported, muted; the weekly digest on or off.
+    if (raw?.action === "errors.reported" || raw?.action === "errors.mute" || raw?.action === "errors.digest") {
+      await applyErrorMark(user, errorMarkActions.parse(raw));
+      return Response.json(await errorDetailsView(), noStore);
+    }
     const body = postSchema.parse(raw);
     if (body.action === "litestream.rebuild" || body.action === "litestream.cancel" || body.action === "litestream.restart")
       return Response.json(await litestreamAdminAction(user, body.action), noStore);
@@ -102,7 +112,7 @@ export const POST = withRequestLocale(async (req: Request) => {
     } else if (body.action === "errors.clear") {
       await clearErrorDetails();
       await audit(user.id, "admin.errors.clear", "instance", "");
-      return Response.json(await errorDetails(), noStore);
+      return Response.json(await errorDetailsView(), noStore);
     } else resetAiPing();
     // The start page's cached facts follow the switch at once.
     forgetMonitoringGlance();

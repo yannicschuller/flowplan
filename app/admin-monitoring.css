@@ -439,3 +439,30 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* Reporting an error (monitoring-errors.tsx, error-issue-dialog.tsx): its
+   marks in the row, the digest's switch below the list, the issue preview. */
+.mon-error-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mon-error-digest {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.error-issue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.error-issue .mon-subhead {
+  margin: 6px 0 0;
+}
+.error-issue .mon-error-stack.error-issue-text {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

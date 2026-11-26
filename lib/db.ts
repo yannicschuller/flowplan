@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 140;
+export const SCHEMA_VERSION = 141;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1715,6 +1715,9 @@ function migrate(d: DatabaseSync) {
   // Schema 140 – the workspace as a library and its hidden places (#564,
   // lib/workspace-navigation.ts).
   migrateWorkspaceNavigation(d);
+  // Schema 141 – what the weekly error digest knows of each error
+  // signature beyond the 14 days of the error details (lib/error-digest.ts).
+  migrateErrorDigest(d);
   // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
   // a new nullable column an older version leaves alone, so the schema
   // number stays.
@@ -1724,6 +1727,17 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 141 – error_digest_state (lib/error-digest.ts): per error
+// signature ("fp-err-v1-…", computed from error_groups when reading) when it
+// was first and last seen, when a weekly digest last named it, whether an
+// administrator reported it (and the issue's address) and until when it is
+// muted. It outlives the 14 days of error_groups – "came back after four
+// quiet weeks" needs it – and is kept 400 days after it was last seen.
+// Nothing personal: no request ids, instances, roles or messages.
+function migrateErrorDigest(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS error_digest_state(signature TEXT PRIMARY KEY,first_seen INTEGER NOT NULL,last_seen INTEGER NOT NULL,last_digest_at INTEGER,reported_at INTEGER,issue_url TEXT,muted_until INTEGER);
+    CREATE INDEX IF NOT EXISTS error_digest_state_last ON error_digest_state(last_seen);`);
 }
 // Schema 140 – workspaces.navigation (#564, lib/workspace-navigation.ts):
 // JSON { library, hidden }, NULL = every space as it is set, every place of
