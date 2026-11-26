@@ -758,6 +758,23 @@ kbd,
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
+/* The space's symbol in the sidebar at the size of its name (#588): a
+   smaller square, and without a colour no square at all – so caret,
+   symbol, lock and name sit at even distances. */
+.space-toggle .space-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+.space-toggle .space-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.space-toggle .space-icon.space-color-none {
+  width: auto;
+  height: auto;
+  color: inherit;
+}
 .space-toggle > svg {
   flex-shrink: 0;
 }
@@ -12483,7 +12500,11 @@ details[data-heading] > summary {
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
-  margin-bottom: 8px;
+  margin-bottom: 20px;
+}
+/* The two sentences at the top belong together (#587). */
+.trash-view .utility-title {
+  margin-bottom: 6px;
 }
 .trash-toolbar p {
   margin: 0;
@@ -27767,6 +27788,11 @@ h3 .block-reactions {
      scrolling settings and make the whole app shell scroll. */
   position: relative;
   display: flex;
+  /* A row (labels are columns by default): the switch centred under its
+     column's heading (#584). */
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
   justify-content: center;
   margin: 0;
   cursor: pointer;
@@ -42374,8 +42400,10 @@ a.favorite-nav.selected {
    (Einsteiger), a yellow diamond (Normal), a red triangle (Experte) – with
    the name as label and tooltip. Colours keep 3:1 against the background in
    light and dark. */
+/* Quieter than the heading beside it (#585). */
 .level-dot {
   --level-colour: #2f8a4f;
+  opacity: 0.5;
   display: inline-block;
   flex: none;
   width: 9px;

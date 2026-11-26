@@ -201,8 +201,8 @@ export default function TrashView({
       {empty && (
         <div className="empty-state">
           <Trash size={38} />
-          <h3>{t("Alles aufgeräumt", "All tidy")}</h3>
-          <p>{t("Dein Papierkorb ist leer.", "Your trash is empty.")}</p>
+          {/* One line, not "Alles aufgeräumt" saying the same (#586). */}
+          <h3>{t("Dein Papierkorb ist leer.", "Your trash is empty.")}</h3>
         </div>
       )}
       <Modal
