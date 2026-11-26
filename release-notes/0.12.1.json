@@ -36,8 +36,8 @@
       ]
     },
     {
-      "de": "Hinter mehr Reverse-Proxys als in FLOWPLAN_TRUSTED_PROXIES eingestellt weist das Protokoll jetzt einmal darauf hin, statt still die interne Adresse des Proxys zu nehmen.",
-      "en": "Behind more reverse proxies than FLOWPLAN_TRUSTED_PROXIES says, the log now says so once instead of silently taking the proxy's internal address.",
+      "de": "Steht Flowplan hinter mehr Reverse-Proxys als eingestellt, weist das Protokoll jetzt einmal darauf hin, statt still die interne Adresse des Proxys zu nehmen.",
+      "en": "When Flowplan runs behind more reverse proxies than configured, the log now says so once instead of silently taking the proxy's internal address.",
       "issues": [
         583
       ]
