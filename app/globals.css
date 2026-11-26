@@ -1438,6 +1438,19 @@ kbd,
 .save-status > span {
   justify-content: flex-end;
 }
+/* Everything saved: the cloud fades out on wide screens too (#599), as
+   on phones – it shows while saving, and the words when something needs
+   attention. It keeps its place, so the page's buttons do not move. */
+@media (min-width: 768px) {
+  .page-top-actions > .save-status-quiet {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .page-top-actions > .save-status-quiet:hover,
+  .page-top-actions > .save-status-quiet:focus-within {
+    opacity: 1;
+  }
+}
 .starred {
   color: #dcac49;
 }
@@ -7376,6 +7389,25 @@ button.record-value:focus-visible {
   display: flex;
   align-items: center;
   min-height: calc(1.5em + 22px);
+}
+/* In properties: the date (and time) at their own width with "Datum
+   entfernen" / "+ Uhrzeit" beside them, wrapping when narrow (#597) –
+   not a date field across the whole column with the buttons below. */
+:is(.row-property, .page-property) .date-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+:is(.row-property, .page-property) .date-input > input {
+  width: auto;
+  flex: 0 1 auto;
+}
+:is(.row-property, .page-property) .date-input > :not(input) {
+  flex: 0 1 auto;
+}
+:is(.row-property, .page-property) .date-input > :is(small, .error) {
+  flex-basis: 100%;
 }
 @media (max-width: 600px) {
   .row-property {

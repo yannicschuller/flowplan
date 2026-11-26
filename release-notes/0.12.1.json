@@ -52,6 +52,14 @@
         587,
         588
       ]
+    },
+    {
+      "de": "Datums-Eigenschaften zeigen „Datum entfernen“ und „+ Uhrzeit“ neben dem Datum statt darunter, und die Wolke „Gespeichert“ blendet sich auch am Computer aus, wenn alles gespeichert ist.",
+      "en": "Date properties show “Remove date” and “+ Time” beside the date instead of below it, and the “Saved” cloud fades out on computers too once everything is saved.",
+      "issues": [
+        597,
+        599
+      ]
     }
   ],
   "fixes": [
