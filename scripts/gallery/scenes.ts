@@ -573,7 +573,7 @@ const editorScenes: Scene[] = [
     id: "mention-picker",
     group: "Documents & editor",
     title: "Mention picker (@)",
-    covers: ["components/editor.tsx"],
+    covers: ["components/editor.tsx", "components/mention-picker.tsx"],
     steps: async (page, ctx) => {
       await editorWith(page, ctx, RICH_HTML);
       await caretAfter(page, "Bravo");
