@@ -51,6 +51,23 @@ test("journal days keep their automatic title in both languages", () => {
   assert.ok(!isAutoDayTitle("Urlaub", "2026-10-03"));
 });
 
+test("Titel des Tages: long by default, the ISO date on request, both count as automatic (#560)", async () => {
+  const { automaticDayTitle } = await import("../lib/journal-title");
+  assert.equal(dayTitle("2026-11-26", "en"), "Thursday, 26 November 2026");
+  assert.equal(dayTitle("2026-11-26", "en", "long"), "Thursday, 26 November 2026");
+  assert.equal(dayTitle("2026-11-26", "de", "iso"), "2026-11-26");
+  // Whatever the journal's choice now: both forms are untouched titles.
+  for (const title of ["2026-11-26", "Donnerstag, 26. November 2026", "Thursday, 26 November 2026"]) {
+    assert.ok(isAutoDayTitle(title, "2026-11-26"), title);
+    assert.ok(automaticDayTitle(title, "2026-11-26"), title);
+  }
+  assert.ok(automaticDayTitle(" 2026-11-26 ", "2026-11-26"));
+  // Another day's date, or a renamed day, is not.
+  assert.ok(!isAutoDayTitle("2026-11-25", "2026-11-26"));
+  assert.ok(!automaticDayTitle("2026-11-25", "2026-11-26"));
+  assert.ok(!automaticDayTitle("2026-11-26 Urlaub", "2026-11-26"));
+});
+
 test("the English template catalog matches the German one", async () => {
   const { templateCatalog } = await import("../lib/template-catalog");
   const { templateCatalogEn } = await import("../lib/template-catalog-en");

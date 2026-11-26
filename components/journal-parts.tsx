@@ -28,6 +28,7 @@ import { api, Modal, showNotice } from "./ui";
 import { post, StepUpDialog, type Pending } from "./sign-in-methods";
 import type { StepUpMethods } from "@/lib/step-up";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
+import { DAY_TITLE_FORMATS, type DayTitleFormat } from "@/lib/journal-title";
 import dynamic from "next/dynamic";
 
 // The AI summary of a review (Markdown rendering): loaded when asked for.
@@ -59,6 +60,7 @@ export type JournalSettings = {
     carried?: CarriedMode;
     carriedHeading?: string;
     carry?: "move" | "copy";
+    dayTitleFormat?: DayTitleFormat;
   };
 };
 type CarriedMode = "top" | "end" | "heading";
@@ -261,6 +263,17 @@ export function JournalSettingsDialog({
     recent: [t("Letzte 7 Tage", "Last 7 days"), t("Heute und die letzten sieben Tage, dazu „Alle Tage …“. Voreinstellung.", "Today and the last seven days, plus “All days …”. The default.")],
     grouped: [t("Nach Jahr und Monat gruppiert", "Grouped by year and month"), t("Wie „Letzte 7 Tage“, ältere Tage in Ordnern nach Jahr und Monat.", "Like “Last 7 days”, older days in folders by year and month.")],
     all: [t("Alle", "All"), t("Jeder Tag einzeln – bei vielen Tagen eine lange Liste.", "Every single day – a long list once there are many.")],
+  };
+  // "Titel des Tages" (#560): the automatic title of new days.
+  const dayTitleFormat = options.dayTitleFormat || "long";
+  const setDayTitleFormat = async (value: DayTitleFormat) => {
+    const before = current;
+    setCurrent({ ...current, options: { ...options, dayTitleFormat: value } });
+    if (!(await save({ options: { dayTitleFormat: value } }))) setCurrent(before);
+  };
+  const dayTitleChoices: Record<DayTitleFormat, [string, string]> = {
+    long: [t("Lang", "Long"), t("Wochentag und Datum ausgeschrieben, etwa „Donnerstag, 26. November 2026“. Voreinstellung.", "Weekday and date written out, such as “Thursday, 26 November 2026”. The default.")],
+    iso: [t("Datum (ISO)", "Date (ISO)"), t("Nur das Datum als Jahr-Monat-Tag, etwa „2026-11-26“ – kurz und gut sortierbar.", "Only the date as year-month-day, such as “2026-11-26” – short and easy to sort.")],
   };
   const lock = async (next: string | null) => {
     if (next !== null && next !== pinAgain) return onError(t("Die PINs stimmen nicht überein.", "The PINs do not match."));
@@ -626,6 +639,19 @@ export function JournalSettingsDialog({
                 <span>
                   <strong>{sidebarChoices[mode][0]}</strong>
                   <small>{sidebarChoices[mode][1]}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="js-choices">
+            <legend className="js-label">{t("Titel des Tages", "Day title")}</legend>
+            <p className="js-intro">{t("Wie neue Tage automatisch heißen. Bereits angelegte Tage behalten ihren Titel, umbenannte Tage bleiben umbenannt.", "What new days are called automatically. Existing days keep their title, renamed days stay renamed.")}</p>
+            {DAY_TITLE_FORMATS.map((format) => (
+              <label key={format} className="js-choice">
+                <input type="radio" name="journal-day-title" value={format} checked={dayTitleFormat === format} disabled={busy} onChange={() => void setDayTitleFormat(format)} />
+                <span>
+                  <strong>{dayTitleChoices[format][0]}</strong>
+                  <small>{dayTitleChoices[format][1]}</small>
                 </span>
               </label>
             ))}

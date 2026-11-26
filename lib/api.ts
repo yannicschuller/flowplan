@@ -115,6 +115,7 @@ import {
   journalOf,
   journalSettings,
   journalSidebarModes,
+  journalDayTitleFormats,
   lockJournalNow,
   pinAttemptKey,
   pinSchema,
@@ -490,6 +491,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
     journalSidebar: await journalSidebarModes(workspace.id),
+    // "Titel des Tages" of journals whose new days get the ISO date (#560).
+    journalDayTitle: await journalDayTitleFormats(workspace.id),
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
     // In the workspace's order (lib/space-order.ts).

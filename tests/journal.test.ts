@@ -195,3 +195,37 @@ test("an invalid journal date is a validation error, not a crash", async () => {
     (e: Error) => e.name === "ZodError",
   );
 });
+
+test("Titel des Tages: new days get the ISO date; existing and renamed days keep theirs (#560)", async () => {
+  const isoId = (
+    (await command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "ISO-Journal", kind: "journal" })) as { id: string }
+  ).id;
+  const rollIso = async (day: string) => (await rollJournal(user, (await one<Page>("SELECT * FROM pages WHERE id=?", isoId))!, day, day)).dayId;
+  const page = async (pageId: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
+  const setFormat = async (dayTitleFormat: string) =>
+    await command(user, { action: "journal.settings", pageId: isoId, options: { dayTitleFormat } });
+  // Long by default, as before.
+  const long = await rollIso("2026-11-20");
+  assert.equal((await page(long)).title, "Freitag, 20. November 2026");
+  assert.equal((await bootstrap(user, wid)).journalDayTitle?.[isoId], undefined);
+  await assert.rejects(async () => await setFormat("short"));
+  await setFormat("iso");
+  assert.equal((await bootstrap(user, wid)).journalDayTitle?.[isoId], "iso");
+  const iso = await rollIso("2026-11-21");
+  assert.equal((await page(iso)).title, "2026-11-21");
+  // The earlier day kept its long title and still counts as untouched: empty, it went to the trash.
+  assert.equal((await page(long)).title, "Freitag, 20. November 2026");
+  assert.ok((await page(long)).deleted_at);
+  // Back to long: the ISO-titled empty day is untouched, too.
+  await setFormat("long");
+  const sunday = await rollIso("2026-11-22");
+  assert.equal((await page(sunday)).title, "Sonntag, 22. November 2026");
+  assert.ok((await page(iso)).deleted_at);
+  // A renamed day stays renamed and is kept.
+  await setFormat("iso");
+  await run("UPDATE pages SET title=? WHERE id=?", "Urlaub", sunday);
+  const monday = await rollIso("2026-11-23");
+  assert.equal((await page(monday)).title, "2026-11-23");
+  assert.equal((await page(sunday)).title, "Urlaub");
+  assert.equal((await page(sunday)).deleted_at, null);
+});

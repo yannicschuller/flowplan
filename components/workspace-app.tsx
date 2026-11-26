@@ -1788,7 +1788,7 @@ export default function WorkspaceApp({
       workspace_id: b.workspace.id,
       space_id: journal?.space_id || "",
       parent_id: entry.journalId,
-      title: journalDayTitle(entry.date, localeRef.current),
+      title: journalDayTitle(entry.date, localeRef.current, b.journalDayTitle?.[entry.journalId]),
       icon: "day",
       cover: "",
       kind: "document",
