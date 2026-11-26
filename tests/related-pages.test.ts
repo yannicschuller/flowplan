@@ -62,13 +62,15 @@ const mock = await startOllamaMock();
 after(() => mock.close());
 const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
 
-test("without AI: links, backlinks, shared links and titles – only what the person may read", async () => {
+test("without AI: links, shared links and titles – only what the person may read", async () => {
   const { items, semantic } = await relatedPages(ben, open);
   assert.equal(semantic, false);
   const ids = items.map((i) => i.pageId);
   const reasons = (page: string) => items.find((i) => i.pageId === page)?.reasons || [];
   assert.ok(reasons(target).includes("link"));
-  assert.ok(reasons(backlink).includes("backlink"));
+  // Pages linking here are listed under "Verlinkt von" instead (#602).
+  assert.ok(!items.some((i) => i.reasons.includes("backlink")));
+  assert.ok(!reasons(backlink).length, "a page that only links here is not related");
   assert.ok(reasons(shared).includes("shared-links"));
   assert.ok(reasons(similar).includes("title"));
   assert.ok(!ids.includes(open), "not the page itself");
@@ -77,7 +79,7 @@ test("without AI: links, backlinks, shared links and titles – only what the pe
   assert.ok(!ids.includes(unrelated));
   // Strong links come first.
   assert.ok(ids.indexOf(target) < ids.indexOf(similar));
-  // The owner sees the private backlink.
+  // The owner sees the private page (by its similar title).
   assert.ok((await relatedPages(admin, open)).items.some((i) => i.pageId === secret));
 });
 

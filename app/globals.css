@@ -2364,14 +2364,15 @@ kbd,
 .print-view .block-caption[data-state="add"] {
   display: none;
 }
-/* Callouts in the five kinds of GitHub alerts: a coloured left border, a
+/* Callouts in the five kinds of GitHub alerts: a tinted box, a
    light background and a title line with icon, in the reader's language. */
 .editor-callout,
 aside[data-callout] {
   position: relative;
   padding: 12px 18px 14px;
-  border-left: 3px solid var(--callout, var(--blue));
-  border-radius: 6px;
+  /* A calm tinted box without a bar at the side (#601); the kind keeps its
+     colour, a box without one follows the accent (--blue). */
+  border-radius: 7px;
   background: color-mix(in srgb, var(--callout, var(--blue)) 8%, var(--bg));
   margin: 18px 0;
 }

@@ -90,6 +90,10 @@ button.page-tag:focus-visible,
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+/* "+ Tag" and "+ Eigenschaft" side by side as one pair (#600). */
+.page-properties-tags:has(> .page-properties-add + .page-properties-add) {
+  column-gap: 2px;
   min-height: 26px;
 }
 .page-properties-icon {
@@ -98,7 +102,7 @@ button.page-tag:focus-visible,
 }
 .page-properties-add {
   min-height: 26px;
-  padding: 2px 8px;
+  padding: 2px 6px;
   gap: 4px;
   color: var(--muted);
   font-size: 12.5px;

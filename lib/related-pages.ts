@@ -153,14 +153,15 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
       }
   }
 
-  // Links from the page, backlinks and pages linking to the same targets.
+  // Links from the page and pages linking to the same targets.
   const targets: { pageId: string; rowId: string | null }[] = [];
   for (const match of (await storedHtml(pageId, rowId)).matchAll(reference)) {
     const target = { pageId: match[1].toLowerCase(), rowId: match[2]?.toLowerCase() || null };
     if (!targets.some((t) => t.pageId === target.pageId && t.rowId === target.rowId)) targets.push(target);
   }
   for (const target of targets.slice(0, 40)) add(target.pageId, target.rowId, 3, "link");
-  for (const source of await linkingTo(page.workspace_id, linkNeedle(pageId, rowId))) add(source.page_id, source.row_id || null, 3, "backlink");
+  // Pages linking here are not counted (#602): "Verlinkt von" right above
+  // lists them already; one that is related for another reason still shows.
   for (const target of targets.slice(0, 8))
     for (const source of await linkingTo(page.workspace_id, linkNeedle(target.pageId, target.rowId), 20)) add(source.page_id, source.row_id || null, 1.5, "shared-links");
 

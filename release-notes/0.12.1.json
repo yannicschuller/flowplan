@@ -64,6 +64,15 @@
         597,
         599
       ]
+    },
+    {
+      "de": "„Verwandte Seiten“ zeigen keine Seiten mehr, die nur hierher verlinken – die stehen schon unter „Verlinkt von“. Hinweis-Boxen ohne Balken an der Seite, und „+ Tag“ und „+ Eigenschaft“ stehen näher beieinander.",
+      "en": "“Related pages” no longer lists pages that only link here – “Linked from” shows them already. Callouts without the bar at the side, and “+ Tag” and “+ Property” sit closer together.",
+      "issues": [
+        600,
+        601,
+        602
+      ]
     }
   ],
   "fixes": [
