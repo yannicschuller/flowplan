@@ -78,3 +78,16 @@ test("regression: a delimiter next to a letter, a link, another delimiter or an 
   // Delimiters of one character form one run: stays Markdown.
   assert.equal(sourceView("<p>a<strong><em>x</em></strong>b</p>").markdown, "a***x***b\n");
 });
+test("regression: lists of the same kind one after the other stay apart", () => {
+  for (const html of [
+    "<ul><li><p>a</p></li></ul><ul><li><p>b</p></li></ul><ul><li><p>c</p></li></ul>",
+    '<ol><li><p>a</p></li></ol><ol start="4"><li><p>b</p></li></ol>',
+    '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>a</p></li></ul><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>b</p></li></ul>',
+  ]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+  assert.equal(sourceView("<ul><li><p>a</p></li></ul><ul><li><p>b</p></li></ul><ul><li><p>c</p></li></ul>").markdown, "- a\n\n* b\n\n- c\n");
+  assert.equal(sourceView('<ol><li><p>a</p></li></ol><ol start="4"><li><p>b</p></li></ol>').markdown, "1. a\n\n4) b\n");
+});

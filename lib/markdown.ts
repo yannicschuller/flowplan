@@ -50,6 +50,7 @@ export type MarkdownContext = {
 const MARKER_ID = /^[A-Za-z0-9-]{1,64}$/;
 // Text blocks carry the marker at the end of their (last) line.
 const LINE_MARKED = new Set(["paragraph", "heading"]);
+const LISTS = new Set(["bulletList", "orderedList", "taskList"]);
 // The character of the marks written as Markdown delimiters.
 const DELIMITERS: Record<string, string | undefined> = { bold: "*", italic: "*", strike: "~" };
 export function markdownText(text: string) {
@@ -428,11 +429,17 @@ export function htmlToMarkdown(
     }
     return result;
   }
+  // Lists written right after a list of the same kind, with the other
+  // marker ("*", "1)"): with the same one, Markdown reads both as one list.
+  const otherMarker = new Set<Node>();
   function children(node: Node, inTable = false) {
     const result: string[] = [];
-    let previous: Node | null = null;
+    let previous: Node | null = null,
+      written: Node | null = null;
     node.forEach((child) => {
+      if (written?.type === child.type && LISTS.has(child.type.name) && !otherMarker.has(written)) otherMarker.add(child);
       let text = block(child, inTable);
+      if (text) written = child;
       // A paragraph below a table or code block that would read as its
       // caption ("Table: …") keeps its colon escaped.
       if (previous && child.type.name === "paragraph" && previous.type.name in CAPTION_LINE && !captionText(previous.attrs.caption))
@@ -526,12 +533,14 @@ export function htmlToMarkdown(
       case "taskList": {
         const result: string[] = [];
         node.forEach((item, _offset, index) => {
+          const other = otherMarker.has(node),
+            bullet = other ? "* " : "- ";
           const prefix =
             node.type.name === "orderedList"
-              ? `${(Number(node.attrs.start) || 1) + index}. `
+              ? `${(Number(node.attrs.start) || 1) + index}${other ? ")" : "."} `
               : node.type.name === "taskList"
-                ? `- [${markdownSymbol(item.attrs)}] `
-                : "- ";
+                ? `${bullet}[${markdownSymbol(item.attrs)}] `
+                : bullet;
           lose(item);
           const content = children(item, inTable).split("\n");
           // An empty first line with subitems below stays empty: the
