@@ -603,7 +603,9 @@ Help translate on [translate.flowplan.org](https://translate.flowplan.org) – s
 <p>
   <a href="https://github.com/yannicschuller" title="yannicschuller"><img src="https://github.com/yannicschuller.png?size=96" width="48" height="48" alt="yannicschuller"></a>
   <a href="https://github.com/timthinks" title="timthinks"><img src="https://github.com/timthinks.png?size=96" width="48" height="48" alt="timthinks"></a>
+  <a href="https://github.com/erykosky" title="erykosky"><img src="https://github.com/erykosky.png?size=96" width="48" height="48" alt="erykosky"></a>
   <a href="https://github.com/hilsonp" title="hilsonp"><img src="https://github.com/hilsonp.png?size=96" width="48" height="48" alt="hilsonp"></a>
+  <a href="https://github.com/franciscorcastro" title="franciscorcastro"><img src="https://github.com/franciscorcastro.png?size=96" width="48" height="48" alt="franciscorcastro"></a>
   <a href="https://github.com/scudong" title="scudong"><img src="https://github.com/scudong.png?size=96" width="48" height="48" alt="scudong"></a>
 </p>
 <!-- contributors:end -->

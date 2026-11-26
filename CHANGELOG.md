@@ -2,6 +2,94 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.12.0 – 2026-11-26
+
+### New
+
+- Preview for presentations and text documents: .pptx and .odp files show titles, bullet points, tables, pictures and notes slide by slide (arrow keys, buttons or a swipe), .docx and .odt files headings, lists, tables and pictures – without the exact layout, with the download ([#562](https://github.com/yannicschuller/flowplan/issues/562)).
+- Your own profile picture: accounts with e-mail and password upload a picture under Settings → Account & security (PNG, JPEG, WebP or GIF, up to 2 MB) or remove it again. SSO accounts still get their picture from the identity provider ([#559](https://github.com/yannicschuller/flowplan/issues/559)).
+- Pages on whiteboards: “New page” creates a document right from the board. Large page cards show the whole document, live and scrollable; a double-click or “Open beside” edits the page next to the board ([#549](https://github.com/yannicschuller/flowplan/issues/549)).
+- Polish as an interface language – thanks to erykosky for the complete translation! ([#550](https://github.com/yannicschuller/flowplan/issues/550))
+- Day title: in each journal's settings under “Days” you choose whether new days are named in full (“Thursday, 26 November 2026”) or just by date (“2026-11-26”). Existing and renamed days keep their title ([#560](https://github.com/yannicschuller/flowplan/issues/560)).
+- Workspace as library (Settings → Workspace → General): every space appears as shelves of books, e.g. for a handbook. My tasks, Journal, Study and Graph can be hidden for everyone. Nothing is deleted; switched off, everything is as before ([#564](https://github.com/yannicschuller/flowplan/issues/564)).
+- My tasks: “All workspaces” shows the tasks of all your workspaces in one list, filterable, each with its workspace. The “Board” shows the due dates as columns – drag a card to another column and it gets the matching date ([#564](https://github.com/yannicschuller/flowplan/issues/564)).
+- European Portuguese as an interface language – thanks to @franciscorcastro ([#566](https://github.com/yannicschuller/flowplan/issues/566)).
+- Whiteboard: “@” in sticky notes, texts and shapes links pages, whiteboards, journal days, records and people as in documents. A click opens the page, which lists the whiteboard under “Linked from” and in the graph ([#567](https://github.com/yannicschuller/flowplan/issues/567)).
+
+### Improved
+
+- Database sorting now always puts records without a value last – ascending and descending, e.g. records without a date when sorted by due date ([#551](https://github.com/yannicschuller/flowplan/issues/551)).
+- Deleting the open page now takes you to its parent page (or the start page) instead of the trash; "Undo" brings it back ([#553](https://github.com/yannicschuller/flowplan/issues/553)).
+- Space names in the sidebar are as large as the pages below them and a little bolder ([#557](https://github.com/yannicschuller/flowplan/issues/557)).
+- Files dragged or pasted into a document show a placeholder with their progress (“12 MB of 48 MB”) and a cancel button where they will go; the finished file lands there, even if you have moved on to write elsewhere ([#561](https://github.com/yannicschuller/flowplan/issues/561)).
+- The workspace menu at the top of the sidebar shows who is signed in and now also holds the former “⋯” account menu: theme, About Flowplan, What’s new, legal notice, privacy and, last and set apart, “Sign out” ([#565](https://github.com/yannicschuller/flowplan/issues/565)).
+
+### Bug fixes
+
+- The footer of e-mails now appears in French, Russian and Chinese too instead of English.
+- Apple Pencil strokes in notebooks, PDF annotations and whiteboards no longer have gaps: pressure strokes are filled without holes, also in tight turns and when writing slowly ([#548](https://github.com/yannicschuller/flowplan/issues/548)).
+- Empty journal days no longer stay: days of the last week that were opened from the calendar, brought back or emptied later also go with the next day; spaces, empty lines and empty tasks no longer count as an entry ([#547](https://github.com/yannicschuller/flowplan/issues/547)).
+- Manage space: the space icon and the background colour now sit neatly one below the other instead of staggered side by side ([#555](https://github.com/yannicschuller/flowplan/issues/555)).
+- ZIP files made on a Mac (Finder, Archive Utility) keep their accents and umlauts on import: “Diárias” no longer turns into “Dia╠ürias”, and links, embedded images and titles in Obsidian vaults with such names work ([#556](https://github.com/yannicschuller/flowplan/issues/556)).
+- Markdown with tables and formulas copied from a text editor is formatted again when pasted instead of arriving line by line as raw text.
+- The Notion import with an integration token no longer stops with “Notion did not answer the request”: it tries longer and with smaller queries, skips what Notion still does not deliver and lists it with the reason in the import report ([#563](https://github.com/yannicschuller/flowplan/issues/563)).
+- Journal: the “Place” field shows the usual focus ring while editing instead of a blue line below it ([#568](https://github.com/yannicschuller/flowplan/issues/568)).
+
+<details>
+<summary>All commits</summary>
+
+- Release notes: the next release is the minor 0.12.0 ([77e6066](https://github.com/yannicschuller/flowplan/commit/77e60665914ab2a5481c2031e4fc3258205b0144))
+- Help docs: @ mentions on whiteboards (#567) ([df51cae](https://github.com/yannicschuller/flowplan/commit/df51cae3c7390501a21e0875798facf69d087808))
+- Gallery: the mention picker scene covers the shared picker (#567) ([d63c7f7](https://github.com/yannicschuller/flowplan/commit/d63c7f75b132c22f2bc141481730013f9876dcff))
+- Whiteboard: link pages with @ mentions in text (#567) ([509c2f6](https://github.com/yannicschuller/flowplan/commit/509c2f6876b26e294b501d296ead6ddcdf0e38b0))
+- Journal: the Place input gets the standard focus ring (#568) ([d6a202f](https://github.com/yannicschuller/flowplan/commit/d6a202f24025eb7c5be58debba3f2346711eee6a))
+- Gallery coverage: list the workspace library dialog (#564) ([2816cd1](https://github.com/yannicschuller/flowplan/commit/2816cd12b0481620f58ba4251886d7f875b0bad4))
+- Polish: fix mistranslations of Deck, Mentions and Board ([2c19e2c](https://github.com/yannicschuller/flowplan/commit/2c19e2cb14e949a2c1bc296d20231107624aa1ca))
+- Visual baselines from ubuntu-latest ([ce25fd9](https://github.com/yannicschuller/flowplan/commit/ce25fd9bc053675e99cbcdebeee6f67cade69198))
+- Help docs: workspace menu (#565) ([ed026a1](https://github.com/yannicschuller/flowplan/commit/ed026a14a69350e23518c917e4737da1ff1cb0e4))
+- Portuguese: drop the unused "Account menu" text (#565) ([4bbeec8](https://github.com/yannicschuller/flowplan/commit/4bbeec81d150e84ebaa57313952763fd23bb6e7b))
+- Sidebar: the account menu joins the workspace menu (#565) ([f49d84b](https://github.com/yannicschuller/flowplan/commit/f49d84bc41a4f4720c1350e9dfd57b09f6cdfeb0))
+- Portuguese: the 15 texts added since PR #566 was opened; release note ([8224256](https://github.com/yannicschuller/flowplan/commit/822425617005eb233a344feb8b47600cea1c60f7))
+- Help docs: My tasks across workspaces, workspace as library (#564) ([1d99428](https://github.com/yannicschuller/flowplan/commit/1d99428044a8c9dbfa0ebfadd99740de5d7d72c0))
+- Add European Portuguese (pt-PT) as an interface language ([d228f27](https://github.com/yannicschuller/flowplan/commit/d228f279cd677c27c3bc18c07779a4c819184ece))
+- My tasks: all workspaces in one list and a board view (#564) ([55a48c6](https://github.com/yannicschuller/flowplan/commit/55a48c62abaadda1415b699bcfc95f196c15a0c5))
+- Workspace as library: every space as shelves of books, hide sidebar places (#564) ([56e3bec](https://github.com/yannicschuller/flowplan/commit/56e3bec0ff0eaacbac0f51c4568ea885a346d365))
+- French: "vous" and typographic apostrophes in the Notion import texts; workflow JS budget 1070 KB ([4837f2b](https://github.com/yannicschuller/flowplan/commit/4837f2b1dad21543c3d9dee285cab9c6c34a6b4c))
+- Help docs: upload progress, office previews ([0008dea](https://github.com/yannicschuller/flowplan/commit/0008dea198b00b560a585a53ae05b91245708a1e))
+- Content preview for presentations and text documents (#562) ([7da6a2f](https://github.com/yannicschuller/flowplan/commit/7da6a2f25a531fd3a103aa633281b96d077f8f32))
+- Upload progress for files dropped or pasted into a document (#561) ([6d968ee](https://github.com/yannicschuller/flowplan/commit/6d968ee979a5da597791726bf852660118aaa710))
+- Help docs: Notion import skips (#563) ([301ccf9](https://github.com/yannicschuller/flowplan/commit/301ccf9162b8ca474b972329bccd51dc1d6d80df))
+- Notion API import: retry harder, skip what does not come (#563) ([33262d5](https://github.com/yannicschuller/flowplan/commit/33262d544097915f69aa72c99cfc14a9a2c04c3c))
+- Visual baselines from ubuntu-latest ([6d189d9](https://github.com/yannicschuller/flowplan/commit/6d189d948cfc88170c1a4fa21b02869b74bb4a0b))
+- Help docs: profile picture and journal day title ([2789786](https://github.com/yannicschuller/flowplan/commit/2789786a335733ea1b9ddb72668f26b7412598ae))
+- Add a per-journal "Day title" option: long or ISO date (#560) ([13d99de](https://github.com/yannicschuller/flowplan/commit/13d99de44b8dd844640308dd4c45e10f47d8ee1d))
+- Upload and remove an own profile picture for local accounts (#559) ([eee5955](https://github.com/yannicschuller/flowplan/commit/eee59557ca45e32dd16b7b6b7053e4577d745fa9))
+- Inactivity message: explanation below the "Not available" label (#558) ([409a42f](https://github.com/yannicschuller/flowplan/commit/409a42fcdf3d05fe0f4365f1df2efd68255a343a))
+- Browser specs: the language menus list Polski ([1940298](https://github.com/yannicschuller/flowplan/commit/1940298c3cfa348b9b6e1291559d5bbcbe91439e))
+- Convert Markdown pasted with line-wrapping clipboard HTML ([dcf1c96](https://github.com/yannicschuller/flowplan/commit/dcf1c967d0e1e8aba378abe03326118c586a62ed))
+- Sidebar: space names at 13 px like their pages (#557) ([aec60e2](https://github.com/yannicschuller/flowplan/commit/aec60e24f15966111e18ec18cd7406a4bccb39c4))
+- Polish: the six texts added since PR #550; release note ([5352109](https://github.com/yannicschuller/flowplan/commit/5352109ad5e7c88eb1f85a9967a697d337d75b8e))
+- Prepare for Polish; widget test across midnight; document JS budget ([d4c02a6](https://github.com/yannicschuller/flowplan/commit/d4c02a68b2ed306f92243a55ed345e9d61b52092))
+- Import: decode macOS ZIP names as UTF-8 and normalise to NFC (#556) ([02326c6](https://github.com/yannicschuller/flowplan/commit/02326c6aad971673300cc03f521501be070fea0d))
+- Space dialog: icon and background colour aligned (#555) ([472b51c](https://github.com/yannicschuller/flowplan/commit/472b51c8b538e4ab24340119e9af4cc3785590b4))
+- /issue: hosted users wait for the next release, not the beta ([e04c3de](https://github.com/yannicschuller/flowplan/commit/e04c3dea0bb4339b4506230edf251f05cad80ca2))
+- Tests: empty values sort last (#551) ([6c5d702](https://github.com/yannicschuller/flowplan/commit/6c5d70251b9f84f7880ddeec20f20fe332eecb3c))
+- Deleting the open page leads to its parent, not the trash (#553) ([472cb94](https://github.com/yannicschuller/flowplan/commit/472cb9432ed64117e57f651d8ee7730dce9818b0))
+- Use plural verbs in the count-led import sentences ([beaace1](https://github.com/yannicschuller/flowplan/commit/beaace1f14a4b77d1d8508f7801a4fdc5f493a09))
+- Translate one more AFFiNE import sentence the sweep found ([21e54b3](https://github.com/yannicschuller/flowplan/commit/21e54b37e59aa083f73bd9dcc102f65559bb0b84))
+- Fix placeholders and finish skipped Polish texts ([65dfad5](https://github.com/yannicschuller/flowplan/commit/65dfad5221bc1c2621a80e290de6665af1443fb0))
+- Help docs: pages on whiteboards (#549) ([a630a2e](https://github.com/yannicschuller/flowplan/commit/a630a2e410a815728ca5505ac935844f01e6b0e2))
+- Pages on whiteboards: new page, whole document on cards, edit beside (#549) ([cf0863d](https://github.com/yannicschuller/flowplan/commit/cf0863daee948e7be109a89e8fc707e260145e4a))
+- Database sorting: empty values always last (#551) ([2a79984](https://github.com/yannicschuller/flowplan/commit/2a7998484c02ac862bdb5e285e0cd5b445433823))
+- Add Polish as an interface language ([d29b967](https://github.com/yannicschuller/flowplan/commit/d29b96740577bd01949639d6f3ddbb2a9e3e3498))
+- Help docs: journal empty days (#547) ([f1b76e7](https://github.com/yannicschuller/flowplan/commit/f1b76e7dbf335c40b29ef50bf444ae581f9010de))
+- Journal: tidy away empty days that used to stay (#547) ([bd9f6ad](https://github.com/yannicschuller/flowplan/commit/bd9f6ad2b3acba51ebd8cdfe2383be8bfb7e9061))
+- Settings start: instance tiles fit on phones ([c070da8](https://github.com/yannicschuller/flowplan/commit/c070da8d2ad00eaf72a7ee5bcd90b02a3dabe214))
+- Fill Apple Pencil strokes without gaps (#548) ([eaf1e16](https://github.com/yannicschuller/flowplan/commit/eaf1e16da53b9afb6ddd4edb7fad73d2c37a26a5))
+- E-mail footer in French, Russian and Chinese ([4f3b17f](https://github.com/yannicschuller/flowplan/commit/4f3b17f79925414e12b189c21984a4804acb4e6f))
+
+</details>
+
 ## v0.11.6 – 2026-11-25
 
 ### New
