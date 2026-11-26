@@ -204,18 +204,31 @@ function paginate(items: unknown[], cursor: string | null) {
   const next = start + 2 < items.length ? String(start + 2) : null;
   return { object: "list", results, has_more: next !== null, next_cursor: next };
 }
-const seen: { method: string; path: string; auth: string; version: string; at: number }[] = [];
+const seen: { method: string; path: string; auth: string; version: string; at: number; size?: number }[] = [];
 let throttled = false;
+// Answers a test sets up for "METHOD /path" (path without /v1, ids with
+// dashes as the client sends them), given before the real one: `times`
+// times each (Infinity: always); `drop` cuts the connection.
+type Fault = { status?: number; data?: Record<string, unknown>; headers?: Record<string, string>; drop?: boolean; times: number };
+const faults = new Map<string, Fault[]>();
+const fault = (key: string, ...list: Fault[]) => void faults.set(key, list);
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", "http://x");
   let body = "";
   for await (const chunk of req) body += chunk;
   const json = body ? JSON.parse(body) : {};
-  seen.push({ method: req.method || "", path: url.pathname, auth: String(req.headers.authorization), version: String(req.headers["notion-version"]), at: Date.now() });
+  seen.push({ method: req.method || "", path: url.pathname, auth: String(req.headers.authorization), version: String(req.headers["notion-version"]), at: Date.now(), ...(typeof json.page_size === "number" ? { size: json.page_size } : {}) });
   const send = (status: number, data: unknown, headers: Record<string, string> = {}) => {
     res.writeHead(status, { "content-type": "application/json", ...headers });
     res.end(JSON.stringify(data));
   };
+  const planned = faults.get(`${req.method} ${url.pathname.replace(/^\/v1/, "")}`);
+  const next = planned?.[0];
+  if (next) {
+    if (--next.times <= 0) planned!.shift();
+    if (next.drop) return void res.socket?.destroy();
+    return send(next.status!, next.data || {}, next.headers);
+  }
   if (url.pathname.startsWith("/files/")) {
     const name = url.pathname.slice("/files/".length);
     if (name === "gross.bin") {
@@ -441,4 +454,131 @@ test("an editor of the target space only; nothing chosen is refused", async () =
   await assert.rejects(importNotion(other, wid, space, TOKEN, items, testOptions));
   await assert.rejects(importNotion(owner, wid, space, TOKEN, [], testOptions), /mindestens eine/);
   await assert.rejects(listNotion({ ...owner, demo: true }, wid, space, TOKEN, testOptions));
+});
+
+// Robustness (#563): retries, smaller pages, skipping what does not come.
+const reportOf = async (result: { report?: { pageId: string } }) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.report!.pageId))!.html;
+
+test("5xx and dropped connections several times, then an answer: retried with capped, jittered waits, and imported", async () => {
+  faults.clear();
+  slept.length = 0;
+  fault(`GET /pages/${bare(PAGE_B)}`, { status: 500, times: 1 }, { drop: true, times: 1 }, { status: 502, times: 1 }, { status: 504, times: 1 }, { status: 500, times: 1 });
+  const tree = await parseNotionApi(TOKEN, [{ id: bare(PAGE_B), kind: "page" }], testOptions);
+  assert.deepEqual(tree.pages.map((p) => p.title), ["Seite B"]);
+  assert.match(tree.pages[0].html, /Inhalt B/);
+  assert.equal(tree.report!.counts.skipped, undefined);
+  // 1, 2, 4, 8, 16 s, each ±20 %, never above 30 s.
+  assert.equal(slept.length, 5, String(slept));
+  slept.forEach((ms, i) => assert.ok(ms >= 800 * 2 ** i && ms <= Math.min(30_000, 1200 * 2 ** i), `${i}: ${ms}`));
+  tree.close?.();
+});
+
+test("409 conflict_error is retried; 503 honours Retry-After", async () => {
+  faults.clear();
+  slept.length = 0;
+  fault(
+    `GET /pages/${bare(PAGE_B)}`,
+    { status: 409, data: { object: "error", code: "conflict_error" }, times: 1 },
+    { status: 503, data: { code: "service_unavailable" }, headers: { "retry-after": "7" }, times: 1 },
+  );
+  const page = await notionClient(TOKEN, testOptions).call("GET", `/pages/${bare(PAGE_B)}`);
+  assert.equal(page.id, uuid(PAGE_B));
+  assert.equal(slept.length, 2);
+  assert.equal(slept[1], 7000);
+});
+
+test("504 on a database query: asked again with smaller pages (100 → 50 → 25)", async () => {
+  faults.clear();
+  fault(`POST /databases/${bare(DB_PEOPLE)}/query`, { status: 504, data: { code: "gateway_timeout" }, times: 2 });
+  const before = seen.length;
+  const tree = await parseNotionApi(TOKEN, [{ id: bare(DB_PEOPLE), kind: "database" }], testOptions);
+  const sizes = seen.slice(before).filter((r) => r.path.endsWith("/query")).map((r) => r.size);
+  assert.deepEqual(sizes, [100, 50, 25]);
+  assert.deepEqual(tree.pages[0].database!.rows.map((r) => r.cells.title).sort(), ["Ada", "Grace"]);
+  tree.close?.();
+});
+
+test("400 validation_error on one page's blocks: that page skipped and reported (status and code, no token, no body), the rest imported", async () => {
+  faults.clear();
+  const secretText = "Notions own message naming block 1234 and private words";
+  fault(`GET /blocks/${bare(PAGE_B)}/children`, { status: 400, data: { object: "error", code: "validation_error", message: secretText }, times: Infinity });
+  // A database whose schema does not come either.
+  fault(`GET /databases/${bare(DB_TASKS)}`, { status: 500, data: { code: "internal_server_error", message: secretText }, times: Infinity });
+  const tree = await parseNotionApi(
+    TOKEN,
+    [
+      { id: bare(PAGE_B), kind: "page" },
+      { id: bare(DB_PEOPLE), kind: "database" },
+      { id: bare(DB_TASKS), kind: "database" },
+    ],
+    testOptions,
+  );
+  faults.clear();
+  assert.deepEqual(tree.pages.map((p) => p.title), ["Personen"]);
+  assert.equal(tree.report!.counts.skipped, 2);
+  const result = await writeImport(owner, wid, space, tree);
+  tree.close?.();
+  const html = await reportOf(result);
+  assert.match(html, /Übersprungen, weil die Quelle sie nicht geliefert hat \(2\)/);
+  assert.match(html, /Seite „Seite B“ übersprungen: HTTP 400 · validation_error/);
+  assert.match(html, /Datenbank „Ohne Titel“ übersprungen: HTTP 500 · internal_server_error/);
+  assert.match(html, /mit der Integration geteilt/);
+  assert.doesNotMatch(html, /private words|1234|T0k3nS3cr3t|ntn_/);
+  assert.equal(result.report!.counts.skipped, 2);
+});
+
+test("records that do not come: the database is skipped; part of a page's content missing is reported on the page", async () => {
+  faults.clear();
+  fault(`POST /databases/${bare(DB_PEOPLE)}/query`, { status: 400, data: { code: "validation_error" }, times: Infinity });
+  // The children of page A's toggle do not come.
+  fault(`GET /blocks/${uuid(6)}/children`, { status: 502, data: { code: "bad_gateway" }, times: Infinity });
+  const tree = await parseNotionApi(TOKEN, [{ id: bare(PAGE_A), kind: "page" }], { ...testOptions, maxFileBytes: 100_000 });
+  faults.clear();
+  const titles = tree.pages.map((p) => p.title);
+  assert.ok(titles.includes("Seite A") && titles.includes("Seite B") && !titles.includes("Personen"), String(titles));
+  const details = tree.report!.entries.filter((e) => e.kind === "skipped");
+  assert.ok(
+    details.some((e) => /^Datenbank „Personen“ übersprungen, ihre Einträge kamen nicht: HTTP 400 · validation_error$/.test(e.detail) && e.page === bare(PAGE_A)),
+    JSON.stringify(details),
+  );
+  assert.ok(details.some((e) => /^Ein Teil des Inhalts fehlt \(Blöcke\): HTTP 502 · bad_gateway$/.test(e.detail) && e.page === bare(PAGE_A)), JSON.stringify(details));
+  assert.match(tree.pages.find((p) => p.title === "Seite A")!.html, /<summary>Mehr<\/summary>/);
+  tree.close?.();
+});
+
+test("what stops the import: a refused token, a failed listing, nothing delivered, Notion down", async () => {
+  faults.clear();
+  // The token refused in the middle of the import.
+  fault(`GET /blocks/${bare(PAGE_B)}/children`, { status: 401, data: { code: "unauthorized" }, times: 1 });
+  await assert.rejects(parseNotionApi(TOKEN, [{ id: bare(PAGE_B), kind: "page" }], testOptions), /abgelehnt/);
+  faults.clear();
+  fault("POST /search", { status: 502, times: Infinity });
+  await assert.rejects(listNotionRoots(TOKEN, testOptions), /Liste der geteilten Seiten nicht geliefert \(HTTP 502\)/);
+  faults.clear();
+  fault(`GET /pages/${bare(PAGE_B)}`, { status: 400, data: { code: "validation_error" }, times: Infinity });
+  await assert.rejects(parseNotionApi(TOKEN, [{ id: bare(PAGE_B), kind: "page" }], testOptions), /keine der gewählten Seiten geliefert \(HTTP 400\)/);
+  faults.clear();
+  // Three requests in a row without an answer: Notion is down.
+  for (const key of [`GET /pages/${bare(PAGE_B)}`, `GET /databases/${bare(DB_PEOPLE)}`, `GET /databases/${bare(DB_TASKS)}`]) fault(key, { status: 503, times: Infinity });
+  const before = seen.length;
+  await assert.rejects(
+    parseNotionApi(
+      TOKEN,
+      [
+        { id: bare(PAGE_B), kind: "page" },
+        { id: bare(DB_PEOPLE), kind: "database" },
+        { id: bare(DB_TASKS), kind: "database" },
+        { id: bare(PAGE_A), kind: "page" },
+      ],
+      testOptions,
+    ),
+    /Notion ist gerade nicht erreichbar/,
+  );
+  assert.ok(!seen.slice(before).some((r) => r.path.endsWith(bare(PAGE_A))), "stopped before page A");
+  faults.clear();
+  const { englishMessage } = await import("../lib/i18n-errors");
+  assert.equal(
+    englishMessage("Notion hat die Liste der geteilten Seiten nicht geliefert (HTTP 502). Bitte versuche es später erneut."),
+    "Notion did not deliver the list of shared pages (HTTP 502). Please try again later.",
+  );
 });

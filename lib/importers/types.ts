@@ -33,6 +33,11 @@ export type ReportKind =
   | "relation"
   // A file too large, missing or failed to download.
   | "file"
+  // A page, database, its records or part of a page's content left out
+  // because the source did not deliver it, even after retries (Notion API,
+  // #563): its title, what failed and the HTTP status with the source's
+  // error code – never a token or the answer's text.
+  | "skipped"
   | "other";
 export type ReportEntry = { kind: ReportKind; detail: string; page?: string; row?: string };
 // Collects report entries; the same entry for the same page once, at most

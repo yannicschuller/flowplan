@@ -60,7 +60,9 @@ type Preview = {
 };
 // `report`: the page "Importbericht" listing what was not carried over or
 // only approximated (lib/importers/report.ts).
-type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string; report?: { pageId: string; total: number } };
+// `counts.skipped`: items the source did not deliver (Notion API, #563).
+type Report = { pageId: string; total: number; counts?: { skipped?: number } };
+type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string; report?: Report };
 
 
 export function ImportSources({
@@ -94,7 +96,7 @@ export function ImportSources({
   // Uploading (share of the file sent) or the server's work (its share
   // done; null while it cannot tell).
   const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null } | null>(null);
-  const [done, setDone] = useState<{ text: string; report?: { pageId: string; total: number } } | null>(null);
+  const [done, setDone] = useState<{ text: string; report?: Report } | null>(null);
   const names: Record<string, string> = {
     affine: "AFFiNE",
     anki: t("Anki (Lernkarten)", "Anki (flashcards)"),
@@ -442,6 +444,14 @@ export function ImportSources({
           )}
         </p>
       )}
+      {done?.report?.counts?.skipped ? (
+        <p className="import-sources-warnings">
+          {t(
+            `${done.report.counts.skipped} Inhalte hat Notion auch nach mehreren Versuchen nicht geliefert; sie wurden übersprungen und stehen mit dem Grund im Importbericht. Prüfe, ob sie mit der Integration geteilt sind („…“ → Verbindungen), und importiere sie noch einmal – oder nimm den Export von Notion als ZIP.`,
+            `Notion did not deliver ${done.report.counts.skipped} items even after several attempts; they were skipped and are listed with the reason in the import report. Check that they are shared with the integration (“…” → Connections) and import them again – or use Notion's export as a ZIP.`,
+          )}
+        </p>
+      ) : null}
     </div>
   );
 }

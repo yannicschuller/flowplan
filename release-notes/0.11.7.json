@@ -35,6 +35,13 @@
     {
       "de": "Markdown mit Tabellen und Formeln, das aus einem Texteditor kopiert wird, wird beim Einfügen wieder formatiert statt Zeile für Zeile als Rohtext übernommen.",
       "en": "Markdown with tables and formulas copied from a text editor is formatted again when pasted instead of arriving line by line as raw text."
+    },
+    {
+      "de": "Der Notion-Import per Integrations-Token bricht nicht mehr mit „Notion hat die Anfrage nicht beantwortet“ ab: Er versucht es länger und mit kleineren Abfragen, überspringt, was Notion trotzdem nicht liefert, und nennt es mit Grund im Importbericht.",
+      "en": "The Notion import with an integration token no longer stops with “Notion did not answer the request”: it tries longer and with smaller queries, skips what Notion still does not deliver and lists it with the reason in the import report.",
+      "issues": [
+        563
+      ]
     }
   ],
   "improvements": [

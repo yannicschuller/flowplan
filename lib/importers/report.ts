@@ -13,9 +13,11 @@ import { ct } from "../content-locale";
 import { esc } from "./html";
 import type { ImportReport, ReportEntry, ReportKind } from "./types";
 
-export const REPORT_KINDS: ReportKind[] = ["block", "synced", "embed", "formula", "rollup", "property", "relation", "file", "other"];
+// Skipped items first: they are what is missing most.
+export const REPORT_KINDS: ReportKind[] = ["skipped", "block", "synced", "embed", "formula", "rollup", "property", "relation", "file", "other"];
 const heading = (kind: ReportKind) =>
   ({
+    skipped: ct("Übersprungen, weil die Quelle sie nicht geliefert hat", "Skipped because the source did not deliver them"),
     block: ct("Nicht übernommene Blöcke", "Blocks not carried over"),
     synced: ct("Synchronisierte Blöcke (Inhalt kopiert)", "Synced blocks (content copied)"),
     embed: ct("Einbettungen und Lesezeichen als Link", "Embeds and bookmarks kept as links"),
@@ -50,6 +52,16 @@ export function reportHtml(source: string, report: ImportReport, target: ReportT
       .sort((a, b) => (a.at?.title || "").localeCompare(b.at?.title || "", "de") || a.entry.detail.localeCompare(b.entry.detail, "de", { numeric: true }))
       .map(({ entry, at }) => `<li><p>${at ? `<a href="${esc(at.href)}">${esc(at.title)}</a>: ` : ""}${esc(entry.detail)}</p></li>`);
     parts.push(`<h2>${esc(heading(kind))} (${count})</h2>`);
+    // What to do about it (#563).
+    if (kind === "skipped")
+      parts.push(
+        `<p>${esc(
+          ct(
+            "Auch nach mehreren Versuchen kam keine Antwort mit diesen Inhalten. Prüfe in Notion, ob sie mit der Integration geteilt sind („…“ → Verbindungen), und importiere sie noch einmal – oder nimm den Export von Notion als ZIP.",
+            "Even after several attempts no answer with this content came. Check in Notion that it is shared with the integration (“…” → Connections) and import it again – or use Notion's export as a ZIP.",
+          ),
+        )}</p>`,
+      );
     if (items.length) parts.push(`<ul>${items.join("")}</ul>`);
     if (count > entries.length) parts.push(`<p>${esc(ct(`… und ${count - entries.length} weitere.`, `… and ${count - entries.length} more.`))}</p>`);
   }

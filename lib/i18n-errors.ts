@@ -1731,6 +1731,9 @@ const patterns: [RegExp, string][] = [
   [/^Das Anki-Paket hat mehr als (\d+) Wiederholungen; der Lernstand kann nicht übernommen werden\.$/, "The Anki package has more than $1 reviews; the learning state cannot be taken over."],
   [/^Das Anki-Paket hat (\d+) Notizen; erlaubt sind höchstens (\d+) je Import\.$/, "The Anki package has $1 notes; at most $2 are allowed per import."],
   [/^Mehr als (\d+) Seiten: weitere Seiten werden nicht übernommen \(FLOWPLAN_IMPORT_MAX_DOCS\)\.$/, "More than $1 pages: further pages are not imported (FLOWPLAN_IMPORT_MAX_DOCS)."],
+  // The Notion API import when what everything needs failed (lib/importers/notion-api.ts, #563).
+  [/^Notion hat die Liste der geteilten Seiten nicht geliefert \(HTTP (\d+)\)\. Bitte versuche es später erneut\.$/, "Notion did not deliver the list of shared pages (HTTP $1). Please try again later."],
+  [/^Notion hat keine der gewählten Seiten geliefert \(HTTP (\d+)\)\. Bitte versuche es später erneut oder nimm den Export von Notion als ZIP\.$/, "Notion delivered none of the chosen pages (HTTP $1). Please try again later or use Notion's export as a ZIP."],
   // The import check of marketplace packages (lib/marketplace-check.ts).
   [/^Die Vorlage braucht Flowplan (\S+) – diese Instanz hat (\S+)\.$/, "The template needs Flowplan $1 – this instance has $2."],
   [/^(\d+) Schrift\(en\) würden nicht übernommen \(Größe, Anzahl oder Speicherplatz\)\.$/, "$1 typeface(s) would not be taken over (size, number or storage)."],

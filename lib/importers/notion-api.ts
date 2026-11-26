@@ -13,9 +13,14 @@
 // Requests go to https://api.notion.com/v1 only (fixed; a test may point
 // the client at a mock server, nothing a person can set), at most three per
 // second as Notion asks, with Retry-After honoured on 429 and retries on
-// 5xx. Files Notion hosts are downloaded during the import (their
-// addresses expire after an hour), only from Notion's file hosts and
-// within the person's upload limit; external files stay links.
+// 5xx, 409 and timeouts (#563). What Notion still does not deliver – a
+// page, a database, its records, a block's children, a file – is skipped
+// with what is below it and listed in the import report with the HTTP
+// status and Notion's error code; only a refused token, a failed listing
+// or Notion not answering at all stop the import. Files Notion hosts are
+// downloaded during the import (their addresses expire after an hour),
+// only from Notion's file hosts and within the person's upload limit;
+// external files stay links.
 import { personCell } from "../person-values";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -36,8 +41,21 @@ import type { Field, View } from "../types";
 export const NOTION_API = "https://api.notion.com/v1";
 export const NOTION_VERSION = "2022-06-28";
 const MIN_INTERVAL_MS = 340;
+// Retries of one request (#563): 429 waits as long as Retry-After says (at
+// most a minute); 5xx, 409 conflict_error, timeouts and network errors
+// wait 1, 2, 4, 8, 16, 30 s (±20 % jitter, at most 30 s each, at most
+// RETRY_BUDGET_MS in all; Retry-After on 503 is honoured as on 429).
 const MAX_RETRIES = 6;
 const MAX_RETRY_AFTER_S = 60;
+const MAX_BACKOFF_MS = 30_000;
+const RETRY_BUDGET_MS = 90_000;
+// Requests that still failed for a passing reason (no answer, 5xx, 429)
+// one after the other without any success in between: Notion is down, the
+// import stops instead of skipping everything.
+const MAX_OUTAGE = 3;
+// Page sizes for database queries and the search when Notion answers 502
+// or 504 (the answer took too long).
+const PAGE_SIZES = [100, 50, 25];
 const MAX_DEPTH = 30;
 
 // An internal integration token: "ntn_…" (current) or "secret_…" (older).
@@ -54,7 +72,30 @@ export type NotionClientOptions = { base?: string; minIntervalMs?: number; sleep
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+// 403/404: not shared with the integration (callers skip it).
 export class NotionMissing extends Error {}
+// A request that still failed after the retries: the HTTP status (0: no
+// answer – timeout or network error) and Notion's error code
+// (validation_error, service_unavailable, …), nothing else of the answer –
+// its message can carry ids and content. Callers skip the item.
+export class NotionRequestFailed extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+  ) {
+    super(`Notion request failed: ${status || "no answer"}${code ? ` ${code}` : ""}`);
+  }
+  // A passing failure (Notion overloaded or not reachable), not one of the item.
+  get passing() {
+    return this.status === 0 || this.status === 429 || this.status >= 500;
+  }
+}
+const notionCode = (data: Json) => (typeof data.code === "string" && /^[a-z_]{1,40}$/.test(data.code) ? data.code : "");
+const UNREACHABLE = "Notion ist gerade nicht erreichbar. Bitte versuche es später erneut.";
+
+// Options of one request: `shrink` gives the body with a smaller page
+// size when Notion answers 502/504 (null when there is none).
+type CallOptions = { shrink?: () => unknown | null };
 
 export function notionClient(token: string, options: NotionClientOptions = {}) {
   const base = (options.base || NOTION_API).replace(/\/$/, "");
@@ -63,12 +104,31 @@ export function notionClient(token: string, options: NotionClientOptions = {}) {
   const interval = options.minIntervalMs ?? MIN_INTERVAL_MS;
   let last = 0;
   let requests = 0;
-  async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<Json> {
+  let outage = 0;
+  const backoff = (attempt: number) => Math.min(MAX_BACKOFF_MS, Math.round(1000 * 2 ** attempt * (0.8 + 0.4 * Math.random())));
+  const retryAfter = (value: unknown) => {
+    const after = Number(value);
+    return Math.min(MAX_RETRY_AFTER_S, Number.isFinite(after) && after > 0 ? after : 1) * 1000;
+  };
+  // A final failure: counted when passing; several in a row stop the import.
+  const failed = (error: NotionRequestFailed) => {
+    if (error.passing && ++outage >= MAX_OUTAGE) return new HttpError(502, UNREACHABLE, { service: "notion", host: "api.notion.com" });
+    return error;
+  };
+  async function call(method: "GET" | "POST", path: string, body?: unknown, callOptions: CallOptions = {}): Promise<Json> {
+    let waited = 0;
     for (let attempt = 0; ; attempt++) {
       const wait = last + interval - Date.now();
       if (wait > 0) await sleep(wait);
       last = Date.now();
       requests++;
+      // Waits before the next attempt; false when the retries are used up.
+      const retry = async (ms: number) => {
+        if (attempt >= MAX_RETRIES || waited + ms > RETRY_BUDGET_MS) return false;
+        waited += ms;
+        await sleep(ms);
+        return true;
+      };
       let response;
       try {
         response = await safeFetch(`${base}${path}`, {
@@ -84,43 +144,55 @@ export function notionClient(token: string, options: NotionClientOptions = {}) {
           timeout: 30_000,
           allowPrivate: testing,
         });
-      } catch (error) {
-        if (attempt < 2) {
-          await sleep(1000 * 2 ** attempt);
-          continue;
-        }
-        void error;
-        throw new HttpError(502, "Notion ist gerade nicht erreichbar. Bitte versuche es später erneut.", { service: "notion", host: "api.notion.com" });
+      } catch {
+        // Timeout or network error; nothing of it is kept.
+        if (await retry(backoff(attempt))) continue;
+        throw failed(new NotionRequestFailed(0, ""));
       }
-      if (response.status === 429 && attempt < MAX_RETRIES) {
-        const after = Number(response.headers["retry-after"]);
-        await sleep(Math.min(MAX_RETRY_AFTER_S, Number.isFinite(after) && after > 0 ? after : 1) * 1000);
-        continue;
-      }
-      if (response.status >= 500 && attempt < 3) {
-        await sleep(1000 * 2 ** attempt);
-        continue;
-      }
+      const status = response.status;
+      if (status === 401) throw new HttpError(400, "Notion hat das Integrations-Token abgelehnt. Bitte prüfe es und versuche es erneut.");
       let data: Json = {};
       try {
         data = JSON.parse(response.body || "{}");
       } catch {}
-      if (response.status === 401) throw new HttpError(400, "Notion hat das Integrations-Token abgelehnt. Bitte prüfe es und versuche es erneut.");
-      if (response.status === 403 || response.status === 404) throw new NotionMissing(String(data.code || response.status));
-      if (response.status === 429) throw new HttpError(429, "Notion begrenzt gerade die Anfragen. Bitte versuche es später erneut.");
-      if (response.status < 200 || response.status >= 300) throw new HttpError(502, "Notion hat die Anfrage nicht beantwortet. Bitte versuche es später erneut.", { service: "notion", host: "api.notion.com" });
-      return data;
+      if (status >= 200 && status < 300) {
+        outage = 0;
+        return data;
+      }
+      const code = notionCode(data);
+      if (status === 403 || status === 404) throw new NotionMissing(code || String(status));
+      if (status === 429 && attempt < MAX_RETRIES) {
+        await sleep(retryAfter(response.headers["retry-after"]));
+        continue;
+      }
+      // The answer took Notion too long: fewer results per page.
+      if ((status === 502 || status === 504) && callOptions.shrink) {
+        const smaller = callOptions.shrink();
+        if (smaller !== null && smaller !== undefined) {
+          body = smaller;
+          if (await retry(backoff(0))) continue;
+        }
+      }
+      if (status >= 500 || status === 409) {
+        const ms = status === 503 && response.headers["retry-after"] !== undefined ? retryAfter(response.headers["retry-after"]) : backoff(attempt);
+        if (await retry(ms)) continue;
+      }
+      throw failed(new NotionRequestFailed(status, code));
     }
   }
   // All results of a paginated list (start_cursor / next_cursor), at most `max`.
   async function* list(method: "GET" | "POST", path: string, body: Json = {}, max = Infinity) {
     let cursor: string | undefined;
     let count = 0;
+    let size = 0;
+    const post = () => ({ ...body, page_size: PAGE_SIZES[size], ...(cursor ? { start_cursor: cursor } : {}) });
+    // Database queries and the search: smaller pages on 502/504.
+    const shrink = () => (size + 1 < PAGE_SIZES.length ? (size++, post()) : null);
     do {
       const page =
         method === "GET"
           ? await call("GET", `${path}${path.includes("?") ? "&" : "?"}page_size=100${cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ""}`)
-          : await call("POST", path, { ...body, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
+          : await call("POST", path, post(), { shrink });
       for (const item of (page.results as Json[]) || []) {
         if (count++ >= max) return;
         yield item;
@@ -139,12 +211,21 @@ export function notionClient(token: string, options: NotionClientOptions = {}) {
     }
     const own = testing && parsed.origin === new URL(base).origin;
     if (!own && (parsed.protocol !== "https:" || !NOTION_FILE_HOSTS.test(parsed.hostname))) return { error: "host" as const };
-    try {
-      const file = await safeFetch(url, { maxBytes, timeout: 60_000, accept: "*/*", allowPrivate: own });
-      if (file.status < 200 || file.status >= 300) return { error: "failed" as const };
-      return { data: file.data, mime: file.type.split(";")[0].trim().toLowerCase() };
-    } catch (error) {
-      return { error: /zu groß/.test(String((error as Error).message)) ? ("size" as const) : ("failed" as const) };
+    // Two more attempts on 5xx, timeouts and network errors.
+    for (let attempt = 0; ; attempt++) {
+      let status = 0;
+      try {
+        const file = await safeFetch(url, { maxBytes, timeout: 60_000, accept: "*/*", allowPrivate: own });
+        if (file.status >= 200 && file.status < 300) return { data: file.data, mime: file.type.split(";")[0].trim().toLowerCase() };
+        status = file.status;
+      } catch (error) {
+        if (/zu groß/.test(String((error as Error).message))) return { error: "size" as const };
+      }
+      if ((status === 0 || status >= 500) && attempt < 2) {
+        await sleep(backoff(attempt));
+        continue;
+      }
+      return { error: "failed" as const, status };
     }
   }
   return { call, list, download, requests: () => requests };
@@ -167,7 +248,13 @@ export type NotionRoot = { id: string; title: string; kind: "page" | "database";
 export async function listNotionRoots(token: string, options: NotionClientOptions = {}): Promise<NotionRoot[]> {
   const client = notionClient(token, options);
   const found = new Map<string, Json>();
-  for await (const item of client.list("POST", "/search", {}, 5000)) if (item.object === "page" || item.object === "database") found.set(bareId(item.id), item);
+  try {
+    for await (const item of client.list("POST", "/search", {}, 5000)) if (item.object === "page" || item.object === "database") found.set(bareId(item.id), item);
+  } catch (error) {
+    // Without the listing there is nothing to choose: this one stops.
+    if (error instanceof NotionRequestFailed) throw notionFailure(error, "search");
+    throw error;
+  }
   const roots: NotionRoot[] = [];
   for (const [id, item] of found) {
     const parent = item.parent || {};
@@ -196,8 +283,44 @@ type Context = {
   warnings: Set<string>;
   limit: number;
   pages: ImportPage[];
+  // Items skipped because a request still failed (#563), the last failure.
+  failures: number;
+  lastFailure?: NotionRequestFailed;
 };
 const TITLE_MARK = (id: string) => `\u0001${id}\u0001`;
+
+// The error that stops everything when a request every item needs failed:
+// it names what and the HTTP status (lib/i18n-errors.ts has the English).
+function notionFailure(error: NotionRequestFailed, what: "search" | "import") {
+  const upstream = { service: "notion", host: "api.notion.com" };
+  if (!error.status) return new HttpError(502, UNREACHABLE, upstream);
+  return what === "search"
+    ? new HttpError(502, `Notion hat die Liste der geteilten Seiten nicht geliefert (HTTP ${error.status}). Bitte versuche es später erneut.`, upstream)
+    : new HttpError(502, `Notion hat keine der gewählten Seiten geliefert (HTTP ${error.status}). Bitte versuche es später erneut oder nimm den Export von Notion als ZIP.`, upstream);
+}
+// Why Notion did not deliver: its HTTP status and error code – never the
+// token, the answer's body or Notion's message.
+const failureReason = (error: NotionRequestFailed) =>
+  error.status ? `HTTP ${error.status}${error.code ? ` · ${error.code}` : ""}` : ct("keine Antwort (Zeitüberschreitung oder Netzwerkfehler)", "no answer (timeout or network error)");
+type Skipped = "page" | "database" | "records" | "blocks";
+// An item skipped after a failed request, in the report: what, its title,
+// why. `at` is the imported page the entry links to (the parent for a
+// page or database that is left out, the page itself for missing blocks).
+function skip(ctx: Context, what: Skipped, title: string | undefined, error: NotionRequestFailed, at: string | null) {
+  ctx.failures++;
+  ctx.lastFailure = error;
+  const name = (title || "").trim().slice(0, 120) || ct("Ohne Titel", "Untitled");
+  const reason = failureReason(error);
+  const detail =
+    what === "page"
+      ? ct(`Seite „${name}“ übersprungen: ${reason}`, `Page “${name}” skipped: ${reason}`)
+      : what === "database"
+        ? ct(`Datenbank „${name}“ übersprungen: ${reason}`, `Database “${name}” skipped: ${reason}`)
+        : what === "records"
+          ? ct(`Datenbank „${name}“ übersprungen, ihre Einträge kamen nicht: ${reason}`, `Database “${name}” skipped, its records did not come: ${reason}`)
+          : ct(`Ein Teil des Inhalts fehlt (Blöcke): ${reason}`, `Part of the content is missing (blocks): ${reason}`);
+  ctx.report.add("skipped", detail, at);
+}
 
 async function fileFor(ctx: Context, page: string, value: Json | undefined, fallbackName: string) {
   if (!value) return null;
@@ -215,7 +338,9 @@ async function fileFor(ctx: Context, page: string, value: Json | undefined, fall
       "file",
       got.error === "size"
         ? ct(`„${name}“ ist größer als ${Math.round(ctx.maxFileBytes / 1048576)} MB`, `“${name}” is larger than ${Math.round(ctx.maxFileBytes / 1048576)} MB`)
-        : ct(`„${name}“ konnte nicht geladen werden`, `“${name}” could not be downloaded`),
+        : got.status
+          ? ct(`„${name}“ konnte nicht geladen werden (HTTP ${got.status})`, `“${name}” could not be downloaded (HTTP ${got.status})`)
+          : ct(`„${name}“ konnte nicht geladen werden`, `“${name}” could not be downloaded`),
       page,
     );
     return null;
@@ -273,11 +398,18 @@ function linkTarget(href: string) {
   return /^(https?:|mailto:)/i.test(href) ? href : null;
 }
 
-async function blockChildren(ctx: Context, id: string) {
+// A block's children. With `page` (a block within a page or record) a
+// failed request leaves out these children only and goes into the report;
+// without (a page's own blocks) the caller skips the page.
+async function blockChildren(ctx: Context, id: string, page?: string) {
   const blocks: Json[] = [];
   try {
     for await (const block of ctx.client.list("GET", `/blocks/${id}/children`)) blocks.push(block);
   } catch (error) {
+    if (error instanceof NotionRequestFailed && page !== undefined) {
+      skip(ctx, "blocks", undefined, error, page);
+      return [];
+    }
     if (!(error instanceof NotionMissing)) throw error;
   }
   return blocks;
@@ -297,7 +429,7 @@ async function renderBlocks(ctx: Context, blocks: Json[], page: string, depth = 
       while (j < blocks.length && blocks[j].type === type) {
         const item = blocks[j];
         const data = item[type] || {};
-        const body = `<p>${colorBlock(richText(ctx, data.rich_text), data.color)}</p>${item.has_children && depth < MAX_DEPTH ? await renderBlocks(ctx, await blockChildren(ctx, item.id), page, depth + 1) : ""}`;
+        const body = `<p>${colorBlock(richText(ctx, data.rich_text), data.color)}</p>${item.has_children && depth < MAX_DEPTH ? await renderBlocks(ctx, await blockChildren(ctx, item.id, page), page, depth + 1) : ""}`;
         items.push(type === "to_do" ? `<li data-type="taskItem" data-checked="${!!data.checked}">${body}</li>` : `<li>${body}</li>`);
         j++;
       }
@@ -311,7 +443,7 @@ async function renderBlocks(ctx: Context, blocks: Json[], page: string, depth = 
     const heading = /^heading_([123])$/.exec(type);
     if (heading && block[type]?.is_toggleable) {
       const level = Number(heading[1]);
-      const inner = block.has_children && depth < MAX_DEPTH ? await blockChildren(ctx, block.id) : [];
+      const inner = block.has_children && depth < MAX_DEPTH ? await blockChildren(ctx, block.id, page) : [];
       const next = blocks[i + 1];
       const nextLevel = next && /^heading_([123])$/.exec(next.type)?.[1];
       const fits = top && (!next || (nextLevel && Number(nextLevel) <= level)) && !inner.some((b: Json) => Number(/^heading_([123])$/.exec(b.type)?.[1] || 9) <= level);
@@ -328,7 +460,7 @@ const colorBlock = (html: string, color: unknown) => colored(html, notionColorNa
 async function renderBlock(ctx: Context, block: Json, page: string, depth: number): Promise<string> {
   const type = block.type as string;
   const data = block[type] || {};
-  const kids = async () => (block.has_children && depth < MAX_DEPTH ? await renderBlocks(ctx, await blockChildren(ctx, block.id), page, depth + 1) : "");
+  const kids = async () => (block.has_children && depth < MAX_DEPTH ? await renderBlocks(ctx, await blockChildren(ctx, block.id, page), page, depth + 1) : "");
   const caption = (value: Json) => plain(value?.caption).trim();
   const note = (kind: ReportKind, detail: string) => ctx.report.add(kind, detail, page);
   switch (type) {
@@ -359,7 +491,7 @@ async function renderBlock(ctx: Context, block: Json, page: string, depth: numbe
     case "divider":
       return "<hr>";
     case "table": {
-      const rows = await blockChildren(ctx, block.id);
+      const rows = await blockChildren(ctx, block.id, page);
       const header = !!data.has_column_header,
         rowHeader = !!data.has_row_header;
       const body = rows
@@ -430,7 +562,7 @@ async function renderBlock(ctx: Context, block: Json, page: string, depth: numbe
       const original = bareId(data.synced_from?.block_id);
       if (!original) return await kids();
       if (depth >= MAX_DEPTH) return "";
-      const blocks = await blockChildren(ctx, original);
+      const blocks = await blockChildren(ctx, original, page);
       if (!blocks.length) {
         note("block", ct("Synchronisierter Block, dessen Original nicht geteilt ist", "Synced block whose original is not shared"));
         return "";
@@ -472,7 +604,17 @@ async function propertyItems(ctx: Context, page: string, prop: Json, propId: str
   // More than 25 relations: the property's own list.
   if (prop.type === "relation" && prop.has_more) {
     const items: Json[] = [];
-    for await (const item of ctx.client.list("GET", `/pages/${page}/properties/${encodeURIComponent(propId)}`)) items.push(item);
+    try {
+      for await (const item of ctx.client.list("GET", `/pages/${page}/properties/${encodeURIComponent(propId)}`)) items.push(item);
+    } catch (error) {
+      // The first 25 the record brought stay.
+      if (!(error instanceof NotionRequestFailed) && !(error instanceof NotionMissing)) throw error;
+      if (error instanceof NotionRequestFailed) {
+        ctx.failures++;
+        ctx.report.add("skipped", ct(`Verknüpfungen nur teilweise (die ersten 25): ${failureReason(error)}`, `Relations only in part (the first 25): ${failureReason(error)}`), bareId(page));
+      }
+      return prop;
+    }
     return { ...prop, relation: items.map((i) => i.relation).filter(Boolean) };
   }
   return prop;
@@ -661,6 +803,7 @@ export async function parseNotionApi(token: string, chosen: { id: string; kind: 
     warnings: new Set(),
     limit: maxImportPages(),
     pages: [],
+    failures: 0,
   };
   try {
     for (const item of chosen) enqueue(ctx, bareId(item.id), item.kind, null);
@@ -677,10 +820,19 @@ export async function parseNotionApi(token: string, chosen: { id: string; kind: 
           if (db) databases.push(db);
         }
       } catch (error) {
+        // readPage and readDatabase skip what Notion does not deliver; this
+        // catches what may still come through.
+        if (error instanceof NotionRequestFailed) {
+          skip(ctx, item.kind, ctx.titles.get(item.id), error, item.parent);
+          continue;
+        }
         if (!(error instanceof NotionMissing)) throw error;
         ctx.report.add("other", ct("Eine Seite oder Datenbank ist nicht (mehr) mit der Integration geteilt", "A page or database is not (or no longer) shared with the integration"), item.parent);
       }
     }
+    // Nothing came, and not because it is not shared: as good as Notion
+    // not answering at all.
+    if (!ctx.pages.length && ctx.lastFailure) throw notionFailure(ctx.lastFailure, "import");
     finishDatabases(ctx, databases);
     // Titles of link_to_page targets; links to what the import does not
     // bring keep their Notion address.
@@ -711,11 +863,26 @@ export async function parseNotionApi(token: string, chosen: { id: string; kind: 
   }
 }
 
+// A page with its blocks; when Notion does not deliver the page or its
+// blocks, it is left out (with what is below it) and reported.
 async function readPage(ctx: Context, id: string, parent: string | null) {
-  const page = await ctx.client.call("GET", `/pages/${id}`);
+  let page: Json;
+  let blocks: Json[];
+  try {
+    page = await ctx.client.call("GET", `/pages/${id}`);
+  } catch (error) {
+    if (error instanceof NotionRequestFailed) return skip(ctx, "page", ctx.titles.get(id), error, parent);
+    throw error;
+  }
   if (page.archived || page.in_trash) return;
   const key = bareId(page.id) || id;
   const title = titleOf(page).slice(0, 500) || ct("Ohne Titel", "Untitled");
+  try {
+    blocks = await blockChildren(ctx, id);
+  } catch (error) {
+    if (error instanceof NotionRequestFailed) return skip(ctx, "page", title, error, parent);
+    throw error;
+  }
   const entry: ImportPage = { key, parent, title, html: "", created: page.created_time, updated: page.last_edited_time };
   ctx.pages.push(entry);
   const icon = emojiIcon(page);
@@ -724,11 +891,23 @@ async function readPage(ctx: Context, id: string, parent: string | null) {
     const cover = await fileFor(ctx, key, page.cover, ct("Titelbild", "Cover"));
     if (cover && !("external" in cover)) entry.cover = cover.key;
   }
-  entry.html = await renderBlocks(ctx, await blockChildren(ctx, id), key, 0, true);
+  entry.html = await renderBlocks(ctx, blocks, key, 0, true);
 }
 
+// A database with its records; when Notion does not deliver its schema or
+// its records, it is left out (with what is below it) and reported. A
+// record whose text does not come stays without it.
 async function readDatabase(ctx: Context, id: string, parent: string | null) {
-  const database = await ctx.client.call("GET", `/databases/${id}`);
+  let database: Json;
+  try {
+    database = await ctx.client.call("GET", `/databases/${id}`);
+  } catch (error) {
+    if (error instanceof NotionRequestFailed) {
+      skip(ctx, "database", ctx.titles.get(id), error, parent);
+      return null;
+    }
+    throw error;
+  }
   if (database.archived || database.in_trash) return null;
   const key = bareId(database.id) || id;
   const title = titleOf(database).slice(0, 500) || ctx.titles.get(key) || ct("Ohne Titel", "Untitled");
@@ -739,9 +918,25 @@ async function readDatabase(ctx: Context, id: string, parent: string | null) {
   ctx.pages.push(page);
   const raw: Json[] = [];
   let skipped = 0;
+  try {
+    await readRecords(ctx, id, key, raw, () => skipped++);
+  } catch (error) {
+    if (!(error instanceof NotionRequestFailed)) throw error;
+    // Without its records: the database and what was found below them go.
+    ctx.pages.splice(ctx.pages.indexOf(page), 1);
+    const below = new Set([key, ...raw.map((r) => bareId(r.id))]);
+    ctx.queue = ctx.queue.filter((q) => !below.has(q.parent || ""));
+    skip(ctx, "records", title, error, parent);
+    return null;
+  }
+  if (skipped) ctx.warnings.add(`Maximal ${MAX_IMPORT_ROWS} Einträge je Tabelle.`);
+  return { ...plan, page, raw };
+}
+
+async function readRecords(ctx: Context, id: string, key: string, raw: Json[], skipped: () => void) {
   for await (const row of ctx.client.list("POST", `/databases/${id}/query`, {})) {
     if (raw.length >= MAX_IMPORT_ROWS) {
-      skipped++;
+      skipped();
       continue;
     }
     if (row.archived || row.in_trash) continue;
@@ -750,13 +945,11 @@ async function readDatabase(ctx: Context, id: string, parent: string | null) {
     for (const [name, value] of Object.entries((row.properties || {}) as Record<string, Json>))
       if (value?.type === "relation" && value.has_more) row.properties[name] = await propertyItems(ctx, row.id, value, String(value.id));
     // The record's text; sub-pages of a record go below the database.
-    const html = await renderBlocks(ctx, await blockChildren(ctx, row.id), rowKey, 0, true);
+    const html = await renderBlocks(ctx, await blockChildren(ctx, row.id, rowKey), rowKey, 0, true);
     raw.push({ ...row, __html: html });
     for (const p of ctx.pages) if (p.parent === rowKey) p.parent = key;
     for (const q of ctx.queue) if (q.parent === rowKey) q.parent = key;
   }
-  if (skipped) ctx.warnings.add(`Maximal ${MAX_IMPORT_ROWS} Einträge je Tabelle.`);
-  return { ...plan, page, raw };
 }
 
 // Once every database is read: relations to imported databases, rollups
