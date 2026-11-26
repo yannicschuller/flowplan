@@ -29,3 +29,7 @@ test("regression: sanitizeFileName cuts no emoji in half and gives the same name
   assert.equal(sanitizeFileName("a\ud83d.txt"), "a\ufffd.txt");
   for (const name of ["x".repeat(199) + " y", " .htaccess", "a\u0085b"]) assert.equal(sanitizeFileName(sanitizeFileName(name)), sanitizeFileName(name));
 });
+test("regression: a page made from a long file name is cut without halving an emoji", () => {
+  assert.equal(filePageTitle("x".repeat(299) + "😀😀.pdf"), "x".repeat(299));
+  assert.equal(filePageTitle("x".repeat(299) + " y.pdf"), "x".repeat(299));
+});
