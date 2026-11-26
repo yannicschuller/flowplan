@@ -27504,6 +27504,16 @@ h3 .block-reactions {
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
+/* Upload and remove one's own profile picture (#559), under the address. */
+.account-picture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.account-identity-text .account-picture-hint {
+  margin-top: 4px;
+}
 .account-form {
   display: grid;
   gap: 12px;

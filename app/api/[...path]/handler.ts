@@ -35,7 +35,7 @@ import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { offlineAssets } from "@/lib/offline-assets-server";
 import { notificationFeed } from "@/lib/notification-feed";
 import { INBOX_PAGE, inboxNotifications } from "@/lib/notification-inbox";
-import { avatarFor } from "@/lib/avatars";
+import { avatarFor, deleteAvatar, uploadAvatar } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
 import { instanceSettings } from "@/lib/instance-settings";
@@ -1610,6 +1610,10 @@ async function handlePOST(
     const user = await requireUser();
     // Every POST here changes something; read tokens only read (the
     // Markdown export has a route of its own).
+    // One's own profile picture (#559, lib/avatars.ts): the image as the
+    // raw body; local accounts in the browser only.
+    if (path.length === 1 && path[0] === "avatars")
+      return NextResponse.json(await uploadAvatar(user, req), { headers: { "Cache-Control": "no-store" } });
     // The start page: data of its widgets (reads, but with the layout in
     // the body) and what its widgets do (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "data")
@@ -2326,6 +2330,22 @@ async function handlePOST(
 }
 
 export const HEAD = GET;
+
+// DELETE /api/avatars (#559): back to the initials, for one's own local
+// account. A change like any POST: same origin, not while read-only.
+export const DELETE = withRequestLocale(handleDELETE);
+async function handleDELETE(req: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  const { path } = await params;
+  // Other addresses answer as before this handler had a DELETE.
+  if (!(path.length === 1 && path[0] === "avatars")) return new Response(null, { status: 405 });
+  try {
+    await checkOrigin(req);
+    const user = await requireUser();
+    return NextResponse.json(await deleteAvatar(user), { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    return error(e);
+  }
+}
 
 // Long-lived streams: whether the session is still valid, the account
 // active and the resource still readable. Used on every keepalive.

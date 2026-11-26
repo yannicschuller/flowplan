@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
@@ -93,4 +93,73 @@ test("pictures from internal addresses are refused without the local test switch
   }
   assert.equal(requests, 0, "no request reached the internal server");
   assert.equal(await version(), before);
+});
+
+// Own pictures of local accounts (#559): POST/DELETE /api/avatars.
+const { uploadAvatar, deleteAvatar, AVATAR_MAX_BYTES } = await import("../lib/avatars");
+const local = await person("Lea");
+await run("INSERT INTO local_accounts(user_id,email,password_hash,created_at) VALUES(?,?,?,?)", local.id, `${local.id}@example.test`, "x", Date.now());
+await run("INSERT INTO members VALUES(?,?,?)", wid, local.id, "editor");
+const versionOf = async (uid: string) => (await one<{ avatar: string | null }>("SELECT avatar FROM users WHERE id=?", uid))?.avatar ?? null;
+const upload = (data: Uint8Array | string, type = "image/png") =>
+  new Request("https://flowplan.example.test/api/avatars", { method: "POST", body: typeof data === "string" ? data : new Uint8Array(data), headers: { "content-type": type } });
+const status = (code: number) => (e: unknown) => (e as { status?: number }).status === code;
+
+test("a local account uploads its own picture; the type comes from the bytes, the version changes", async () => {
+  // Sent as text/plain: the declared type does not matter.
+  const answer = await uploadAvatar(local, upload(png, "text/plain"));
+  assert.match(String(answer.avatar), /^[0-9a-f]{16}$/);
+  assert.equal(await versionOf(local.id), answer.avatar);
+  const seen = await avatarFor(ana, local.id);
+  assert.equal(seen!.mime, "image/png");
+  assert.deepEqual(Buffer.from(seen!.data), png);
+  // Another picture: another version, so ?v= loads it afresh.
+  const gif = Buffer.from("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b", "hex");
+  const second = await uploadAvatar(local, upload(gif));
+  assert.notEqual(second.avatar, answer.avatar);
+  assert.equal((await avatarFor(ana, local.id))!.mime, "image/gif");
+});
+
+test("not an image, an SVG or an empty body: 400; above 2 MB: 413; the picture stays", async () => {
+  const before = await versionOf(local.id);
+  await assert.rejects(uploadAvatar(local, upload("<svg onload=alert(1)>", "image/svg+xml")), status(400));
+  await assert.rejects(uploadAvatar(local, upload("just text")), status(400));
+  await assert.rejects(uploadAvatar(local, upload(new Uint8Array(0))), status(400));
+  await assert.rejects(uploadAvatar(local, upload(Buffer.concat([png, Buffer.alloc(AVATAR_MAX_BYTES)]))), status(413));
+  // Also without Content-Length (chunked): stopped while it is read.
+  const chunks = [png, Buffer.alloc(AVATAR_MAX_BYTES)];
+  const stream = new ReadableStream<Uint8Array>({ pull: (c) => (chunks.length ? c.enqueue(new Uint8Array(chunks.shift()!)) : c.close()) });
+  const chunked = new Request("https://flowplan.example.test/api/avatars", { method: "POST", body: stream, duplex: "half" } as RequestInit);
+  await assert.rejects(uploadAvatar(local, chunked), status(413));
+  assert.equal(await versionOf(local.id), before);
+});
+
+test("accounts of an identity provider and API tokens are refused", async () => {
+  // Ana has no local account (SSO): her picture comes from the provider.
+  await syncAvatar(ana.id, `${base}/me.png`);
+  const before = await versionOf(ana.id);
+  assert.notEqual(before, null);
+  await assert.rejects(uploadAvatar(ana, upload(png)), status(403));
+  await assert.rejects(deleteAvatar(ana), status(403));
+  assert.equal(await versionOf(ana.id), before);
+  for (const apiScope of ["write", "read", "clipper"] as const) {
+    await assert.rejects(uploadAvatar({ ...local, apiScope }, upload(png)), status(403), apiScope);
+    await assert.rejects(deleteAvatar({ ...local, apiScope }), status(403), apiScope);
+  }
+  assert.notEqual(await versionOf(local.id), null);
+});
+
+test("a local account removes its picture: back to the initials", async () => {
+  assert.deepEqual(await deleteAvatar(local), { avatar: null });
+  assert.equal(await versionOf(local.id), null);
+  assert.equal(await avatarFor(ana, local.id), null);
+  // Removing again does no harm.
+  assert.deepEqual(await deleteAvatar(local), { avatar: null });
+});
+
+test("the routes: POST and DELETE /api/avatars in the general handler, DELETE behind the origin check", () => {
+  const source = readFileSync(join(import.meta.dirname, "../app/api/[...path]/handler.ts"), "utf8");
+  assert.match(source, /path\[0\] === "avatars"\)\s*return NextResponse\.json\(await uploadAvatar\(user, req\)/);
+  const del = source.slice(source.indexOf("async function handleDELETE"));
+  assert.match(del, /await checkOrigin\(req\);\s*const user = await requireUser\(\);\s*return NextResponse\.json\(await deleteAvatar\(user\)/);
 });
