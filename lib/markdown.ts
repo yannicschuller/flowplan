@@ -50,6 +50,8 @@ export type MarkdownContext = {
 const MARKER_ID = /^[A-Za-z0-9-]{1,64}$/;
 // Text blocks carry the marker at the end of their (last) line.
 const LINE_MARKED = new Set(["paragraph", "heading"]);
+// The character of the marks written as Markdown delimiters.
+const DELIMITERS: Record<string, string | undefined> = { bold: "*", italic: "*", strike: "~" };
 export function markdownText(text: string) {
   return text
     .replaceAll("&", "&amp;")
@@ -116,14 +118,20 @@ function wrapMark(text: string, delimiter: string, close = delimiter) {
 // "**Note:**text" is no bold in Markdown: a delimiter between punctuation
 // inside and a letter outside does not open or close. There the marks are
 // written as HTML (<strong>Note:</strong>text), which the import reads.
-const WORD = /[\p{L}\p{N}]/u,
+// A letter is what Markdown takes for one: anything but white space and
+// punctuation (also combining accents, "e\u0301**!**", and zero-width
+// characters); emoji are punctuation ("**😀**x" is no bold). As the import
+// (marked) reads it, the character before a delimiter is a UTF-16 unit, so
+// an emoji there counts as a letter ("😀**!**"), and after a closing "*"
+// the "~~" of struck text does too ("**Note:**~~old~~").
+const LETTER = /[^\s\p{P}\p{S}]/u,
   PUNCTUATION = /[\p{P}\p{S}]/u;
 function needsHtmlMarks(markdown: string, before: string, after: string) {
-  const inner = markdown.trim();
-  if (!inner) return false;
+  const inner = [...markdown.trim()];
+  if (!inner.length) return false;
   return (
-    (!/^\s/.test(markdown) && PUNCTUATION.test(inner[0]) && WORD.test(before)) ||
-    (!/\s$/.test(markdown) && PUNCTUATION.test(inner[inner.length - 1]) && WORD.test(after))
+    (!/^\s/.test(markdown) && PUNCTUATION.test(inner[0]) && LETTER.test(before)) ||
+    (!/\s$/.test(markdown) && PUNCTUATION.test(inner[inner.length - 1]) && (LETTER.test(after) || after === "~"))
   );
 }
 // The character next to an inline node, as far as it decides the above.
@@ -132,7 +140,13 @@ function edge(node: Node, end: boolean) {
   if (node.type.name === "pageLink") return end ? ")" : "[";
   if (!node.isText) return "";
   const text = node.text || "";
-  return (end ? text[text.length - 1] : text[0]) || "";
+  // Struck text starts with "~~" (unless it starts with a space, which
+  // goes before the delimiter – but not out of code or a link).
+  const marks = new Set(node.marks.map((mark) => mark.type.name));
+  if (!end && marks.has("strike") && (/^\S/.test(text) || marks.has("code") || marks.has("link"))) return "~";
+  // The first character whole, the last one as its last UTF-16 unit (see
+  // above).
+  return (end ? text[text.length - 1] : [...text.slice(0, 2)][0]) || "";
 }
 // Source view ("Als Markdown bearbeiten"): what Markdown cannot hold stays
 // intact. Blocks without a Markdown form become a marker
@@ -362,17 +376,27 @@ export function htmlToMarkdown(
     const text = isCode
       ? inlineCode(node.text || "", inTable)
       : markdownText(node.text || "");
-    const marked = wrapMarks(node, text, needsHtmlMarks(text, before, after));
+    const marked = wrapMarks(node, text, before, after);
     // Two runs that share a mark but not all of them, side by side
     // ("**a**" and "**[b](…)**", "~~a~~" and "~~*b*~~"): the delimiters
     // that touch fuse into one run ("****"), which neither closes nor
     // opens. The second run's marks are written as HTML then
     // ("**a**<strong>[b](…)</strong>"), which the import reads.
-    return /^[*~]/.test(marked) && marked[0] === glued ? wrapMarks(node, text, true) : marked;
+    return /^[*~]/.test(marked) && marked[0] === glued ? wrapMarks(node, text, before, after, true) : marked;
   }
-  function wrapMarks(node: Node, text: string, html: boolean) {
-    let result = text;
+  function wrapMarks(node: Node, text: string, before: string, after: string, allHtml = false) {
+    // What a delimiter has inside it, as far as needsHtmlMarks goes: the
+    // text with the links, HTML and other delimiters around it
+    // ("**[Link](…)**中文" and "~~*a*~~b" are no bold or strike), except
+    // a delimiter of the same character, which forms one run with it
+    // ("***a***b" is bold and italic): `run` is what that run has inside.
+    let result = text,
+      run = text,
+      runChar = "";
     for (const mark of node.marks) {
+      const char = DELIMITERS[mark.type.name],
+        html = allHtml || needsHtmlMarks(char && char === runChar ? run : result, before, after),
+        inside = result;
       if (mark.type.name === "bold") result = html ? wrapMark(result, "<strong>", "</strong>") : wrapMark(result, "**");
       if (mark.type.name === "italic") result = html ? wrapMark(result, "<em>", "</em>") : wrapMark(result, "*");
       if (mark.type.name === "strike") result = html ? wrapMark(result, "<s>", "</s>") : wrapMark(result, "~~");
@@ -398,6 +422,9 @@ export function htmlToMarkdown(
         if (wrap) result = wrap.open + result + wrap.close;
         else source.lossy.add(mark.type.name);
       }
+      if (char && !html) {
+        if (char !== runChar) [run, runChar] = [inside, char];
+      } else [run, runChar] = [result, ""];
     }
     return result;
   }

@@ -57,3 +57,24 @@ test("regression: runs that share a mark side by side keep it (no \"****\")", ()
   }
   assert.equal(sourceView('<p><strong>a<a href="https://example.test/">b</a></strong></p>').markdown, "**a**<strong>[b](<https://example.test/>)</strong>\n");
 });
+test("regression: a delimiter next to a letter, a link, another delimiter or an emoji still reads as one", () => {
+  for (const html of [
+    // Inside: a link or the other delimiter.
+    '<p><a href="https://example.test/"><s>x</s></a>中文</p>',
+    '<p>中<strong><a href="https://example.test/">x</a></strong></p>',
+    "<p><s><em>한</em></s>שלום</p>",
+    // Outside: struck text, a combining accent, a zero-width space, an emoji.
+    "<p><strong>!</strong><s>!</s></p>",
+    "<p><strong>|</strong><s>|</s></p>",
+    "<p>e\u0301<strong>!</strong></p>",
+    "<p><strong>!</strong>\u200bx</p>",
+    "<p>😀<strong>!</strong></p>",
+    "<p><strong>😀</strong>x</p>",
+  ]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+  // Delimiters of one character form one run: stays Markdown.
+  assert.equal(sourceView("<p>a<strong><em>x</em></strong>b</p>").markdown, "a***x***b\n");
+});
