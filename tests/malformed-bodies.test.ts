@@ -14,7 +14,7 @@ import { join } from "node:path";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-malformed-bodies-"));
 process.env.APP_URL = "https://flowplan.example.test";
 const { inRequestScope } = await import("./helpers/next-request");
-const { run, id } = await import("../lib/db");
+const { run, id, one, all } = await import("../lib/db");
 const { createSession, cookieName, hash, HttpError } = await import("../lib/auth");
 const { createWorkspace } = await import("../lib/seed");
 const { registerMobileDevice } = await import("../lib/mobile-devices");
@@ -80,4 +80,17 @@ test("readFormData: 400 for a body that is no form, the limit's 413 kept, a form
   await assert.rejects(readFormData(limitedRequest(form(big), 1000)), (e: unknown) => e instanceof HttpError && e.status === 413);
   const read = await readFormData(form(`--${boundary}\r\nContent-Disposition: form-data; name="a"\r\n\r\neins\r\n--${boundary}--\r\n`));
   assert.equal(read.get("a"), "eins");
+});
+
+test("/api/command: an id field that is an object without a usable toString is no 500", async () => {
+  for (const userId of ['{"toString":0}', '{"toString":[-1,null],"f":"prototype"}', '{"valueOf":{},"toString":{}}']) {
+    const res = await post(["command"], `{"action":"notification.reset","userId":${userId}}`);
+    assert.equal(res.status, 200, userId);
+  }
+  // The audit names the first id the input carries as a string.
+  const workspaceId = (await one<{ id: string }>("SELECT id FROM workspaces"))!.id;
+  await run("DELETE FROM audit WHERE action='notification.reset'");
+  const res = await post(["command"], `{"action":"notification.reset","pageId":{"toString":0},"workspaceId":"${workspaceId}"}`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await all("SELECT resource_id FROM audit WHERE action='notification.reset'"), [{ resource_id: workspaceId }]);
 });
