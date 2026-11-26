@@ -151,7 +151,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Extension } from "@tiptap/core";
-import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { Editor as TiptapEditor, JSONContent } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
@@ -233,7 +233,7 @@ import { useSoftKeyboard } from "./mobile-tab-bar";
 import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
-import { api, apiIfChanged, deviceOffline, isTransient, Modal, needsConnection, PageIcon, requireConnection, sessionEnded, showNotice } from "./ui";
+import { api, apiIfChanged, deviceOffline, endedSession, heldBySession, isTransient, Modal, needsConnection, PageIcon, requireConnection, sessionEnded, showNotice } from "./ui";
 import { hasPendingUploads, isPendingPage, offlineUploader, onPendingChange } from "@/lib/offline-pending";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
@@ -284,6 +284,8 @@ import { PageLinkIcons } from "./page-link-icons";
 import { chipTitle, pageChipContent } from "@/lib/page-chip";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { isCancelled, sendWithProgress } from "@/lib/upload-progress";
+import { addPlaceholder, announce, placeholderPosition, removePlaceholder, UploadPlaceholders } from "@/lib/upload-placeholders";
 import { blockPaste, syncDomSelection, syncDomSelectionOnKey } from "@/lib/block-paste";
 import { shortcutLetter } from "@/lib/keymap";
 import { isModelName } from "@/lib/model-formats";
@@ -1067,6 +1069,8 @@ export default function DocumentEditor({
         // Marks the text the writing assistant works on (lib/ai/target.ts) and
         // briefly what it inserted (lib/ai/insert.ts).
         Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
+        // Files on their way to the server (#561).
+        UploadPlaceholders,
       ],
       editorProps: {
         // Copies of blocks pasted into the same document get new ids;
@@ -1915,17 +1919,41 @@ export default function DocumentEditor({
     const later = deviceOffline() || isPendingPage(pageId);
     const queue = later && !draftRef.current?.journal ? offlineUploader() : null;
     if (later && !queue && needsConnection()) return;
-    // A file in a draft day creates the day first.
-    if (!queue)
-      try {
-        if (!(await ensureCreated())) return;
-      } catch (error) {
-        onError((error as Error).message);
-        return;
-      }
-    // Photos shrink before upload; the alt text keeps the original name.
-    const file = await compressImage(original);
+    // Going to the server (#561): a placeholder where the file will go,
+    // with the progress and a cancel button; the file lands there even if
+    // the caret moved on meanwhile.
+    let request: ReturnType<typeof sendWithProgress<{ url: string; placeholder?: Parameters<typeof primePlaceholder>[1] }>> | null = null;
+    let cancelled = false;
+    const slot =
+      !queue && editor && !editor.isDestroyed
+        ? addPlaceholder(
+            editor.view,
+            original.name,
+            original.size,
+            {
+              label: (name) => t(`Hochladen von „${name}“`, `Uploading “${name}”`),
+              cancel: (name) => t(`Hochladen von „${name}“ abbrechen`, `Cancel uploading “${name}”`),
+              of: (loaded, total) => t(`${loaded} von ${total}`, `${loaded} of ${total}`),
+            },
+            () => {
+              cancelled = true;
+              request?.cancel();
+              slot?.remove();
+            },
+          )
+        : null;
     try {
+      // A file in a draft day creates the day first.
+      if (!queue)
+        try {
+          if (!(await ensureCreated())) return;
+        } catch (error) {
+          onError((error as Error).message);
+          return;
+        }
+      // Photos shrink before upload; the alt text keeps the original name.
+      const file = await compressImage(original);
+      if (cancelled) return;
       let data: { url: string; placeholder?: Parameters<typeof primePlaceholder>[1] };
       if (queue) {
         const kept = await queue(pageId, file);
@@ -1941,98 +1969,57 @@ export default function DocumentEditor({
         }
         data = { url: kept.url };
       } else {
+        // Signed out: answered here, as fetch() does (components/workspace-app.tsx).
+        if (heldBySession("/api/upload")) throw new Error(serverMessage("Bitte melde dich an."));
         const form = new FormData();
         form.set("pageId", pageId);
         form.set("file", file);
-        const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
-        const answer = await r.json();
-        if (!r.ok) throw new Error(serverMessage(answer.error));
-        data = answer;
+        slot?.progress(0, file.size);
+        request = sendWithProgress("/api/upload", form, {
+          headers: idempotencyHeaders(),
+          size: file.size,
+          onProgress: ({ loaded, total }) => slot?.progress(loaded, total),
+          onStatus: (status) => endedSession("/api/upload", status),
+        });
+        data = await request.done;
       }
       primePlaceholder(data.url, data.placeholder);
-      if (file.type.startsWith("image/")) {
+      let content: JSONContent | JSONContent[];
+      if (file.type.startsWith("image/"))
         // With a caption (a region of a PDF): the picture and the line
         // below it in one step.
-        if (caption)
-          editor
-            ?.chain()
-            .focus()
-            .insertContent([
+        content = caption
+          ? [
               { type: "image", attrs: { src: data.url, alt: caption.text } },
               { type: "paragraph", content: [{ type: "text", text: caption.text, marks: [{ type: "link", attrs: { href: caption.href } }] }] },
-            ])
-            .run();
-        else editor?.chain().focus().setImage({ src: data.url, alt: original.name }).run();
-      }
-      else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name))
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "media",
-            attrs: { src: data.url, kind: "pdf", title: file.name },
-          })
-          .run();
+            ]
+          : { type: "image", attrs: { src: data.url, alt: original.name } };
+      else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) content = { type: "media", attrs: { src: data.url, kind: "pdf", title: file.name } };
       else if (isModelName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
         // A 3D or CAD file (#384): a card that opens the 3D viewer.
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "media",
-            attrs: { src: data.url, kind: "model", title: file.name },
-          })
-          .run();
+        content = { type: "media", attrs: { src: data.url, kind: "model", title: file.name } };
       else if (isHtmlName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
         // An HTML file (#398): a card that opens the sandboxed preview.
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "media",
-            attrs: { src: data.url, kind: "html", title: file.name },
-          })
-          .run();
+        content = { type: "media", attrs: { src: data.url, kind: "html", title: file.name } };
       else if (isSheetName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
         // A spreadsheet (#402): a card that opens the table viewer (.xls: the download).
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "media",
-            attrs: { src: data.url, kind: "sheet", title: file.name },
-          })
-          .run();
+        content = { type: "media", attrs: { src: data.url, kind: "sheet", title: file.name } };
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "media",
-            attrs: {
-              src: data.url,
-              kind: file.type.startsWith("video/") ? "video" : "audio",
-              title: file.name,
-            },
-          })
-          .run();
-      else
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: file.name,
-                marks: [{ type: "link", attrs: { href: data.url } }],
-              },
-            ],
-          })
-          .run();
+        content = { type: "media", attrs: { src: data.url, kind: file.type.startsWith("video/") ? "video" : "audio", title: file.name } };
+      else content = { type: "paragraph", content: [{ type: "text", text: file.name, marks: [{ type: "link", attrs: { href: data.url } }] }] };
+      if (!editor || editor.isDestroyed) return;
+      const at = slot ? placeholderPosition(editor.state, slot.id) : null;
+      const drop = (tr: Transaction) => (slot && removePlaceholder(tr, slot.id), true);
+      // Still where the file was dropped (or no placeholder): as before, at
+      // the selection; moved on: at the placeholder, the caret stays.
+      if (at === null || editor.state.selection.from === at) editor.chain().focus().insertContent(content).command(({ tr }) => drop(tr)).run();
+      else editor.chain().insertContentAt(at, content, { updateSelection: false }).command(({ tr }) => drop(tr)).run();
+      if (slot) announce(t(`„${original.name}“ hochgeladen`, `“${original.name}” uploaded`));
     } catch (e) {
+      if (isCancelled(e)) return;
       onError((e as Error).message);
+    } finally {
+      slot?.remove();
     }
   }
   const calloutLabel = calloutLabels(t),
