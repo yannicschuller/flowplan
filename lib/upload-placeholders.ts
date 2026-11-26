@@ -11,6 +11,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition, ySyncPluginKey } from "@tiptap/y-tiptap";
 import type * as Y from "yjs";
 import { LOCALE_TAG } from "./locale-tag";
+import { sizeText } from "./size-text";
 
 type Entry = { pos: number; anchor: Y.RelativePosition | null; element: HTMLElement };
 type Meta = { add: { id: string; pos: number; anchor: Y.RelativePosition | null; element: HTMLElement } } | { remove: string };
@@ -87,16 +88,7 @@ export type PlaceholderTexts = {
   of: (loaded: string, total: string) => string;
 };
 
-export function sizeText(bytes: number) {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes,
-    unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: unit && value < 10 ? 1 : 0 }).format(value)} ${units[unit]}`;
-}
+export { sizeText };
 const percent = (share: number) => new Intl.NumberFormat(LOCALE_TAG, { style: "percent", maximumFractionDigits: 0 }).format(share);
 
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) {

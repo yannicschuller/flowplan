@@ -21,6 +21,7 @@
     "components/document-block-controls.tsx",
     "components/emergency-access.tsx",
     "components/emoji-suggest.tsx",
+    "components/file-page-uploads.tsx",
     "components/frame-tabs.tsx",
     "components/html-viewer-dialog.tsx",
     "components/image-annotator.tsx",

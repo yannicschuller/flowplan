@@ -2696,10 +2696,12 @@ OfficePreviewImageQuery = TypedDict("OfficePreviewImageQuery", {
 }, total=False)
 
 UploadFileForm = TypedDict("UploadFileForm", {
-    "pageId": Required[str],
+    "pageId": str,
     "rowId": str,
+    "spaceId": str,
+    "parentId": str,
     "file": Required[FormFile],
-    "purpose": Literal["cover", "e2ee", "comment"],
+    "purpose": Literal["cover", "e2ee", "comment", "page"],
     "fileId": str,
 }, total=False)
 
@@ -3418,7 +3420,7 @@ class FlowplanClient:
         return self._bytes("GET", "/api/files/" + _p(file_id) + "/office/image", query=dict(query) if query else None, headers=headers)
 
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
-        """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. (POST /api/upload)"""
+        """Upload a file to a page — The size limit is the person's upload limit (set by the administration, at most 10 GB). The body is streamed to disk, so large files need no memory on the server; send `pageId` before `file` to get a refusal (no access, encrypted page) before the file is sent. Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. `purpose=comment` uploads an attachment for a comment (`comment.create`, `thread.*`): read access to the page is enough (and to the record with `rowId`), also for locked pages; not in encrypted spaces. `purpose=page` makes a new page for the file instead (no `pageId`): a document titled with the file name (without its extension) that holds the file's block, at the top level of the space `spaceId` or below the page `parentId`; the answer adds `page` (`id`, `title`, `spaceId`, `parentId`). It needs the right to create pages there; not in encrypted spaces. Send `purpose` and `spaceId` before `file`. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def image_placeholders(self, query: "ImagePlaceholdersQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

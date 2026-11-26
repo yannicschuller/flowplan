@@ -2,11 +2,15 @@
 // device token like lib/mobile-widgets.ts:
 //
 //   GET  /api/mobile/capture/targets    where shared things can go: the inbox
-//                                       (the person's capture database) and
-//                                       every database and document they may add to
+//                                       (the person's capture database), every
+//                                       database and document they may add to and
+//                                       (`spaces`, #569) the spaces they may make
+//                                       pages in
 //   POST /api/mobile/capture/save       text, a link and images or PDFs (iOS share
 //                                       extension, document scanner) as a record,
-//                                       a sub page, or appended to a page
+//                                       a sub page, or appended to a page; with
+//                                       place "pages" every file as a page of its
+//                                       own in a space (lib/file-pages.ts)
 //   GET  /api/mobile/capture/spotlight  pages and open tasks for the phone's own
 //                                       search (iOS Spotlight)
 //
@@ -35,7 +39,8 @@ import { pageLocationHash } from "./page-location";
 import { MAX_PDF_TEXT } from "./pdf-text";
 import { pageRole } from "./permissions";
 import { ensureRowDocument, requireRow } from "./row-documents";
-import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
+import { sanitizeFileName, stripLocation, uploadMime, verifiedMime } from "./upload-safety";
+import { createFilePage, filePagePlace, filePageSpaces, type FilePage } from "./file-pages";
 import { enforceUserStorage, maxUploadMbFor } from "./user-limits";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync } from "./each-async";
@@ -62,8 +67,16 @@ export async function inboxTarget(user: Identity) {
   return null;
 }
 
+// `spaces` is new with #569: apps offer "as pages in a space" only when
+// the instance lists them (older instances refuse place "pages").
 export async function captureTargets(user: Identity) {
-  return { inbox: await inboxTarget(user), targets: await captureTargetList(user), maxFiles: MAX_CAPTURE_FILES, maxUploadMb: await maxUploadMbFor(user) };
+  return {
+    inbox: await inboxTarget(user),
+    targets: await captureTargetList(user),
+    spaces: await filePageSpaces(writerOf(user)),
+    maxFiles: MAX_CAPTURE_FILES,
+    maxUploadMb: await maxUploadMbFor(user),
+  };
 }
 
 // ---- Saving ----
@@ -75,8 +88,12 @@ export const captureSaveSchema = z.object({
   targetId: z.union([z.uuid(), z.literal("inbox")]).default("inbox"),
   // A record of the target database: appended to its document.
   rowId: z.uuid().optional(),
-  // Into a document: a new sub page (shares) or at the end of the page (scans).
-  place: z.enum(["subpage", "append"]).default("subpage"),
+  // Into a document: a new sub page (shares) or at the end of the page
+  // (scans); "pages": every file a page of its own in the space `spaceId`,
+  // below the page `parentId` or at its top level (#569, lib/file-pages.ts).
+  place: z.enum(["subpage", "append", "pages"]).default("subpage"),
+  spaceId: z.uuid().optional(),
+  parentId: z.uuid().optional(),
   title: z.string().trim().max(300).optional(),
   text: z.string().max(20_000).optional(),
   url: z.string().trim().max(2000).optional(),
@@ -204,6 +221,7 @@ export async function storeCaptureFiles(user: Identity, prepared: Prepared[], ow
 export async function saveCapture(user: Identity, raw: unknown, files: UploadFile[] = []) {
   const input = captureSaveSchema.parse(raw);
   const writer = writerOf(user);
+  if (input.place === "pages") return await saveFilePages(writer, input, files);
   const targetId = input.targetId === "inbox" ? (await inboxTarget(user))?.id : input.targetId;
   if (!targetId) throw new HttpError(409, ct("Kein Eingang festgelegt. Bitte wähle, wohin.", "No inbox set. Please choose where to save."));
   const { page } = await captureTarget(user, targetId);
@@ -273,6 +291,36 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
   }, writer);
   publish();
   return { ok: true, ...result, title, files: prepared.map((f) => f.url) };
+}
+
+// Shared files as pages of their own (#569): each file a document titled
+// with its name, in the space (or below a page of it). Any file type the
+// web app's upload takes – its type from the content, photos without their
+// location; title, text and link of a share are not used. All files or
+// none: one transaction.
+async function saveFilePages(writer: Identity, input: z.infer<typeof captureSaveSchema>, files: UploadFile[]) {
+  if (!input.spaceId) throw new HttpError(400, ct("Bitte wähle einen Bereich.", "Please choose a space."));
+  const place = await filePagePlace(writer, { spaceId: input.spaceId, parentId: input.parentId ?? null });
+  if (!files.length) throw new HttpError(400, ct("Nichts zum Speichern.", "Nothing to save."));
+  if (files.length > MAX_CAPTURE_FILES) throw new HttpError(413, ct(`Höchstens ${MAX_CAPTURE_FILES} Dateien auf einmal.`, `At most ${MAX_CAPTURE_FILES} files at once.`));
+  const maxMb = await maxUploadMbFor(writer);
+  const prepared = files.map((file, index) => {
+    if (!file.bytes.length) throw new HttpError(400, ct("Datei fehlt.", "File missing."));
+    if (file.bytes.length > maxMb * 1024 * 1024) throw new HttpError(413, ct(`Maximal ${maxMb} MB pro Datei.`, `At most ${maxMb} MB per file.`));
+    const name = sanitizeFileName(file.name || `datei-${index + 1}`);
+    const mime = uploadMime(file.type, name, file.bytes);
+    return { id: id(), name, mime, content: IMAGE.test(mime) ? stripLocation(file.bytes, mime) : file.bytes };
+  });
+  const size = prepared.reduce((sum, f) => sum + f.content.length, 0);
+  await enforceQuota(place.workspaceId, size);
+  await enforceUserStorage(writer, size);
+  const pages = await transaction(async () => {
+    const made: FilePage[] = [];
+    for (const file of prepared) made.push(await createFilePage(writer, place, file));
+    return made;
+  }, writer);
+  const [first] = pages;
+  return { ok: true, pageId: first.pageId, rowId: undefined, url: first.url, title: first.title, files: pages.map((p) => p.file), pages };
 }
 
 // ---- Spotlight ----

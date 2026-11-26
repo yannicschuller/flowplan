@@ -250,6 +250,7 @@ import {
   ArrowLeft,
   Crosshair,
   ArrowsLeftRight,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -319,6 +320,8 @@ import { UnlinkedMentions } from "./unlinked-mentions";
 import { RelatedPages } from "./related-pages";
 import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { NewPageDialog } from "./new-page-dialog";
+import { FilePageUploadDialog, useFilePageUploads } from "./file-page-uploads";
+import { carriesFiles } from "@/lib/file-page-uploads";
 import {
   FollowButton,
   ReadersButton,
@@ -3072,6 +3075,65 @@ export default function WorkspaceApp({
     setNewTitle("");
     setCreate(true);
   }
+  // Files uploaded straight into a space (#569, components/file-page-uploads.tsx):
+  // each file a page of its own, at the top level of the space or below a
+  // page – dropped on the tree, "Datei hochladen …" ("Neue Seite", a
+  // space's menu) and the media view's upload. The pages are made on the
+  // server with the file (page.create, as from "Neue Seite"), so they need
+  // the connection; encrypted spaces encrypt files and titles in the
+  // browser and keep the upload into a page.
+  const filePages = useFilePageUploads({
+    onCreated: (page) => {
+      if (page.parentId) foldPage(page.parentId, false);
+      else foldSpace(page.spaceId, false);
+      window.dispatchEvent(new Event("flowplan:pages-changed"));
+    },
+    onOpen: (id) => void openPage(id),
+  });
+  // Where files from the computer are being dragged: "s:<space>" or "p:<page>".
+  const [fileDrop, setFileDrop] = useState<string | null>(null);
+  const [fileUploadDialog, setFileUploadDialog] = useState(false);
+  useEffect(() => {
+    // Dropped elsewhere or dragged out of the window: no highlight left.
+    const end = (e: DragEvent) => {
+      if (e.type !== "dragleave" || !e.relatedTarget) setFileDrop(null);
+    };
+    window.addEventListener("drop", end);
+    window.addEventListener("dragend", end);
+    document.addEventListener("dragleave", end);
+    return () => {
+      window.removeEventListener("drop", end);
+      window.removeEventListener("dragend", end);
+      document.removeEventListener("dragleave", end);
+    };
+  }, []);
+  const filePagesAllowed = (sid: string, parentId: string | null) => {
+    if (!canCreate) return false;
+    const space = boot.spaces.find((s) => s.id === sid) as { encrypted?: number; encrypt_titles?: number } | undefined;
+    if (!space) return false;
+    if (space.encrypted || space.encrypt_titles) {
+      showNotice(
+        t(
+          "In verschlüsselten Bereichen kannst du Dateien nur in eine Seite ziehen, nicht als eigene Seiten hochladen.",
+          "In encrypted spaces you can only drop files into a page, not upload them as pages of their own.",
+        ),
+      );
+      return false;
+    }
+    if (needsConnection()) return false;
+    if (parentId && isPendingPage(parentId)) {
+      showNotice(offlineNoteText());
+      return false;
+    }
+    return true;
+  };
+  const uploadFilePages = (files: File[], sid: string, parentId: string | null) => {
+    if (files.length && filePagesAllowed(sid, parentId)) filePages.upload(files, { spaceId: sid, parentId });
+  };
+  // The file picker, from a click.
+  const pickFilePages = (sid: string, parentId: string | null) => {
+    if (filePagesAllowed(sid, parentId)) filePages.pick({ spaceId: sid, parentId });
+  };
   // A book, chapter or page from a library's own small dialog (#329,
   // components/library-view.tsx): a document with the given name; the
   // library then shows where it goes. Titles of an encrypted space are
@@ -3897,7 +3959,7 @@ export default function WorkspaceApp({
         return (
           <div key={p.id}>
             <div
-              className={`page-nav ${active ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
+              className={`page-nav ${active ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""} ${fileDrop === `p:${p.id}` ? "file-drop" : ""}`}
               data-page-id={p.id}
               data-tree-id={p.id}
               data-prefetch-page={p.offline ? undefined : p.id}
@@ -3944,6 +4006,15 @@ export default function WorkspaceApp({
               // (see recordDropRef).
               data-record-drop-page={p.kind === "database" ? p.id : undefined}
               onDragOver={(e) => {
+                // Files from the computer (#569): pages below this one.
+                if (carriesFiles(e.dataTransfer.types)) {
+                  if (!canCreate) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy";
+                  if (fileDrop !== `p:${p.id}`) setFileDrop(`p:${p.id}`);
+                  return;
+                }
                 if (
                   !canCreate ||
                   !e.dataTransfer.types.includes("application/x-flowplan-page")
@@ -3959,10 +4030,19 @@ export default function WorkspaceApp({
                 });
               }}
               onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node))
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                   setTreeDrop(null);
+                  setFileDrop((d) => (d === `p:${p.id}` ? null : d));
+                }
               }}
               onDrop={(e) => {
+                if (carriesFiles(e.dataTransfer.types)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFileDrop(null);
+                  uploadFilePages([...e.dataTransfer.files], p.space_id, p.id);
+                  return;
+                }
                 // A space dropped onto one of its pages: its section handles it.
                 if (e.dataTransfer.types.includes("application/x-flowplan-space")) return;
                 e.preventDefault();
@@ -5111,10 +5191,18 @@ export default function WorkspaceApp({
                 reorderable = canReorderSpaces && !filterMatches;
               return (
             <section
-              className={`nav-section${spaceDrop?.id === space.id ? ` space-drop-${spaceDrop.placement}` : ""}${spaceClosed ? " space-collapsed" : ""}`}
+              className={`nav-section${spaceDrop?.id === space.id ? ` space-drop-${spaceDrop.placement}` : ""}${spaceClosed ? " space-collapsed" : ""}${fileDrop === `s:${space.id}` ? " space-file-drop" : ""}`}
               key={space.id}
               data-space-id={space.id}
               onDragOver={(e) => {
+                // Files from the computer (#569): pages at the top level.
+                if (carriesFiles(e.dataTransfer.types)) {
+                  if (!canCreate) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  if (fileDrop !== `s:${space.id}`) setFileDrop(`s:${space.id}`);
+                  return;
+                }
                 if (!reorderable || !e.dataTransfer.types.includes("application/x-flowplan-space")) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
@@ -5123,9 +5211,19 @@ export default function WorkspaceApp({
                 if (spaceDrop?.id !== space.id || spaceDrop.placement !== placement) setSpaceDrop({ id: space.id, placement });
               }}
               onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) setSpaceDrop((d) => (d?.id === space.id ? null : d));
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setSpaceDrop((d) => (d?.id === space.id ? null : d));
+                  setFileDrop((d) => (d === `s:${space.id}` ? null : d));
+                }
               }}
               onDrop={(e) => {
+                if (carriesFiles(e.dataTransfer.types)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFileDrop(null);
+                  uploadFilePages([...e.dataTransfer.files], space.id, null);
+                  return;
+                }
                 const source = e.dataTransfer.getData("application/x-flowplan-space");
                 if (!source) return;
                 e.preventDefault();
@@ -5196,6 +5294,16 @@ export default function WorkspaceApp({
                             <ArrowsInSimple />
                             {t("Alle zuklappen", "Collapse all")}
                           </Dropdown.Item>
+                          {/* Each file a page of its own (#569). */}
+                          {canCreate && (
+                            <>
+                              <Dropdown.Separator className="dropdown-separator" />
+                              <Dropdown.Item className="dropdown-item" onSelect={() => pickFilePages(space.id, null)}>
+                                <UploadSimple />
+                                {t("Datei hochladen …", "Upload file…")}
+                              </Dropdown.Item>
+                            </>
+                          )}
                           {/* Its record contents and files on this device too (#417). */}
                           {offlineKeep.enabled && (
                             <>
@@ -6590,6 +6698,7 @@ export default function WorkspaceApp({
               act={act}
               onOpen={(id) => void openPage(id)}
               onOpenTrash={() => go("trash")}
+              onUpload={canCreate ? () => setFileUploadDialog(true) : undefined}
             />
           )}
           {screen === "library" && !libraryPlace && (
@@ -7337,6 +7446,14 @@ export default function WorkspaceApp({
         aiProposal={aiProposal}
         onAiProposal={setAiProposal}
         onNotebookPdf={setNotebookPdf}
+        onUploadFiles={
+          canCreate && !parentRow
+            ? () => {
+                setCreate(false);
+                pickFilePages(spaceId, parent);
+              }
+            : undefined
+        }
         spaceId={spaceId}
         onSpace={(id) => {
           setSpaceId(id);
@@ -8420,6 +8537,18 @@ export default function WorkspaceApp({
         onMenu={() => setMobile((open) => !open)}
       />
       <Toaster />
+      {filePages.panel}
+      <FilePageUploadDialog
+        open={fileUploadDialog}
+        onClose={() => setFileUploadDialog(false)}
+        spaces={liveSpaces.filter((sp) => !(sp as { encrypted?: number }).encrypted && !(sp as { encrypt_titles?: number }).encrypt_titles)}
+        pages={activePages}
+        spaceId={currentSpaceId}
+        onPick={(sid, parentId) => {
+          setFileUploadDialog(false);
+          pickFilePages(sid, parentId);
+        }}
+      />
     </div>
     {presenting && (
       <Presentation

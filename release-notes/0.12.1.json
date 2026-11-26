@@ -1,0 +1,11 @@
+{
+  "features": [
+    {
+      "de": "Dateien direkt in einen Bereich hochladen: auf einen Bereich oder eine Seite in der Seitenleiste ziehen, „Datei hochladen …“ in „Neue Seite“ und im Bereichsmenü oder „Hochladen …“ in den Medien. Jede Datei wird eine eigene Seite mit ihrer Vorschau.",
+      "en": "Upload files straight into a space: drop them on a space or a page in the sidebar, or use “Upload file…” in “New page” and the space menu, or “Upload…” in Media. Each file becomes a page of its own with its preview.",
+      "issues": [
+        569
+      ]
+    }
+  ]
+}

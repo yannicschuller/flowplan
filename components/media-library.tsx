@@ -23,6 +23,7 @@ import {
   Images,
   SidebarSimple,
   Trash,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import type { MediaItem, MediaKind, MediaUsage } from "@/lib/media-library";
 
@@ -53,11 +54,14 @@ export function MediaLibrary({
   act,
   onOpen,
   onOpenTrash,
+  onUpload,
 }: {
   workspaceId: string;
   act: Act;
   onOpen: (pageId: string) => void;
   onOpenTrash: () => void;
+  // "Hochladen …" (#569): files as pages of their own in a chosen space.
+  onUpload?: () => void;
 }) {
   const t = useT();
   const [kind, setKind] = useState<MediaKind>("all"),
@@ -117,6 +121,12 @@ export function MediaLibrary({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, kind, usage, query, reload]);
+  // Files uploaded as pages meanwhile (#569) show up here too.
+  useEffect(() => {
+    const changed = () => setReload((n) => n + 1);
+    window.addEventListener("flowplan:pages-changed", changed);
+    return () => window.removeEventListener("flowplan:pages-changed", changed);
+  }, []);
   const toggle = (id: string) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -169,6 +179,12 @@ export function MediaLibrary({
               ? t(` 1 Datei · ${size(bytes)}`, ` 1 file · ${size(bytes)}`)
               : t(` ${total} Dateien · ${size(bytes)}`, ` ${total} files · ${size(bytes)}`))}
         </p>
+        {onUpload && (
+          <button type="button" className="button compact media-upload" onClick={onUpload}>
+            <UploadSimple size={15} aria-hidden="true" />
+            {t("Hochladen …", "Upload…")}
+          </button>
+        )}
       </div>
       <div className="media-filters">
         <div role="radiogroup" aria-label={t("Medientyp", "Media type")}>

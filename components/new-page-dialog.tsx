@@ -17,6 +17,7 @@ import {
   Sparkle,
   SquaresFour,
   Table,
+  UploadSimple,
   type Icon,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -71,6 +72,7 @@ export function NewPageDialog({
   aiProposal,
   onAiProposal,
   onNotebookPdf,
+  onUploadFiles,
   spaceId,
   onSpace,
   onOpenDuplicate,
@@ -101,6 +103,9 @@ export function NewPageDialog({
   aiProposal: DatabaseProposal | null;
   onAiProposal: (proposal: DatabaseProposal | null) => void;
   onNotebookPdf: (file: File | null) => void;
+  // "Datei hochladen …" (#569): every file a page of its own in the chosen
+  // space (below the page the dialog was opened for); none: not offered.
+  onUploadFiles?: () => void;
   spaceId: string;
   onSpace: (spaceId: string) => void;
   onOpenDuplicate: (pageId: string, rowId?: string) => void;
@@ -297,6 +302,15 @@ export function NewPageDialog({
               />
             </label>
           </div>
+        )}
+        {onUploadFiles && (
+          <p className="np-upload">
+            <button type="button" className="text-button" onClick={onUploadFiles}>
+              <UploadSimple size={15} aria-hidden="true" />
+              {t("Datei hochladen …", "Upload file…")}
+            </button>
+            <span>{t("Jede Datei wird eine eigene Seite.", "Each file becomes a page of its own.")}</span>
+          </p>
         )}
         <label className="np-row np-space">
           <span className="np-row-label">{t("Bereich", "Space")}</span>

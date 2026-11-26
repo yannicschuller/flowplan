@@ -43026,3 +43026,81 @@ td > span > .required-missing:only-child {
   max-width: 100%;
   min-width: 0;
 }
+/* Files dragged from the computer onto the sidebar's tree (#569): every
+   file becomes a page below the page, or at the top level of the space. */
+.page-nav.file-drop {
+  outline: 2px dashed var(--blue);
+  outline-offset: -2px;
+  background: var(--blue-light);
+}
+.nav-section.space-file-drop {
+  outline: 2px dashed var(--blue);
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: var(--blue-light);
+}
+/* Files uploaded as pages (#569, components/file-page-uploads.tsx): one
+   line per file at the window's bottom corner, in the look of the upload
+   placeholders of documents (#561). */
+.file-page-uploads {
+  position: fixed;
+  inset-inline-start: calc(12px + var(--safe-left, 0px));
+  bottom: calc(16px + var(--safe-bottom, 0px));
+  z-index: 79;
+  width: min(400px, calc(100vw - 24px - var(--safe-left, 0px) - var(--safe-right, 0px)));
+  max-height: min(360px, 60vh);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.file-page-uploads-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+.file-page-uploads-head strong {
+  flex: 1;
+  font-weight: 600;
+}
+.file-page-uploads ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.file-page-upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
+  padding: 4px 0;
+}
+.file-page-upload .upload-placeholder-name {
+  grid-column: 1;
+  white-space: nowrap;
+}
+.file-page-upload .upload-placeholder-bar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.file-page-upload .upload-placeholder-status {
+  white-space: nowrap;
+}
+.file-page-upload[data-state="done"] .upload-placeholder-status {
+  color: var(--secondary);
+}
+.file-page-upload-error {
+  grid-column: 1 / -1;
+  color: #cf4850;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.media-library .media-upload {
+  margin-top: 12px;
+}
