@@ -6681,6 +6681,7 @@ export default function WorkspaceApp({
           {screen === "tasks" && (
             <MyTasks
               workspaceId={boot.workspace.id}
+              workspaces={boot.workspaces}
               onOpen={(pageId, rowId) => {
                 location.hash = rowId ? `page=${pageId}&row=${rowId}` : `page=${pageId}`;
               }}

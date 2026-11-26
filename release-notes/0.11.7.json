@@ -116,6 +116,13 @@
       "issues": [
         564
       ]
+    },
+    {
+      "de": "Meine Aufgaben: „Alle Arbeitsbereiche“ zeigt die Aufgaben all deiner Arbeitsbereiche in einer Liste, eingrenzbar und mit Arbeitsbereich an jeder Aufgabe. Das „Board“ zeigt die Fälligkeiten als Spalten – zieh eine Karte in eine andere Spalte, und sie bekommt das passende Datum.",
+      "en": "My tasks: “All workspaces” shows the tasks of all your workspaces in one list, filterable, each with its workspace. The “Board” shows the due dates as columns – drag a card to another column and it gets the matching date.",
+      "issues": [
+        564
+      ]
     }
   ]
 }

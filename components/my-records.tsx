@@ -4,7 +4,7 @@
 // tasks from documents. Here are a record's row and the controls that only
 // apply to records – the database, a search and the saved views
 // (lib/cross-records.ts).
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { BookmarkSimple, Database, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -25,6 +25,11 @@ export type TaskRecord = {
   done: boolean;
   tracked: boolean;
   people: { id: string; name: string }[];
+  // For the board's moves (#564); older servers send neither.
+  dueField?: string | null;
+  version?: number;
+  // In "Alle Arbeitsbereiche" (#564).
+  workspaceId?: string;
 };
 export type RecordView = { id: string; name: string; filter: CrossFilter };
 export type RecordsResult = {
@@ -49,6 +54,7 @@ export function RecordRow({
   settling,
   onToggle,
   onOpen,
+  workspace,
 }: {
   record: TaskRecord;
   taskKey: string;
@@ -57,6 +63,8 @@ export function RecordRow({
   settling: boolean;
   onToggle: (done: boolean) => void;
   onOpen: () => void;
+  // The workspace's label in "Alle Arbeitsbereiche" (#564).
+  workspace?: ReactNode;
 }) {
   const t = useT();
   const title = r.title || t("Ohne Titel", "Untitled");
@@ -79,10 +87,20 @@ export function RecordRow({
           )}
           {title}
         </span>
-        <span className="my-record-db">
-          <PageIcon name={r.icon} size={13} />
-          <span>{r.database || t("Ohne Titel", "Untitled")}</span>
-        </span>
+        {workspace ? (
+          <span className="my-record-where">
+            <span className="my-record-db">
+              <PageIcon name={r.icon} size={13} />
+              <span>{r.database || t("Ohne Titel", "Untitled")}</span>
+            </span>
+            {workspace}
+          </span>
+        ) : (
+          <span className="my-record-db">
+            <PageIcon name={r.icon} size={13} />
+            <span>{r.database || t("Ohne Titel", "Untitled")}</span>
+          </span>
+        )}
       </button>
       <span className="my-record-meta">
         {r.status && !settling && <span className={`tag tag-${statusTone(r)} my-record-status`}>{r.status}</span>}
