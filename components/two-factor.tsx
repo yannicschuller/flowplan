@@ -421,12 +421,14 @@ export function TwoFactorSettings({
             : t("Nach dem Passwort ein Code aus einer Authenticator-App. Mit einem Passkey braucht es keinen Code.", "After the password, a code from an authenticator app. Signing in with a passkey needs no code.")
         }
       >
+        {/* "Aus" only where it says something the setup button beside it
+            does not: required by the instance, or while setting up (#577). */}
         {status &&
           (enabled ? (
             <StatusBadge tone="ok">{t(`An · ${status.recoveryLeft} Codes übrig`, `On · ${status.recoveryLeft} codes left`)}</StatusBadge>
-          ) : (
+          ) : status.required || setup || codes ? (
             <StatusBadge tone={status.required ? "warn" : "off"}>{t("Aus", "Off")}</StatusBadge>
-          ))}
+          ) : null)}
         {status && !enabled && !setup && !codes && (
           <button type="button" className="button" disabled={!!busy} onClick={() => void begin()}>
             {busy === "setup" ? <SpinnerGap className="spin" /> : <ShieldCheck size={17} aria-hidden />}

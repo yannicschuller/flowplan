@@ -399,11 +399,17 @@
   font-size: 17px;
   font-weight: 650;
 }
+/* Storage and AI quota share the card's width and stack when it is
+   narrow; long translated labels wrap instead of running into the next
+   ring (#576). */
 .sv-usage {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
   padding: 14px 16px 16px;
+}
+.sv-usage-item > .sv-ring {
+  flex-shrink: 0;
 }
 .sv-usage-item {
   display: flex;
@@ -415,6 +421,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 13px;
 }
 .sv-usage-item > div span {

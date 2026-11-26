@@ -15,6 +15,7 @@ import {
   UsageMeter,
 } from "./settings-ui";
 import { bytes } from "./admin-storage";
+import { Select } from "./select";
 import {
   OFFLINE_CHANGED,
   budgetOf,
@@ -395,7 +396,7 @@ export function OfflineSettings({
                 `For record contents and files on this device – first for what you keep offline. Default here: ${bytes(defaultBudget(platform))}. The device's free space limits it as well.`,
               )}
             >
-              <select
+              <Select
                 className={CONTROL.sm}
                 aria-label={t("Speicherbudget", "Storage budget")}
                 value={limit}
@@ -407,7 +408,7 @@ export function OfflineSettings({
                     {bytes(choice)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </SettingRow>
             <div className="offline-budget" data-testid="offline-budget">
               <UsageMeter used={Math.min(marker.budgetUsed ?? 0, limit)} limit={limit} label={t("Im Speicherbudget belegt", "Used of the storage budget")} format={bytes} />

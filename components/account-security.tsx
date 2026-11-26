@@ -302,7 +302,8 @@ export function PasskeysRow() {
         }
       >
         <Note text={note.text} error={note.error} />
-        {passkeys && <StatusBadge tone={count ? "ok" : "off"}>{count === 1 ? t("1 Passkey", "1 passkey") : count ? t(`${count} Passkeys`, `${count} passkeys`) : t("Keiner", "None")}</StatusBadge>}
+        {/* No "Keiner" next to the button that adds one (#577). */}
+        {passkeys && count > 0 && <StatusBadge tone="ok">{count === 1 ? t("1 Passkey", "1 passkey") : t(`${count} Passkeys`, `${count} passkeys`)}</StatusBadge>}
         {inApp === "open" && (
           <button type="button" className="button" onClick={() => nativeApp()?.openInBrowser?.(`${window.location.origin}/#settings/account/passkeys`)}>
             <Plus size={16} aria-hidden /> {t("Im Browser hinzufügen", "Add in the browser")}

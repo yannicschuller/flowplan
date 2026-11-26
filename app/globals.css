@@ -27848,13 +27848,14 @@ h3 .block-reactions {
   color: var(--secondary);
   font-size: 13px;
 }
+/* As high as the inputs, aligned with them at the row's bottom (#575) –
+   not centred against the label above the input. */
 .api-token-form label.api-token-ai {
   display: flex;
   flex-direction: row;
-  align-self: center;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: 38px;
   color: var(--text);
 }
 .api-token-badges {

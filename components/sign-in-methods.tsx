@@ -140,7 +140,8 @@ export function SignInMethods({ onChanged }: { onChanged?: () => unknown }) {
               : t("Kein Passwort – du meldest dich über SSO an.", "No password – you sign in through SSO.")
           }
         >
-          <StatusBadge tone={data.password ? "ok" : "off"}>{data.password ? t("Aktiv", "Active") : t("Kein Passwort", "No password")}</StatusBadge>
+          {/* Without a password, the description and "Passwort festlegen …" say it (#577). */}
+          {data.password && <StatusBadge tone="ok">{t("Aktiv", "Active")}</StatusBadge>}
           {data.password && data.identities > 0 && (
             <button type="button" className="button danger" onClick={removePassword}>
               {t("Passwort entfernen …", "Remove password …")}

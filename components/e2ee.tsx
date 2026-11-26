@@ -579,7 +579,7 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
         </SettingRow>
       ) : state.identity === null ? (
         <SettingRow label={t("Status", "Status")} description={t("Noch nicht eingerichtet. Nötig für verschlüsselte Bereiche.", "Not set up yet. Needed for encrypted spaces.")}>
-          <StatusBadge tone="off">{t("Nicht eingerichtet", "Not set up")}</StatusBadge>
+          {/* The description and the button say it: no "Nicht eingerichtet" pill (#577). */}
           <button className="button" onClick={() => setDialog("setup")}>
             {t("Verschlüsselung einrichten", "Set up encryption")}
           </button>
