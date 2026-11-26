@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, Lightning, FlowArrow, Copy, Timer, GitBranch } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
-import { CalendarSyncButton } from "./calendar-sync-dialog";
+import { CalendarSyncIcon, CalendarSyncModal, calendarSyncAvailable } from "./calendar-sync-dialog";
 import { IssueSyncDialog, IssueSyncMenuItem } from "./issue-sync-database";
 import { useT } from "./i18n";
 import { loadView } from "./view-fallback";
@@ -43,6 +43,7 @@ export function DatabaseTools({
   const [panel, setPanelState] = useState<ToolPanel | null>(null);
   // Mounted with the first dialog and kept (closing animations, state).
   const [used, setUsed] = useState(false);
+  const [calendarSync, setCalendarSync] = useState(false);
   const setPanel = (next: ToolPanel | null) => {
     if (next) setUsed(true);
     setPanelState(next);
@@ -58,7 +59,6 @@ export function DatabaseTools({
   const rules = (settings.automations || []).filter((a) => a.enabled).length;
   return (
     <>
-      <CalendarSyncButton pageId={page.id} fields={database.fields} views={database.views} editable={editable} />
       {/* Opening the menu fetches the dialogs, so one chosen opens at once. */}
       <Dropdown.Root onOpenChange={(open) => open && void import("./database-tool-panels").catch(() => {})}>
         <Dropdown.Trigger asChild>
@@ -75,10 +75,13 @@ export function DatabaseTools({
             {database.fields.some((f) => f.type === "time") && item(<Timer />, t("Zeiten auswerten", "Time report"), () => setPanel("time"))}
             {editable && item(<GitBranch />, t("Git-Anbindung", "Git connection"), () => setPanel("git"), settings.git ? "✓" : undefined)}
             <IssueSyncMenuItem pageId={page.id} />
+            {/* A setup step, rarely opened: here rather than as a button of its own (#605). */}
+            {calendarSyncAvailable(database.fields, editable) && item(<CalendarSyncIcon />, t("Kalender-Sync", "Calendar sync"), () => setCalendarSync(true))}
           </Dropdown.Content>
         </Dropdown.Portal>
       </Dropdown.Root>
       <IssueSyncDialog page={page} database={database} editable={editable} />
+      <CalendarSyncModal pageId={page.id} fields={database.fields} views={database.views} open={calendarSync} onClose={() => setCalendarSync(false)} />
       {used && (
         <DatabaseToolPanels
           panel={panel}

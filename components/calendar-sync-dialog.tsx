@@ -13,19 +13,16 @@ import { Select } from "./select";
 
 type ExternalCalendar = { id: string; name: string; primary: boolean };
 
-export function CalendarSyncButton({ pageId, fields, views, editable }: { pageId: string; fields: Field[]; views: View[]; editable: boolean }) {
+// Whether a database offers it: editable, with a date property.
+export const calendarSyncAvailable = (fields: Field[], editable: boolean) => editable && fields.some((f) => f.type === "date");
+export { CalendarCheck as CalendarSyncIcon };
+// Opened from the database's "⋯" menu (#605, components/database-tools.tsx).
+export function CalendarSyncModal({ pageId, fields, views, open, onClose }: { pageId: string; fields: Field[]; views: View[]; open: boolean; onClose: () => void }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
-  if (!editable || !fields.some((f) => f.type === "date")) return null;
   return (
-    <>
-      <button title={t("Kalender-Sync", "Calendar sync")} aria-label={t("Kalender-Sync", "Calendar sync")} onClick={() => setOpen(true)}>
-        <CalendarCheck size={18} />
-      </button>
-      <Modal open={open} onClose={() => setOpen(false)} title={t("Kalender-Sync", "Calendar sync")}>
-        {open && <CalendarSyncDialog pageId={pageId} fields={fields} views={views} />}
-      </Modal>
-    </>
+    <Modal open={open} onClose={onClose} title={t("Kalender-Sync", "Calendar sync")}>
+      {open && <CalendarSyncDialog pageId={pageId} fields={fields} views={views} />}
+    </Modal>
   );
 }
 

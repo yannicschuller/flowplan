@@ -73,6 +73,13 @@
         601,
         602
       ]
+    },
+    {
+      "de": "Der Kalender-Sync einer Datenbank steht jetzt im Menü „…“ bei den anderen Werkzeugen statt als eigenes Symbol in der Leiste.",
+      "en": "A database's calendar sync now sits in the “…” menu with the other tools instead of as an icon of its own in the toolbar.",
+      "issues": [
+        605
+      ]
     }
   ],
   "fixes": [

@@ -72,7 +72,9 @@ test("connecting a CalDAV calendar in the settings and syncing a view with it", 
     await command({ action: "row.create", pageId: created.id, cells: { title: "Review", when: day } });
     await page.goto(`${origin}/#page=${created.id}`);
     await page.locator(".calendar-nav").waitFor();
-    await page.getByRole("button", { name: "Kalender-Sync" }).first().click();
+    // In the database's "⋯" menu (#605).
+    await page.getByRole("button", { name: "Weitere Werkzeuge" }).first().click();
+    await page.getByRole("menuitem", { name: "Kalender-Sync" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByLabel("Konto")).toContainText(`CalDAV · ${account}`);
     await expect(dialog.getByLabel("Kalender", { exact: true })).toContainText("Arbeit");
