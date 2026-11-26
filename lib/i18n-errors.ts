@@ -591,6 +591,11 @@ const exact: Record<string, string> = {
   "Nachricht konnte nicht gesendet werden.": "The message could not be sent.",
   "Die Größe der Anfrage fehlt.": "The request does not state its size.",
   "Mit einem API-Token nicht erlaubt.": "Not allowed with an API token.",
+  // One's own profile picture (lib/avatars.ts, #559).
+  "Dein Profilbild kommt von deinem Identitätsanbieter und wird bei jeder Anmeldung aktualisiert.":
+    "Your profile picture comes from your identity provider and is updated at each sign-in.",
+  "Das Bild darf höchstens 2 MB groß sein.": "The picture may be at most 2 MB.",
+  "Bitte ein Bild als PNG, JPEG, WebP oder GIF hochladen.": "Please upload a picture as PNG, JPEG, WebP or GIF.",
   "Bitte bestätige mit deinem Passwort.": "Please confirm with your password.",
   "Cursoranfrage zu groß.": "Cursor request too large.",
   "Ungültige Cursoranfrage.": "Invalid cursor request.",

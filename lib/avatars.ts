@@ -1,13 +1,19 @@
-// Profile pictures from the identity provider. The picture claim is fetched
-// once per sign-in on the server and stored in the database, so browsers
-// never contact the provider, pictures work offline and are part of every
-// backup. Only raster images are accepted (no SVG: it could carry scripts).
+// Profile pictures. Accounts that sign in through an identity provider get
+// theirs from its picture claim: fetched once per sign-in on the server and
+// stored in the database, so browsers never contact the provider, pictures
+// work offline and are part of every backup. Local accounts (e-mail and
+// password, #559) upload their own in the settings. Only raster images are
+// accepted (no SVG: it could carry scripts).
 import { createHash } from "node:crypto";
+import { HttpError } from "./auth";
 import { one, run } from "./db";
+import { isLocalAccount } from "./local-auth";
+import { readBodyLimited } from "./request-body";
 import { safeFetch } from "./safe-fetch";
 import type { Identity } from "./types";
 
-const MAX_BYTES = 2 * 1024 * 1024;
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = AVATAR_MAX_BYTES;
 const TIMEOUT_MS = 5000;
 
 // Image type by its first bytes; the declared content type is not trusted.
@@ -31,6 +37,51 @@ async function removeAvatar(userId: string) {
   await run("UPDATE users SET avatar=NULL WHERE id=? AND avatar IS NOT NULL", userId);
 }
 
+// Stores a picture whose type was sniffed already. Its version (a hash of
+// the bytes) goes into the picture's URL (?v=, components/ui.tsx), so a
+// browser that cached the old one loads the new one. Returns the version.
+async function storeAvatar(userId: string, mime: string, data: Uint8Array) {
+  const version = createHash("sha256").update(data).digest("hex").slice(0, 16);
+  if (await one("SELECT 1 FROM users WHERE id=? AND avatar=?", userId, version)) return version;
+  await run(
+    // A new picture gets its placeholder when first asked for
+    // (lib/image-placeholders.ts).
+    "INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime,data=excluded.data,width=NULL,height=NULL,thumbhash=NULL",
+    userId,
+    mime,
+    data,
+  );
+  await run("UPDATE users SET avatar=? WHERE id=?", version, userId);
+  return version;
+}
+
+// Own pictures (#559) only for local accounts and in the browser: an
+// account of an identity provider gets its picture from there at each
+// sign-in (an upload would be replaced), and API tokens do not change the
+// profile.
+async function requireOwnPicture(user: Identity) {
+  if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+  if (!(await isLocalAccount(user.id)))
+    throw new HttpError(403, "Dein Profilbild kommt von deinem Identitätsanbieter und wird bei jeder Anmeldung aktualisiert.");
+}
+
+// POST /api/avatars: the picture as the raw body, at most 2 MB. The type
+// comes from its first bytes, never from Content-Type.
+export async function uploadAvatar(user: Identity, req: Request) {
+  await requireOwnPicture(user);
+  const data = await readBodyLimited(req, AVATAR_MAX_BYTES, "Das Bild darf höchstens 2 MB groß sein.");
+  const mime = data.length ? sniffImage(data) : null;
+  if (!mime) throw new HttpError(400, "Bitte ein Bild als PNG, JPEG, WebP oder GIF hochladen.");
+  return { avatar: await storeAvatar(user.id, mime, new Uint8Array(data)) };
+}
+
+// DELETE /api/avatars: back to the initials.
+export async function deleteAvatar(user: Identity) {
+  await requireOwnPicture(user);
+  await removeAvatar(user.id);
+  return { avatar: null };
+}
+
 // Takes the `picture` claim after sign-in. Never throws: a picture that
 // cannot be loaded keeps the previous one (or the initials).
 export async function syncAvatar(userId: string, picture: unknown) {
@@ -52,17 +103,7 @@ export async function syncAvatar(userId: string, picture: unknown) {
     const data = response.data;
     const mime = sniffImage(data);
     if (!mime) return;
-    const version = createHash("sha256").update(data).digest("hex").slice(0, 16);
-    if (await one("SELECT 1 FROM users WHERE id=? AND avatar=?", userId, version)) return;
-    await run(
-      // A new picture gets its placeholder when first asked for
-      // (lib/image-placeholders.ts).
-      "INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime,data=excluded.data,width=NULL,height=NULL,thumbhash=NULL",
-      userId,
-      mime,
-      data,
-    );
-    await run("UPDATE users SET avatar=? WHERE id=?", version, userId);
+    await storeAvatar(userId, mime, data);
   } catch (error) {
     console.error(
       "Profilbild konnte nicht geladen werden:",

@@ -4,6 +4,10 @@
 // Verschlüsselung, Notfallzugriff (trusted contacts, #281), Nachricht bei
 // Inaktivität (#282), a line pointing to Speicher & KI (one's limits) and –
 // at the end – the danger zone (reset encryption keys, delete the account).
+import { useRef, useState } from "react";
+import { Trash, UploadSimple } from "@phosphor-icons/react";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { serverMessage } from "@/lib/server-message";
 import { useT } from "../../i18n";
 import { Avatar } from "../../ui";
 import { DangerZone, SettingGroup, SettingRow, StatusBadge } from "../../settings-ui";
@@ -17,6 +21,52 @@ import { DeadManSwitchSettings } from "../../dead-man-switch";
 import { SignInMethods } from "../../sign-in-methods";
 import { useUserSettings } from "../user-context";
 import { UsageMovedNote } from "./usage";
+
+// One's own profile picture (#559), for local accounts: sent as the raw
+// body to /api/avatars (the server checks the type by its content, at most
+// 2 MB). The reloaded boot carries the new version, so the picture's URL
+// changes and every Avatar shows it.
+function ProfilePictureActions({ hasPicture, onChanged, onError }: { hasPicture: boolean; onChanged: () => Promise<unknown>; onError: (message: string) => void }) {
+  const t = useT();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<"upload" | "remove" | null>(null);
+  const send = async (init: RequestInit) => {
+    setBusy(init.method === "DELETE" ? "remove" : "upload");
+    try {
+      const response = await fetch("/api/avatars", { ...init, headers: { ...idempotencyHeaders(), ...(init.headers as Record<string, string> | undefined) } });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(serverMessage(body.error) || t("Das hat nicht geklappt.", "That did not work."));
+      await onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(null);
+      if (input.current) input.current.value = "";
+    }
+  };
+  return (
+    <span className="account-picture-actions">
+      <input
+        ref={input}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void send({ method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } });
+        }}
+      />
+      <button type="button" className="button compact" disabled={!!busy} onClick={() => input.current?.click()}>
+        <UploadSimple size={14} aria-hidden /> {busy === "upload" ? t("Wird hochgeladen …", "Uploading …") : t("Bild hochladen …", "Upload picture …")}
+      </button>
+      {hasPicture && (
+        <button type="button" className="button compact" disabled={!!busy} onClick={() => void send({ method: "DELETE" })}>
+          <Trash size={14} aria-hidden /> {t("Bild entfernen", "Remove picture")}
+        </button>
+      )}
+    </span>
+  );
+}
 
 export default function AccountSection() {
   const t = useT();
@@ -35,6 +85,15 @@ export default function AccountSection() {
           <span className="account-identity-text">
             <strong>{boot.user.name}</strong>
             <small>{boot.user.email}</small>
+            {local ? (
+              <ProfilePictureActions hasPicture={!!boot.user.avatar} onChanged={onRefresh} onError={onError} />
+            ) : (
+              !boot.ldapAccount && (
+                <small className="account-picture-hint">
+                  {t("Dein Profilbild kommt von deinem Identitätsanbieter und wird bei jeder Anmeldung aktualisiert.", "Your profile picture comes from your identity provider and is updated at each sign-in.")}
+                </small>
+              )
+            )}
           </span>
           <StatusBadge tone="info">{local ? (boot.ssoLinked ? t("E-Mail-Konto · SSO", "E-mail account · SSO") : t("E-Mail-Konto", "E-mail account")) : boot.ldapAccount ? "LDAP" : "SSO"}</StatusBadge>
         </div>

@@ -62,6 +62,13 @@
   ],
   "features": [
     {
+      "de": "Eigenes Profilbild: Konten mit E-Mail und Passwort laden unter Einstellungen → Konto & Sicherheit ein Bild hoch (PNG, JPEG, WebP oder GIF, bis 2 MB) oder entfernen es wieder. Bei SSO-Konten kommt das Bild weiterhin vom Identitätsanbieter.",
+      "en": "Your own profile picture: accounts with e-mail and password upload a picture under Settings → Account & security (PNG, JPEG, WebP or GIF, up to 2 MB) or remove it again. SSO accounts still get their picture from the identity provider.",
+      "issues": [
+        559
+      ]
+    },
+    {
       "de": "Seiten auf dem Whiteboard: „Neue Seite“ legt ein Dokument direkt vom Board an. Große Seitenkarten zeigen das ganze Dokument, live und scrollbar; ein Doppelklick oder „Daneben öffnen“ bearbeitet die Seite neben dem Board.",
       "en": "Pages on whiteboards: “New page” creates a document right from the board. Large page cards show the whole document, live and scrollable; a double-click or “Open beside” edits the page next to the board.",
       "issues": [
