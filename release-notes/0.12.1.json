@@ -41,6 +41,17 @@
       "issues": [
         583
       ]
+    },
+    {
+      "de": "Feinschliff: Schalter der Benachrichtigungsarten mittig unter ihrer Spalte, leisere Stufen-Symbole in den Einstellungen, ein aufgeräumter Papierkorb und das Bereichssymbol in der Seitenleiste in der Größe seines Namens.",
+      "en": "Polish: notification kind switches centred under their column, quieter level markers in the settings, a tidier trash and the space symbol in the sidebar at the size of its name.",
+      "issues": [
+        584,
+        585,
+        586,
+        587,
+        588
+      ]
     }
   ],
   "fixes": [
