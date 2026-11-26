@@ -44,8 +44,9 @@ test("the workspace menu shows the person, the workspaces and the account, signi
   await page.goto("/#home");
   await showSidebar(page, phone);
 
-  // No "⋯" next to the profile; the row itself stays.
-  await expect(sidebar(page).locator(".profile")).toContainText(boot.user.name);
+  // No account row below the tools any more (#570), no "⋯" either: who is
+  // signed in is at the top of the workspace menu.
+  await expect(sidebar(page).locator(".sidebar-bottom")).not.toContainText(boot.user.name);
   await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toHaveCount(0);
 
   const menu = await openMenu(page);
@@ -127,9 +128,9 @@ for (const scheme of ["light", "dark"] as const)
     await page.emulateMedia({ colorScheme: scheme });
     await signIn(page);
     await page.goto("/#home");
-    await expect(sidebar(page).locator(".profile")).toBeVisible();
+    await expect(sidebar(page).locator(".sidebar-bottom")).toBeVisible();
     await page.waitForTimeout(600);
-    // (The development server's indicator covers the profile row.)
+    // (The development server's indicator covers the sidebar's bottom.)
     await page.evaluate(() => document.querySelector("nextjs-portal")?.remove());
     await sidebar(page).locator(".sidebar-bottom").screenshot({ path: `${shots}-bottom-${scheme}.png` });
     await sidebar(page).locator(".workspace-switch").click();

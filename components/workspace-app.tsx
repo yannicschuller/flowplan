@@ -10,7 +10,7 @@ import { usePaneScroll } from "@/lib/pane-scroll";
 import { HistoryButtons, type StepLook } from "./history-buttons";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
-import { desktopApp, desktopPageLink, holdForProfileSwitcher, inDesktopApp, nativeApp, offerDesktopApp, openInWindow, openProfileSwitcher, useProfileSwitcherWay } from "@/lib/native-app";
+import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow, openProfileSwitcher, useProfileSwitcherWay } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useT, writeLocaleCookie } from "./i18n";
@@ -5349,22 +5349,11 @@ export default function WorkspaceApp({
             />
           )}
           {/* Less used places as one row of symbols (on phones behind
-              "Mehr" by the profile): the page tree above keeps the height. */}
+              "Mehr"): the page tree above keeps the height. Who is signed in
+              and the account's entries are in the workspace menu at the top
+              (#565), so there is no account row below it any more (#570). */}
           <SidebarToolRow tools={sidebarTools} />
-          <div
-            className="profile"
-            data-profile-switcher={profileSwitcher ? "" : undefined}
-            onPointerDown={profileSwitcher ? (e) => void holdForProfileSwitcher(e) : undefined}
-          >
-            <Avatar name={boot.user.name} userId={boot.user.id} eager />
-            <span>
-              {boot.user.name}
-              <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
-            </span>
-            {/* On phones the account's entries are in "Mehr" (#197); wider
-                windows have them in the workspace menu at the top (#565). */}
-            <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
-          </div>
+          <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
         </div>
         {/* Over the page (open drawer) the sidebar has a width of its own. */}
         {mobile ? (

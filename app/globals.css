@@ -969,32 +969,6 @@ kbd,
   background: var(--hover);
   color: var(--text);
 }
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border-top: 1px solid var(--border);
-  margin: 0 -10px;
-  padding: 10px 16px;
-}
-/* In the app, a long press on the own account row opens the app's profiles
-   (lib/native-app.ts holdForProfileSwitcher): no text selection or callout. */
-.profile[data-profile-switcher] {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
-}
-.profile > span:nth-child(2) {
-  font-size: 12px;
-  font-weight: 600;
-  flex: 1;
-}
-.profile small {
-  display: block;
-  font-size: 10px;
-  font-weight: 400;
-  margin-top: 1px;
-}
 .avatar {
   display: inline-flex;
   align-items: center;
@@ -8270,12 +8244,6 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .page-nav-title {
     font-size: 14px;
-  }
-  .profile small {
-    font-size: 11px;
-  }
-  .profile > span:nth-child(2) {
-    font-size: 13px;
   }
 }
 /* The content of the main area as on phones whenever it is that narrow

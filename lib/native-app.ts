@@ -357,59 +357,6 @@ export function openProfileSwitcher(app: Pick<FlowplanApp, "openProfileSwitcher"
   return way;
 }
 
-// A long press (half a second, the finger still) on the own account row
-// opens the switcher; the click and context menu that end it do nothing
-// else. The row's buttons keep their own press. Returns a function that
-// stops waiting.
-export const PROFILE_HOLD_MS = 500;
-const CAPTURE = { capture: true } as const;
-export function holdForProfileSwitcher(
-  event: { pointerId: number; clientX: number; clientY: number; button: number; target: EventTarget | null },
-  open: () => unknown = openProfileSwitcher,
-): () => void {
-  const target = typeof Element === "undefined" ? null : event.target instanceof Element ? event.target : null;
-  if (event.button !== 0 || target?.closest("button, a, [role=menuitem]")) return () => {};
-  const { pointerId, clientX: x0, clientY: y0 } = event;
-  let fired = false;
-  // Once the hold opened the switcher, the click and context menu that end
-  // the press are its own (released a moment after the finger lifts).
-  const swallow = (ev: Event) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-  };
-  const release = () => {
-    window.removeEventListener("click", swallow, CAPTURE);
-    window.removeEventListener("contextmenu", swallow, CAPTURE);
-  };
-  const move = (ev: PointerEvent) => {
-    if (!fired && ev.pointerId === pointerId && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) stop();
-  };
-  const end = (ev: PointerEvent) => {
-    if (ev.pointerId === pointerId) stop();
-  };
-  const stop = () => {
-    clearTimeout(timer);
-    window.removeEventListener("pointermove", move, CAPTURE);
-    window.removeEventListener("pointerup", end, CAPTURE);
-    window.removeEventListener("pointercancel", end, CAPTURE);
-    window.removeEventListener("blur", stop);
-    if (fired) setTimeout(release, 400);
-  };
-  const timer = setTimeout(() => {
-    fired = true;
-    window.addEventListener("click", swallow, CAPTURE);
-    window.addEventListener("contextmenu", swallow, CAPTURE);
-    // However the press ends, nothing stays swallowed for long.
-    setTimeout(release, 5000);
-    open();
-  }, PROFILE_HOLD_MS);
-  window.addEventListener("pointermove", move, CAPTURE);
-  window.addEventListener("pointerup", end, CAPTURE);
-  window.addEventListener("pointercancel", end, CAPTURE);
-  window.addEventListener("blur", stop);
-  return stop;
-}
-
 // Whether the app here can scan documents (newer iOS apps).
 export const nativeScanAvailable = () => typeof nativeApp()?.scanDocument === "function";
 export function nativeScan(pageId: string, rowId?: string) {

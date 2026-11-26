@@ -37,7 +37,7 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(more(page)).toHaveAttribute("aria-expanded", "false");
   const button = await more(page).boundingBox();
   expect(button!.height).toBeGreaterThanOrEqual(44);
-  // The bottom block is the profile row alone.
+  // The bottom block is the "Mehr" button alone (#570).
   const bottom = await sidebar(page).locator(".sidebar-bottom").boundingBox();
   expect(bottom!.height).toBeLessThan(70);
 
@@ -53,7 +53,7 @@ test("on phones the less used places open from Mehr as a labelled list", async (
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
 
-  // The account menu is part of the sheet (#197): no "⋯" in the profile
+  // The account menu is part of the sheet (#197): no "⋯" at the bottom
   // row (wider windows: the workspace menu, #565); design, about and what's new (#223) below a line, signing out
   // last and apart.
   await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeHidden();

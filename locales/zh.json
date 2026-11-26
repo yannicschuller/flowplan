@@ -14815,7 +14815,6 @@
   "Workspace as JSON": "工作区导出为 JSON",
   "Workspace as library": "将工作区用作书库",
   "Workspace as ZIP": "工作区导出为 ZIP",
-  "Workspace connected": "工作区已连接",
   "Workspace font": "工作区字体",
   "Workspace groups": "工作区群组",
   "Workspace groups (also filled through the SSO mappings) and directory groups from SCIM, LDAP and SSO directly.": "工作区群组（也可通过 SSO 映射填充）以及直接来自 SCIM、LDAP 和 SSO 的目录群组。",

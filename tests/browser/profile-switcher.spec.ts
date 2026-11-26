@@ -56,16 +56,6 @@ async function openWorkspaceMenu(page: Page) {
   await expect(menu.getByRole("menuitem").first()).toBeVisible();
   return menu;
 }
-// Pressed and held on the own avatar for `ms`.
-async function press(page: Page, ms: number) {
-  const box = await page.locator(".sidebar .profile .avatar").first().boundingBox();
-  if (!box) throw new Error("no avatar");
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(ms);
-  await page.mouse.up();
-}
-
 test.use({ userAgent: IOS_APP_UA });
 
 for (const phone of [false, true]) {
@@ -74,7 +64,7 @@ for (const phone of [false, true]) {
       test.skip(info.project.name !== (phone ? "mobile" : "desktop"), "one layout per project");
     });
 
-    test("with the app's switcher: the menu entry and the long press call openProfileSwitcher, with nothing", async ({ page }) => {
+    test("with the app's switcher: the menu entry calls openProfileSwitcher, with nothing", async ({ page }) => {
       await setUp(page, "switcher");
       await page.goto("/#home");
       await showSidebar(page, phone);
@@ -91,17 +81,9 @@ for (const phone of [false, true]) {
       await expect(menu).toBeHidden();
       expect(await calls(page)).toEqual({ switcher: [[]], profiles: [] });
 
-      // A tap on the account row is no long press; holding it is.
-      await showSidebar(page, phone && !(await page.locator(".app-shell.nav-open").count()));
-      await press(page, 100);
-      await page.waitForTimeout(700);
-      expect((await calls(page)).switcher).toHaveLength(1);
-      await press(page, 800);
-      await expect.poll(async () => (await calls(page)).switcher.length).toBe(2);
-      expect((await calls(page)).profiles).toHaveLength(0);
-      // The row has no menu of its own any more (#565): the long press is
-      // its only action.
-      await expect(page.locator(".sidebar .profile").getByRole("button", { name: "Kontomenü" })).toHaveCount(0);
+      // No account row with a long press any more (#570): the menu entry is
+      // the way.
+      await expect(page.locator(".sidebar .profile")).toHaveCount(0);
     });
 
     test("older apps with openProfiles only: the entry opens their profiles", async ({ page }) => {
@@ -111,12 +93,9 @@ for (const phone of [false, true]) {
       const menu = await openWorkspaceMenu(page);
       await menu.getByRole("menuitem", { name: "Instanz wechseln …" }).click();
       expect(await calls(page)).toEqual({ switcher: [], profiles: [[]] });
-      await showSidebar(page, phone && !(await page.locator(".app-shell.nav-open").count()));
-      await press(page, 800);
-      await expect.poll(async () => (await calls(page)).profiles.length).toBe(2);
     });
 
-    test("without the bridge: no entry and no long press", async ({ page }) => {
+    test("without the bridge: no entry", async ({ page }) => {
       await setUp(page, "none");
       await page.goto("/#home");
       await showSidebar(page, phone);
@@ -124,8 +103,6 @@ for (const phone of [false, true]) {
       await expect(menu.getByRole("menuitem", { name: "Arbeitsbereich erstellen" })).toBeVisible();
       await expect(menu.getByRole("menuitem", { name: "Instanz wechseln …" })).toHaveCount(0);
       await page.keyboard.press("Escape");
-      await expect(page.locator(".sidebar .profile")).not.toHaveAttribute("data-profile-switcher");
-      await press(page, 800);
       expect(await calls(page)).toEqual({ switcher: [], profiles: [] });
     });
   });

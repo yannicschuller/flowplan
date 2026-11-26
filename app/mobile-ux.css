@@ -545,9 +545,9 @@ label.hit-check {
 
 /* ===== The sidebar's less used places on phones (#185,
    components/sidebar-tools.tsx): in the drawer (up to 767 px, the phone
-   layout of app/globals.css) one labelled "Mehr" button in the profile row
-   replaces the row of symbols and opens them as a list in a sheet – the
-   bottom block is the profile row alone, the page tree keeps the height. ===== */
+   layout of app/globals.css) one labelled "Mehr" button replaces the row of
+   symbols and opens them as a list in a sheet – the bottom block is that
+   button alone (#570), the page tree keeps the height. ===== */
 .sidebar-more {
   display: none;
 }
@@ -555,26 +555,13 @@ label.hit-check {
   .sidebar-tools {
     display: none;
   }
-  .sidebar-bottom .profile {
-    border-top: 0;
-    gap: 6px;
-  }
-  .sidebar-bottom .profile > span:nth-child(2) {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sidebar-bottom .profile > span:nth-child(2) small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .sidebar-more {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
     min-height: 44px;
+    margin: 8px 6px;
     padding-block: 0;
     padding-inline: 10px 14px;
     border: 1px solid var(--border);
