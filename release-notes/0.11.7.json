@@ -58,6 +58,13 @@
       "issues": [
         557
       ]
+    },
+    {
+      "de": "Ziehst du Dateien in ein Dokument oder fügst sie ein, zeigt ein Platzhalter an ihrer Stelle den Fortschritt („12 MB von 48 MB“) mit Abbrechen-Knopf; die fertige Datei landet dort, auch wenn du inzwischen woanders weiterschreibst.",
+      "en": "Files dragged or pasted into a document show a placeholder with their progress (“12 MB of 48 MB”) and a cancel button where they will go; the finished file lands there, even if you have moved on to write elsewhere.",
+      "issues": [
+        561
+      ]
     }
   ],
   "features": [
