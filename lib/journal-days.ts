@@ -260,10 +260,11 @@ const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 // template (the one it was created from or today's), no open task of its
 // own, no tracker value or place, title and icon as created, no cover,
 // files, comments, sub pages, links to it, favourites or sharing.
-async function emptyDay(day: Page, today: string) {
+// `settings`: the journal's, read once for all its days.
+async function emptyDay(day: Page, today: string, settings: Awaited<ReturnType<typeof journalSettings>>) {
   if (!day.journal_date || day.journal_date >= today || day.deleted_at) return false;
   if (day.locked || day.public_token || day.cover || day.icon !== "day") return false;
-  if (!automaticDayTitle(day.title, day.journal_date, (await journalSettings(day.parent_id!)).options.dayTitleCustom)) return false;
+  if (!automaticDayTitle(day.title, day.journal_date, settings.options.dayTitleCustom)) return false;
   if (await hasEntryData(day.id)) return false;
   const used = async (sql: string, ...args: string[]) => !!(await one(sql, ...args));
   if (
@@ -298,7 +299,7 @@ async function emptyDay(day: Page, today: string) {
     return false;
   const doc = await dayDoc(day.id);
   const created = await dayTemplateHtml(day.id);
-  const templates = [templateNodesOf((await journalSettings(day.parent_id!)).template), ...(created ? [templateNodesOf(created)] : [])];
+  const templates = [templateNodesOf(settings.template), ...(created ? [templateNodesOf(created)] : [])];
   // Open tasks that are not the template's own would get lost.
   const daily = new Set((await flatMapAsync(templates, async (nodes) => [...await templateTaskTexts(day.parent_id!, nodes)])).map(readableText));
   if (openTasks(doc).some((task) => !daily.has(readableText(task.textContent)))) return false;
@@ -307,10 +308,11 @@ async function emptyDay(day: Page, today: string) {
 export async function emptyJournalDays(journal: Page, today: string) {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   journalDate.parse(today);
+  const settings = await journalSettings(journal.id);
   return (await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL ORDER BY journal_date DESC",
     journal.id,
-  ), async (day) => await emptyDay(day, today)))
+  ), async (day) => await emptyDay(day, today, settings)))
     .map((day) => ({ id: day.id, date: day.journal_date!, title: day.title }));
 }
 // Moves the chosen days to the trash – only those still empty; never

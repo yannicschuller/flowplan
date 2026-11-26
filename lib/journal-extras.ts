@@ -149,11 +149,16 @@ export async function journalDayTitleFormats(workspaceId: string) {
     "SELECT s.page_id,s.options FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND p.kind='journal'",
     workspaceId,
   )) {
+    // Only these two fields: another option a different version stored
+    // does not drop the journal's day title.
+    let raw: unknown = {};
     try {
-      const options = journalOptionsSchema.parse(JSON.parse(row.options || "{}"));
-      if (options.dayTitleFormat !== "long") formats[row.page_id] = options.dayTitleFormat;
-      if (options.dayTitleCustom) patterns[row.page_id] = options.dayTitleCustom;
+      raw = JSON.parse(row.options || "{}");
     } catch {}
+    const options = journalOptionsSchema.pick({ dayTitleFormat: true, dayTitleCustom: true }).safeParse(raw);
+    if (!options.success) continue;
+    if (options.data.dayTitleFormat !== "long") formats[row.page_id] = options.data.dayTitleFormat;
+    if (options.data.dayTitleCustom) patterns[row.page_id] = options.data.dayTitleCustom;
   }
   return { formats, patterns };
 }

@@ -79,6 +79,9 @@ async function store(
         try {
           unlinkSync(path);
         } catch {}
+        // Cluster mode: out of the bucket again (published below), e.g. when
+        // a later file of the same share is refused (lib/file-pages.ts).
+        void unpublishUpload(file.id).catch(() => {});
       });
       // Cluster mode: into the bucket before the answer (lib/storage.ts).
       await publishUpload(file.id);
