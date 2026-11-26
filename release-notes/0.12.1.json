@@ -7,5 +7,14 @@
         569
       ]
     }
+  ],
+  "improvements": [
+    {
+      "de": "Die Seitenleiste ist unten aufgeräumt: Die Zeile mit Profilbild, Name und Verbindungsstatus ist weg – wer angemeldet ist und alle Kontoeinträge stehen im Menü des Arbeitsbereichs oben. Auf dem Telefon bleibt dort nur „Mehr“.",
+      "en": "The bottom of the sidebar is tidier: the row with profile picture, name and connection status is gone – who is signed in and all account entries are in the workspace menu at the top. On a phone only “More” stays there.",
+      "issues": [
+        570
+      ]
+    }
   ]
 }
