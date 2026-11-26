@@ -4563,7 +4563,9 @@ async function runCommand(
       await audit(
         user.id,
         action,
-        String(b.pageId || b.spaceId || b.workspaceId || b.userId || ""),
+        // The first id the input names – ids are strings: String() of
+        // another value from the body ({"toString":0}) would throw.
+        [b.pageId, b.spaceId, b.workspaceId, b.userId].find((value): value is string => typeof value === "string" && value !== "") ?? "",
       );
     return result;
   };

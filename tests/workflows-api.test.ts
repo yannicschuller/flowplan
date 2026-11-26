@@ -26,6 +26,7 @@ const { workflowPost } = await import("../lib/workflows/rest");
 const { pauseMovedWorkflows } = await import("../lib/instance-move-pull");
 const { createWorkspace } = await import("../lib/seed");
 const { bootstrap } = await import("../lib/api");
+const { HttpError } = await import("../lib/auth");
 const S = await import("./helpers/workflow-setup");
 const { act, get, owner, editor, viewer, guest, node, edge, chain, workflow, runsOf, stepsOf, makeDatabase, wid, space } = S;
 import type { Field, Identity } from "../lib/types";
@@ -285,6 +286,13 @@ test("imports refuse what is not a workflow, a newer format and pages the person
   const pageId = await newWorkflowPage("Ziel");
   await assert.rejects(() => act({ action: "workflow.import", pageId, data: { hello: "world" } }), /Keine Workflow-Datei/);
   await assert.rejects(() => act({ action: "workflow.import", pageId, data: { format: "flowplan.workflow", version: 99, graph: { nodes: [], edges: [] } } }), /neueren Flowplan-Version/);
+  // Nested thousands of levels deep (as JSON.parse reads a body of 60 KB):
+  // refused, not a stack overflow (a 500).
+  for (const deep of ["[".repeat(30_000) + "]".repeat(30_000), '{"a":'.repeat(30_000) + "1" + "}".repeat(30_000)])
+    await assert.rejects(
+      () => act({ action: "workflow.import", pageId, data: JSON.parse(deep) }),
+      (e: unknown) => e instanceof HttpError && e.status === 400 && /Keine Workflow-Datei/.test(e.message),
+    );
   // A bare graph is fine; an id of a page in another workspace is cleared.
   const foreign = await createWorkspace(owner.id, "Fremd");
   const foreignPage = (await act({ action: "page.create", workspaceId: foreign, spaceId: (await bootstrap(owner, foreign)).spaces[0].id, kind: "document", title: "Fremd" })).id as string;

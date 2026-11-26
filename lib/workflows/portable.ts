@@ -295,7 +295,17 @@ export async function importCommand(user: Identity, raw: unknown) {
 }
 
 export function parseExport(raw: unknown): WorkflowExport {
-  if (JSON.stringify(raw ?? null).length > GRAPH_LIMITS.bytes * 2) throw new HttpError(413, "Die Datei ist zu groß.");
+  // Measuring a value nested a few thousand levels deep overflows the stack
+  // (JSON.stringify recurses; JSON.parse of the body does not): no
+  // workflow file is like that.
+  let size: number;
+  try {
+    size = JSON.stringify(raw ?? null).length;
+  } catch (error) {
+    if (error instanceof RangeError) throw new HttpError(400, "Keine Workflow-Datei.");
+    throw error;
+  }
+  if (size > GRAPH_LIMITS.bytes * 2) throw new HttpError(413, "Die Datei ist zu groß.");
   // A bare graph is accepted as well.
   const looksLikeGraph = !!raw && typeof raw === "object" && Array.isArray((raw as { nodes?: unknown }).nodes);
   const data = looksLikeGraph ? { format: GRAPH_FORMAT, version: (raw as { version?: number }).version ?? GRAPH_VERSION, graph: raw, references: {} } : raw;

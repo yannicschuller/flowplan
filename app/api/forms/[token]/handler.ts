@@ -19,7 +19,7 @@ import { clientAddress } from "@/lib/client-address";
 import { contentLocale, withRequestLocale } from "@/lib/content-locale";
 import { createTicket, mailTicketLink } from "@/lib/service-desk";
 import { surveyClosed } from "@/lib/survey";
-import { readTextLimited } from "@/lib/request-body";
+import { readFormData, readTextLimited } from "@/lib/request-body";
 import { mapAsync } from "../../../../lib/each-async";
 import { publishUpload } from "@/lib/storage";
 
@@ -39,7 +39,7 @@ async function handlePOST(
     const uploads = new Map<string, File[]>();
     if (req.headers.get("content-type")?.startsWith("multipart/form-data")) {
       requireBodySize(req, FORM_TOTAL_BYTES + 200_000, "Antwort zu groß.");
-      const data = await req.formData();
+      const data = await readFormData(req);
       raw = String(data.get("payload") || "");
       let total = 0;
       for (const field of fileFields) {
