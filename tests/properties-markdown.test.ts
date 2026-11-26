@@ -105,3 +105,15 @@ test("regression: no-break spaces and byte order marks at a block's ends, line s
   }
   assert.equal(sourceView("<p>\u00a0x</p>").markdown, "&#160;x\n");
 });
+test("regression: \"!\" and \"^\" right before a link, \"^[\" in a link's text", () => {
+  for (const html of [
+    '<p>!<a href="https://example.test/">link</a></p>',
+    '<h1>^<a href="https://example.test/">!</a></h1>',
+    '<p><a href="https://example.test/">^[x]</a></p>',
+  ]) {
+    const { markdown, before, back } = sourceView(html);
+    assert.equal(back, before, markdown);
+    assert.equal(exported(html).back, before, markdown);
+  }
+  assert.equal(sourceView('<p>!<a href="https://example.test/">link</a></p>').markdown, "\\![link](<https://example.test/>)\n");
+});

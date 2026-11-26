@@ -63,6 +63,8 @@ export function markdownText(text: string) {
     .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
     // " ^word" would read as a block id marker (lib/markdown-import.ts).
     .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^")
+    // "^[" would read as an inline footnote inside a link's text.
+    .replace(/\^(?=\\\[)/g, "\\^")
     // Bare web and mail addresses stay text: unescaped, GitHub Markdown
     // would make them links (with the backslashes above in the address).
     .replace(/(?<=[A-Za-z]):\/\//g, "\\://")
@@ -377,7 +379,11 @@ export function htmlToMarkdown(
       node.forEach((child, _offset, index) => {
         const previous = index > 0 ? edge(node.child(index - 1), true) : "",
           next = index < node.childCount - 1 ? edge(node.child(index + 1), false) : "";
-        result += inline(child, inTable, previous, next, result.slice(-1));
+        const piece = inline(child, inTable, previous, next, result.slice(-1));
+        // "!" or "^" right before a link would make it an image or an
+        // inline footnote ("^[…]"): escaped there.
+        if (piece[0] === "[" && /[!^]$/.test(result)) result = result.slice(0, -1) + "\\" + result.slice(-1);
+        result += piece;
       });
       return result;
     }
