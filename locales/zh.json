@@ -1448,7 +1448,6 @@
   "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.": "账户已创建。{0} 会收到一封带有设置密码链接的邮件。该链接有效期为 7 天，且只能使用一次；可在账户中通过“重新发送链接”获取新链接。",
   "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.": "账户已创建。此实例不发送邮件：请自行将链接交给 {0}。该链接有效期为 7 天，且只能使用一次——持有链接的人即可设置密码。在你于账户中将地址标记为已确认之前，该地址保持未确认状态。",
   "Account deleted": "账户已删除",
-  "Account menu": "账户菜单",
   "Account not found.": "未找到账户。",
   "account.": "账户。",
   "Accounting": "会计",

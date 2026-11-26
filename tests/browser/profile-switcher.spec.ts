@@ -81,8 +81,12 @@ for (const phone of [false, true]) {
       const menu = await openWorkspaceMenu(page);
       const entry = menu.getByRole("menuitem", { name: "Instanz wechseln …" });
       await expect(entry).toBeVisible();
-      // Below the workspaces: the last entry of the menu.
-      await expect(menu.getByRole("menuitem").last()).toHaveText("Instanz wechseln …");
+      // Below the workspaces, the last entry of their group; the account's
+      // entries follow (#565), signing out last.
+      const texts = await menu.getByRole("menuitem").allTextContents();
+      expect(texts[texts.indexOf("Instanz wechseln …") - 1]).toBe("Arbeitsbereich erstellen");
+      expect(texts[texts.indexOf("Instanz wechseln …") + 1]).toMatch(/^(Dunkles|Helles) Design$/);
+      expect(texts.at(-1)).toBe("Abmelden");
       await entry.click();
       await expect(menu).toBeHidden();
       expect(await calls(page)).toEqual({ switcher: [[]], profiles: [] });
@@ -95,12 +99,9 @@ for (const phone of [false, true]) {
       await press(page, 800);
       await expect.poll(async () => (await calls(page)).switcher.length).toBe(2);
       expect((await calls(page)).profiles).toHaveLength(0);
-      // The row's own "⋯" keeps its menu (wider windows).
-      if (!phone) {
-        await page.locator(".profile-account-menu").click();
-        await expect(page.getByRole("menuitem", { name: "Abmelden" })).toBeVisible();
-        await page.keyboard.press("Escape");
-      }
+      // The row has no menu of its own any more (#565): the long press is
+      // its only action.
+      await expect(page.locator(".sidebar .profile").getByRole("button", { name: "Kontomenü" })).toHaveCount(0);
     });
 
     test("older apps with openProfiles only: the entry opens their profiles", async ({ page }) => {

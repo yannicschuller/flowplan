@@ -4611,8 +4611,8 @@ export default function WorkspaceApp({
     // Signed in through a reverse proxy: its portal signs out as well.
     location.href = done.redirect || "/";
   };
-  // The account menu's entries in the phone's "Mehr" sheet (#197), in the
-  // order of the "⋯" menu; signing out comes last, set apart.
+  // The account's entries: in the workspace menu (#565) and in the phone's
+  // "Mehr" sheet (#197); signing out comes last, set apart.
   const legal = boot.instance?.legal;
   const accountItems: SidebarAccountItem[] = [
     { id: "theme", label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), icon: dark ? Sun : Moon, keepOpen: true, onSelect: toggleTheme },
@@ -4748,7 +4748,18 @@ export default function WorkspaceApp({
             <CaretDown size={14} />
           </Dropdown.Trigger>
           <Dropdown.Portal>
-            <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
+            {/* One menu for the workspace and the account (#565): who is
+                signed in, the workspaces, then the account's entries (on
+                phones also in "Mehr", #197) and signing out last, apart. */}
+            <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown workspace-menu" align="start" sideOffset={4}>
+              <Dropdown.Label className="workspace-menu-person">
+                <Avatar name={boot.user.name} userId={boot.user.id} small />
+                <span className="workspace-menu-person-name">
+                  {boot.user.name}
+                  {boot.user.email && <small>{boot.user.email}</small>}
+                </span>
+              </Dropdown.Label>
+              <Dropdown.Separator className="dropdown-separator" />
               {boot.workspaces.map((w) => (
                 <Dropdown.Item
                   className="dropdown-item"
@@ -4781,6 +4792,29 @@ export default function WorkspaceApp({
                   </Dropdown.Item>
                 </>
               )}
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Group aria-label={t("Konto", "Account")}>
+                {accountItems.map(({ id, label, icon: ItemIcon, href, external, onSelect }) =>
+                  href ? (
+                    <Dropdown.Item key={id} className="dropdown-item" asChild>
+                      <a href={href} {...(external ? { target: "_blank", rel: "noopener" } : {})}>
+                        <ItemIcon />
+                        {label}
+                      </a>
+                    </Dropdown.Item>
+                  ) : (
+                    <Dropdown.Item key={id} className="dropdown-item" onSelect={onSelect}>
+                      <ItemIcon />
+                      {label}
+                    </Dropdown.Item>
+                  ),
+                )}
+              </Dropdown.Group>
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Item className="dropdown-item workspace-menu-sign-out" onSelect={signOutItem.onSelect}>
+                <SignOut />
+                {signOutItem.label}
+              </Dropdown.Item>
             </Dropdown.Content>
           </Dropdown.Portal>
         </Dropdown.Root>
@@ -5327,58 +5361,9 @@ export default function WorkspaceApp({
               {boot.user.name}
               <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
             </span>
-            {/* On phones the account menu's entries are part of "Mehr"
-                (#197); wider windows keep the "⋯" menu. */}
+            {/* On phones the account's entries are in "Mehr" (#197); wider
+                windows have them in the workspace menu at the top (#565). */}
             <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
-            <Dropdown.Root>
-              <Dropdown.Trigger className="icon-button profile-account-menu" aria-label={t("Kontomenü", "Account menu")}>
-                <DotsThree size={22} />
-              </Dropdown.Trigger>
-              <Dropdown.Portal>
-                <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
-                  <Dropdown.Item
-                    className="dropdown-item"
-                    onSelect={() => {
-                      toggleTheme();
-                    }}
-                  >
-                    {dark ? <Sun /> : <Moon />}
-                    {dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme")}
-                  </Dropdown.Item>
-                  <Dropdown.Item className="dropdown-item" onSelect={() => void signOut()}>
-                    <SignOut />
-                    {t("Abmelden", "Sign out")}
-                  </Dropdown.Item>
-                  <Dropdown.Separator className="dropdown-separator" />
-                  <Dropdown.Item className="dropdown-item" asChild>
-                    <a href="#settings/about">
-                      <InfoIcon />
-                      {t("Über Flowplan", "About Flowplan")}
-                    </a>
-                  </Dropdown.Item>
-                  <Dropdown.Item className="dropdown-item" onSelect={openWhatsNew}>
-                    <Gift />
-                    {t("Was ist neu", "What’s new")}
-                  </Dropdown.Item>
-                  {boot.instance?.legal?.imprint && (
-                    <Dropdown.Item className="dropdown-item" asChild>
-                      <a href={boot.instance.legal.imprint} target="_blank" rel="noopener">
-                        <Scales />
-                        {t("Impressum", "Legal notice")}
-                      </a>
-                    </Dropdown.Item>
-                  )}
-                  {boot.instance?.legal?.privacy && (
-                    <Dropdown.Item className="dropdown-item" asChild>
-                      <a href={boot.instance.legal.privacy} target="_blank" rel="noopener">
-                        <ShieldCheck />
-                        {t("Datenschutz", "Privacy")}
-                      </a>
-                    </Dropdown.Item>
-                  )}
-                </Dropdown.Content>
-              </Dropdown.Portal>
-            </Dropdown.Root>
           </div>
         </div>
         {/* Over the page (open drawer) the sidebar has a width of its own. */}
