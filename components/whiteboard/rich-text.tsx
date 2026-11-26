@@ -8,7 +8,7 @@
 import type { ReactNode } from "react";
 import { LinkSimple } from "@phosphor-icons/react";
 import { parseRichText, type Span } from "@/lib/whiteboard-richtext";
-import { parseElementLink, safeHref } from "@/lib/whiteboard-links";
+import { mentionHref, parseElementLink, parseMention, safeHref } from "@/lib/whiteboard-links";
 import { itemTags, tagColor } from "@/lib/whiteboard-tags";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
 
@@ -18,6 +18,19 @@ function SpanView({ span }: { span: Span }) {
   if (span.italic) node = <em>{node}</em>;
   if (span.underline) node = <u>{node}</u>;
   if (!span.href) return <>{node}</>;
+  // Mentions (#567): a page, whiteboard, journal day or record opens in
+  // Flowplan (the same address as a page link in a document); a person is
+  // a name.
+  const mention = parseMention(span.href);
+  if (mention?.kind === "person") return <span className="wb-mention wb-mention-person">{node}</span>;
+  if (mention) {
+    const href = mentionHref(mention);
+    return (
+      <a className="wb-link wb-mention" href={href} data-wb-href={href} data-wb-mention="page">
+        {node}
+      </a>
+    );
+  }
   const element = parseElementLink(span.href);
   if (element && !element.pageId)
     return (
@@ -80,7 +93,7 @@ export function TagChips({ item }: { item: WhiteboardItem }) {
 // A link set on the element: a small badge at its top right corner.
 export function LinkBadge({ item }: { item: WhiteboardItem }) {
   const href = safeHref(item.link);
-  if (!href || item.type === "connector" || item.type === "pen" || item.type === "comment") return null;
+  if (!href || parseMention(href)?.kind === "person" || item.type === "connector" || item.type === "pen" || item.type === "comment") return null;
   const element = parseElementLink(href);
   const size = 22;
   return (

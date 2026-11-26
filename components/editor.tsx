@@ -3,15 +3,14 @@ import { announcePageSaved } from "@/lib/page-saved";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
-import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml, plainLines } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/server-message";
 import { reveal } from "@/lib/motion";
 import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
 import { useLocale, useT } from "./i18n";
-import { LOCALE_TAG } from "@/lib/locale-tag";
-import { journalDayQuery, localDate as todayLocal } from "@/lib/journal-links";
+import { MentionPicker, linkJournalDay, type MentionChoice, type ReferenceOptionProps } from "./mention-picker";
+import { localDate as todayLocal } from "@/lib/journal-links";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { atOpensMention, typedMenu } from "@/lib/mention-trigger";
@@ -157,7 +156,7 @@ import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
 import { readSlashRecents, rememberSlashCommand, slashSections, SUB_PAGE_KEYWORDS, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
-import { type ComponentProps, Fragment, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import {
@@ -282,7 +281,6 @@ import { ListTidy, TabStaysInText } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
 import { chipTitle, pageChipContent } from "@/lib/page-chip";
-import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { isCancelled, sendWithProgress } from "@/lib/upload-progress";
 import { addPlaceholder, announce, placeholderPosition, removePlaceholder, UploadPlaceholders } from "@/lib/upload-placeholders";
@@ -537,8 +535,6 @@ export default function DocumentEditor({
   useEffect(() => () => clearTimeout(htmlTimer.current), []);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
-    // The highlighted hit of the mention dialog by its key; null is the first.
-    [referenceActive, setReferenceActive] = useState<string | null>(null),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
   // The mention dialog was opened by typing "@" (not from the "/" menu):
@@ -2945,33 +2941,10 @@ export default function DocumentEditor({
     if (node.type.name === "heading")
       headings.push({ text: node.textContent, pos, level: node.attrs.level });
   });
-  // The mention dialog: what matches the typed text.
-  const referenceTerm = referenceQuery.trim().toLowerCase();
-  // Pages match by title or by an alias ("Chauffage · PAC"). Only while the
-  // dialog is open: a workspace with years of journal days has thousands.
-  const referencePages = !references
-    ? []
-    : pages
-    .flatMap((p): { page: Page; alias?: string }[] => {
-      if (p.id === pageId) return [];
-      if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
-      const alias = matchedAlias(p.title, pageAliases(p), referenceTerm);
-      return alias ? [{ page: p, alias }] : [];
-    })
-    // Journal days after all other pages (a journal has hundreds).
-    .sort((a, b) => Number(!!a.page.journal_date) - Number(!!b.page.journal_date));
-  // "@heute", "@gestern", "@2026-10-27": a link to that day of the journal.
-  const referenceDay = journalDayQuery(referenceTerm);
-  const journalDays = new Set(references ? pages.filter((p) => p.journal_date).map((p) => p.journal_date) : []);
+  // The mention dialog's day of the journal (components/mention-picker.tsx).
   async function insertDayLink(date: string) {
     try {
-      const link = await api<{ dayId: string; title: string }>("/api/command", {
-        action: "journal.link",
-        workspaceId: pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id,
-        fromPageId: pageId,
-        date,
-        today: todayLocal(),
-      });
+      const link = await linkJournalDay(pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id || "", pageId, date);
       editor
         ?.chain()
         .focus()
@@ -2983,7 +2956,6 @@ export default function DocumentEditor({
       onError((e as Error).message);
     }
   }
-  const referenceMembers = members.filter((u) => !referenceTerm || u.name.toLowerCase().includes(referenceTerm));
   const workspaceId = pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id || "";
   // The id of the block at `pos`: its own, a new one (written into the
   // document, not undone with ⌘Z), or – reading only – one the server
@@ -3048,11 +3020,6 @@ export default function DocumentEditor({
   // The mention dialog's hits in the order they are shown; mouse and
   // keyboard pick through the same list.
   const referenceBlockHits = useBlockReferences(workspaceId, references ? referenceQuery : "", pageId);
-  const referenceRecordHits = useRecordReferences(
-    pages.find((p) => p.id === pageId)?.workspace_id,
-    references ? referenceQuery : "",
-    rowId,
-  );
   const referenceBlocks = [
     ...ownHeadingReferences(rowId ? [] : headings, referenceQuery, pageId, pages.find((p) => p.id === pageId)?.title || ""),
     ...referenceBlockHits,
@@ -3083,45 +3050,21 @@ export default function DocumentEditor({
       onError(serverMessage((e as Error).message) || t("Der Link konnte nicht eingefügt werden.", "The link could not be inserted."));
     }
   };
-  // A day without a journal entry (other than today) cannot be linked.
-  const referenceDayOpen = !!referenceDay && (referenceDay.date === todayLocal() || journalDays.has(referenceDay.date));
-  const referenceItems: { key: string; pick: () => void }[] = [
-    ...(referenceDay && referenceDayOpen ? [{ key: "day", pick: () => void insertDayLink(referenceDay.date) }] : []),
-    ...referencePages.map(({ page: p, alias }) => ({
-      key: `page:${p.id}`,
-      pick: () => {
-        editor
-          ?.chain()
-          .focus()
-          // Found by an alias: the alias is the link text.
-          .insertContent(pageChipContent(`/#page=${p.id}`, alias || p.title || t("Ohne Titel", "Untitled")))
-          .run();
-        setReferences(false);
-        setReferenceQuery("");
-      },
-    })),
-    ...referenceBlocks.map((hit) => ({ key: blockReferenceKey(hit), pick: () => void pickBlock(hit) })),
-    ...referenceRecordHits.map((record) => ({
-      key: `record:${record.rowId}`,
-      pick: () => {
-        editor
-          ?.chain()
-          .focus()
-          .insertContent(pageChipContent(`/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}`, record.alias || record.title || t("Ohne Titel", "Untitled")))
-          .run();
-        setReferences(false);
-        setReferenceQuery("");
-      },
-    })),
-    ...referenceMembers.map((u) => ({
-      key: `member:${u.id}`,
-      pick: () => {
-        editor?.chain().focus().insertContent({ type: "mention", attrs: { userId: u.id, label: u.name } }).run();
-        setReferences(false);
-        setReferenceQuery("");
-      },
-    })),
-  ];
+  // A hit of the mention dialog goes into the text as a page chip, a person
+  // as a mention.
+  const pickReference = (choice: MentionChoice) => {
+    if (choice.kind === "day") return void insertDayLink(choice.date);
+    const chain = editor?.chain().focus();
+    if (choice.kind === "page") chain?.insertContent(pageChipContent(`/#page=${choice.page.id}`, choice.title));
+    else if (choice.kind === "record")
+      chain?.insertContent(pageChipContent(`/${pageLocationHash({ pageId: choice.record.id, rowId: choice.record.rowId })}`, choice.title));
+    else chain?.insertContent({ type: "mention", attrs: { userId: choice.member.id, label: choice.member.name } });
+    chain?.run();
+    setReferences(false);
+    setReferenceQuery("");
+  };
+  const referenceBlockItems = referenceBlocks.map((hit) => ({ key: blockReferenceKey(hit), pick: () => void pickBlock(hit) }));
+  const blocksLabelId = useId();
   // Opened by "@" and left without a hit: the "@" and what was searched
   // are typed into the text, as without the dialog.
   const typeReferenceAt = () => {
@@ -3129,39 +3072,6 @@ export default function DocumentEditor({
     editor?.chain().focus().insertContent({ type: "text", text: `@${referenceQuery}` }).run();
     setReferences(false);
     setReferenceQuery("");
-  };
-  // The highlight follows its hit, not its place: records and blocks that
-  // arrive later from the server do not move it. It starts at the first hit
-  // when the dialog opens or the search changes, and goes back there when
-  // its hit is gone. It stays in view; the field names it
-  // (aria-activedescendant).
-  const referenceListId = useId();
-  const referenceFound = referenceItems.findIndex((item) => item.key === referenceActive);
-  const referenceIndex = Math.max(0, referenceFound);
-  const referenceOptionId = (index: number) => `${referenceListId}-option-${index}`;
-  useEffect(() => {
-    setReferenceActive(null);
-  }, [references, referenceQuery]);
-  const referenceGone = referenceActive !== null && referenceFound < 0;
-  useEffect(() => {
-    if (referenceGone) setReferenceActive(null);
-  }, [referenceGone]);
-  useEffect(() => {
-    if (references) document.getElementById(referenceOptionId(referenceIndex))?.scrollIntoView({ block: "nearest" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [references, referenceIndex]);
-  const referenceIndexes = new Map(referenceItems.map((item, i) => [item.key, i]));
-  const referenceOption = (key: string): ReferenceOptionProps => {
-    const index = referenceIndexes.get(key) ?? -1;
-    return {
-      type: "button",
-      role: "option",
-      id: referenceOptionId(index),
-      "aria-selected": index === referenceIndex,
-      "data-active": index === referenceIndex,
-      onMouseMove: () => index !== referenceIndex && setReferenceActive(key),
-      onClick: () => referenceItems[index]?.pick(),
-    };
   };
   // A pasted block link: "Page › start of the block" as a page link. The
   // server answers only with what this person may read.
@@ -4296,107 +4206,32 @@ export default function DocumentEditor({
           onClose={() => setMath(null)}
         />
       )}
-      <Modal
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          editor?.commands.focus();
-        }}
+      <MentionPicker
         open={references}
-        onEscapeKeyDown={() => {
+        query={referenceQuery}
+        onQuery={setReferenceQuery}
+        onPick={pickReference}
+        onUnmatched={() => {
           if (referenceByAt.current) typeReferenceAt();
         }}
         onClose={() => {
           setReferences(false);
           setReferenceQuery("");
         }}
-        title={t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person")}
-      >
-        <div className="reference-list">
-          <input
-            className="input"
-            autoFocus
-            role="combobox"
-            aria-expanded="true"
-            aria-controls={`${referenceListId}-list`}
-            aria-autocomplete="list"
-            aria-activedescendant={referenceItems.length ? referenceOptionId(referenceIndex) : undefined}
-            value={referenceQuery}
-            onChange={(e) => setReferenceQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return;
-              // The arrows move the highlight while the focus stays here.
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                const count = referenceItems.length;
-                if (count) setReferenceActive(referenceItems[(referenceIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count].key);
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                const item = referenceItems[referenceIndex];
-                if (item) item.pick();
-                else if (referenceByAt.current) typeReferenceAt();
-              }
-            }}
-            placeholder={t("Suchen …", "Search …")}
-            aria-label={t("Seiten, Einträge und Personen suchen", "Search pages, records and people")}
-          />
-          <div
-            id={`${referenceListId}-list`}
-            role="listbox"
-            aria-label={t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person")}
-          >
-            {referenceDay && (
-              <div role="group" aria-labelledby={`${referenceListId}-day`}>
-                <h3 id={`${referenceListId}-day`} role="presentation">{t("Journal", "Journal")}</h3>
-                <button
-                  className="reference-day"
-                  disabled={!referenceDayOpen}
-                  {...(referenceDayOpen ? referenceOption("day") : { role: "option", "aria-selected": false, "aria-disabled": true })}
-                >
-                  <CalendarBlank />
-                  <span>
-                    {referenceDay.label === "today"
-                      ? t("Heute", "Today")
-                      : referenceDay.label === "yesterday"
-                        ? t("Gestern", "Yesterday")
-                        : referenceDay.date}
-                    <small className="muted"> · {dayLabel(referenceDay.date)}</small>
-                    {!referenceDayOpen && <small className="muted"> · {t("kein Eintrag", "no entry")}</small>}
-                  </span>
-                </button>
-              </div>
-            )}
-            {referencePages.length > 0 && (
-              <div role="group" aria-labelledby={`${referenceListId}-pages`}>
-                <h3 id={`${referenceListId}-pages`} role="presentation">{t("Seiten", "Pages")}</h3>
-                {referencePages.map(({ page: p, alias }) => (
-                  <button key={p.id} {...referenceOption(`page:${p.id}`)}>
-                    <PageIcon name={shownPageIcon(p.icon, p.kind)} />
-                    {p.title}
-                    {alias && <span className="alias-hit"> · {alias}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            <BlockReferences hits={referenceBlocks} labelId={`${referenceListId}-blocks`} option={referenceOption} />
-            <RecordReferences
-              hits={referenceRecordHits}
-              query={referenceQuery}
-              labelId={`${referenceListId}-records`}
-              option={referenceOption}
-            />
-            {referenceMembers.length > 0 && (
-              <div role="group" aria-labelledby={`${referenceListId}-people`}>
-                <h3 id={`${referenceListId}-people`} role="presentation">{t("Personen", "People")}</h3>
-                {referenceMembers.map((u) => (
-                  <button key={u.id} {...referenceOption(`member:${u.id}`)}>
-                    @{u.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </Modal>
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus();
+        }}
+        pages={pages}
+        members={members}
+        workspaceId={pages.find((p) => p.id === pageId)?.workspace_id}
+        excludePageId={pageId}
+        excludeRowId={rowId}
+        extra={{
+          items: referenceBlockItems,
+          render: (option) => <BlockReferences hits={referenceBlocks} labelId={`${blocksLabelId}-blocks`} option={option} />,
+        }}
+      />
       <Modal
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -4539,77 +4374,6 @@ function bytesTo64(bytes: Uint8Array) {
 }
 function from64(value: string) {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
-}
-
-const dayFormat = new Intl.DateTimeFormat(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-const dayLabel = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`));
-
-type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string; icon?: string };
-// One hit of the mention dialog: an option of its list (see referenceOption).
-type ReferenceOptionProps = ComponentProps<"button"> & { "data-active": boolean };
-// Records for the mention dialog: the workspace search (kind "row") finds
-// them and leaves out what the person may not read.
-function useRecordReferences(workspaceId: string | undefined, query: string, exclude?: string) {
-  const [hits, setHits] = useState<RecordHit[]>([]);
-  const term = query.trim();
-  useEffect(() => {
-    if (!workspaceId || !term) {
-      setHits([]);
-      return;
-    }
-    let active = true;
-    const timer = setTimeout(() => {
-      api<(RecordHit & { rowId?: string })[]>(
-        `/api/search?workspace=${workspaceId}&kind=row&q=${encodeURIComponent(term)}`,
-      )
-        .then((found) => {
-          if (!active) return;
-          const seen = new Set<string>();
-          setHits(
-            found.filter((hit): hit is RecordHit => {
-              if (!hit.rowId || hit.rowId === exclude || seen.has(hit.rowId)) return false;
-              seen.add(hit.rowId);
-              return true;
-            }).slice(0, 20),
-          );
-        })
-        .catch(() => active && setHits([]));
-    }, 200);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [workspaceId, term, exclude]);
-  return hits;
-}
-function RecordReferences({
-  hits,
-  query,
-  labelId,
-  option,
-}: {
-  hits: RecordHit[];
-  query: string;
-  labelId: string;
-  option: (key: string) => ReferenceOptionProps;
-}) {
-  const t = useT();
-  return (
-    <div role="group" aria-labelledby={labelId}>
-      <h3 id={labelId} role="presentation">{t("Einträge", "Records")}</h3>
-      {!query.trim() && <p className="muted reference-hint">{t("Tippe, um Einträge aus Datenbanken zu finden.", "Type to find records in databases.")}</p>}
-      {hits.map((hit) => (
-        <button key={hit.rowId} {...option(`record:${hit.rowId}`)}>
-          <PageIcon name={shownPageIcon(hit.icon, "record")} />
-          <span>
-            {hit.title || t("Ohne Titel", "Untitled")}
-            {hit.alias && <span className="alias-hit"> · {hit.alias}</span>}
-            {hit.pageTitle && <small className="muted"> · {hit.pageTitle}</small>}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
 }
 
 // Headings and blocks for "@" (#88): this page's headings, and the
