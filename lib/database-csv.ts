@@ -93,6 +93,10 @@ function filesSplitter(split: (text: string) => string[]) {
 
 // The CSV text of `rows` with the columns `fields` (from viewCsvFields).
 // Text a spreadsheet would run as a formula gets an apostrophe (CSV_FORMULA).
+// The import (parseCsvFile) guesses the delimiter, so text with one of the
+// others it tries (tab, "|", ";", the record and unit separators) is quoted:
+// unquoted, a one-column CSV of "Name;Type" came back as two columns.
+const OTHER_DELIMITERS = /[\t|;\u001e\u001f]/;
 export function databaseCsv(fields: Field[], allFields: Field[], rows: Pick<Row, "cells">[], ctx: CsvContext) {
   const people = peopleLookup(ctx),
     files = filesLookup(ctx),
@@ -143,7 +147,10 @@ export function databaseCsv(fields: Field[], allFields: Field[], rows: Pick<Row,
       fields: fields.map((f) => f.name),
       data: rows.map((r) => fields.map((f) => cell(f, r.cells[f.id]))),
     },
-    { escapeFormulae: CSV_FORMULA },
+    {
+      escapeFormulae: CSV_FORMULA,
+      quotes: (value: unknown) => typeof value === "string" && OTHER_DELIMITERS.test(value),
+    },
   );
 }
 
