@@ -1194,6 +1194,19 @@ export const Media = Node.create({
         title: (el as HTMLElement).getAttribute("data-title") || "",
       }),
     },
+    // A presentation or text document (#562: .pptx, .odp, .docx, .odt – a
+    // .ppt or .doc only for download) as a card that opens the read-only
+    // content preview (components/office-viewer.tsx); the address in the
+    // inner link as above.
+    {
+      tag: "div[data-office-file]",
+      priority: 60,
+      getAttrs: (el) => ({
+        src: (el as HTMLElement).querySelector("a[href]")?.getAttribute("href") || "",
+        kind: "office",
+        title: (el as HTMLElement).getAttribute("data-title") || "",
+      }),
+    },
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
@@ -1266,6 +1279,16 @@ export const Media = Node.create({
           class: "sheet-block",
         },
         ["a", { href: src }, title || "CSV"],
+      ];
+    if (kind === "office" && /^\/api\/files\/[a-f0-9-]+$/.test(src))
+      return [
+        "div",
+        {
+          "data-office-file": "true",
+          "data-title": title || "Office",
+          class: "office-block",
+        },
+        ["a", { href: src }, title || "Office"],
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },

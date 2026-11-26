@@ -291,6 +291,7 @@ import { shortcutLetter } from "@/lib/keymap";
 import { isModelName } from "@/lib/model-formats";
 import { isHtmlName } from "@/lib/html-files";
 import { isSheetName } from "@/lib/sheet-files";
+import { isOfficeName } from "@/lib/office-files";
 import { useDatabaseEntries } from "./database-picker";
 // Blocks of the toolbar (#292) that go in at the caret, not in a block of
 // their own: they belong in the sentence.
@@ -2004,6 +2005,10 @@ export default function DocumentEditor({
       else if (isSheetName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
         // A spreadsheet (#402): a card that opens the table viewer (.xls: the download).
         content = { type: "media", attrs: { src: data.url, kind: "sheet", title: file.name } };
+      else if (isOfficeName(file.name) && /^\/api\/files\/[a-f0-9-]+$/.test(data.url))
+        // A presentation or text document (#562): a card that opens the
+        // content preview (.ppt, .doc: the download).
+        content = { type: "media", attrs: { src: data.url, kind: "office", title: file.name } };
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
         content = { type: "media", attrs: { src: data.url, kind: file.type.startsWith("video/") ? "video" : "audio", title: file.name } };
       else content = { type: "paragraph", content: [{ type: "text", text: file.name, marks: [{ type: "link", attrs: { href: data.url } }] }] };

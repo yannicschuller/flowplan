@@ -76,6 +76,13 @@
   ],
   "features": [
     {
+      "de": "Vorschau für Präsentationen und Textdokumente: .pptx und .odp zeigen Folie für Folie Titel, Aufzählungen, Tabellen, Bilder und Notizen (Pfeiltasten, Knöpfe oder Wischen), .docx und .odt Überschriften, Listen, Tabellen und Bilder – ohne genaues Layout, mit Download.",
+      "en": "Preview for presentations and text documents: .pptx and .odp files show titles, bullet points, tables, pictures and notes slide by slide (arrow keys, buttons or a swipe), .docx and .odt files headings, lists, tables and pictures – without the exact layout, with the download.",
+      "issues": [
+        562
+      ]
+    },
+    {
       "de": "Eigenes Profilbild: Konten mit E-Mail und Passwort laden unter Einstellungen → Konto & Sicherheit ein Bild hoch (PNG, JPEG, WebP oder GIF, bis 2 MB) oder entfernen es wieder. Bei SSO-Konten kommt das Bild weiterhin vom Identitätsanbieter.",
       "en": "Your own profile picture: accounts with e-mail and password upload a picture under Settings → Account & security (PNG, JPEG, WebP or GIF, up to 2 MB) or remove it again. SSO accounts still get their picture from the identity provider.",
       "issues": [
