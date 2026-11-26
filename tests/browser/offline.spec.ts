@@ -78,7 +78,8 @@ test("offline use is opt-in per device and its copies are removable", async ({
   await expect(page.getByText(/offline verfügbar\./)).toBeVisible({
     timeout: 120_000,
   });
-  await page.getByRole("button", { name: "Kontomenü" }).click();
+  // Signing out is in the workspace menu (#565).
+  await page.locator(".sidebar .workspace-switch").click();
   await page.getByRole("menuitem", { name: "Abmelden" }).click();
   await page.waitForURL((url) => url.hash === "");
   expect(await cached()).toEqual([]);

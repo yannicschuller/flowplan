@@ -54,7 +54,7 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   }
 
   // The account menu is part of the sheet (#197): no "⋯" in the profile
-  // row; design, about and what's new (#223) below a line, signing out
+  // row (wider windows: the workspace menu, #565); design, about and what's new (#223) below a line, signing out
   // last and apart.
   await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeHidden();
   const account = sheet(page).getByRole("group", { name: "Konto" });
@@ -121,8 +121,9 @@ test("wider windows keep the row of symbols", async ({ page }, info) => {
   const row = sidebar(page).locator(".sidebar-tools");
   await expect(row).toBeVisible();
   await expect(more(page)).toBeHidden();
-  // … and the account menu "⋯" (#197).
-  await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeVisible();
+  // The account's entries are in the workspace menu at the top (#565), not
+  // behind a "⋯" in the profile row.
+  await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toHaveCount(0);
   for (const name of PLACES) await expect(row.getByRole("button", { name, exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Medien", exact: true }).click();
   await expect(row.getByRole("button", { name: "Medien", exact: true })).toHaveClass(/selected/);

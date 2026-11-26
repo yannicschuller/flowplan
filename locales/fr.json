@@ -1448,7 +1448,6 @@
   "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.": "Compte créé. {0} reçoit un e-mail avec un lien pour définir le mot de passe. Il est valable 7 jours et une seule fois ; vous en obtenez un nouveau dans le compte avec « Renvoyer le lien ».",
   "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.": "Compte créé. Cette instance n’envoie pas d’e-mails : transmettez vous-même le lien à {0}. Il est valable 7 jours et une seule fois – qui le possède définit le mot de passe. L’adresse reste non confirmée jusqu’à ce que vous la marquiez comme confirmée dans le compte.",
   "Account deleted": "Compte supprimé",
-  "Account menu": "Menu du compte",
   "Account not found.": "Compte introuvable.",
   "account.": "compte.",
   "Accounting": "Comptabilité",

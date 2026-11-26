@@ -569,11 +569,6 @@ label.hit-check {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* The account menu's entries are in the "Mehr" sheet (#197): one button,
-     the name and status keep the room. */
-  .sidebar-bottom .profile-account-menu {
-    display: none;
-  }
   .sidebar-more {
     display: inline-flex;
     align-items: center;

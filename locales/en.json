@@ -1448,7 +1448,6 @@
   "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.": "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.",
   "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.": "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.",
   "Account deleted": "Account deleted",
-  "Account menu": "Account menu",
   "Account not found.": "Account not found.",
   "account.": "account.",
   "Accounting": "Accounting",

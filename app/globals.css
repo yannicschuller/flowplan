@@ -4939,6 +4939,41 @@ tr:hover .row-open,
   background: var(--border);
   margin: 5px;
 }
+/* The workspace menu (#565): who is signed in on top, the account's entries
+   below the workspaces, signing out last and apart. */
+.workspace-menu {
+  min-width: 250px;
+  max-width: min(320px, calc(100vw - 16px));
+}
+.workspace-menu-person {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px 4px;
+  cursor: default;
+}
+.workspace-menu-person-name {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace-menu-person-name,
+.workspace-menu-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-menu-person small {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.workspace-menu-sign-out {
+  margin-top: 2px;
+}
 .command-search {
   display: flex;
   align-items: center;

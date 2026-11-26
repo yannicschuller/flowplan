@@ -64,7 +64,8 @@ export function SidebarMore({
   signOut,
 }: {
   tools: SidebarTool[];
-  // The account menu's entries (phones; wider windows keep the "⋯" menu).
+  // The account's entries (phones; wider windows have them in the
+  // workspace menu at the top of the sidebar, #565).
   account?: SidebarAccountItem[];
   // Last and set apart, so it is not tapped by mistake.
   signOut?: SidebarAccountItem;

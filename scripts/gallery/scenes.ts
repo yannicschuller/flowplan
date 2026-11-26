@@ -193,14 +193,15 @@ async function openShare(page: Page, ctx: SceneContext) {
   else await button(page, "Share").click();
 }
 
-// The account menu: "⋯" next to the name, on phones in the "More" sheet.
+// The account menu: part of the workspace menu at the top of the sidebar
+// (#565), on phones in the "More" sheet.
 async function accountMenu(page: Page, ctx: SceneContext) {
   if (ctx.phone) {
     await openDrawer(page);
     await page.locator("aside.sidebar .sidebar-more").click();
     await waitDialog(page, "More");
   } else {
-    await button(page, "Account menu").click();
+    await page.locator("aside.sidebar .workspace-switch").click();
     await menu(page).waitFor();
   }
 }

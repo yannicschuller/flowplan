@@ -72,6 +72,13 @@
       "issues": [
         561
       ]
+    },
+    {
+      "de": "Das Menü des Arbeitsbereichs oben in der Seitenleiste zeigt, wer angemeldet ist, und enthält jetzt auch das frühere „⋯“-Kontomenü: Design, Über Flowplan, Was ist neu, Impressum, Datenschutz und zuletzt, abgesetzt, „Abmelden“.",
+      "en": "The workspace menu at the top of the sidebar shows who is signed in and now also holds the former “⋯” account menu: theme, About Flowplan, What’s new, legal notice, privacy and, last and set apart, “Sign out”.",
+      "issues": [
+        565
+      ]
     }
   ],
   "features": [

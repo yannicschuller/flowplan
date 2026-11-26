@@ -1448,7 +1448,6 @@
   "Account created. {0} gets an e-mail with a link to set the password. It is valid for 7 days and only once; you get a new one in the account with “Resend link”.": "Учётная запись создана. {0} получит письмо со ссылкой для установки пароля. Она действует 7 дней и только один раз; новую ссылку вы получите в учётной записи через «Отправить ссылку снова».",
   "Account created. This instance sends no e-mail: hand the link to {0} yourself. It is valid for 7 days and only once – whoever has it sets the password. The address stays unconfirmed until you mark it as confirmed in the account.": "Учётная запись создана. Этот экземпляр не отправляет письма: передайте ссылку {0} самостоятельно. Она действует 7 дней и только один раз – тот, у кого она есть, задаёт пароль. Адрес остаётся неподтверждённым, пока вы не отметите его как подтверждённый в учётной записи.",
   "Account deleted": "Учётная запись удалена",
-  "Account menu": "Меню учётной записи",
   "Account not found.": "Учётная запись не найдена.",
   "account.": "учётную запись.",
   "Accounting": "Бухгалтерия",
