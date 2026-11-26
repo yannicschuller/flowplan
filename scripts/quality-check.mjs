@@ -81,6 +81,9 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // 927.5, workflow 1032.5, home 790.5, settings 804.0, settings section
 // 890.3, administration 811.4, monitoring 839.2, push 819.7 KB; every
 // budget is about 3 % above.
+// 2026-11-26: upload progress (#561) and the office card (#562) in the
+// editor chunk the workflow page shares – measured 1063.0 KB, its budget
+// moves to 1070 KB.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
@@ -120,7 +123,7 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1063, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1070, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
