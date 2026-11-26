@@ -61,10 +61,12 @@ export const journalDate = z
     },
     "Ungültiges Datum.",
   );
-export const dayTitle = (date: string, format: DayTitleFormat = "long") => localDayTitle(date, contentLocale(), format);
-// The title a new day of `journalId` gets ("Titel des Tages", #560).
-export const journalDayTitle = async (journalId: string, date: string) =>
-  dayTitle(date, (await journalSettings(journalId)).options.dayTitleFormat);
+export const dayTitle = (date: string, format: DayTitleFormat = "long", pattern = "") => localDayTitle(date, contentLocale(), format, pattern);
+// The title a new day of `journalId` gets ("Titel des Tages", #560, #571).
+export async function journalDayTitle(journalId: string, date: string) {
+  const { options } = await journalSettings(journalId);
+  return dayTitle(date, options.dayTitleFormat, options.dayTitleCustom);
+}
 function shiftDay(date: string, days: number) {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -231,7 +233,7 @@ async function untouched(page: Page, doc: PMNode) {
   )
     return false;
   if (await hasEntryData(page.id)) return false;
-  if (!automaticDayTitle(page.title, page.journal_date!)) return false;
+  if (!automaticDayTitle(page.title, page.journal_date!, (await journalSettings(page.parent_id!)).options.dayTitleCustom)) return false;
   if (page.icon !== "day" || page.cover) return false;
   const used = async (sql: string) => !!(await one(sql, page.id));
   return !(

@@ -470,7 +470,7 @@ export function JournalView({
                       </span>
                       <span className="journal-day-name">
                         {weekday.format(utc(day.journal_date))}
-                        {!isAutoDayTitle(day.title, day.journal_date) && (
+                        {!isAutoDayTitle(day.title, day.journal_date, settings?.options?.dayTitleCustom) && (
                           <small>{day.title}</small>
                         )}
                         {day.excerpt && <span className="journal-day-excerpt">{day.excerpt}</span>}

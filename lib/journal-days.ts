@@ -263,7 +263,7 @@ const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 async function emptyDay(day: Page, today: string) {
   if (!day.journal_date || day.journal_date >= today || day.deleted_at) return false;
   if (day.locked || day.public_token || day.cover || day.icon !== "day") return false;
-  if (!automaticDayTitle(day.title, day.journal_date)) return false;
+  if (!automaticDayTitle(day.title, day.journal_date, (await journalSettings(day.parent_id!)).options.dayTitleCustom)) return false;
   if (await hasEntryData(day.id)) return false;
   const used = async (sql: string, ...args: string[]) => !!(await one(sql, ...args));
   if (

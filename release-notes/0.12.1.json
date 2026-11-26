@@ -6,6 +6,13 @@
       "issues": [
         569
       ]
+    },
+    {
+      "de": "Mehr Formen für den „Titel des Tages“ im Journal: kurz („Do., 26. Nov. 2026“), ISO-Datum mit Wochentag dahinter („2026-11-26 Do.“) oder davor („Do. 2026-11-26“) oder ein eigenes Muster wie „ddd DD.MM.YYYY“ mit Vorschau. Zu finden in den Journal-Einstellungen unter „Tage“.",
+      "en": "More forms for the journal’s “Day title”: short (“Thu, 26 Nov 2026”), the ISO date with the weekday after it (“2026-11-26 Thu”) or before it (“Thu 2026-11-26”), or a custom pattern such as “ddd DD.MM.YYYY” with a preview. In the journal settings under “Days”.",
+      "issues": [
+        571
+      ]
     }
   ],
   "improvements": [

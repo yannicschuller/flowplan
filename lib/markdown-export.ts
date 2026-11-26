@@ -14,7 +14,7 @@ import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole, spaceRole } from "./permissions";
-import { inPinJournal, lockedPageIds, pinJournalPageIds, requireUnlocked } from "./journal-extras";
+import { inPinJournal, journalDayTitlePattern, lockedPageIds, pinJournalPageIds, requireUnlocked } from "./journal-extras";
 import { encryptedPageIds, requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
@@ -36,7 +36,7 @@ import { exportName } from "./export-name";
 // from the database, so they may return a promise (withLookups in render()).
 type AsyncMarkdownContext = Awaitable<MarkdownContext>;
 import { contentLocale, ct } from "./content-locale";
-import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
+import { dayTitle as localDayTitle, dayTitleFormatOf } from "./journal-title";
 import { dashboardSummary } from "./dashboard";
 import { inkPicture } from "./ink-export";
 import { notebookPaper, notebookSheets, notebookText } from "./notebook";
@@ -672,6 +672,12 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     result.flowplan = flowplan;
     return result;
   }
+  // The custom day title pattern of each journal exported (#571), read once.
+  const patterns = new Map<string, Promise<string>>();
+  const dayTitlePattern = (journalId: string) => {
+    if (!patterns.has(journalId)) patterns.set(journalId, journalDayTitlePattern(journalId));
+    return patterns.get(journalId)!;
+  };
   for (const page of selected) {
     const path = paths.get(page.id)!,
       ctx = context(path, page);
@@ -690,9 +696,12 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         : {}),
     };
     // A day's own title in the language of the export (it was named in the
-    // language of whoever opened it first), unless somebody renamed it. A
-    // title that is the ISO date ("Titel des Tages", #560) has no language.
-    const heading = day && page.title !== day && isAutoDayTitle(page.title, day) ? localDayTitle(day, contentLocale()) : page.title;
+    // language of whoever opened it first), in the form it was made in
+    // ("Titel des Tages", #560, #571), unless somebody renamed it. A title
+    // that is the ISO date has no language.
+    const pattern = day && page.parent_id ? await dayTitlePattern(page.parent_id) : "";
+    const form = day && page.title !== day ? dayTitleFormatOf(page.title, day, pattern) : null;
+    const heading = day && form ? localDayTitle(day, contentLocale(), form, pattern) : page.title;
     let markdown = (Object.keys(front).length ? toFrontmatter(front) + "\n" : "") + `# ${markdownText(heading)}\n\n`;
     if (page.cover.startsWith("/api/files/")) {
       const cover = await ctx.url(page.cover);

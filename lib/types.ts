@@ -409,8 +409,10 @@ export type Bootstrap = {
   pageCounts?: PageCounts;
   // Journals whose days show differently in the page tree (lib/journal-nav.ts).
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
-  // Journals whose new days are titled with the ISO date (#560, lib/journal-title.ts).
+  // Journals whose new days get another title than the long one, and the
+  // custom patterns of journals (#560, #571, lib/journal-title.ts).
   journalDayTitle?: Record<string, import("./journal-title").DayTitleFormat>;
+  journalDayTitleCustom?: Record<string, string>;
   favorites: string[];
   // Journals whose "Heute" link is a favourite (#537, lib/today-favorites.ts).
   todayFavorites?: string[];

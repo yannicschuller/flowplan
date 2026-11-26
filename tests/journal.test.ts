@@ -208,7 +208,7 @@ test("Titel des Tages: new days get the ISO date; existing and renamed days keep
   const long = await rollIso("2026-11-20");
   assert.equal((await page(long)).title, "Freitag, 20. November 2026");
   assert.equal((await bootstrap(user, wid)).journalDayTitle?.[isoId], undefined);
-  await assert.rejects(async () => await setFormat("short"));
+  await assert.rejects(async () => await setFormat("fancy"));
   await setFormat("iso");
   assert.equal((await bootstrap(user, wid)).journalDayTitle?.[isoId], "iso");
   const iso = await rollIso("2026-11-21");
@@ -228,4 +228,112 @@ test("Titel des Tages: new days get the ISO date; existing and renamed days keep
   assert.equal((await page(monday)).title, "2026-11-23");
   assert.equal((await page(sunday)).title, "Urlaub");
   assert.equal((await page(sunday)).deleted_at, null);
+});
+
+test("Titel des Tages: the presets in every language, all count as automatic (#571)", async () => {
+  const { DAY_TITLE_FORMATS, dayTitle: localTitle, isAutoDayTitle, automaticDayTitle, dayTitleFormatOf } = await import("../lib/journal-title");
+  const { LOCALES } = await import("../lib/i18n");
+  const date = "2026-11-26";
+  const expected = {
+    en: ["Thursday, 26 November 2026", "Thu, 26 Nov 2026", "2026-11-26", "2026-11-26 Thu", "Thu 2026-11-26"],
+    de: ["Donnerstag, 26. November 2026", "Do., 26. Nov. 2026", "2026-11-26", "2026-11-26 Do.", "Do. 2026-11-26"],
+  } as const;
+  for (const [locale, titles] of Object.entries(expected))
+    assert.deepEqual((["long", "short", "iso", "iso-weekday", "weekday-iso"] as const).map((format) => localTitle(date, locale as "en", format)), titles, locale);
+  // Whatever the journal's choice now: every preset in every language is
+  // untouched (spaces and capitals aside), and the export writes it in its
+  // language in the same form.
+  for (const format of DAY_TITLE_FORMATS.filter((f) => f !== "custom"))
+    for (const locale of LOCALES) {
+      const title = localTitle(date, locale, format);
+      assert.ok(isAutoDayTitle(title, date), `${format} ${locale} ${title}`);
+      assert.ok(automaticDayTitle(` ${title.toUpperCase()} `, date), `${format} ${locale} ${title}`);
+      assert.ok(!isAutoDayTitle(title, "2026-11-27"), `${format} ${locale} for another day`);
+      assert.equal(localTitle(date, locale, dayTitleFormatOf(title, date)!), title, `${format} ${locale} form`);
+    }
+  assert.equal(dayTitleFormatOf("2026-11-26 Thu", date), "iso-weekday");
+  assert.equal(localTitle(date, "de", dayTitleFormatOf("Thu 2026-11-26", date)!), "Do. 2026-11-26");
+  assert.equal(dayTitleFormatOf("Urlaub", date), null);
+  assert.ok(!automaticDayTitle("Thu 2026-11-26 Urlaub", date));
+});
+
+test("Titel des Tages: a custom pattern of tokens, recognised as the journal stores it (#571)", async () => {
+  const { dayTitle: localTitle, isAutoDayTitle, automaticDayTitle, validDayTitlePattern } = await import("../lib/journal-title");
+  const date = "2026-03-05";
+  const custom = (pattern: string, locale: "de" | "en" = "en") => localTitle(date, locale, "custom", pattern);
+  assert.equal(custom("YYYY YY MMMM MMM MM M DD D dddd ddd"), "2026 26 March Mar 03 3 05 5 Thursday Thu");
+  assert.equal(custom("dddd, D. MMMM YYYY", "de"), "Donnerstag, 5. März 2026");
+  assert.equal(custom("ddd DD.MM.YYYY", "de"), "Do. 05.03.2026");
+  assert.equal(custom("[Day] D [of] MMMM"), "Day 5 of March");
+  assert.equal(custom("  YYYY-MM-DD (ddd)  "), "2026-03-05 (Thu)");
+  // Literal letters that are tokens ("D" of "Day") are replaced – hence the brackets.
+  assert.equal(custom("Day D"), "5ay 5");
+  // Empty, without a token or too long: the long title.
+  for (const pattern of ["", "   ", "[Journal D]", "Tagebuch", `YYYY${"x".repeat(61)}`]) {
+    assert.ok(!validDayTitlePattern(pattern), pattern);
+    assert.equal(custom(pattern), "Thursday, 5 March 2026", pattern);
+  }
+  // Recognised with the journal's pattern (in every language), not without it.
+  const title = custom("ddd DD.MM.YYYY", "de");
+  assert.ok(isAutoDayTitle(title, date, "ddd DD.MM.YYYY"));
+  assert.ok(automaticDayTitle(custom("ddd DD.MM.YYYY", "en"), date, "ddd DD.MM.YYYY"));
+  assert.ok(!isAutoDayTitle(title, date));
+  assert.ok(!automaticDayTitle(title, date, "YYYY/MM/DD"));
+});
+
+test("Titel des Tages: new presets and a custom pattern for new days, offline too (#571)", async () => {
+  const { emptyJournalDays } = await import("../lib/journal-days");
+  const journalId = (
+    (await command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "Muster-Journal", kind: "journal" })) as { id: string }
+  ).id;
+  const journal = async () => (await one<Page>("SELECT * FROM pages WHERE id=?", journalId))!;
+  const roll = async (day: string) => (await rollJournal(user, await journal(), day, day)).dayId;
+  const page = async (pageId: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
+  const settings = async (options: Record<string, string>) => await command(user, { action: "journal.settings", pageId: journalId, options });
+  // What the bootstrap sends for days written offline.
+  const boot = async () => {
+    const b = await bootstrap(user, wid);
+    return [b.journalDayTitle?.[journalId], b.journalDayTitleCustom?.[journalId]];
+  };
+  assert.deepEqual(await boot(), [undefined, undefined]);
+  await settings({ dayTitleFormat: "weekday-iso" });
+  assert.deepEqual(await boot(), ["weekday-iso", undefined]);
+  const friday = await roll("2026-11-20");
+  assert.equal((await page(friday)).title, "Fr. 2026-11-20");
+  await settings({ dayTitleFormat: "short" });
+  assert.deepEqual(await boot(), ["short", undefined]);
+  const saturday = await roll("2026-11-21");
+  assert.equal((await page(saturday)).title, "Sa., 21. Nov. 2026");
+  // The empty day before, titled in another preset, was untouched: trashed.
+  assert.ok((await page(friday)).deleted_at);
+  // A pattern longer than 64 characters is refused.
+  await assert.rejects(async () => await settings({ dayTitleCustom: `YYYY${"x".repeat(61)}` }));
+  await settings({ dayTitleFormat: "custom", dayTitleCustom: " ddd DD.MM.YYYY " });
+  assert.deepEqual(await boot(), ["custom", "ddd DD.MM.YYYY"]);
+  const sunday = await roll("2026-11-22");
+  assert.equal((await page(sunday)).title, "So. 22.11.2026");
+  assert.ok((await page(saturday)).deleted_at);
+  const monday = await roll("2026-11-23");
+  assert.equal((await page(monday)).title, "Mo. 23.11.2026");
+  // Titled with the current pattern: untouched, trashed when the next day began.
+  assert.ok((await page(sunday)).deleted_at);
+  // After the pattern changes, a day with the old one counts as renamed.
+  await settings({ dayTitleCustom: "YYYY/MM/DD" });
+  const tuesday = await roll("2026-11-24");
+  assert.equal((await page(tuesday)).title, "2026/11/24");
+  assert.equal((await page(monday)).deleted_at, null);
+  assert.ok(!(await emptyJournalDays(await journal(), "2026-11-26")).some((day) => day.id === monday));
+  // Another form picked: the pattern stays stored, its days still untouched.
+  await settings({ dayTitleFormat: "iso" });
+  assert.deepEqual(await boot(), ["iso", "YYYY/MM/DD"]);
+  const wednesday = await roll("2026-11-25");
+  assert.equal((await page(wednesday)).title, "2026-11-25");
+  assert.ok((await page(tuesday)).deleted_at);
+  // A pattern without a token: new days get the long title.
+  await settings({ dayTitleFormat: "custom", dayTitleCustom: "Tagebuch" });
+  const thursday = await roll("2026-11-26");
+  assert.equal((await page(thursday)).title, "Donnerstag, 26. November 2026");
+  // Back to the default: nothing sent for days written offline, as before.
+  await settings({ dayTitleFormat: "long", dayTitleCustom: "" });
+  assert.deepEqual(await boot(), [undefined, undefined]);
 });

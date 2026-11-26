@@ -7,7 +7,7 @@ import { JournalDaysPanel } from "./journal-days-settings";
 import { useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { LOCALE_TAG, tr } from "@/lib/locale-tag";
+import { LOCALE_TAG, PAGE_LOCALE, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarBlank,
@@ -28,7 +28,7 @@ import { api, Modal, showNotice } from "./ui";
 import { post, StepUpDialog, type Pending } from "./sign-in-methods";
 import type { StepUpMethods } from "@/lib/step-up";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
-import { DAY_TITLE_FORMATS, type DayTitleFormat } from "@/lib/journal-title";
+import { DAY_TITLE_FORMATS, MAX_DAY_TITLE_PATTERN, dayTitle, validDayTitlePattern, type DayTitleFormat } from "@/lib/journal-title";
 import dynamic from "next/dynamic";
 
 // The AI summary of a review (Markdown rendering): loaded when asked for.
@@ -61,9 +61,15 @@ export type JournalSettings = {
     carriedHeading?: string;
     carry?: "move" | "copy";
     dayTitleFormat?: DayTitleFormat;
+    dayTitleCustom?: string;
   };
 };
 type CarriedMode = "top" | "end" | "heading";
+// Today in the browser's time zone, for the preview of a day title pattern.
+function todayIso(now = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 // The template's top-level headings (their text, as the server compares it:
 // lib/journal-place.ts), for "Übernommene Aufgaben".
 function templateHeadings(html: string) {
@@ -186,6 +192,8 @@ export function JournalSettingsDialog({
   const [pinAgain, setPinAgain] = useState("");
   const [oldPin, setOldPin] = useState("");
   const [busy, setBusy] = useState(false);
+  // The custom day title pattern as typed, saved with its button (#571).
+  const [dayPattern, setDayPattern] = useState(settings.options?.dayTitleCustom || "");
   // "Aus Vorlage wählen …" (#316): the saved document templates of the
   // journal's space and the whole workspace (and one's own private ones),
   // loaded when the picker opens; null: closed.
@@ -273,8 +281,16 @@ export function JournalSettingsDialog({
   };
   const dayTitleChoices: Record<DayTitleFormat, [string, string]> = {
     long: [t("Lang", "Long"), t("Wochentag und Datum ausgeschrieben, etwa „Donnerstag, 26. November 2026“. Voreinstellung.", "Weekday and date written out, such as “Thursday, 26 November 2026”. The default.")],
+    short: [t("Kurz", "Short"), t("Wochentag und Monat abgekürzt, etwa „Do., 26. Nov. 2026“.", "Weekday and month abbreviated, such as “Thu, 26 Nov 2026”.")],
     iso: [t("Datum (ISO)", "Date (ISO)"), t("Nur das Datum als Jahr-Monat-Tag, etwa „2026-11-26“ – kurz und gut sortierbar.", "Only the date as year-month-day, such as “2026-11-26” – short and easy to sort.")],
+    "iso-weekday": [t("Datum (ISO) und Wochentag", "Date (ISO) and weekday"), t("Etwa „2026-11-26 Do.“ – sortierbar, mit Wochentag.", "Such as “2026-11-26 Thu” – sortable, with the weekday.")],
+    "weekday-iso": [t("Wochentag und Datum (ISO)", "Weekday and date (ISO)"), t("Etwa „Do. 2026-11-26“ – der Wochentag vorn, gut zum Überfliegen.", "Such as “Thu 2026-11-26” – the weekday first, easy to scan.")],
+    custom: [t("Eigenes Muster", "Custom pattern"), t("Du legst selbst fest, wie der Titel aussieht, etwa „ddd DD.MM.YYYY“.", "You decide what the title looks like, such as “ddd DD.MM.YYYY”.")],
   };
+  const dayTitleCustom = options.dayTitleCustom || "";
+  const dayPatternValid = validDayTitlePattern(dayPattern);
+  const dayPatternPreview = dayTitle(todayIso(), PAGE_LOCALE, "custom", dayPattern);
+  const saveDayPattern = () => void save({ options: { dayTitleCustom: dayPattern.trim() } }, t("Muster gespeichert.", "Pattern saved."));
   const lock = async (next: string | null) => {
     if (next !== null && next !== pinAgain) return onError(t("Die PINs stimmen nicht überein.", "The PINs do not match."));
     setBusy(true);
@@ -655,6 +671,41 @@ export function JournalSettingsDialog({
                 </span>
               </label>
             ))}
+            {dayTitleFormat === "custom" && (
+              <div className="js-field">
+                <strong className="js-label" id="journal-day-pattern-label">{t("Muster", "Pattern")}</strong>
+                <div className="journal-inline-form">
+                  <input
+                    type="text"
+                    value={dayPattern}
+                    maxLength={MAX_DAY_TITLE_PATTERN}
+                    placeholder="ddd DD.MM.YYYY"
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-labelledby="journal-day-pattern-label"
+                    aria-describedby="journal-day-pattern-hint"
+                    onChange={(e) => setDayPattern(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !busy && dayPattern.trim() !== dayTitleCustom) saveDayPattern();
+                    }}
+                  />
+                  <button type="button" className="button" disabled={busy || dayPattern.trim() === dayTitleCustom} onClick={saveDayPattern}>
+                    {t("Speichern", "Save")}
+                  </button>
+                </div>
+                <small className="muted" aria-live="polite">
+                  {dayPatternValid
+                    ? t(`Heute: „${dayPatternPreview}“`, `Today: “${dayPatternPreview}”`)
+                    : t(`Ohne Platzhalter heißen neue Tage lang: „${dayPatternPreview}“`, `Without a placeholder, new days get the long title: “${dayPatternPreview}”`)}
+                </small>
+                <small className="muted" id="journal-day-pattern-hint">
+                  {t(
+                    "Platzhalter: YYYY (2026), YY (26), MMMM (November), MMM (Nov.), MM (11), M (11), DD (05), D (5), dddd (Donnerstag), ddd (Do.). Anderer Text bleibt stehen, Text in [eckigen Klammern] genau so. Änderst du das Muster, zählen Tage mit dem alten Muster als umbenannt – sie werden nicht mehr als leer aufgeräumt.",
+                    "Placeholders: YYYY (2026), YY (26), MMMM (November), MMM (Nov), MM (11), M (11), DD (05), D (5), dddd (Thursday), ddd (Thu). Other text stays as it is, text in [square brackets] exactly so. If you change the pattern, days with the old pattern count as renamed – they are no longer tidied away as empty.",
+                  )}
+                </small>
+              </div>
+            )}
           </fieldset>
           <JournalDaysPanel
             pageId={pageId}
