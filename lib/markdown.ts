@@ -305,7 +305,8 @@ export function htmlToMarkdown(
     if (node.attrs.reactions) source.lossy.add(tr("Reaktionen", "Reactions"));
     if (node.attrs.journalSince || node.attrs.journalContinued) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
   }
-  function inline(node: Node, inTable = false, before = "", after = ""): string {
+  // `glued`: the last character written right before this node.
+  function inline(node: Node, inTable = false, before = "", after = "", glued = ""): string {
     if (node.type.name === "hardBreak") return "  \n";
     // In the source view a citation stays as HTML, so applying keeps it.
     if (node.type.name === "citation" && source) {
@@ -338,7 +339,7 @@ export function htmlToMarkdown(
       const link = node.type.schema.marks.link;
       const title = String(node.attrs.title || "");
       if (!title) return "";
-      return inline(node.type.schema.text(title, link ? [...node.marks, link.create({ href: String(node.attrs.href || "") })] : node.marks), inTable, before, after);
+      return inline(node.type.schema.text(title, link ? [...node.marks, link.create({ href: String(node.attrs.href || "") })] : node.marks), inTable, before, after, glued);
     }
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
@@ -353,15 +354,24 @@ export function htmlToMarkdown(
       node.forEach((child, _offset, index) => {
         const previous = index > 0 ? edge(node.child(index - 1), true) : "",
           next = index < node.childCount - 1 ? edge(node.child(index + 1), false) : "";
-        result += inline(child, inTable, previous, next);
+        result += inline(child, inTable, previous, next, result.slice(-1));
       });
       return result;
     }
     const isCode = node.marks.some((mark) => mark.type.name === "code");
-    let result = isCode
+    const text = isCode
       ? inlineCode(node.text || "", inTable)
       : markdownText(node.text || "");
-    const html = needsHtmlMarks(result, before, after);
+    const marked = wrapMarks(node, text, needsHtmlMarks(text, before, after));
+    // Two runs that share a mark but not all of them, side by side
+    // ("**a**" and "**[b](…)**", "~~a~~" and "~~*b*~~"): the delimiters
+    // that touch fuse into one run ("****"), which neither closes nor
+    // opens. The second run's marks are written as HTML then
+    // ("**a**<strong>[b](…)</strong>"), which the import reads.
+    return /^[*~]/.test(marked) && marked[0] === glued ? wrapMarks(node, text, true) : marked;
+  }
+  function wrapMarks(node: Node, text: string, html: boolean) {
+    let result = text;
     for (const mark of node.marks) {
       if (mark.type.name === "bold") result = html ? wrapMark(result, "<strong>", "</strong>") : wrapMark(result, "**");
       if (mark.type.name === "italic") result = html ? wrapMark(result, "<em>", "</em>") : wrapMark(result, "*");
