@@ -31,6 +31,10 @@
       "issues": [
         556
       ]
+    },
+    {
+      "de": "Markdown mit Tabellen und Formeln, das aus einem Texteditor kopiert wird, wird beim Einfügen wieder formatiert statt Zeile für Zeile als Rohtext übernommen.",
+      "en": "Markdown with tables and formulas copied from a text editor is formatted again when pasted instead of arriving line by line as raw text."
     }
   ],
   "improvements": [

@@ -5,7 +5,7 @@ import { safeCollisionPadding } from "./safe-area";
 import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
-import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
+import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml, plainLines } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/server-message";
 import { reveal } from "@/lib/motion";
 import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
@@ -1112,7 +1112,7 @@ export default function DocumentEditor({
             editable &&
             !files.length &&
             plain &&
-            !/<(p|li|table|h[1-6]|div|br)[\s>]|katex|<math/i.test(rich) &&
+            (!/<(p|li|table|h[1-6]|div|br)[\s>]|katex|<math/i.test(rich) || plainLines(rich)) &&
             _view.state.selection.$from.parent.type.name !== "codeBlock" &&
             looksLikeChatText(plain)
           ) {

@@ -31,6 +31,17 @@ export function looksLikeChatText(text: string) {
   return /\\\[|\\\(|\$\$|\\begin\{|^\s{0,3}#{1,6}\s|\*\*[^*\n]+\*\*|^\s*\|.+\|\s*$|^[^\t\n]+\t[^\n]+$|^\s*☐/m.test(text);
 }
 
+// Clipboard HTML that is only the plain text wrapped line by line – one
+// <div> or <p> per line, as text editors and some note apps put it there –
+// carries no formatting of its own; the Markdown in its text still counts.
+const WRAPPER_TAGS = new Set(["html", "head", "body", "meta", "style", "title", "div", "p", "br", "span", "font"]);
+export function plainLines(html: string) {
+  const body = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|title)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  if (/katex|<math/i.test(body)) return false;
+  const tags = [...body.matchAll(/<\/?([a-z][a-z0-9-]*)/gi)].map((m) => m[1].toLowerCase());
+  return tags.length > 0 && tags.every((t) => WRAPPER_TAGS.has(t)) && !/<span[^>]*style="[^"]*font-weight:\s*(bold|[6-9]00)/i.test(body);
+}
+
 const listLine = /^\s*(?:[-*+•]|\d+[.)]|- \[[ xX]\])\s+\S/;
 const tableLine = /^\s*\|.*\|\s*$/;
 

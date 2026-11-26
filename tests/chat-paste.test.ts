@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatTextToHtml, looksLikeChatText } from "../lib/chat-paste";
+import { chatTextToHtml, looksLikeChatText, plainLines } from "../lib/chat-paste";
 
 const sample = `Grundlagen: Was ist ein Vektor?
 Ein Vektor beschreibt eine Richtung und eine Länge.
@@ -77,4 +77,17 @@ test("ordinary text is not taken for formulas or link definitions", () => {
   const html = chatTextToHtml("**Sources**\n[1]: https://example.test/a\n[2]: https://example.test/b");
   assert.match(html, /<p>\[1\]: <a href="https:\/\/example\.test\/a">https:\/\/example\.test\/a<\/a><\/p>/);
   assert.match(html, /<p>\[2\]: <a href="https:\/\/example\.test\/b">/);
+});
+
+test("clipboard HTML that only wraps the lines still converts its Markdown", () => {
+  // Text editors put one <div> or <p> per line on the clipboard.
+  assert.equal(plainLines('<meta charset="utf-8"><div>| a | b |</div><div>|---|---|</div><div><br></div><div>$x^2$</div>'), true);
+  assert.equal(plainLines("<p><span>## Titel</span></p><p>Text</p>"), true);
+  // Real formatting goes the usual way.
+  assert.equal(plainLines("<table><tr><td>a</td></tr></table>"), false);
+  assert.equal(plainLines("<p><strong>fett</strong></p>"), false);
+  assert.equal(plainLines('<p><a href="https://example.test">x</a></p>'), false);
+  assert.equal(plainLines('<span class="katex">x</span>'), false);
+  assert.equal(plainLines('<p><span style="font-weight:700">x</span></p>'), false);
+  assert.equal(plainLines(""), false);
 });

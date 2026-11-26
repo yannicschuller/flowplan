@@ -36,6 +36,11 @@ test("pasting an answer from a chat assistant formats formulas, lists and tables
   // A copied web page with KaTeX: the formula comes back as LaTeX.
   await paste("a² + b²", '<p>Satz: <span class="katex"><span class="katex-mathml"><math><semantics><mrow></mrow><annotation encoding="application/x-tex">a^2+b^2=c^2</annotation></semantics></math></span><span class="katex-html">a2+b2=c2</span></span></p>');
   await expect.poll(async () => (await (await page.request.get(`/api/pages/${pageId}`)).json()).html, { timeout: 20_000 }).toContain('data-math="a^2+b^2=c^2"');
+  // A text editor's clipboard: one <div> per line around Markdown.
+  const md = ["## Tabelle", "| x | f(x) |", "|---|---|", "| 1 | $x^2$ |"];
+  await paste(md.join("\n"), md.map((l) => `<div>${l.replace(/</g, "&lt;")}</div>`).join(""));
+  await expect(editor.locator("table th", { hasText: "f(x)" })).toHaveCount(1);
+  await expect(editor.locator("p", { hasText: "| x |" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
