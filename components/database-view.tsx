@@ -164,6 +164,7 @@ import {
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput, FieldLabel } from "./cell-input";
+import { CellPopover } from "./cell-popover";
 import { isMultiPerson, personIds, recordsWithSeveralPeople } from "@/lib/person-values";
 import { FieldAccessEditor, FieldLock } from "./field-access-editor";
 import { FieldDefaultEditor } from "./field-default-editor";
@@ -246,7 +247,7 @@ import dynamic from "next/dynamic";
 import { PageCommentField } from "./page-comment-field";
 import { PageComment } from "./page-comment";
 import { loadView } from "@/components/view-fallback";
-import { rememberViewShape, ViewSkeleton } from "./skeleton";
+import { RecordSkeleton, rememberViewShape, ViewSkeleton } from "./skeleton";
 import { showToast, showUndo, toastSerial, undoShownSince } from "./toast";
 import { colorLabel } from "./color-label";
 import { OptionColorList } from "./option-color-list";
@@ -920,6 +921,12 @@ export default function DatabaseView({
     [data, fields, view, query, filterNow, members],
   );
   const selected = data.rows.find((r) => r.id === rowId);
+  const rowIdNow = useRef(rowId);
+  rowIdNow.current = rowId;
+  // Records whose creation the server has not answered yet (#608, createRow):
+  // "template" while a record template fills them in there.
+  const [creatingRows, setCreatingRows] = useState<Map<string, "blank" | "template">>(() => new Map());
+  const selectedCreating = selected ? creatingRows.get(selected.id) : undefined;
   // While a record is docked: ↑/↓ open the one before or after it in the
   // view's order (as shown), and its row, card or bar is marked.
   const dockedId = docked && selected ? selected.id : null;
@@ -2263,8 +2270,16 @@ export default function DatabaseView({
     rawTemplate = false,
   ) {
     const withTemplate = templateId || (templateId !== null && data.rowTemplates?.some((t) => t.is_default));
-    const r = (await act({
+    // The id is chosen here (#608): the record is shown (lib/optimistic-
+    // commands.ts) and its dialog opens at once, while the server creates
+    // it; what is changed in it meanwhile waits behind the creation
+    // (lib/row-queue.ts). Until the server has it, the parts it loads –
+    // the document, comments and the like – wait; with a template, which
+    // only the server fills in, the whole record does.
+    const id = crypto.randomUUID();
+    const created = act({
       action: "row.create",
+      rowId: id,
       // Only a text title is called "Neue Aufgabe" (a date or number title
       // starts empty and the record opens with it focused, #529); a
       // computed one takes no value.
@@ -2274,10 +2289,23 @@ export default function DatabaseView({
       // in the person's time zone.
       timeZone: browserZone(),
       ...(rawTemplate ? { rawTemplate: true } : {}),
-    })) as { id: string } | null;
-    if (r && open) {
-      setFreshRowId(r.id);
-      setRowId(r.id);
+    }) as Promise<{ id: string } | null>;
+    setCreatingRows((current) => new Map(current).set(id, withTemplate ? "template" : "blank"));
+    if (open) {
+      setFreshRowId(id);
+      setRowId(id);
+    }
+    const r = await created;
+    setCreatingRows((current) => {
+      const next = new Map(current);
+      next.delete(id);
+      return next;
+    });
+    // Refused (act showed the server's message): the record is gone again,
+    // and so is its dialog.
+    if (!r) {
+      setFreshRowId((fresh) => (fresh === id ? null : fresh));
+      if (rowIdNow.current === id) setRowId(null);
     }
     return r;
   }
@@ -3519,7 +3547,26 @@ export default function DatabaseView({
           >
             {editingCell?.rowId === r.id &&
             editingCell?.fieldId === f.id &&
-            editingCell?.groupKey === groupKey ? (
+            editingCell?.groupKey === groupKey &&
+            f.type === "date" ? (
+              // A date opens its whole editor next to the cell (#607): in
+              // the cell it was clipped by narrow columns and, with a time,
+              // spilled out of the row.
+              <CellPopover label={f.name} display={display(r, f)} onClose={() => setEditingCell(null)}>
+                {(active) => (
+                  <CellInput
+                    field={f}
+                    value={r.cells[f.id]}
+                    members={members}
+                    related={related}
+                    onChange={(v) => (active() ? updateCell(r, f, v) : undefined)}
+                    keepRequired
+                  />
+                )}
+              </CellPopover>
+            ) : editingCell?.rowId === r.id &&
+              editingCell?.fieldId === f.id &&
+              editingCell?.groupKey === groupKey ? (
               <span
                 className="inline-cell"
                 // The first click of a double-click opens the cell; the
@@ -4233,7 +4280,10 @@ export default function DatabaseView({
                       {t("Neue Zeile", "New row")}
                     </button>
                   )}
-                  <span className="record-count">{shown.length} {t("Einträge", "records")}</span>
+                  {/* With no records the empty state below says so (#606). */}
+                  {shown.length > 0 && (
+                    <span className="record-count">{shown.length} {t("Einträge", "records")}</span>
+                  )}
                 </td>
               </tr>
               <tr className="table-count column-calculations">
@@ -6588,7 +6638,12 @@ export default function DatabaseView({
       )}
       {(() => {
         // The record's content, in its dialog or as a page of its own (#231).
-        const detail = selected && (
+        // A new record from a template: until the server filled it in (#608).
+        const detail = selected && selectedCreating === "template" ? (
+          <div className="row-detail">
+            <RecordSkeleton />
+          </div>
+        ) : selected && (
           <div className="row-detail" ref={watchRecordWidth}>
             {record && (
               // Opened from a relation in another view (#192): where the
@@ -6867,7 +6922,8 @@ export default function DatabaseView({
                     </button>
                   )}
                 </RecordPropertiesFold>
-                {discoveryPanels && (<>
+                {/* Loaded from the server: once it has the record (#608). */}
+                {discoveryPanels && !selectedCreating && (<>
                 <RelationBacklinks
                   key={`backlinks-${selected.id}-${selected.version}`}
                   pageId={page.id}
@@ -6889,7 +6945,7 @@ export default function DatabaseView({
               </div>
               <div className="row-main">
                 {/* Pages below the record (#231) above its document (#449). */}
-                {!record && recordLayout.subpages === "top" && (
+                {!record && !selectedCreating && recordLayout.subpages === "top" && (
                   <RecordSubPages
                     key={`subpages-${selected.id}`}
                     database={page}
@@ -6902,7 +6958,9 @@ export default function DatabaseView({
                   />
                 )}
                 <RowDocument
-                  key={`${selected.id}-${documentRevision}`}
+                  // Mounted afresh once the server has the record (#608).
+                  key={`${selected.id}-${documentRevision}${selectedCreating ? "-creating" : ""}`}
+                  creating={!!selectedCreating}
                   pageId={page.id}
                   rowId={selected.id}
                   userId={userId}
@@ -6917,7 +6975,7 @@ export default function DatabaseView({
                   onChanged={onRefresh}
                 />
                 {/* Pages below the record (#231), like a page's sub-pages. */}
-                {!record && recordLayout.subpages !== "top" && (
+                {!record && !selectedCreating && recordLayout.subpages !== "top" && (
                   <RecordSubPages
                     key={`subpages-${selected.id}`}
                     database={page}
@@ -6928,40 +6986,44 @@ export default function DatabaseView({
                     onError={onError}
                   />
                 )}
-                {fields
-                  .filter((f) => f.type === "time")
-                  .map((f) => (
-                    <RecordTime
-                      key={`time-${selected.id}-${f.id}`}
+                {!selectedCreating && (
+                  <>
+                    {fields
+                      .filter((f) => f.type === "time")
+                      .map((f) => (
+                        <RecordTime
+                          key={`time-${selected.id}-${f.id}`}
+                          pageId={page.id}
+                          row={selected}
+                          field={f}
+                          estimate={f.estimateField && Number.isFinite(Number(selected.cells[f.estimateField])) && selected.cells[f.estimateField] !== null && selected.cells[f.estimateField] !== "" ? Number(selected.cells[f.estimateField]) : null}
+                          editable={selectedEditable}
+                          onChanged={onRefresh}
+                          onError={onError}
+                        />
+                      ))}
+                    {subtaskParent && (
+                      <RecordSubtasks
+                        pageId={page.id}
+                        row={selected}
+                        rows={data.rows}
+                        database={data.database}
+                        parent={subtaskParent}
+                        editable={selectedEditable}
+                        act={act}
+                      />
+                    )}
+                    <IssueSyncChip key={`issue-${selected.id}`} pageId={page.id} rowId={selected.id} />
+                    {data.database.settings?.git && <RecordGit key={`git-${selected.id}`} pageId={page.id} rowId={selected.id} />}
+                    <TicketThread
+                      key={`ticket-${selected.id}`}
                       pageId={page.id}
-                      row={selected}
-                      field={f}
-                      estimate={f.estimateField && Number.isFinite(Number(selected.cells[f.estimateField])) && selected.cells[f.estimateField] !== null && selected.cells[f.estimateField] !== "" ? Number(selected.cells[f.estimateField]) : null}
+                      rowId={selected.id}
                       editable={selectedEditable}
-                      onChanged={onRefresh}
                       onError={onError}
                     />
-                  ))}
-                {subtaskParent && (
-                  <RecordSubtasks
-                    pageId={page.id}
-                    row={selected}
-                    rows={data.rows}
-                    database={data.database}
-                    parent={subtaskParent}
-                    editable={selectedEditable}
-                    act={act}
-                  />
+                  </>
                 )}
-                <IssueSyncChip key={`issue-${selected.id}`} pageId={page.id} rowId={selected.id} />
-                {data.database.settings?.git && <RecordGit key={`git-${selected.id}`} pageId={page.id} rowId={selected.id} />}
-                <TicketThread
-                  key={`ticket-${selected.id}`}
-                  pageId={page.id}
-                  rowId={selected.id}
-                  editable={selectedEditable}
-                  onError={onError}
-                />
                 <div className="settings-section">
                   <h3>{t("Kommentare", "Comments")}</h3>
                   {data.comments

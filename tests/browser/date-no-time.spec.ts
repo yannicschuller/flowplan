@@ -69,12 +69,14 @@ test("date property without time: cells and forms offer no time, existing times 
   await expect(dialog).toBeHidden();
   await expect.poll(async () => (await read()).database.fields[1].noTime).toBe(true);
 
-  // An all-day record: the date field without "+ Uhrzeit".
+  // An all-day record: the date field without "+ Uhrzeit" – in the
+  // cell's popover (#607).
   const allDayRow = page.locator(`tr[data-row-id="${allDay.id}"]`);
+  const editor = page.getByRole("dialog", { name: "Fällig", exact: true });
   await allDayRow.locator("td").nth(2).click();
-  await expect(allDayRow.getByLabel("Fällig", { exact: true })).toHaveAttribute("type", "date");
-  await expect(allDayRow.getByRole("button", { name: "Datum entfernen: Fällig", exact: true })).toBeVisible();
-  await expect(allDayRow.getByRole("button", { name: "Uhrzeit hinzufügen: Fällig", exact: true })).toHaveCount(0);
+  await expect(editor.getByLabel("Fällig", { exact: true })).toHaveAttribute("type", "date");
+  await expect(editor.getByRole("button", { name: "Datum entfernen: Fällig", exact: true })).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Uhrzeit hinzufügen: Fällig", exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath(`cell-${info.project.name}.png`) });
   await (await databaseSearch(page)).click();
 
@@ -83,15 +85,15 @@ test("date property without time: cells and forms offer no time, existing times 
   const timedRow = page.locator(`tr[data-row-id="${timed.id}"]`);
   await expect(timedRow.locator(".date-cell").first()).toContainText("14:05");
   await timedRow.locator("td").nth(2).click();
-  await expect(timedRow.getByLabel("Fällig: Uhrzeit", { exact: true })).toHaveValue("14:05");
-  await timedRow.getByRole("button", { name: "Uhrzeit entfernen: Fällig", exact: true }).click();
-  await expect(timedRow.getByLabel("Fällig: Uhrzeit", { exact: true })).toHaveCount(0);
+  await expect(editor.getByLabel("Fällig: Uhrzeit", { exact: true })).toHaveValue("14:05");
+  await editor.getByRole("button", { name: "Uhrzeit entfernen: Fällig", exact: true }).click();
+  await expect(editor.getByLabel("Fällig: Uhrzeit", { exact: true })).toHaveCount(0);
   await (await databaseSearch(page)).click();
   await expect.poll(async () => (await cells(timed.id)).due).toBe("2026-09-04");
   await expect(timedRow.locator(".date-cell").first()).not.toContainText("14:05");
   await timedRow.locator("td").nth(2).click();
-  await expect(timedRow.getByLabel("Fällig", { exact: true })).toHaveAttribute("type", "date");
-  await expect(timedRow.getByRole("button", { name: "Uhrzeit hinzufügen: Fällig", exact: true })).toHaveCount(0);
+  await expect(editor.getByLabel("Fällig", { exact: true })).toHaveAttribute("type", "date");
+  await expect(editor.getByRole("button", { name: "Uhrzeit hinzufügen: Fällig", exact: true })).toHaveCount(0);
   await (await databaseSearch(page)).click();
 
   // The server refuses a new time with a readable message.

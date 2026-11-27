@@ -3029,6 +3029,7 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 }
 .data-table th button {
   padding: 0;
+  gap: 5px;
   justify-content: flex-start;
   font-size: 12px;
 }
@@ -3037,7 +3038,6 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
   align-items: center;
   font-size: 12px;
   color: var(--muted);
-  margin-right: 4px;
 }
 /* Field-level permissions: the lock beside a restricted property and the
    "Visibility" section of its settings. */
@@ -3088,7 +3088,7 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 .data-table td:last-child {
   border-right: 0;
 }
-.data-table tr:hover td {
+.data-table tbody tr:hover td {
   background: var(--surface);
 }
 .title-cell {
@@ -3124,6 +3124,11 @@ tr:hover .row-open,
   font-size: 12px;
   padding: 10px 12px;
 }
+/* Below the table the hover is only as wide as the label (#606); the board's
+   "+ New" keeps the column's width. */
+.data-table tfoot .new-record {
+  width: auto;
+}
 .record-count {
   display: block;
   color: var(--muted);
@@ -3136,9 +3141,10 @@ tr:hover .row-open,
   padding: 0 !important;
 }
 .column-calculation {
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
+  max-width: 100%;
+  min-height: 32px;
+  margin: 6px 4px;
+  padding: 6px 8px;
   text-align: left;
   font-size: 11px;
   color: var(--muted);
@@ -3575,9 +3581,21 @@ tr:hover .row-open,
   white-space: normal;
   font-size: 12px;
 }
-.inline-cell:has(.date-input) {
-  display: block;
-  min-width: 220px;
+/* A table cell's date editor floats next to the cell (#607,
+   components/cell-popover.tsx); the list styles of .fp-select-list give it
+   its frame, shadow and placement above the cell. */
+.fp-select-list.cell-popover {
+  top: var(--cell-popover-top, 0);
+  left: var(--cell-popover-left, 0);
+  width: clamp(300px, var(--cell-popover-width, 0px), 420px);
+  max-width: calc(100vw - 16px);
+  max-height: none;
+  overflow: visible;
+  padding: 10px;
+  font-size: 14px;
+}
+.cell-popover .date-input small {
+  white-space: normal;
 }
 .calendar-chip {
   display: flex;
@@ -9118,6 +9136,9 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .row-document-heading h3 {
   margin: 0;
   flex: 1;
+}
+.row-document-heading > .icon-button + .icon-button {
+  margin-left: -6px;
 }
 .row-document-heading > .muted {
   font-size: 11px;
@@ -16835,7 +16856,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .vz-table .data-table thead th:not(:first-child) {
   text-align: right;
 }
-.vz-table .data-table tr:hover td {
+.vz-table .data-table tbody tr:hover td {
   background: transparent;
 }
 .vz-table th[scope="row"] {
@@ -32172,7 +32193,7 @@ td.ai-filled {
   z-index: 3;
   background: var(--surface);
 }
-.data-table tr:hover td.sticky-col {
+.data-table tbody tr:hover td.sticky-col {
   background: var(--surface);
 }
 .configurable-table .row-selected td.sticky-col {

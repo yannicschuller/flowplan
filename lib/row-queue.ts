@@ -59,15 +59,40 @@ export function createRowChanges() {
   const queue = createRowQueue();
   // Per record: the version the server answered last.
   const answered = new Map<string, number>();
+  // Records created with an id chosen in the browser (#608): their dialog
+  // opens before the server has them. Whatever is done to such a record
+  // meanwhile (its title, a property, a comment, deleting it) waits behind
+  // its creation; a creation the server refused takes those along – they
+  // are not sent (null), the record is gone.
+  const creating = new Set<string>();
+  const refused = new Set<string>();
   return {
     // Sends `body` once the record's earlier changes are done, with the
     // newest version known by then. `shown` reads the version of the data
     // shown right now.
     run<T>(body: Record<string, unknown>, shown: () => number | undefined, send: (body: Record<string, unknown>) => Promise<T>): Promise<T> {
+      const id = typeof body.rowId === "string" ? body.rowId : null;
+      if (body.action === "row.create" && id) {
+        creating.add(id);
+        return queue(id, async () => {
+          try {
+            return await send(body);
+          } catch (e) {
+            refused.add(id);
+            throw e;
+          } finally {
+            creating.delete(id);
+          }
+        });
+      }
       const key = rowVersionKey(body);
-      if (!key) return send(body);
+      if (!key) {
+        if (!id || !creating.has(id)) return send(body);
+        return queue(id, async () => (refused.has(id) ? (null as T) : send(body)));
+      }
       const rowId = body.rowId as string;
       return queue(rowId, async () => {
+        if (refused.has(rowId)) return null as T;
         const seen = shown();
         let known = answered.get(rowId);
         // The shown data caught up (or someone else changed the record
@@ -93,6 +118,8 @@ export function createRowChanges() {
     },
     // For tests and callers that learn a version elsewhere.
     known: (rowId: string) => answered.get(rowId),
+    // The record's creation (#608) has not been answered yet.
+    creating: (rowId: string) => creating.has(rowId),
   };
 }
 

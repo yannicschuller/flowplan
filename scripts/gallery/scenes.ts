@@ -1353,15 +1353,28 @@ const databaseScenes: Scene[] = [
       await page.keyboard.press("Enter");
     },
   },
+  // A table's date opens its editor in a popover beside the cell (#607),
+  // also with "+ Time" (date, time, buttons and time zone).
   {
     id: "record-date-cell",
     group: "Databases",
     title: "Date cell editor",
     path: dbPath,
-    devices: ["desktop"],
+    covers: ["components/cell-popover.tsx"],
     steps: async (page) => {
       await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "Oct 12, 2026" }).click();
-      await page.keyboard.press("Enter");
+      await page.locator(".cell-popover input[type=date]").waitFor();
+    },
+  },
+  {
+    id: "record-date-cell-time",
+    group: "Databases",
+    title: "Date cell editor with a time",
+    path: dbPath,
+    steps: async (page) => {
+      await page.locator(".data-table tbody tr").first().getByRole("gridcell", { name: "Oct 12, 2026" }).click();
+      await page.locator(".cell-popover").getByRole("button", { name: /^Time|^Add time/ }).click();
+      await page.locator(".cell-popover input[type=time]").waitFor();
     },
   },
   {
