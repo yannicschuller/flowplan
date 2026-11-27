@@ -3792,6 +3792,17 @@ tr:hover .row-open,
   align-items: center;
   gap: 8px;
 }
+/* One compact height and size for everything in the row (#611): the
+   selects and the date field like the "Zeitzone" and "Abonnieren" buttons.
+   Phones keep 16px in fields (no zoom on iOS). */
+@media (min-width: 768px) {
+  .calendar-options :is(select, .fp-select, input:not([type="checkbox"]), .button) {
+    min-height: 32px;
+    padding-block: 5px;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+}
 .calendar-options-toggle {
   display: none;
 }

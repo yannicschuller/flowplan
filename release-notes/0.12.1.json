@@ -119,6 +119,13 @@
         592,
         593
       ]
+    },
+    {
+      "de": "Kalenderansicht: Auswahlfelder, Datumsfeld und Knöpfe in der Leiste haben eine einheitliche Höhe und Schriftgröße.",
+      "en": "Calendar view: the selects, date field and buttons in its bar share one height and font size.",
+      "issues": [
+        611
+      ]
     }
   ]
 }

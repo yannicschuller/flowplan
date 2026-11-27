@@ -1060,7 +1060,9 @@ const databaseScenes: Scene[] = [
     path: dbPath,
     covers: ["components/calendar-sync-dialog.tsx"],
     steps: async (page) => {
-      await button(page, "Calendar sync").click();
+      // In the database's "⋯" menu (#605).
+      await button(page, "More tools").first().click();
+      await page.getByRole("menuitem", { name: "Calendar sync" }).click();
       await page.getByRole("dialog").last().waitFor();
     },
   },
