@@ -945,6 +945,13 @@ kbd,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A colour emoji fills its whole box, a library icon draws inside it with
+   room to spare (#619): in the sidebar rows the emoji is a size smaller, so
+   both look the same size. */
+.page-nav .page-emoji,
+.favorite-nav .page-emoji {
+  font-size: 14px !important;
+}
 /* A journal's "Heute" link (#537): the calendar in the icon's place. */
 .favorite-nav.today-favorite > svg {
   flex: none;
