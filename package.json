@@ -85,7 +85,7 @@
     "isomorphic-git": "1.44.6",
     "katex": "^0.19.1",
     "marked": "^18.2.0",
-    "mathjs": "^15.2.0",
+    "mathjs": "^15.3.0",
     "mermaid": "^12.2.0",
     "next": "^16.4.6",
     "nodemailer": "^10.2.1",
