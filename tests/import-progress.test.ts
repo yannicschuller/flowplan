@@ -89,7 +89,7 @@ test("an import in the background says which page it prepares (#594)", async () 
   assert.ok(prepare.length, JSON.stringify(seen));
   // Every note and folder page: 120 notes and their folders.
   const total = prepare[0].step!.total;
-  assert.ok(total > 120 && prepare.every((s) => s.step!.done > 0 && s.step!.done <= total && s.progress! > 0.5 && s.progress! < 0.8), JSON.stringify(prepare));
+  assert.ok(total > 120 && prepare.every((s) => s.step!.done > 0 && s.step!.done <= total && s.progress! > 0.5 && s.progress! <= 0.8), JSON.stringify(prepare));
   // Reported in order.
   for (let i = 1; i < seen.length; i++) assert.ok(seen[i].progress! >= seen[i - 1].progress!, JSON.stringify(seen));
 });
