@@ -3,14 +3,14 @@
 // arrow instead of the closed hand) and touch screens cannot start one. Used
 // for every database drag: table, list and feed rows, board and gallery
 // cards, board columns, table columns, view tabs, sprint and calendar
-// entries. Files dragged in from the desktop stay with the browser.
+// entries, and the sidebar's pages by their handle (#637). Files dragged in
+// from the desktop stay with the browser.
 //
 // A press becomes a drag once the pointer has moved a few pixels, so clicks
 // still open records; by touch once a finger has rested on the handle for a
 // moment (LONG_PRESS_MS), so swipes keep scrolling the table (#98) and a
 // handle brushed while scrolling moves nothing (#166). The handles with
-// drag code of their own (the sidebar's pages, the editor's block handles,
-// the home widgets) wait the same way through touchHold below. While it
+// drag code of their own (the editor's block handles, the home widgets) wait the same way through touchHold below. While it
 // runs, the cursor is the closed hand everywhere (html.pointer-dragging), a
 // light copy of the dragged element follows the pointer, the container and
 // the window scroll near their edges, and Escape puts everything back. The
@@ -64,6 +64,18 @@ export type PointerDragOptions = {
   preview?: HTMLElement | null;
   /** Marked with data-drag-source while dragged (faded by CSS). */
   source?: HTMLElement | null;
+  /**
+   * onMove at most once per animation frame, with the latest point: for
+   * callers whose hit test measures the layout (the sidebar's pages, #637).
+   * The preview still follows every move; the drop gets the release point.
+   */
+  perFrame?: boolean;
+  /**
+   * How far beyond a scrolling box the pointer still scrolls it (default
+   * SCROLL_EDGE). The sidebar's page list takes Infinity: on a phone the
+   * finger rests on the bar below it to scroll it on.
+   */
+  scrollReach?: number;
   /** Return false to refuse the drag after all. */
   onStart?: (point: DragPoint) => boolean | void;
   onMove?: (point: DragPoint) => void;
@@ -188,9 +200,21 @@ const KEPT_STYLES = [
   "text-align",
   "white-space",
 ] as const;
+// What would make the copy one of the things it shows to queries: ids, the
+// sidebar's page rows and drop targets.
+const STRIPPED = [
+  "id",
+  "data-drag-source",
+  "data-drag-pressing",
+  "data-drag-lifted",
+  "data-page-id",
+  "data-tree-id",
+  "data-prefetch-page",
+  "data-record-drop-page",
+] as const;
 function faceOf(el: HTMLElement) {
   const strip = (node: HTMLElement) => {
-    for (const name of ["id", "data-drag-source", "data-drag-pressing"]) {
+    for (const name of STRIPPED) {
       node.removeAttribute(name);
       node.querySelectorAll(`[${name}]`).forEach((n) => n.removeAttribute(name));
     }
@@ -291,6 +315,8 @@ export function startPointerDrag(
   };
   let preview: Awaited<ReturnType<typeof makePreview>> | null = null;
   let frame = 0;
+  let moveFrame = 0;
+  const reach = options.scrollReach ?? SCROLL_EDGE;
   let boxes: Awaited<ReturnType<typeof scrollers>> = { x: [], y: [] };
   let timer = 0;
   let roamed = false;
@@ -304,6 +330,7 @@ export function startPointerDrag(
     state = "done";
     window.clearTimeout(timer);
     cancelAnimationFrame(frame);
+    cancelAnimationFrame(moveFrame);
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("pointerup", up, true);
     window.removeEventListener("pointercancel", cancelled, true);
@@ -320,6 +347,15 @@ export function startPointerDrag(
     preview?.remove();
     preview = null;
   };
+  // The caller hears of a move at once, or once per frame (perFrame).
+  const report = () => {
+    moveFrame = 0;
+    if (state === "active") options.onMove?.(hit());
+  };
+  const moved = () => {
+    if (!options.perFrame) options.onMove?.(hit());
+    else if (!moveFrame) moveFrame = requestAnimationFrame(report);
+  };
   const stop = () => {
     const was = state;
     cleanup();
@@ -335,7 +371,7 @@ export function startPointerDrag(
       frame = requestAnimationFrame(autoScroll);
       return;
     }
-    let moved = false;
+    let scrolledNow = false;
     for (const axis of ["x", "y"] as const) {
       // The innermost box the pointer is over (or just beyond the edge of)
       // scrolls; once it is at its end, the page behind does not take over.
@@ -343,10 +379,10 @@ export function startPointerDrag(
         if (candidate === document.scrollingElement) return true;
         const box = boxOf(candidate);
         return !(
-          point.x < box.left - SCROLL_EDGE ||
-          point.x > box.right + SCROLL_EDGE ||
-          point.y < box.top - SCROLL_EDGE ||
-          point.y > box.bottom + SCROLL_EDGE
+          point.x < box.left - reach ||
+          point.x > box.right + reach ||
+          point.y < box.top - reach ||
+          point.y > box.bottom + reach
         );
       });
       if (!el) continue;
@@ -357,9 +393,9 @@ export function startPointerDrag(
       const key = axis === "x" ? "scrollLeft" : "scrollTop";
       const before = el[key];
       el[key] = before + step;
-      if (el[key] !== before) moved = true;
+      if (el[key] !== before) scrolledNow = true;
     }
-    if (moved) options.onMove?.(hit());
+    if (scrolledNow) moved();
     frame = requestAnimationFrame(autoScroll);
   };
   const activate = () => {
@@ -395,7 +431,7 @@ export function startPointerDrag(
     if (ev.cancelable) ev.preventDefault();
     if (!roamed) roamed = pastThreshold(point.x - x0, point.y - y0, TOUCH_SLOP * 2);
     preview?.place(point.x, point.y);
-    options.onMove?.(hit());
+    moved();
   };
   const up = (ev: PointerEvent) => {
     if (ev.pointerId !== pointerId) return;
@@ -441,7 +477,7 @@ export function startPointerDrag(
   };
   const blur = () => cancel();
   const scrolled = () => {
-    if (state === "active") options.onMove?.(hit());
+    if (state === "active") moved();
   };
 
   window.addEventListener("pointermove", move, { capture: true, passive: false });

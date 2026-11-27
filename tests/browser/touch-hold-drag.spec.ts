@@ -5,8 +5,9 @@ import { test, expect, type CDPSession, type Page } from "@playwright/test";
 // entries) reacted at once, so a swipe over the page tree moved pages by
 // accident. By touch a handle now lifts what it moves only after a long
 // press (components/pointer-drag.ts, touchHold and startPointerDrag): a
-// quick swipe scrolls, a held finger lifts (data-drag-lifted) and then
-// drags. Mouse and pen drag at once, as before.
+// quick swipe scrolls, a held finger lifts (data-drag-lifted; a sidebar
+// page leaves its row faded behind a copy that follows the finger, #637)
+// and then drags. Mouse and pen drag at once, as before.
 
 const shots = process.env.TOUCH_HOLD_SHOTS;
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -75,7 +76,7 @@ test("sidebar by touch: a swipe over a handle scrolls the tree, a long press lif
   await touch(cdp, "touchEnd");
   await page.waitForTimeout(800);
   expect(await scroller.evaluate((el) => el.scrollTop)).toBeLessThan(before);
-  await expect(page.locator(".page-nav[data-drag-lifted], .page-nav.drop-inside, .page-nav.drop-before, .page-nav.drop-after")).toHaveCount(0);
+  await expect(page.locator(".page-nav[data-drag-source], .pointer-drag-preview, .page-nav.drop-inside, .page-nav.drop-before, .page-nav.drop-after")).toHaveCount(0);
   expect(await parentOf(source)).toBeNull();
 
   // Held for a moment: the row lifts; then dragged onto the target.
@@ -84,9 +85,10 @@ test("sidebar by touch: a swipe over a handle scrolls the tree, a long press lif
   await touch(cdp, "touchStart", from.x, from.y);
   await page.waitForTimeout(150);
   // Not yet: a short rest is no drag.
-  await expect(page.locator(`.page-nav[data-page-id="${source}"][data-drag-lifted]`)).toHaveCount(0);
+  await expect(page.locator(`.page-nav[data-page-id="${source}"][data-drag-source]`)).toHaveCount(0);
   await page.waitForTimeout(300);
-  await expect(page.locator(`.page-nav[data-page-id="${source}"][data-drag-lifted]`)).toHaveCount(1);
+  await expect(page.locator(`.page-nav[data-page-id="${source}"][data-drag-source]`)).toHaveCount(1);
+  await expect(page.locator(".pointer-drag-preview")).toHaveCount(1);
   if (shots) await page.screenshot({ path: `${shots}/sidebar-lifted.png` });
   for (let i = 1; i <= 10; i++) {
     await touch(cdp, "touchMove", from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10);
@@ -96,7 +98,7 @@ test("sidebar by touch: a swipe over a handle scrolls the tree, a long press lif
   if (shots) await page.screenshot({ path: `${shots}/sidebar-drag.png` });
   await touch(cdp, "touchEnd");
   await expect.poll(() => parentOf(source)).toBe(target);
-  await expect(page.locator("[data-drag-lifted]")).toHaveCount(0);
+  await expect(page.locator("[data-drag-lifted], [data-drag-source], .pointer-drag-preview")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -98,8 +98,7 @@ import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { Inbox } from "./inbox";
-import { edgeScroller } from "./edge-scroll";
-import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, touchHold as holdForTouch, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
+import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, startPointerDrag, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
 import { MediaLibrary } from "./media-library";
 import {
   checkOfflineOwner,
@@ -584,6 +583,9 @@ export default function WorkspaceApp({
   // of the drawer's list, with no bar of its own below it (#629). A narrow
   // window with a mouse keeps the bar.
   const touchPhone = useMedia("(pointer: coarse) and (max-width: 767.98px)");
+  // Touch screens, tablets included: pages move by their handle alone, the
+  // rows are not draggable (WebKit's own drag would compete, #637).
+  const coarsePointer = useMedia("(pointer: coarse)");
   // Up to 600 px the page's ⋯ menu is a bottom sheet (components/page-menu.tsx).
   const sheetMenus = useMedia(SHEET_MEDIA);
   const locale = useLocale();
@@ -1037,20 +1039,20 @@ export default function WorkspaceApp({
     // source space: the step that resolves them (#136).
     [metaMove, setMetaMove] = useState<{ items: ForeignMeta[]; target: string; run: (meta: MetaPlan) => Promise<unknown> } | null>(null);
   const lastSelected = useRef<string | null>(null),
-    touchDrag = useRef<{ source: string; pointer: number } | null>(null),
-    touchHold = useRef<(() => void) | null>(null),
     // Ends a page drag by the handle (startTreeHandleDrag) quietly.
     treeHandleEnd = useRef<(() => void) | null>(null),
     treeHandleDropRef = useRef((_source: string, _x: number, _y: number) => {}),
+    // The row marked as the drop target of a page dragged by its handle:
+    // marked on the element itself, so the drag re-renders nothing (#637).
+    treeMark = useRef<{ row: HTMLElement; mark: string } | null>(null),
     // Whether the last press on a row of the tree was a finger.
-    rowPressedByTouch = useRef(false),
-    touchHoverRef = useRef((_x: number, _y: number) => {}),
-    // Holding the tree handle near the edge of the page list scrolls it.
-    [treeScroll] = useState(() =>
-      edgeScroller((x, y) => touchHoverRef.current(x, y)),
-    );
+    rowPressedByTouch = useRef(false);
   // A page drag by the handle ends with the workspace (no stray drop marks).
   useEffect(() => () => treeHandleEnd.current?.(), []);
+  // … and with the phone's drawer (#637).
+  useEffect(() => {
+    if (!mobile) treeHandleEnd.current?.();
+  }, [mobile]);
   const [privateTemplate, setPrivateTemplate] = useState(false);
   // The scope of a template being saved (#136): the page's space (null:
   // the whole workspace); `templateSpaceRefs` holds the server's answer when
@@ -3416,7 +3418,9 @@ export default function WorkspaceApp({
       setBulkBusy(false);
     }
   }
-  // Touch devices drag pages with a handle; the drop target is found under the finger.
+  // Touch devices drag pages with a handle; the drop target is found under
+  // the finger. The top and bottom 35 % of a row reorder, the middle 30 %
+  // nests (#637): a finger moving along the list mostly reorders.
   function touchTarget(x: number, y: number) {
     const row = document
       .elementFromPoint(x, y)
@@ -3425,21 +3429,24 @@ export default function WorkspaceApp({
     const rect = row.getBoundingClientRect(),
       ratio = (y - rect.top) / rect.height;
     return {
+      row,
       id: row.dataset.pageId!,
-      placement: (ratio < 0.25
+      placement: (ratio < 0.35
         ? "before"
-        : ratio > 0.75
+        : ratio > 0.65
           ? "after"
           : "inside") as "before" | "after" | "inside",
     };
   }
-  function touchHover(x: number, y: number) {
-    const drag = touchDrag.current;
-    if (!drag) return;
-    const target = touchTarget(x, y);
-    setTreeDrop(target && target.id !== drag.source ? target : null);
+  // Marks one row (or none) as the drop target, on the element itself.
+  function markTreeRow(row: HTMLElement | null, placement?: string) {
+    const mark = row && placement ? `drop-${placement}` : "",
+      was = treeMark.current;
+    if (was?.row === row && was?.mark === mark) return;
+    if (was) was.row.classList.remove(was.mark);
+    treeMark.current = row && mark ? { row, mark } : null;
+    if (row && mark) row.classList.add(mark);
   }
-  touchHoverRef.current = touchHover;
   // Moves a page dropped by the handle onto a row of the tree.
   treeHandleDropRef.current = (source, x, y) => {
     const target = touchTarget(x, y);
@@ -3449,64 +3456,44 @@ export default function WorkspaceApp({
       return act({ action: "page.move", pageId: source, targetId: target.id, placement: target.placement, ...(meta ? { meta } : {}) });
     });
   };
-  // A page lifted by its handle (touch, after the hold of touchHold; pen and
-  // mouse at once) follows the finger until it is let go (#618). The window
-  // listens, not the handle: its pointer capture can be refused or lost on
-  // touch screens (iOS), and then the moves and the release never reached
-  // it – the drag stalled and a drop line stayed behind. Every end – let
-  // go, cancelled by the browser, Esc, the window losing the focus, the
-  // tree going away – clears the drop marks.
-  function startTreeHandleDrag(handle: HTMLElement, pointer: number, source: string) {
+  // A page lifted by its handle (touch after the hold, pen and mouse once
+  // they move) follows the finger as a light copy while its row fades in
+  // place (components/pointer-drag.ts). The window follows the pointer, not
+  // the handle (#618), the drop target is looked up once per frame and
+  // marked on its row without a render (#637), and every end – let go,
+  // cancelled by the browser, Esc, the window losing the focus, the drawer
+  // closing, the tree going away – clears the mark.
+  function startTreeHandleDrag(event: React.PointerEvent<HTMLElement>, source: string) {
     treeHandleEnd.current?.();
-    try {
-      // The finger keeps the handle's touch while it leaves the row.
-      handle.setPointerCapture(pointer);
-    } catch {}
-    touchDrag.current = { source, pointer };
-    treeScroll.start(handle);
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointer) return;
-      if (ev.cancelable) ev.preventDefault();
-      touchHoverRef.current(ev.clientX, ev.clientY);
-      treeScroll.move(ev.clientX, ev.clientY);
-    };
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId === pointer) end(ev);
-    };
-    const cancel = (ev: PointerEvent) => {
-      if (ev.pointerId === pointer) end(null);
-    };
-    const key = (ev: KeyboardEvent) => {
-      if (ev.key !== "Escape") return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      end(null);
-    };
-    const lost = () => end(null);
-    const end = (drop: PointerEvent | null) => {
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", up, true);
-      window.removeEventListener("pointercancel", cancel, true);
-      window.removeEventListener("keydown", key, true);
-      window.removeEventListener("blur", lost);
+    const row = event.currentTarget.closest<HTMLElement>(".page-nav");
+    const done = () => {
       if (treeHandleEnd.current === quit) treeHandleEnd.current = null;
-      // The lifted handle and row go down as well (Esc comes before the
-      // finger lets go).
-      touchHold.current?.();
-      touchHold.current = null;
-      const drag = touchDrag.current;
-      touchDrag.current = null;
-      treeScroll.stop();
-      setTreeDrop(null);
-      if (drop && drag?.pointer === drop.pointerId) treeHandleDropRef.current(drag.source, drop.clientX, drop.clientY);
+      markTreeRow(null);
     };
-    const quit = () => end(null);
-    treeHandleEnd.current = quit;
-    window.addEventListener("pointermove", move, { capture: true, passive: false });
-    window.addEventListener("pointerup", up, true);
-    window.addEventListener("pointercancel", cancel, true);
-    window.addEventListener("keydown", key, true);
-    window.addEventListener("blur", lost);
+    const stop = startPointerDrag(event, {
+      touch: "hold",
+      preview: row,
+      source: row,
+      perFrame: true,
+      // The list scrolls with the finger anywhere below or above it (over
+      // the phone's bottom bar too), as before.
+      scrollReach: Infinity,
+      onMove: (point) => {
+        const target = touchTarget(point.x, point.y);
+        if (target && target.id !== source) markTreeRow(target.row, target.placement);
+        else markTreeRow(null);
+      },
+      onDrop: (point) => {
+        done();
+        treeHandleDropRef.current(source, point.x, point.y);
+      },
+      onCancel: done,
+    });
+    const quit = () => {
+      stop?.();
+      done();
+    };
+    treeHandleEnd.current = stop ? quit : null;
   }
   // A record dragged out of a database (components/database-view.tsx, with
   // pointer events since #100) onto another database in the sidebar moves
@@ -3939,7 +3926,7 @@ export default function WorkspaceApp({
               onPointerDownCapture={(e) => {
                 rowPressedByTouch.current = e.pointerType === "touch";
               }}
-              draggable={canCreate}
+              draggable={canCreate && !coarsePointer}
               onDragStart={(e) => {
                 // On phones a held row opens its menu and pages move by the
                 // handle alone: the browser's own drag of the row (iOS lifts
@@ -3989,12 +3976,13 @@ export default function WorkspaceApp({
                   return;
                 e.preventDefault();
                 const rect = e.currentTarget.getBoundingClientRect(),
-                  ratio = (e.clientY - rect.top) / rect.height;
-                setTreeDrop({
-                  id: p.id,
-                  placement:
-                    ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "inside",
-                });
+                  ratio = (e.clientY - rect.top) / rect.height,
+                  placement = ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "inside";
+                // dragover comes many times a second: a render only when
+                // the target or the placement changes (#637).
+                setTreeDrop((current) =>
+                  current?.id === p.id && current.placement === placement ? current : { id: p.id, placement },
+                );
               }}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -4110,20 +4098,11 @@ export default function WorkspaceApp({
                   data-no-edge-swipe=""
                   aria-label={t(`${p.title} ziehen`, `Drag ${p.title}`)}
                   onPointerDown={(e) => {
-                    // No native drag of the row: the handle drives the gesture.
+                    // No native drag of the row: the handle drives the
+                    // gesture. By touch only once held: a swipe over the
+                    // handles scrolls the tree and moves nothing (#166).
                     e.preventDefault();
-                    const handle = e.currentTarget,
-                      pointer = e.pointerId;
-                    // By touch only once held: a swipe over the handles
-                    // scrolls the tree and moves nothing (#166).
-                    touchHold.current?.();
-                    touchHold.current = holdForTouch(
-                      e,
-                      () => {
-                        if (handle.isConnected) startTreeHandleDrag(handle, pointer, p.id);
-                      },
-                      { lift: handle.closest<HTMLElement>(".page-nav") },
-                    );
+                    startTreeHandleDrag(e, p.id);
                   }}
                 >
                   <DotsSixVertical size={14} />
