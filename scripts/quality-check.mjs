@@ -86,6 +86,10 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // moves to 1070 KB; the sidebar tools menu and the chart accent (#589, #590) add
 // about 2 KB to the workspace: 1074 KB, monitoring 901 KB.
 // 2026-11-27: after #610/#612/#613 monitoring measured 901.0 KB: 905 KB.
+// The quick capture start screen renders the workspace look (#626), which
+// puts lib/workspace-theme into the shared start chunk: measured workflow
+// 1073.7, settings 868.1, settings section 955.1, instance 868.1, push
+// 876.0 KB; each budget +4 KB.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
@@ -125,21 +129,21 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1074, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1078, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
   // (components/home/home-editor.tsx).
   { path: "/#home", name: "home", signedIn: true, jsKb: 840, ready: ".home-grid" },
-  { path: "/#settings", name: "settings", signedIn: true, jsKb: 870, ready: ".sv-start .sv-start-ring, .sv-start .sv-start-setup a" },
-  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 957, ready: ".settings-detail .setting-group" },
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 874, ready: ".sv-start .sv-start-ring, .sv-start .sv-start-setup a" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 961, ready: ".settings-detail .setting-group" },
   // The start page of an admin: the instance at a glance (#532, the former
   // administration landing page).
-  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 870, ready: ".sv-glance-grid:not(.placeholder)" },
+  { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 874, ready: ".sv-glance-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
   { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 905, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
-  { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 876, ready: "#relay" },
+  { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 880, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 255, lcpMs: 2500 };
 const LOCALE = "de-DE";
