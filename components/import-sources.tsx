@@ -16,7 +16,7 @@ import dynamic from "next/dynamic";
 import { Cards, FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
 import { storedZip } from "@/lib/stored-zip";
 import { useT } from "./i18n";
-import { sendImport as send, waitForJob, warningText } from "./import-client";
+import { sendImport as send, waitForJob, warningText, type JobStep } from "./import-client";
 import { Select } from "./select";
 import { Switch } from "./settings-ui";
 import { ImportNotion } from "./import-notion";
@@ -95,8 +95,18 @@ export function ImportSources({
   const [preview, setPreview] = useState<Preview | null>(null);
   // Uploading (share of the file sent) or the server's work (its share
   // done; null while it cannot tell).
-  const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null } | null>(null);
+  // While a large import is written, the page it is at (#594).
+  const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null; step?: JobStep } | null>(null);
   const [done, setDone] = useState<{ text: string; report?: Report } | null>(null);
+  // "Page 812 of 2000" while a large import is prepared and written (#594).
+  const stepText = (step: JobStep, percent: number) =>
+    !step.done
+      ? t(`Wird gespeichert … ${percent} %`, `Saving … ${percent} %`)
+      : step.phase === "prepare"
+        ? t(`Seite ${step.done} von ${step.total} wird vorbereitet … ${percent} %`, `Preparing page ${step.done} of ${step.total} … ${percent} %`)
+        : step.phase === "create"
+          ? t(`Seite ${step.done} von ${step.total} wird angelegt … ${percent} %`, `Creating page ${step.done} of ${step.total} … ${percent} %`)
+          : t(`Seite ${step.done} von ${step.total} wird gespeichert … ${percent} %`, `Saving page ${step.done} of ${step.total} … ${percent} %`);
   const names: Record<string, string> = {
     affine: "AFFiNE",
     anki: t("Anki (Lernkarten)", "Anki (flashcards)"),
@@ -122,7 +132,7 @@ export function ImportSources({
     try {
       const { job } = (await send(query, upload ? null : chosen, (share) => setProgress(share >= 1 ? { phase: "work", share: null } : { phase: "upload", share }))) as { job: string };
       setProgress({ phase: "work", share: null });
-      return await waitForJob(job, (share) => setProgress({ phase: "work", share }));
+      return await waitForJob(job, (share, step) => setProgress({ phase: "work", share, step }));
     } finally {
       setProgress(null);
     }
@@ -348,9 +358,11 @@ export function ImportSources({
           <span>
             {progress.phase === "upload"
               ? t(`Hochladen … ${Math.round((progress.share || 0) * 100)} %`, `Uploading … ${Math.round((progress.share || 0) * 100)} %`)
-              : progress.share
-                ? t(`Wird verarbeitet … ${Math.round(progress.share * 100)} %`, `Processing … ${Math.round(progress.share * 100)} %`)
-                : t("Wird verarbeitet …", "Processing …")}
+              : progress.share && progress.step
+                ? stepText(progress.step, Math.round(progress.share * 100))
+                : progress.share
+                  ? t(`Wird verarbeitet … ${Math.round(progress.share * 100)} %`, `Processing … ${Math.round(progress.share * 100)} %`)
+                  : t("Wird verarbeitet …", "Processing …")}
           </span>
         </div>
       )}

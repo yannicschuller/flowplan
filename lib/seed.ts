@@ -21,14 +21,20 @@ export async function createPage(
   databaseKind: DatabaseKind = "tasks",
   // A journal day written into before it existed keeps its draft id.
   pid: string = id(),
+  // An import (lib/importers/write.ts, #594) places its pages itself and
+  // sets their icons in the same statement.
+  place: { position?: number; icon?: string } = {},
 ) {
   // At the end of its siblings: the time, but never level with a page made
   // in the same millisecond (two would then sit in either order).
-  const last = await one<{ position: number | null }>(
-    "SELECT MAX(position) AS position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ?",
-    space,
-    parent,
-  );
+  const last =
+    place.position === undefined
+      ? await one<{ position: number | null }>(
+          "SELECT MAX(position) AS position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ?",
+          space,
+          parent,
+        )
+      : null;
   await run(
     "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position,icon) VALUES(?,?,?,?,?,?,?,?,?)",
     pid,
@@ -38,8 +44,9 @@ export async function createPage(
     title,
     kind,
     user,
-    Math.max(Date.now(), Math.floor(Number(last?.position ?? 0)) + 1),
-    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : kind === "workflow" ? "workflow" : "file",
+    place.position ?? Math.max(Date.now(), Math.floor(Number(last?.position ?? 0)) + 1),
+    place.icon ||
+      (kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : kind === "workflow" ? "workflow" : "file"),
   );
   if (kind === "database") {
     const setup = databaseSetup(databaseKind);

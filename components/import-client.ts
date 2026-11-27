@@ -38,7 +38,9 @@ export function sendImport(query: URLSearchParams, body: File | null, onProgress
 // error of the reverse proxy (502–504) or a lost connection only means
 // asking again later, for up to half an hour without an answer.
 const PATIENCE_MS = 30 * 60_000;
-export async function waitForJob(job: string, onProgress: (share: number | null) => void) {
+// Where an import is (#594): preparing, making or saving page `done` of `total`.
+export type JobStep = { phase: "prepare" | "create" | "write"; done: number; total: number };
+export async function waitForJob(job: string, onProgress: (share: number | null, step?: JobStep) => void) {
   let failures = 0,
     lastAnswer = Date.now();
   for (;;) {
@@ -56,11 +58,11 @@ export async function waitForJob(job: string, onProgress: (share: number | null)
     }
     failures = 0;
     lastAnswer = Date.now();
-    const data = (await response.json().catch(() => null)) as { status?: string; progress?: number | null; result?: unknown; error?: string; code?: number } | null;
+    const data = (await response.json().catch(() => null)) as { status?: string; progress?: number | null; step?: JobStep; result?: unknown; error?: string; code?: number } | null;
     if (!response.ok) throw new Error(serverMessage(data?.error) || String(response.status));
     if (data?.status === "done") return data.result;
     if (data?.status === "failed") throw new Error(serverMessage(data.error) || String(data.code || 500));
-    onProgress(typeof data?.progress === "number" ? data.progress : null);
+    onProgress(typeof data?.progress === "number" ? data.progress : null, data?.step);
   }
 }
 

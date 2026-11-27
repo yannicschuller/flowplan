@@ -52,6 +52,13 @@
         587,
         588
       ]
+    },
+    {
+      "de": "Große Importe (Obsidian-Tresore und andere ZIP-Exporte) werden schneller geschrieben und bleiben dabei nicht mehr lange bei 50 % stehen: Die Anzeige sagt, an welcher Seite der Import ist („Seite 812 von 2000 wird vorbereitet“), und der Server antwortet in dieser Zeit weiter.",
+      "en": "Large imports (Obsidian vaults and other ZIP exports) are written faster and no longer sit at 50 % for a long time: the progress says which page the import is at (“Preparing page 812 of 2000”), and the server keeps answering meanwhile.",
+      "issues": [
+        594
+      ]
     }
   ],
   "fixes": [

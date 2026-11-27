@@ -46,7 +46,7 @@ export async function importNotion(
   const tree = await parseNotionApi(secret, items, { ...test, member, maxFileBytes: Math.min(IN_MEMORY_FILE_MB, await maxUploadMbFor(user)) * 1024 * 1024 });
   try {
     await jobProgress(0.9);
-    return await writeImport(user, workspaceId, spaceId, tree, "pages");
+    return await writeImport(user, workspaceId, spaceId, tree, "pages", { progress: { from: 0.9, to: 1 } });
   } finally {
     tree.close?.();
   }

@@ -5219,7 +5219,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/import/bookstack`, { json: body }, options);
   }
 
-  /** State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job) */
+  /** State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null, and while a large import is prepared and written `step`: `{phase: "prepare"|"create"|"write", done, total}`, the page it is at), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job) */
   async importSourceJob(query: { id: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/import/source/job`, { query }, options);
   }

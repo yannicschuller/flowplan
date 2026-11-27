@@ -1,0 +1,3738 @@
+{
+ "pages": [
+  {
+   "path": "Antwort 63",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 63\"]",
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-8",
+    "tag-23",
+    "tag-2",
+    "tag-14",
+    "tag-13",
+    "tag-10"
+   ],
+   "properties": {},
+   "html": "84f8f72834916961",
+   "state": "9952ff34a9bcab04"
+  },
+  {
+   "path": "Bereich 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-22",
+    "tag-16",
+    "tag-8",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "47969aac754d5890",
+   "state": "7f5d191e40640b3f"
+  },
+  {
+   "path": "Bereich 0/Aufgabe 64",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-18"
+   ],
+   "properties": {},
+   "html": "70ef44f1b32e008f",
+   "state": "89dd9f36a4bcff62"
+  },
+  {
+   "path": "Bereich 0/Termin 127",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-7",
+    "tag-29",
+    "tag-26",
+    "tag-20",
+    "tag-18"
+   ],
+   "properties": {},
+   "html": "5bb132506de0ac89",
+   "state": "8cce67993a0010d8"
+  },
+  {
+   "path": "Bereich 0/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Notiz 128",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-18",
+    "tag-24"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "6adf587ee981b2c8",
+   "state": "0fe6097842aa02a5"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Plan 65",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-6",
+    "tag-9",
+    "tag-0",
+    "tag-3"
+   ],
+   "properties": {},
+   "html": "b105dfb2636184a2",
+   "state": "37de06233b1ae266"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 0/Aufgabe 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 3\"]",
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-0",
+    "tag-16",
+    "tag-17",
+    "tag-10",
+    "tag-3"
+   ],
+   "properties": {},
+   "html": "de0577734b18ffc2",
+   "state": "07af98e156b5f366"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 0/Frage 66",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 66\"]",
+   "cover": null,
+   "tags": [
+    "tag-10",
+    "tag-18",
+    "tag-24",
+    "tag-5",
+    "tag-17"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-16\"",
+    "status:text": "\"fertig\""
+   },
+   "html": "5844f77e1e99d6a9",
+   "state": "8821b453a6beb647"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 0/Projekt 129",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-14",
+    "tag-0"
+   ],
+   "properties": {},
+   "html": "7b1eeb0852120391",
+   "state": "3ee9cc9b1841500e"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 1/Idee 4",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-22",
+    "tag-5"
+   ],
+   "properties": {},
+   "html": "713d3d303967036c",
+   "state": "24f107ed177bb6da"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 1/Termin 67",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-19",
+    "tag-20",
+    "tag-29",
+    "tag-3",
+    "tag-4",
+    "tag-8"
+   ],
+   "properties": {},
+   "html": "8810def90a42f155",
+   "state": "b6f6d1b1b7be8d08"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Teil 1/Thema 130",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-10",
+    "tag-11",
+    "tag-2",
+    "tag-23",
+    "tag-17",
+    "tag-8"
+   ],
+   "properties": {
+    "status:text": "\"fertig\""
+   },
+   "html": "77cb9c7f5e679613",
+   "state": "f66d0c19977e1969"
+  },
+  {
+   "path": "Bereich 0/Thema 0/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-22",
+    "tag-26",
+    "tag-24",
+    "tag-2",
+    "tag-7",
+    "tag-27"
+   ],
+   "properties": {
+    "status:text": "\"fertig\""
+   },
+   "html": "8697441419a8331d",
+   "state": "5a5e157b4bd3ed9e"
+  },
+  {
+   "path": "Bereich 0/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-22",
+    "tag-29",
+    "tag-7",
+    "tag-19"
+   ],
+   "properties": {},
+   "html": "045f55556899daa6",
+   "state": "7855ec42c093fbf3"
+  },
+  {
+   "path": "Bereich 0/Thema 1/Termin 68",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-25",
+    "tag-9"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"offen\""
+   },
+   "html": "d1bc601f2782aec0",
+   "state": "3eb69871d12d273a"
+  },
+  {
+   "path": "Bereich 0/Thema 1/Ziel 131",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-27",
+    "tag-28",
+    "tag-26",
+    "tag-18",
+    "tag-19",
+    "tag-21"
+   ],
+   "properties": {},
+   "html": "783fa66fa1c3ae94",
+   "state": "76bcd818cdf2b22c"
+  },
+  {
+   "path": "Bereich 0/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 2/Quelle 69",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-5",
+    "tag-29",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "0be739d52d50608d",
+   "state": "992cf6c81b95a754"
+  },
+  {
+   "path": "Bereich 0/Thema 2/Thema 6",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 6\"]",
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-15",
+    "tag-8",
+    "tag-23",
+    "tag-3",
+    "tag-14"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-16\"",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "6f2ec7c71b2c18eb",
+   "state": "9e491d4ee9eb38f1"
+  },
+  {
+   "path": "Bereich 0/Thema 2/Ziel 132",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 132\"]",
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-18",
+    "tag-17",
+    "tag-6"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-12\"",
+    "rating:number": "3",
+    "status:text": "\"offen\""
+   },
+   "html": "b88ad6d298e98f16",
+   "state": "25e2ab419577b40e"
+  },
+  {
+   "path": "Bereich 0/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Antwort 133",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-15",
+    "tag-8",
+    "tag-12",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "5b6deab3a6ceb8ba",
+   "state": "ab166d742add320d"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Notiz 7",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-20",
+    "tag-19",
+    "tag-18",
+    "tag-25",
+    "tag-29"
+   ],
+   "properties": {},
+   "html": "81477e2f2c92433b",
+   "state": "7067bf16f55ba4a7"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 0/Entwurf 8",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-12",
+    "tag-20"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "4d26463d7359937d",
+   "state": "f63e98d0b94e81cb"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 0/Idee 134",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-10",
+    "tag-6",
+    "tag-17",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "ba79d0e16f94e128",
+   "state": "96f3918d8d6d1e19"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 0/Quelle 71",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-23",
+    "tag-29",
+    "tag-1",
+    "tag-25",
+    "tag-0",
+    "tag-20",
+    "tag-17"
+   ],
+   "properties": {},
+   "html": "a54d6806f2bc85d8",
+   "state": "5f18c284bcfdacf8"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-3",
+    "tag-4"
+   ],
+   "properties": {},
+   "html": "1aba6b4645a1d031",
+   "state": "b9de6e5f25738928"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 1/Entwurf 72",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 72\"]",
+   "cover": null,
+   "tags": [
+    "tag-7",
+    "tag-11",
+    "tag-14",
+    "tag-21"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-12\"",
+    "rating:number": "3",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "75fb39d771644854",
+   "state": "f42d601106ed878d"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Teil 1/Notiz 135",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 135\"]",
+   "cover": null,
+   "tags": [
+    "tag-1",
+    "tag-11",
+    "tag-18",
+    "tag-0",
+    "tag-12",
+    "tag-17"
+   ],
+   "properties": {},
+   "html": "7fdc4c246d19ec9c",
+   "state": "7b74829f6ba84f7a"
+  },
+  {
+   "path": "Bereich 0/Thema 3/Übersicht 70",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-5",
+    "tag-26",
+    "tag-24",
+    "tag-12"
+   ],
+   "properties": {
+    "status:text": "\"offen\""
+   },
+   "html": "567acb2c426748a1",
+   "state": "7d2ba7568ce5fb03"
+  },
+  {
+   "path": "Bereich 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Antwort 73",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-3",
+    "tag-10",
+    "tag-18",
+    "tag-14",
+    "tag-29"
+   ],
+   "properties": {},
+   "html": "4d6cd6d90e852fa3",
+   "state": "c28c973be0d918d2"
+  },
+  {
+   "path": "Bereich 1/Idee 10",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-20",
+    "tag-2",
+    "tag-24",
+    "tag-5",
+    "tag-22"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "687e9f53cc6ce2b7",
+   "state": "7c2265ee2a0105e6"
+  },
+  {
+   "path": "Bereich 1/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Thema 0/Antwort 74",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-6",
+    "tag-12",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "b419ce49038a2906",
+   "state": "914f1a0c0c76c10b"
+  },
+  {
+   "path": "Bereich 1/Thema 0/Notiz 137",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-7",
+    "tag-14",
+    "tag-26",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "b1defcd6f0368e29",
+   "state": "08bb9949990f4aa6"
+  },
+  {
+   "path": "Bereich 1/Thema 0/Ziel 11",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-0",
+    "tag-12",
+    "tag-9",
+    "tag-3",
+    "tag-5",
+    "tag-26"
+   ],
+   "properties": {},
+   "html": "3b34e8634aba741e",
+   "state": "57206c63482e7f12"
+  },
+  {
+   "path": "Bereich 1/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Thema 1/Idee 75",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 75\"]",
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-11",
+    "tag-4",
+    "tag-21",
+    "tag-27",
+    "tag-19",
+    "tag-2"
+   ],
+   "properties": {},
+   "html": "54727d8220da0eed",
+   "state": "0e40814e23a52e90"
+  },
+  {
+   "path": "Bereich 1/Thema 1/Notiz 12",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 12\"]",
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-10",
+    "tag-0",
+    "tag-18"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-12\"",
+    "rating:number": "3",
+    "status:text": "\"fertig\""
+   },
+   "html": "b8f8857bf50c5e87",
+   "state": "87f9f2581bbf5520"
+  },
+  {
+   "path": "Bereich 1/Thema 1/Projekt 138",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 138\"]",
+   "cover": null,
+   "tags": [
+    "tag-0",
+    "tag-14",
+    "tag-5",
+    "tag-3",
+    "tag-6",
+    "tag-11"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-18\"",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "84b36592d72bdedc",
+   "state": "e19359ed74c8205f"
+  },
+  {
+   "path": "Bereich 1/Thema 136",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-6"
+   ],
+   "properties": {
+    "rating:number": "2",
+    "status:text": "\"offen\""
+   },
+   "html": "f4f2d37de48c9eb2",
+   "state": "928cef1f1dde2ab7"
+  },
+  {
+   "path": "Bereich 1/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-25",
+    "tag-20",
+    "tag-29",
+    "tag-19"
+   ],
+   "properties": {},
+   "html": "5f4cab716e073022",
+   "state": "b5a7ee9b84b96b06"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Antwort 76",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-6",
+    "tag-26",
+    "tag-13",
+    "tag-22"
+   ],
+   "properties": {
+    "rating:number": "2",
+    "status:text": "\"offen\""
+   },
+   "html": "b8601c84ca333d1d",
+   "state": "6d54540599cd00e4"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Projekt 139",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-23",
+    "tag-12",
+    "tag-24",
+    "tag-26"
+   ],
+   "properties": {},
+   "html": "bf665fe388a9d87f",
+   "state": "dcfa7a82e0f29d36"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 0/Antwort 14",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-16",
+    "tag-13",
+    "tag-1"
+   ],
+   "properties": {},
+   "html": "9aa10a53c9db8366",
+   "state": "837701a30aa8b928"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 0/Kapitel 77",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-21",
+    "tag-23",
+    "tag-0",
+    "tag-11",
+    "tag-24"
+   ],
+   "properties": {},
+   "html": "ca88e5c1cb876167",
+   "state": "7f7526af598fffb8"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 0/Liste 140",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-20",
+    "tag-15",
+    "tag-28",
+    "tag-8"
+   ],
+   "properties": {
+    "rating:number": "1",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "9dbacd3a9cc84b76",
+   "state": "7961211f61d7c03c"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 1/Antwort 78",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 78\"]",
+   "cover": null,
+   "tags": [
+    "tag-18",
+    "tag-7",
+    "tag-5",
+    "tag-1",
+    "tag-24"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-18\"",
+    "status:text": "\"offen\""
+   },
+   "html": "c912aed7ebf81039",
+   "state": "9669cb9729bca66e"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 1/Quelle 141",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 141\"]",
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-15",
+    "tag-12",
+    "tag-28",
+    "tag-24"
+   ],
+   "properties": {},
+   "html": "d91f3757548cfd3e",
+   "state": "514a0bce852ddfc1"
+  },
+  {
+   "path": "Bereich 1/Thema 2/Teil 1/Termin 15",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 15\"]",
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-3",
+    "tag-22",
+    "tag-18",
+    "tag-8",
+    "tag-11",
+    "tag-20"
+   ],
+   "properties": {},
+   "html": "0c1fbb1e5264caca",
+   "state": "84ecdbbe48705851"
+  },
+  {
+   "path": "Bereich 1/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 6,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 1/Thema 3/Idee 16",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-28",
+    "tag-7",
+    "tag-17"
+   ],
+   "properties": {
+    "rating:number": "2",
+    "status:text": "\"offen\""
+   },
+   "html": "629c65370f4621e9",
+   "state": "ec0e5df438d6232c"
+  },
+  {
+   "path": "Bereich 1/Thema 3/Kapitel 142",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-3",
+    "tag-10",
+    "tag-19",
+    "tag-24",
+    "tag-22"
+   ],
+   "properties": {
+    "status:text": "\"offen\""
+   },
+   "html": "3912113ac10c3ee7",
+   "state": "83fbebb1f9c147b9"
+  },
+  {
+   "path": "Bereich 1/Thema 3/Liste 79",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-1",
+    "tag-22",
+    "tag-28",
+    "tag-29"
+   ],
+   "properties": {},
+   "html": "6cedc32676ced5ab",
+   "state": "133d54d835bb37be"
+  },
+  {
+   "path": "Bereich 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-2",
+    "tag-15",
+    "tag-18",
+    "tag-10"
+   ],
+   "properties": {},
+   "html": "3fcf08e6b16f9a64",
+   "state": "1b6fca7e4c04f57b"
+  },
+  {
+   "path": "Bereich 2/Frage 80",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-19",
+    "tag-12",
+    "tag-24"
+   ],
+   "properties": {
+    "rating:number": "1",
+    "status:text": "\"fertig\""
+   },
+   "html": "42470d7211d715d8",
+   "state": "f55b13144b23226e"
+  },
+  {
+   "path": "Bereich 2/Quelle 143",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-6",
+    "tag-5",
+    "tag-13",
+    "tag-4",
+    "tag-1",
+    "tag-24"
+   ],
+   "properties": {},
+   "html": "a9b0f76ea8df1f3c",
+   "state": "2107f2b9cf20db06"
+  },
+  {
+   "path": "Bereich 2/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 2/Thema 0/Bericht 144",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-15"
+   ],
+   "properties": {},
+   "html": "558e20764c22f6a6",
+   "state": "7b0fa782398935ee"
+  },
+  {
+   "path": "Bereich 2/Thema 0/Bericht 18",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 18\"]",
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-3",
+    "tag-25",
+    "tag-10",
+    "tag-13"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-18\"",
+    "status:text": "\"offen\""
+   },
+   "html": "34727053705aa399",
+   "state": "83de430f0e5ee578"
+  },
+  {
+   "path": "Bereich 2/Thema 0/Übersicht 81",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 81\"]",
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-24",
+    "tag-8",
+    "tag-6"
+   ],
+   "properties": {},
+   "html": "3197f338330b53a1",
+   "state": "a203c6852abbbdb2"
+  },
+  {
+   "path": "Bereich 2/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Aufgabe 145",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-5",
+    "tag-17",
+    "tag-22",
+    "tag-19",
+    "tag-1"
+   ],
+   "properties": {},
+   "html": "fb6fdec9fa16570f",
+   "state": "43fdd66b84bddec2"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Aufgabe 82",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-24",
+    "tag-10",
+    "tag-23",
+    "tag-17"
+   ],
+   "properties": {
+    "status:text": "\"offen\""
+   },
+   "html": "b9ff050923f716ef",
+   "state": "6c28133d9a98392b"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Bericht 19",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-10",
+    "tag-22",
+    "tag-8",
+    "tag-2"
+   ],
+   "properties": {},
+   "html": "0ea868750906af9b",
+   "state": "2fa424e75bce031e"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 0/Aufgabe 83",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-3",
+    "tag-20",
+    "tag-26",
+    "tag-19",
+    "tag-25",
+    "tag-17",
+    "tag-7"
+   ],
+   "properties": {},
+   "html": "fec7ba78295fb6ef",
+   "state": "6eb27e9679fc5c4a"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 0/Bericht 146",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-1",
+    "tag-27",
+    "tag-4",
+    "tag-12"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "c684a7cc021947b7",
+   "state": "3a882226b42ea6be"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 0/Plan 20",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-24",
+    "tag-1"
+   ],
+   "properties": {
+    "rating:number": "1",
+    "status:text": "\"fertig\""
+   },
+   "html": "bc26a2483f54e2cd",
+   "state": "4c27617ae74203c5"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": "[\"Alias 21\"]",
+   "cover": null,
+   "tags": [
+    "tag-23",
+    "tag-13",
+    "tag-27",
+    "tag-15",
+    "tag-22"
+   ],
+   "properties": {},
+   "html": "8edf224ac4ca5385",
+   "state": "d558d03da4e3c0c5"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 1/Antwort 84",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-19",
+    "tag-1"
+   ],
+   "properties": {},
+   "html": "1f8bd9a901b9cf64",
+   "state": "212322d9506ee3e7"
+  },
+  {
+   "path": "Bereich 2/Thema 1/Teil 1/Idee 147",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 147\"]",
+   "cover": null,
+   "tags": [
+    "tag-3",
+    "tag-6",
+    "tag-13",
+    "tag-4",
+    "tag-22",
+    "tag-17"
+   ],
+   "properties": {},
+   "html": "3ead007c79eecc80",
+   "state": "feba99d6d0e6c0b7"
+  },
+  {
+   "path": "Bereich 2/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 2/Thema 2/Entwurf 22",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-18",
+    "tag-0",
+    "tag-20",
+    "tag-6",
+    "tag-8"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "824b3b1ff702c01b",
+   "state": "ec6032a804b64fe4"
+  },
+  {
+   "path": "Bereich 2/Thema 2/Liste 148",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-15",
+    "tag-9",
+    "tag-25"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"fertig\""
+   },
+   "html": "f4ca9fbbbfa79244",
+   "state": "6a6037b60156c426"
+  },
+  {
+   "path": "Bereich 2/Thema 2/Quelle 85",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-24",
+    "tag-2",
+    "tag-29",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "9d7823abfcc0985a",
+   "state": "5ed1c4eb77ca7c0a"
+  },
+  {
+   "path": "Bereich 2/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 2/Thema 3/Antwort 149",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-29",
+    "tag-8"
+   ],
+   "properties": {},
+   "html": "fa67464ce732f35f",
+   "state": "202d80a71ef3ed35"
+  },
+  {
+   "path": "Bereich 2/Thema 3/Frage 86",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-28",
+    "tag-26",
+    "tag-2",
+    "tag-21"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "d24b836b5023f11e",
+   "state": "388c2f9ba25aa770"
+  },
+  {
+   "path": "Bereich 2/Thema 3/Kapitel 23",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-8",
+    "tag-19",
+    "tag-17",
+    "tag-28",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "7166ba5cd4ce67dc",
+   "state": "5092c7a4ab88feb2"
+  },
+  {
+   "path": "Bereich 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Notiz 87",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 87\"]",
+   "cover": null,
+   "tags": [
+    "tag-5",
+    "tag-0",
+    "tag-23",
+    "tag-16",
+    "tag-22"
+   ],
+   "properties": {},
+   "html": "36cf7bdd84aae2fe",
+   "state": "ec55fddfb723522c"
+  },
+  {
+   "path": "Bereich 3/Plan 150",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 150\"]",
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-15",
+    "tag-2",
+    "tag-22",
+    "tag-6"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-10\"",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "078d9c8881ec1bce",
+   "state": "3d1fd022e608a508"
+  },
+  {
+   "path": "Bereich 3/Termin 24",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "6ddf4ac25ffd7b70",
+   "state": "50340ee95d0130c7"
+  },
+  {
+   "path": "Bereich 3/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-5",
+    "tag-27",
+    "tag-28",
+    "tag-8"
+   ],
+   "properties": {},
+   "html": "a90c9828024c42ca",
+   "state": "29a482cb4e6d23b0"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Bericht 151",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-8",
+    "tag-3",
+    "tag-14",
+    "tag-25"
+   ],
+   "properties": {},
+   "html": "e398f2ed20611d0f",
+   "state": "8ed24718c67ad8a4"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Projekt 88",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-5",
+    "tag-3",
+    "tag-6"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"fertig\""
+   },
+   "html": "3a500d224fe2b1db",
+   "state": "e0058529d3b1fbe5"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 0/Idee 89",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-26"
+   ],
+   "properties": {},
+   "html": "4897cf49760f4f7a",
+   "state": "9d6b7a08bfa0ad60"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 0/Kapitel 26",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-5",
+    "tag-4",
+    "tag-2",
+    "tag-3"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "025e9d9190761c49",
+   "state": "522723c09cf5d02f"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 0/Thema 152",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-29",
+    "tag-26",
+    "tag-16"
+   ],
+   "properties": {
+    "rating:number": "3",
+    "status:text": "\"fertig\""
+   },
+   "html": "3a2e41aa2a4229ef",
+   "state": "5cd0444fcb873616"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 1/Notiz 153",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 153\"]",
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-20",
+    "tag-6",
+    "tag-5",
+    "tag-16"
+   ],
+   "properties": {},
+   "html": "730f8dd75bbca387",
+   "state": "c9efb07c2362531a"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 1/Quelle 90",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 90\"]",
+   "cover": null,
+   "tags": [
+    "tag-23",
+    "tag-22",
+    "tag-2",
+    "tag-29",
+    "tag-19"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-10\"",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "df2fcf13f5d29daa",
+   "state": "4bf540c944821da7"
+  },
+  {
+   "path": "Bereich 3/Thema 0/Teil 1/Thema 27",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 27\"]",
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-13",
+    "tag-0",
+    "tag-9",
+    "tag-1",
+    "tag-15"
+   ],
+   "properties": {},
+   "html": "175798e5f89d5bae",
+   "state": "b386492a9fade6d2"
+  },
+  {
+   "path": "Bereich 3/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 1/Notiz 28",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-5",
+    "tag-16",
+    "tag-20",
+    "tag-7"
+   ],
+   "properties": {
+    "rating:number": "4",
+    "status:text": "\"fertig\""
+   },
+   "html": "d5f4e1c4485a93b4",
+   "state": "66c63540e40ff689"
+  },
+  {
+   "path": "Bereich 3/Thema 1/Plan 154",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-27",
+    "tag-19",
+    "tag-15",
+    "tag-13"
+   ],
+   "properties": {},
+   "html": "eac703a9bdec2c85",
+   "state": "0dde17baab037428"
+  },
+  {
+   "path": "Bereich 3/Thema 1/Thema 91",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-27",
+    "tag-7",
+    "tag-4",
+    "tag-16",
+    "tag-9",
+    "tag-14",
+    "tag-22"
+   ],
+   "properties": {},
+   "html": "32444afbc46e0d8a",
+   "state": "7a1be5538845f861"
+  },
+  {
+   "path": "Bereich 3/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-22",
+    "tag-17"
+   ],
+   "properties": {},
+   "html": "ea8a8065584fc267",
+   "state": "871693727d3142c1"
+  },
+  {
+   "path": "Bereich 3/Thema 2/Frage 155",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-20",
+    "tag-8",
+    "tag-17",
+    "tag-10",
+    "tag-15"
+   ],
+   "properties": {},
+   "html": "79049580bd237472",
+   "state": "2f45820d6ce9af4a"
+  },
+  {
+   "path": "Bereich 3/Thema 2/Projekt 92",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-3",
+    "tag-1",
+    "tag-16"
+   ],
+   "properties": {
+    "rating:number": "3",
+    "status:text": "\"fertig\""
+   },
+   "html": "1329c9248799cbe6",
+   "state": "0caf3cb9f5a74d75"
+  },
+  {
+   "path": "Bereich 3/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 6,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Entwurf 93",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 93\"]",
+   "cover": null,
+   "tags": [
+    "tag-7",
+    "tag-2",
+    "tag-1",
+    "tag-10",
+    "tag-14"
+   ],
+   "properties": {},
+   "html": "d75617c6a7f10566",
+   "state": "65d28a049bfd9c8a"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Liste 30",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 30\"]",
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-1",
+    "tag-21",
+    "tag-8",
+    "tag-14",
+    "tag-11"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-10\"",
+    "status:text": "\"fertig\""
+   },
+   "html": "8e35c0097f43f094",
+   "state": "a2c80c4ebba710ee"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Plan 156",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 156\"]",
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-18",
+    "tag-1"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-16\"",
+    "rating:number": "2",
+    "status:text": "\"fertig\""
+   },
+   "html": "ab6abc62c0483fc3",
+   "state": "726a52b2101b6959"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 0/Notiz 157",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-9",
+    "tag-14",
+    "tag-28",
+    "tag-20",
+    "tag-3"
+   ],
+   "properties": {},
+   "html": "7778a359e4ffb739",
+   "state": "19ce551219adb4fa"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 0/Quelle 94",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-21",
+    "tag-4",
+    "tag-26",
+    "tag-0"
+   ],
+   "properties": {},
+   "html": "940f6b66763748ee",
+   "state": "a225869e54fdad12"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 0/Übersicht 31",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-28",
+    "tag-12",
+    "tag-23",
+    "tag-14",
+    "tag-15",
+    "tag-19"
+   ],
+   "properties": {},
+   "html": "aa41bd1458a1a7eb",
+   "state": "7b1112393a1dc33c"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 1/Antwort 32",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-7",
+    "tag-14",
+    "tag-18"
+   ],
+   "properties": {
+    "rating:number": "3",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "0068726ae0ecb62a",
+   "state": "4e6a13bb6bd43adb"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 1/Plan 95",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-17",
+    "tag-21",
+    "tag-19",
+    "tag-12",
+    "tag-6",
+    "tag-28",
+    "tag-14"
+   ],
+   "properties": {},
+   "html": "ef48f2ce2c9e02f5",
+   "state": "27305b99ca5c428f"
+  },
+  {
+   "path": "Bereich 3/Thema 3/Teil 1/Übersicht 158",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-28",
+    "tag-5",
+    "tag-21",
+    "tag-8",
+    "tag-29",
+    "tag-14"
+   ],
+   "properties": {
+    "status:text": "\"fertig\""
+   },
+   "html": "b03348bdc504b8cc",
+   "state": "4ccc17d90353c2f4"
+  },
+  {
+   "path": "Bereich 4",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": "[\"Alias 33\"]",
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-20",
+    "tag-11",
+    "tag-0",
+    "tag-9"
+   ],
+   "properties": {},
+   "html": "aedbf6dc77e2e32d",
+   "state": "b2d8ba2a13b1aaaf"
+  },
+  {
+   "path": "Bereich 4/Plan 159",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-23",
+    "tag-25",
+    "tag-27",
+    "tag-3"
+   ],
+   "properties": {},
+   "html": "efcf5b33897040c5",
+   "state": "0a10b7276db3f304"
+  },
+  {
+   "path": "Bereich 4/Termin 96",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 96\"]",
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-17",
+    "tag-18",
+    "tag-29"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-16\"",
+    "rating:number": "2",
+    "status:text": "\"fertig\""
+   },
+   "html": "6550f2c5699b8508",
+   "state": "24656a366f8bc7c6"
+  },
+  {
+   "path": "Bereich 4/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 4/Thema 0/Bericht 34",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-6",
+    "tag-1",
+    "tag-27",
+    "tag-2"
+   ],
+   "properties": {},
+   "html": "2b62ee24a592adeb",
+   "state": "90510728b9dbb19f"
+  },
+  {
+   "path": "Bereich 4/Thema 0/Ziel 97",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-8",
+    "tag-1",
+    "tag-5",
+    "tag-27"
+   ],
+   "properties": {},
+   "html": "d4f63b5d7f716a1f",
+   "state": "967c57c62e30abf8"
+  },
+  {
+   "path": "Bereich 4/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 4/Thema 1/Projekt 35",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-10",
+    "tag-16",
+    "tag-3",
+    "tag-12",
+    "tag-21",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "165a74927e1b7c0f",
+   "state": "6fac6e5df01da407"
+  },
+  {
+   "path": "Bereich 4/Thema 1/Thema 98",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-28",
+    "tag-29",
+    "tag-9",
+    "tag-10",
+    "tag-13"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "89966b806ea8da7d",
+   "state": "b7cc83e31ea1bfb6"
+  },
+  {
+   "path": "Bereich 4/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Antwort 36",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 36\"]",
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-21",
+    "tag-18",
+    "tag-25"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-16\"",
+    "rating:number": "2",
+    "status:text": "\"offen\""
+   },
+   "html": "a9c9760508cbf08e",
+   "state": "8d435198ce861158"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Bericht 99",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-27",
+    "tag-24",
+    "tag-14",
+    "tag-19"
+   ],
+   "properties": {},
+   "html": "4c76f83b90f0676f",
+   "state": "992c6fa275ad08ae"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-0",
+    "tag-10",
+    "tag-25",
+    "tag-28"
+   ],
+   "properties": {},
+   "html": "4aa4b7191678624b",
+   "state": "e6bb17b1560a67c6"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Teil 0/Plan 100",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-1",
+    "tag-2",
+    "tag-17",
+    "tag-5"
+   ],
+   "properties": {
+    "rating:number": "1",
+    "status:text": "\"fertig\""
+   },
+   "html": "60dab4a8a36f3116",
+   "state": "b30171b8f0ddea10"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Teil 1/Kapitel 38",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-2",
+    "tag-21",
+    "tag-10",
+    "tag-16"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "6941a23b476915c7",
+   "state": "4999464083ad0958"
+  },
+  {
+   "path": "Bereich 4/Thema 2/Teil 1/Ziel 101",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-27",
+    "tag-14",
+    "tag-25",
+    "tag-10",
+    "tag-0"
+   ],
+   "properties": {},
+   "html": "08422c448ee981e5",
+   "state": "904a9593d1fa76e2"
+  },
+  {
+   "path": "Bereich 4/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 4/Thema 3/Antwort 39",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-7",
+    "tag-10",
+    "tag-22",
+    "tag-25",
+    "tag-26"
+   ],
+   "properties": {},
+   "html": "3f770e2f1c5e3edd",
+   "state": "c4537dca3031cb70"
+  },
+  {
+   "path": "Bereich 4/Thema 3/Termin 102",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 102\"]",
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-16",
+    "tag-20",
+    "tag-13",
+    "tag-6",
+    "tag-15"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-12\"",
+    "status:text": "\"offen\""
+   },
+   "html": "6ed8dc44f89b5794",
+   "state": "840efd9c9fd1068a"
+  },
+  {
+   "path": "Bereich 5",
+   "kind": "document",
+   "icon": "file",
+   "rank": 6,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 5/Aufgabe 103",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-19",
+    "tag-3",
+    "tag-22",
+    "tag-14",
+    "tag-21",
+    "tag-7"
+   ],
+   "properties": {},
+   "html": "eae5025dbbc9b7f2",
+   "state": "befe89ccb69eb1e1"
+  },
+  {
+   "path": "Bereich 5/Aufgabe 40",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-10",
+    "tag-16",
+    "tag-3",
+    "tag-20"
+   ],
+   "properties": {
+    "rating:number": "1",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "5f5bfbc133d8cb34",
+   "state": "8a31ac3804ae01c6"
+  },
+  {
+   "path": "Bereich 5/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-9",
+    "tag-3",
+    "tag-23",
+    "tag-12",
+    "tag-7"
+   ],
+   "properties": {},
+   "html": "342ed165a664fd89",
+   "state": "59042416bf43cc2a"
+  },
+  {
+   "path": "Bereich 5/Thema 0/Thema 104",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-14"
+   ],
+   "properties": {},
+   "html": "fc385c782473c9e5",
+   "state": "5efe7fab63b75085"
+  },
+  {
+   "path": "Bereich 5/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Projekt 42",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 42\"]",
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-22",
+    "tag-2",
+    "tag-5",
+    "tag-15",
+    "tag-0"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-12\"",
+    "status:text": "\"offen\""
+   },
+   "html": "3a5a7cb482765e2a",
+   "state": "6d20ba8282091daf"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 0/Antwort 106",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-2",
+    "tag-29",
+    "tag-19",
+    "tag-1"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "f306296b1ee2dfe9",
+   "state": "885b43869e35467e"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 0/Übersicht 43",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-21",
+    "tag-27",
+    "tag-19",
+    "tag-16",
+    "tag-29"
+   ],
+   "properties": {},
+   "html": "60d7023467988126",
+   "state": "fc6e0a96ee41f166"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 1/Notiz 44",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-12"
+   ],
+   "properties": {},
+   "html": "90dd9c1de896e668",
+   "state": "2dbfaa588bdc19e9"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Teil 1/Übersicht 107",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-18",
+    "tag-21",
+    "tag-8",
+    "tag-26",
+    "tag-16",
+    "tag-9",
+    "tag-6"
+   ],
+   "properties": {},
+   "html": "6bacf5d3a04fa15d",
+   "state": "198a01a32ee54bad"
+  },
+  {
+   "path": "Bereich 5/Thema 1/Termin 105",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": "[\"Alias 105\"]",
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-29",
+    "tag-2",
+    "tag-19",
+    "tag-11"
+   ],
+   "properties": {},
+   "html": "92bd09daa6a9d6d1",
+   "state": "56ac7b2fc887566e"
+  },
+  {
+   "path": "Bereich 5/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": "[\"Alias 45\"]",
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-21",
+    "tag-14",
+    "tag-3",
+    "tag-0"
+   ],
+   "properties": {},
+   "html": "fdef1fbcc03e71e9",
+   "state": "7cecdcd8ef6efecd"
+  },
+  {
+   "path": "Bereich 5/Thema 2/Aufgabe 108",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 108\"]",
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-23",
+    "tag-19",
+    "tag-20"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-18\"",
+    "rating:number": "4",
+    "status:text": "\"offen\""
+   },
+   "html": "5a5a89da4228f10b",
+   "state": "8189ec5abecb085e"
+  },
+  {
+   "path": "Bereich 5/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 5/Thema 3/Entwurf 46",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-21",
+    "tag-26",
+    "tag-14",
+    "tag-17"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "edf4502ac24d703f",
+   "state": "a28712bfc20c09a8"
+  },
+  {
+   "path": "Bereich 5/Thema 3/Kapitel 109",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-27"
+   ],
+   "properties": {},
+   "html": "94880ddbb7d9cb40",
+   "state": "688ff5b1b64cb961"
+  },
+  {
+   "path": "Bereich 6",
+   "kind": "document",
+   "icon": "file",
+   "rank": 7,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Aufgabe 110",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-28",
+    "tag-4",
+    "tag-22",
+    "tag-17",
+    "tag-29"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "f305c4c9f513fdc9",
+   "state": "b8846eaac374ec3a"
+  },
+  {
+   "path": "Bereich 6/Plan 47",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-20",
+    "tag-21",
+    "tag-0",
+    "tag-4",
+    "tag-26",
+    "tag-5",
+    "tag-16"
+   ],
+   "properties": {},
+   "html": "262cacfc1de1d245",
+   "state": "563b48b82c0470b2"
+  },
+  {
+   "path": "Bereich 6/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Aufgabe 111",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 111\"]",
+   "cover": null,
+   "tags": [
+    "tag-18",
+    "tag-2",
+    "tag-15",
+    "tag-7",
+    "tag-14",
+    "tag-24",
+    "tag-27"
+   ],
+   "properties": {},
+   "html": "73c0fe01b8bff385",
+   "state": "5021c3fa6701f465"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Notiz 48",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 48\"]",
+   "cover": null,
+   "tags": [
+    "tag-10",
+    "tag-17",
+    "tag-4"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-18\"",
+    "rating:number": "4",
+    "status:text": "\"fertig\""
+   },
+   "html": "838fd4bdadf538dc",
+   "state": "690db7dd8efcb7f3"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-6",
+    "tag-29",
+    "tag-24"
+   ],
+   "properties": {},
+   "html": "694af97075ce646d",
+   "state": "08c7f917c99f0da8"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Teil 0/Termin 112",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-10",
+    "tag-0",
+    "tag-17"
+   ],
+   "properties": {
+    "rating:number": "3",
+    "status:text": "\"fertig\""
+   },
+   "html": "07f95b26622fde5e",
+   "state": "7c6c585a005f2e7d"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Teil 1/Idee 113",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-20",
+    "tag-24",
+    "tag-10",
+    "tag-1"
+   ],
+   "properties": {},
+   "html": "b890d7da88e63220",
+   "state": "74412491b64ab62d"
+  },
+  {
+   "path": "Bereich 6/Thema 0/Teil 1/Thema 50",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-17",
+    "tag-3",
+    "tag-22",
+    "tag-8"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "8344e44362c51227",
+   "state": "52ef11a738d7ff1c"
+  },
+  {
+   "path": "Bereich 6/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 1/Bericht 51",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 51\"]",
+   "cover": null,
+   "tags": [
+    "tag-19",
+    "tag-26",
+    "tag-20",
+    "tag-12",
+    "tag-14",
+    "tag-9",
+    "tag-18"
+   ],
+   "properties": {},
+   "html": "7d6ced94dad27c47",
+   "state": "15d5b56d697a91be"
+  },
+  {
+   "path": "Bereich 6/Thema 1/Thema 114",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-25",
+    "tag-16",
+    "tag-10"
+   ],
+   "properties": {},
+   "html": "90b5fad623f75034",
+   "state": "447c955ad114c2e1"
+  },
+  {
+   "path": "Bereich 6/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 2/Antwort 115",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-9",
+    "tag-24",
+    "tag-7",
+    "tag-29",
+    "tag-4",
+    "tag-22"
+   ],
+   "properties": {},
+   "html": "b7cea00454698577",
+   "state": "d23f82201fe68724"
+  },
+  {
+   "path": "Bereich 6/Thema 2/Plan 52",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-8",
+    "tag-1",
+    "tag-7"
+   ],
+   "properties": {
+    "rating:number": "3",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "9a9c1eaa3856e6dc",
+   "state": "b3c03dc82f600634"
+  },
+  {
+   "path": "Bereich 6/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-26",
+    "tag-21",
+    "tag-15",
+    "tag-1"
+   ],
+   "properties": {},
+   "html": "79d1daa6efb5796c",
+   "state": "cc0581a5977b68b9"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Kapitel 116",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-14",
+    "tag-28",
+    "tag-26",
+    "tag-2"
+   ],
+   "properties": {
+    "rating:number": "2",
+    "status:text": "\"fertig\""
+   },
+   "html": "5d19b1a188d7f4a1",
+   "state": "8062dd4dc17bd934"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 0/Antwort 54",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-20",
+    "tag-27",
+    "tag-24",
+    "tag-15"
+   ],
+   "properties": {},
+   "html": "db811735c83afa5e",
+   "state": "aba1bbcd738d69e7"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 0/Thema 117",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 117\"]",
+   "cover": null,
+   "tags": [
+    "tag-29",
+    "tag-21",
+    "tag-22",
+    "tag-13"
+   ],
+   "properties": {},
+   "html": "19b7468dd1c4674e",
+   "state": "637344aa990050d0"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 1/Termin 118",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-27",
+    "tag-9",
+    "tag-6",
+    "tag-21",
+    "tag-0"
+   ],
+   "properties": {
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "775bba45444781f1",
+   "state": "81ca9003847e7ddd"
+  },
+  {
+   "path": "Bereich 6/Thema 3/Teil 1/Ziel 55",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-25",
+    "tag-5",
+    "tag-3",
+    "tag-20",
+    "tag-23",
+    "tag-2",
+    "tag-14"
+   ],
+   "properties": {},
+   "html": "0f229d11dc28fd4c",
+   "state": "af3b3ffdec92646d"
+  },
+  {
+   "path": "Bereich 7",
+   "kind": "document",
+   "icon": "file",
+   "rank": 8,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 7/Frage 119",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-20",
+    "tag-15",
+    "tag-5",
+    "tag-27"
+   ],
+   "properties": {},
+   "html": "d075269d3e26ae7a",
+   "state": "cad1308e19d52623"
+  },
+  {
+   "path": "Bereich 7/Liste 56",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-16",
+    "tag-21",
+    "tag-4",
+    "tag-9"
+   ],
+   "properties": {
+    "rating:number": "2",
+    "status:text": "\"in Arbeit\""
+   },
+   "html": "087982794634434b",
+   "state": "8ac77faf863c10d9"
+  },
+  {
+   "path": "Bereich 7/Thema 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": "[\"Alias 57\"]",
+   "cover": null,
+   "tags": [
+    "tag-15",
+    "tag-4",
+    "tag-24",
+    "tag-16",
+    "tag-10"
+   ],
+   "properties": {},
+   "html": "d06c44e6a9add3b5",
+   "state": "b594aeb4202515c9"
+  },
+  {
+   "path": "Bereich 7/Thema 0/Thema 120",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 120\"]",
+   "cover": null,
+   "tags": [
+    "tag-22",
+    "tag-25",
+    "tag-16"
+   ],
+   "properties": {
+    "due:date": "\"2026-04-10\"",
+    "rating:number": "1",
+    "status:text": "\"offen\""
+   },
+   "html": "368a40d51bb267b0",
+   "state": "d7b23a71e4fe8e29"
+  },
+  {
+   "path": "Bereich 7/Thema 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 7/Thema 1/Plan 121",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-8",
+    "tag-9",
+    "tag-27",
+    "tag-20"
+   ],
+   "properties": {},
+   "html": "35c7b7c44ab71617",
+   "state": "3a3f6f81e047632f"
+  },
+  {
+   "path": "Bereich 7/Thema 1/Plan 58",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-28",
+    "tag-9",
+    "tag-22",
+    "tag-4"
+   ],
+   "properties": {
+    "status:text": "\"fertig\""
+   },
+   "html": "a7f19eddedc0b342",
+   "state": "a944869c4bbc1790"
+  },
+  {
+   "path": "Bereich 7/Thema 2",
+   "kind": "document",
+   "icon": "file",
+   "rank": 4,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Antwort 59",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-4",
+    "tag-2",
+    "tag-28",
+    "tag-15",
+    "tag-9"
+   ],
+   "properties": {},
+   "html": "5b3cb0dd3fd99eae",
+   "state": "0621a61d912e4a0d"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Teil 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Teil 0/Plan 60",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": "[\"Alias 60\"]",
+   "cover": null,
+   "tags": [
+    "tag-8",
+    "tag-3",
+    "tag-11",
+    "tag-5"
+   ],
+   "properties": {
+    "due:date": "\"2026-07-10\"",
+    "rating:number": "1",
+    "status:text": "\"fertig\""
+   },
+   "html": "d464dd91d4b22b25",
+   "state": "4017f32cab782381"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Teil 0/Thema 123",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": "[\"Alias 123\"]",
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-19",
+    "tag-25",
+    "tag-26",
+    "tag-8",
+    "tag-23"
+   ],
+   "properties": {},
+   "html": "5267fdb2ea6ca2fd",
+   "state": "87b6ccd5e92ffc76"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Teil 1",
+   "kind": "document",
+   "icon": "file",
+   "rank": 2,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-26",
+    "tag-3",
+    "tag-27",
+    "tag-5",
+    "tag-0"
+   ],
+   "properties": {},
+   "html": "8865f1c6e8edf3fb",
+   "state": "38ea0cfc04d4f4bf"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Teil 1/Idee 124",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-11",
+    "tag-12"
+   ],
+   "properties": {},
+   "html": "24e1874d08e8b571",
+   "state": "74cc3cb3fd551de7"
+  },
+  {
+   "path": "Bereich 7/Thema 2/Ziel 122",
+   "kind": "document",
+   "icon": "file",
+   "rank": 3,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-2",
+    "tag-7",
+    "tag-24",
+    "tag-21",
+    "tag-28",
+    "tag-18"
+   ],
+   "properties": {
+    "status:text": "\"offen\""
+   },
+   "html": "d08deab1c8bedfae",
+   "state": "6a15d12bb2fc4445"
+  },
+  {
+   "path": "Bereich 7/Thema 3",
+   "kind": "document",
+   "icon": "file",
+   "rank": 5,
+   "aliases": null,
+   "cover": null,
+   "tags": [],
+   "properties": {},
+   "html": "e3b0c44298fc1c14",
+   "state": "8c363bee9d0b7cf7"
+  },
+  {
+   "path": "Bereich 7/Thema 3/Idee 62",
+   "kind": "document",
+   "icon": "file",
+   "rank": 0,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-13",
+    "tag-20",
+    "tag-9",
+    "tag-14",
+    "tag-27",
+    "tag-4"
+   ],
+   "properties": {
+    "status:text": "\"fertig\""
+   },
+   "html": "0cdfc616649789f5",
+   "state": "86a2e4131a560ba1"
+  },
+  {
+   "path": "Bereich 7/Thema 3/Kapitel 125",
+   "kind": "document",
+   "icon": "file",
+   "rank": 1,
+   "aliases": null,
+   "cover": null,
+   "tags": [
+    "tag-12",
+    "tag-3",
+    "tag-6",
+    "tag-5"
+   ],
+   "properties": {},
+   "html": "890e0bbf246bd450",
+   "state": "6ee44a9b828f4a73"
+  },
+  {
+   "path": "Plan 0",
+   "kind": "document",
+   "icon": "file",
+   "rank": 9,
+   "aliases": "[\"Alias 0\"]",
+   "cover": null,
+   "tags": [
+    "tag-9",
+    "tag-0",
+    "tag-4",
+    "tag-26"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-10\"",
+    "rating:number": "1",
+    "status:text": "\"offen\""
+   },
+   "html": "ab10c3974370e54c",
+   "state": "8313b3a45331b45e"
+  },
+  {
+   "path": "Quelle 126",
+   "kind": "document",
+   "icon": "file",
+   "rank": 10,
+   "aliases": "[\"Alias 126\"]",
+   "cover": null,
+   "tags": [
+    "tag-1",
+    "tag-8",
+    "tag-17",
+    "tag-9",
+    "tag-0",
+    "tag-24"
+   ],
+   "properties": {
+    "due:date": "\"2026-01-16\"",
+    "status:text": "\"offen\""
+   },
+   "html": "4fdbae89a0ffd8d7",
+   "state": "44ee08fe4437305b"
+  }
+ ],
+ "files": [
+  {
+   "name": "bild-0.png",
+   "mime": "image/png",
+   "size": 138,
+   "page": "page:Bereich 5/Thema 3/Kapitel 109"
+  },
+  {
+   "name": "bild-1.png",
+   "mime": "image/png",
+   "size": 139,
+   "page": "page:Bereich 0/Thema 2/Thema 6"
+  },
+  {
+   "name": "bild-10.png",
+   "mime": "image/png",
+   "size": 140,
+   "page": "page:Bereich 5/Thema 2"
+  },
+  {
+   "name": "bild-11.png",
+   "mime": "image/png",
+   "size": 142,
+   "page": "page:Bereich 6/Thema 0/Teil 0"
+  },
+  {
+   "name": "bild-12.png",
+   "mime": "image/png",
+   "size": 157,
+   "page": "page:Bereich 6/Thema 3/Teil 0/Antwort 54"
+  },
+  {
+   "name": "bild-13.png",
+   "mime": "image/png",
+   "size": 157,
+   "page": "page:Bereich 7/Thema 2/Antwort 59"
+  },
+  {
+   "name": "bild-14.png",
+   "mime": "image/png",
+   "size": 155,
+   "page": "page:Bereich 7/Thema 2/Teil 0/Plan 60"
+  },
+  {
+   "name": "bild-15.png",
+   "mime": "image/png",
+   "size": 134,
+   "page": "page:Antwort 63"
+  },
+  {
+   "name": "bild-16.png",
+   "mime": "image/png",
+   "size": 144,
+   "page": "page:Bereich 0/Thema 0/Teil 0/Frage 66"
+  },
+  {
+   "name": "bild-17.png",
+   "mime": "image/png",
+   "size": 152,
+   "page": "page:Bereich 1/Thema 2/Teil 0/Kapitel 77"
+  },
+  {
+   "name": "bild-18.png",
+   "mime": "image/png",
+   "size": 155,
+   "page": "page:Bereich 1/Thema 2/Teil 1/Antwort 78"
+  },
+  {
+   "name": "bild-19.png",
+   "mime": "image/png",
+   "size": 165,
+   "page": "page:Bereich 2/Frage 80"
+  },
+  {
+   "name": "bild-2.png",
+   "mime": "image/png",
+   "size": 150,
+   "page": "page:Bereich 0/Thema 3/Notiz 7"
+  },
+  {
+   "name": "bild-20.png",
+   "mime": "image/png",
+   "size": 144,
+   "page": "page:Bereich 3/Thema 0/Teil 1/Quelle 90"
+  },
+  {
+   "name": "bild-21.png",
+   "mime": "image/png",
+   "size": 147,
+   "page": "page:Bereich 4/Thema 2/Teil 0/Plan 100"
+  },
+  {
+   "name": "bild-22.png",
+   "mime": "image/png",
+   "size": 154,
+   "page": "page:Bereich 4/Thema 3/Termin 102"
+  },
+  {
+   "name": "bild-23.png",
+   "mime": "image/png",
+   "size": 148,
+   "page": "page:Bereich 5/Thema 1/Termin 105"
+  },
+  {
+   "name": "bild-3.png",
+   "mime": "image/png",
+   "size": 153,
+   "page": "page:Bereich 1/Thema 0/Ziel 11"
+  },
+  {
+   "name": "bild-4.png",
+   "mime": "image/png",
+   "size": 158,
+   "page": "page:Bereich 2"
+  },
+  {
+   "name": "bild-5.png",
+   "mime": "image/png",
+   "size": 148,
+   "page": "page:Bereich 2/Thema 0/Bericht 18"
+  },
+  {
+   "name": "bild-6.png",
+   "mime": "image/png",
+   "size": 146,
+   "page": "page:Bereich 1/Thema 0/Notiz 137"
+  },
+  {
+   "name": "bild-7.png",
+   "mime": "image/png",
+   "size": 151,
+   "page": "page:Bereich 1/Thema 1/Projekt 138"
+  },
+  {
+   "name": "bild-8.png",
+   "mime": "image/png",
+   "size": 150,
+   "page": "page:Bereich 1/Thema 2/Teil 0/Liste 140"
+  },
+  {
+   "name": "bild-9.png",
+   "mime": "image/png",
+   "size": 159,
+   "page": "page:Bereich 3/Plan 150"
+  },
+  {
+   "name": "dokument-0.pdf",
+   "mime": "application/pdf",
+   "size": 129,
+   "page": "page:Plan 0"
+  },
+  {
+   "name": "dokument-1.pdf",
+   "mime": "application/pdf",
+   "size": 129,
+   "page": "page:Bereich 2/Frage 80"
+  }
+ ]
+}

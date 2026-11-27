@@ -3492,7 +3492,7 @@ class FlowplanClient:
         return self._json("POST", "/api/import/bookstack", json_body=body, headers=headers)
 
     def import_source_job(self, query: "ImportSourceJobQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job)"""
+        """State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null, and while a large import is prepared and written `step`: `{phase: "prepare"|"create"|"write", done, total}`, the page it is at), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job)"""
         return self._json("GET", "/api/import/source/job", query=dict(query) if query else None, headers=headers)
 
     def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
