@@ -104,7 +104,7 @@ import {
   requireAdmin,
   pageRole,
 } from "@/lib/permissions";
-import { one, all, run, id, audit, sql } from "@/lib/db";
+import { one, all, run, id, audit, sql, isUnstorableText } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace, recentlyVisited, refreshSearchIndex } from "@/lib/search-index";
 import { offThread } from "@/lib/worker-pool";
@@ -208,7 +208,7 @@ function error(e: unknown) {
     );
   // A body that is not JSON (JSON.parse, req.json()): the sender's mistake,
   // as in the other route handlers – not a server error.
-  if (e instanceof SyntaxError) return NextResponse.json({ error: "Ungültige Eingabe." }, { status: 400 });
+  if (e instanceof SyntaxError || isUnstorableText(e)) return NextResponse.json({ error: "Ungültige Eingabe." }, { status: 400 });
   if (!(e instanceof HttpError)) console.error(e);
   const status = e instanceof HttpError ? e.status : serverError(e);
   // The request id (also in X-Request-Id) for a person to quote (lib/error-details.ts).

@@ -3251,6 +3251,12 @@ export async function inSavepoint<T>(fn: () => T | Promise<T>): Promise<T> {
   if (!inTransaction()) return fn();
   return database().tx(async () => fn());
 }
+// Text PostgreSQL cannot hold – a NUL character (SQLite stores it): a
+// value the sender made up, never one Flowplan writes; a 400, not a 500.
+export const isUnstorableText = (e: unknown) => {
+  const code = (e as { code?: unknown } | null)?.code;
+  return code === "22021" || code === "22P05";
+};
 const isUniqueViolation = (e: unknown) => {
   const error = e as { code?: string; message?: string } | null;
   return !!error && (error.code === "23505" || /UNIQUE constraint failed/.test(error.message || ""));
