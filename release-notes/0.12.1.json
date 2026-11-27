@@ -52,6 +52,27 @@
         587,
         588
       ]
+    },
+    {
+      "de": "„Neue Zeile“ und „+ Neu“ öffnen den neuen Eintrag sofort, statt auf die Antwort des Servers zu warten. Was du gleich eintippst, wird gespeichert, sobald der Eintrag angelegt ist.",
+      "en": "“New row” and “+ New” open the new record right away instead of waiting for the server’s answer. What you type straight away is saved as soon as the record is created.",
+      "issues": [
+        608
+      ]
+    },
+    {
+      "de": "Feinschliff in Datenbanktabellen: kein „0 Einträge“ über dem leeren Zustand, „Neue Zeile“ und „Berechnen“ leuchten nur so breit wie ihre Beschriftung, die Fußzeile reagiert nicht auf die Maus, Symbol und Name im Spaltenkopf stehen enger, ebenso Uhr und { } über dem Inhalt eines Eintrags.",
+      "en": "Polish in database tables: no “0 records” above the empty state, “New row” and “Calculate” highlight only as wide as their label, the footer no longer reacts to the mouse, the icon and name in a column header sit closer, as do the versions clock and { } above a record’s content.",
+      "issues": [
+        606
+      ]
+    },
+    {
+      "de": "Im Menü ⋯ eines Eintrags heißt es jetzt „Als Word exportieren (DOCX)“ – wie „Als Markdown exportieren (.md)“ darüber.",
+      "en": "A record’s ⋯ menu now says “Export as Word (DOCX)”, like “Export as Markdown (.md)” above it.",
+      "issues": [
+        609
+      ]
     }
   ],
   "fixes": [
@@ -90,6 +111,13 @@
       "issues": [
         592,
         593
+      ]
+    },
+    {
+      "de": "Ein Datum in einer Tabellenzelle wird jetzt in einem Feld neben der Zelle bearbeitet: Datum, Uhrzeit, „Datum entfernen“ und die Zeitzone werden in schmalen Spalten nicht mehr abgeschnitten und ragen mit „+ Uhrzeit“ nicht mehr aus der Zeile. Enter speichert, Escape bricht ab.",
+      "en": "A date in a table cell is now edited in a popover beside the cell: the date, the time, “Remove date” and the time zone are no longer cut off in narrow columns and no longer spill out of the row with “+ Time”. Enter saves, Escape cancels.",
+      "issues": [
+        607
       ]
     }
   ]
