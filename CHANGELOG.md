@@ -2,6 +2,121 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.12.1 – 2026-11-27
+
+### New
+
+- Upload files straight into a space: drop them on a space or a page in the sidebar, or use “Upload file…” in “New page” and the space menu, or “Upload…” in Media. Each file becomes a page of its own with its preview ([#569](https://github.com/yannicschuller/flowplan/issues/569)).
+- More forms for the journal’s “Day title”: short (“Thu, 26 Nov 2026”), the ISO date with the weekday after it (“2026-11-26 Thu”) or before it (“Thu 2026-11-26”), or a custom pattern such as “ddd DD.MM.YYYY” with a preview. In the journal settings under “Days” ([#571](https://github.com/yannicschuller/flowplan/issues/571)).
+- Report server errors: under Monitoring → Errors in detail, “Open GitHub issue” shows exactly what goes into the issue (no error IDs or host names), and “Already reported?” searches for its build-independent signature. On Mondays the “Weekly error summary” names new and returning errors.
+- Choose which symbols sit at the bottom of the sidebar: in Appearance & language → Sidebar, or right-click a symbol (long-press on touch screens). Hidden places stay reachable through the quick search. Applies on all devices ([#589](https://github.com/yannicschuller/flowplan/issues/589)).
+- An own logo colour: in the workspace appearance, the logo at the top of the sidebar and in the browser tab can get a colour of its own – otherwise it follows the accent colour as before ([#591](https://github.com/yannicschuller/flowplan/issues/591)).
+
+### Improved
+
+- The bottom of the sidebar is tidier: the row with profile picture, name and connection status is gone – who is signed in and all account entries are in the workspace menu at the top. On a phone only “More” stays there ([#570](https://github.com/yannicschuller/flowplan/issues/570)).
+- Tidier settings: no grey “Off”/“None” pills next to the button that sets it up, status pills without a dot, aligned checkboxes for API tokens and a usage overview that wraps long translations ([#574](https://github.com/yannicschuller/flowplan/issues/574), [#575](https://github.com/yannicschuller/flowplan/issues/575), [#576](https://github.com/yannicschuller/flowplan/issues/576), [#577](https://github.com/yannicschuller/flowplan/issues/577), [#579](https://github.com/yannicschuller/flowplan/issues/579), [#580](https://github.com/yannicschuller/flowplan/issues/580)).
+- When Flowplan runs behind more reverse proxies than configured, the log now says so once instead of silently taking the proxy's internal address ([#583](https://github.com/yannicschuller/flowplan/issues/583)).
+- Polish: notification kind switches centred under their column, quieter level markers in the settings, a tidier trash and the space symbol in the sidebar at the size of its name ([#584](https://github.com/yannicschuller/flowplan/issues/584), [#585](https://github.com/yannicschuller/flowplan/issues/585), [#586](https://github.com/yannicschuller/flowplan/issues/586), [#587](https://github.com/yannicschuller/flowplan/issues/587), [#588](https://github.com/yannicschuller/flowplan/issues/588)).
+- Date properties show “Remove date” and “+ Time” beside the date instead of below it, and the “Saved” cloud fades out on computers too once everything is saved ([#597](https://github.com/yannicschuller/flowplan/issues/597), [#599](https://github.com/yannicschuller/flowplan/issues/599)).
+- “Related pages” no longer lists pages that only link here – “Linked from” shows them already. Callouts without the bar at the side, and “+ Tag” and “+ Property” sit closer together ([#600](https://github.com/yannicschuller/flowplan/issues/600), [#601](https://github.com/yannicschuller/flowplan/issues/601), [#602](https://github.com/yannicschuller/flowplan/issues/602)).
+- A database's calendar sync now sits in the “…” menu with the other tools instead of as an icon of its own in the toolbar ([#605](https://github.com/yannicschuller/flowplan/issues/605)).
+- Charts of a single colour – sparklines, single-series charts, usage rings and bars – now take the workspace’s accent colour, readable in light and dark. Charts with several series keep their colour-blind-safe palette ([#590](https://github.com/yannicschuller/flowplan/issues/590)).
+- Large imports (Obsidian vaults and other ZIP exports) are written faster and no longer sit at 50 % for a long time: the progress says which page the import is at (“Preparing page 812 of 2000”), and the server keeps answering meanwhile ([#594](https://github.com/yannicschuller/flowplan/issues/594)).
+- The Obsidian import takes over Obsidian’s property types (list, number, checkbox, date). Lists become multi-selects, a few recurring short values like “status: open” a select – with every value of the vault as an option. Free text stays text ([#598](https://github.com/yannicschuller/flowplan/issues/598)).
+- Quick search (⌘K / Ctrl+K) opens faster in workspaces with thousands of pages, and typing in it is smoother: the sidebar and the open page are no longer rebuilt meanwhile ([#610](https://github.com/yannicschuller/flowplan/issues/610)).
+- Tidier “My tasks”: the top shows only “Add a task …”, “List / Board” and “Filters” with the number of filters set; workspaces, source and due range are behind it. Filters that are set show as chips you remove one by one or all at once with “Reset” ([#612](https://github.com/yannicschuller/flowplan/issues/612)).
+- “New row” and “+ New” open the new record right away instead of waiting for the server’s answer. What you type straight away is saved as soon as the record is created ([#608](https://github.com/yannicschuller/flowplan/issues/608)).
+- Polish in database tables: no “0 records” above the empty state, “New row” and “Calculate” highlight only as wide as their label, the footer no longer reacts to the mouse, the icon and name in a column header sit closer, as do the versions clock and { } above a record’s content ([#606](https://github.com/yannicschuller/flowplan/issues/606)).
+- A record’s ⋯ menu now says “Export as Word (DOCX)”, like “Export as Markdown (.md)” above it ([#609](https://github.com/yannicschuller/flowplan/issues/609)).
+- On phones the sidebar fills the whole screen. Swiped to the left it follows your finger and closes; scrolling the page tree no longer closes it. The second close button at the top right is gone – “× Navigation” at the bottom does the same ([#617](https://github.com/yannicschuller/flowplan/issues/617), [#621](https://github.com/yannicschuller/flowplan/issues/621), [#622](https://github.com/yannicschuller/flowplan/issues/622)).
+- On phones “More” sits small at the bottom left and holds only the tools, without keyboard shortcuts; theme, About Flowplan, the legal pages and Sign out are in the workspace menu at the top. Favourites and Collections start collapsed there ([#613](https://github.com/yannicschuller/flowplan/issues/613), [#616](https://github.com/yannicschuller/flowplan/issues/616), [#620](https://github.com/yannicschuller/flowplan/issues/620)).
+- In the sidebar the carets for expanding and collapsing line up on the left and the buttons on the right share one column; emoji page icons are as large as the other icons ([#614](https://github.com/yannicschuller/flowplan/issues/614), [#619](https://github.com/yannicschuller/flowplan/issues/619)).
+
+### Bug fixes
+
+- Ticking a task off in the iPhone and iPad app no longer brings up the keyboard: the box changes without putting the caret into the text.
+- In the “Move pages” dialog for several pages, “(top level)” now appears in the interface language ([#572](https://github.com/yannicschuller/flowplan/issues/572)).
+- Signed-in devices show the year of the expiry date when it is not this year ([#581](https://github.com/yannicschuller/flowplan/issues/581)).
+- Portuguese: more natural terms for the web clipper, emergency access, the second factor, comments and contents ([#573](https://github.com/yannicschuller/flowplan/issues/573), [#578](https://github.com/yannicschuller/flowplan/issues/578), [#582](https://github.com/yannicschuller/flowplan/issues/582), [#595](https://github.com/yannicschuller/flowplan/issues/595), [#596](https://github.com/yannicschuller/flowplan/issues/596)).
+- Backups: “Back up now” at normal size, and the SFTP destination's “Sign-in” choice no longer cuts off “Private key” ([#592](https://github.com/yannicschuller/flowplan/issues/592), [#593](https://github.com/yannicschuller/flowplan/issues/593)).
+- Calendar view: the selects, date field and buttons in its bar share one height and font size ([#611](https://github.com/yannicschuller/flowplan/issues/611)).
+- Text typed into a new, empty page is no longer lost when content arrives from elsewhere at the same moment (such as “Turn into → Page” or a script).
+- A date in a table cell is now edited in a popover beside the cell: the date, the time, “Remove date” and the time zone are no longer cut off in narrow columns and no longer spill out of the row with “+ Time”. Enter saves, Escape cancels ([#607](https://github.com/yannicschuller/flowplan/issues/607)).
+- Reordering pages in the sidebar by their handle with a finger works reliably: the page lands where you let go, and no coloured drop lines stay behind – also not after a cancel or Esc ([#618](https://github.com/yannicschuller/flowplan/issues/618)).
+- Document pages have one edge: the page icon, title, properties and formatting toolbar start where the text starts – no longer 26 pixels further left. The block handles sit left of it in the margin, at normal and full width and on a phone ([#603](https://github.com/yannicschuller/flowplan/issues/603)).
+- Switching between long pages is quicker: the text of the page you leave is no longer rebuilt, and the new page is no longer measured several times while it is being built ([#604](https://github.com/yannicschuller/flowplan/issues/604)).
+
+<details>
+<summary>All commits</summary>
+
+- Release notes 0.12.1: quick search opens faster, not instantly (#610) ([f022d23](https://github.com/yannicschuller/flowplan/commit/f022d23eaf0262ddb7d70c6b561d6939f193a91b))
+- Obsidian import: select and multi-select properties (#598) ([3900d10](https://github.com/yannicschuller/flowplan/commit/3900d1095673b2647f65ab1ccc2eab47c7323d9d))
+- Visual baselines from ubuntu-latest ([0b8f1a7](https://github.com/yannicschuller/flowplan/commit/0b8f1a75e9f98b1cbfd3f83139339c1659b29a4b))
+- Release notes: #603, #604 ([488cafb](https://github.com/yannicschuller/flowplan/commit/488cafb8a07990f04a115820a58df0467bf538fb))
+- Page switch: no redraw of the old text, fewer forced layouts (#604) ([97730c9](https://github.com/yannicschuller/flowplan/commit/97730c9cc3d2a342df4c00e92d303e74d046fc63))
+- Document pages: head starts where the text starts (#603) ([077a08c](https://github.com/yannicschuller/flowplan/commit/077a08cfbdeafb9d2587da330be3523afbaea5c9))
+- Sidebar on phones: full-width drawer, tools-only "Mehr", aligned axes, reliable touch drag (#613, #614, #616-#622) ([2b9b641](https://github.com/yannicschuller/flowplan/commit/2b9b6411462f5cf9705e5ae51953fd77536fa1c9))
+- My tasks: one "Filters" button with chips for the filters set (#612) ([a2b3622](https://github.com/yannicschuller/flowplan/commit/a2b3622ebcb7e4e6d37a51127aa0ae9a2d1f6341))
+- Date popover on phones, refused new record as a toast (#607, #608) ([396aefe](https://github.com/yannicschuller/flowplan/commit/396aefe401cc2d147f70f02c50abfb6cbe40b5b7))
+- Import progress test: the last prepared page reaches the end of the prepare share (0.8) ([b0d7e25](https://github.com/yannicschuller/flowplan/commit/b0d7e25662277879b64f0929ecb4bcf48c399486))
+- Quick search opens without re-rendering the workspace (#610) ([1083df0](https://github.com/yannicschuller/flowplan/commit/1083df0c47757e460a2596deabfb29f2c68c6f6e))
+- Import progress test: on PostgreSQL, wait for the progress written beside the transaction ([b200417](https://github.com/yannicschuller/flowplan/commit/b200417dbb6624f2d34de9aa4b0828db303ccf48))
+- Widgets: 4 KB for the task and page lists, and the overdue count of tasks ([4f8a8c8](https://github.com/yannicschuller/flowplan/commit/4f8a8c83dd3efe11ed676259fbfd051d6960a6ad))
+- Import: faster write phase with real progress (#594) ([1976a3f](https://github.com/yannicschuller/flowplan/commit/1976a3f92f2f6fd5b0e4547764b09df88035821f))
+- Documents: keep text typed into a blank page that content from scratch replaced ([5a1e06f](https://github.com/yannicschuller/flowplan/commit/5a1e06fcf2c903abf53be513a9f0e480e01d8397))
+- Quality budgets: the workflow and monitoring pages 4 KB more for #589/#590 ([74100ec](https://github.com/yannicschuller/flowplan/commit/74100ec8fe66d5313c68ba90bed8dfb4b422a1dc))
+- Release notes and help docs: #606–#609 ([1a0fa3a](https://github.com/yannicschuller/flowplan/commit/1a0fa3ad036b0cfaa74e55587563e344aff47f58))
+- API: text PostgreSQL cannot store (a NUL character) is a 400, not a 500 ([5acedf7](https://github.com/yannicschuller/flowplan/commit/5acedf7b2b23c94864aa19e191f9360bfd7d95de))
+- Sidebar symbols per person, single-colour charts in the accent, own logo colour (#589, #590, #591) ([2f6ff0e](https://github.com/yannicschuller/flowplan/commit/2f6ff0e36ac1eb5fed9dc795e3247149b09059ed))
+- Browser spec: the sidebar's space symbol is 22px since #588 ([1f3b6d1](https://github.com/yannicschuller/flowplan/commit/1f3b6d12aaac9703dafc3df5af3d38df45dd3f34))
+- Tests: a real AsyncLocalStorage for Next's request scope in every run ([f507884](https://github.com/yannicschuller/flowplan/commit/f507884309b4ddf9a722f716f5057930c272c7ab))
+- Database table: footer polish, date popover, instant new record (#606, #607, #608) ([d446c4e](https://github.com/yannicschuller/flowplan/commit/d446c4ee9019ac318e6eb663e9683b0f8c54a2fd))
+- Calendar view: one compact control size in its bar (#611) ([333e040](https://github.com/yannicschuller/flowplan/commit/333e0402ba289850b1b19ef6f3f2a668df7282d3))
+- Record menu: "Export as Word (DOCX)" (#609) ([135ca1f](https://github.com/yannicschuller/flowplan/commit/135ca1fb46e510cb49bea8796cea77baefdb8d1f))
+- Database: Calendar sync in the "⋯" menu (#605) ([f688a1c](https://github.com/yannicschuller/flowplan/commit/f688a1c0f72b68430d8ef22095ca650244994736))
+- Related pages without backlinks, callouts without the side bar, tag/property buttons closer (#600–#602) ([f2241aa](https://github.com/yannicschuller/flowplan/commit/f2241aa80fc43c4cf10c84f9c75055856f879722))
+- Date properties inline, quiet save cloud on wide screens (#597, #599) ([a46fc83](https://github.com/yannicschuller/flowplan/commit/a46fc83d7927f2ec700c90664f581950b0c20dbd))
+- Error details: report 5xx errors as GitHub issues, weekly error digest ([90dd5a8](https://github.com/yannicschuller/flowplan/commit/90dd5a84d36d4f1a091049246ac6c0d7460f63d4))
+- Backups and pt texts: #592, #593, #595, #596 ([3e5a964](https://github.com/yannicschuller/flowplan/commit/3e5a9640f755ec799b800c6966ec8c9cca97815a))
+- Release notes: UI polish #584–#588 ([b31578d](https://github.com/yannicschuller/flowplan/commit/b31578d73e21c2200e1c01970e26556d4bef5eea))
+- Tests: property-based tests of parsers and formats ([94f438c](https://github.com/yannicschuller/flowplan/commit/94f438cda5b49a8cc2a5a517a7c7b7363c5f11f7))
+- Database CSV: text with ";", tabs or "|" keeps the comma delimiter ([ec39fd8](https://github.com/yannicschuller/flowplan/commit/ec39fd8f38aa757fcd2a9e4cd7d050438f41607b))
+- Pages from files: the title is cut without halving an emoji ([58d86de](https://github.com/yannicschuller/flowplan/commit/58d86de516fc9ec3d27a8f2dc3ee3fab2892cca9))
+- Uploads: sanitizeFileName gives safe names and is idempotent ([ba9a52c](https://github.com/yannicschuller/flowplan/commit/ba9a52c169d4ea4ada5a2987e0e888cd53971a3f))
+- Markdown: code with "\\|" in a table cell comes back as code ([d0d847a](https://github.com/yannicschuller/flowplan/commit/d0d847a3fe64c51c002e7d4184b9177852884fa4))
+- Markdown export: a paragraph of only "#", "+" or "1." ([54510ca](https://github.com/yannicschuller/flowplan/commit/54510ca994fa4cfbe4d0a9b037c2c59bcb55ce9f))
+- Markdown export: "!" and "^" right before a link ([a9dc967](https://github.com/yannicschuller/flowplan/commit/a9dc96765edf2925d11e478b3d4a604ac6255f74))
+- Markdown export: Unicode spaces at a block's ends, line separators ([c5eb34e](https://github.com/yannicschuller/flowplan/commit/c5eb34e024452da95f92646c0fe79d39c0506d1d))
+- Markdown export: lists of the same kind one after the other stay apart ([f60cdc9](https://github.com/yannicschuller/flowplan/commit/f60cdc9e4c16536e009d22734d66d9bbdde035e5))
+- Markdown export: delimiters next to letters, links and emoji ([98db1b4](https://github.com/yannicschuller/flowplan/commit/98db1b4976e24feabecfbb595ce135d8972b98c3))
+- Markdown export: runs that share a mark side by side keep it ([7d5cd8c](https://github.com/yannicschuller/flowplan/commit/7d5cd8c5935f46cca53b973de5908e8c82ceded8))
+- Tests: fast-check for property-based tests ([7dca455](https://github.com/yannicschuller/flowplan/commit/7dca4558dacf4fd45641a255abac7899e729519e))
+- UI polish: #584–#588 ([66ff7de](https://github.com/yannicschuller/flowplan/commit/66ff7ded1fd1cd1b04102c1b0183ee9494fa053d))
+- Release notes: #583 without the variable name ([b8eadbe](https://github.com/yannicschuller/flowplan/commit/b8eadbec9939daa6920d2bfe670222e9f3e04449))
+- Client address: warn once when an internal proxy address is taken (#583) ([9384e53](https://github.com/yannicschuller/flowplan/commit/9384e53964f678ad48a7af1db7e68270ba2a1053))
+- Settings polish: #578–#582 ([a1bb091](https://github.com/yannicschuller/flowplan/commit/a1bb0917bb489de223d8dcdc25d04dafd5bf4935))
+- Tests: API fuzzing of the commands, uploads and forms ([cffa718](https://github.com/yannicschuller/flowplan/commit/cffa7183e0fb60cc0d08428c26edd23cf97e87ce))
+- Workflows: a deeply nested import is refused, not a stack overflow ([601205d](https://github.com/yannicschuller/flowplan/commit/601205d2f6cc9c9de12f9dfa7960a3e03aeda535))
+- Settings polish from #573–#577 ([2b3d1c5](https://github.com/yannicschuller/flowplan/commit/2b3d1c5224d573f60cbcfff40088a2509c6ca618))
+- API: an id field that is an object no longer fails a command with 500 ([0ef5339](https://github.com/yannicschuller/flowplan/commit/0ef53399123d06f841a09230b12861989ae30819))
+- Uploads: a broken multipart body is a 400, not a 500 ([21e5b76](https://github.com/yannicschuller/flowplan/commit/21e5b76aaed217053b28563b03a14d728bacfa90))
+- API: a body that is not JSON is a 400, not a 500 ([f461cfa](https://github.com/yannicschuller/flowplan/commit/f461cfade2a310a877f6e6ef2b287855ebb4321f))
+- Move pages dialog: translate "(top level)" (#572) ([902b6d6](https://github.com/yannicschuller/flowplan/commit/902b6d60eddb9dbbd0af9d3fe4536974d93e5e07))
+- Review fixes: unpublish rolled-back uploads, journal settings read once ([a45040a](https://github.com/yannicschuller/flowplan/commit/a45040a36ed70951eb8531535b7f0e67dcd26bf3))
+- Gallery: the journal settings' Days tab (#571) ([6683087](https://github.com/yannicschuller/flowplan/commit/66830871ef3b05d48a4addd0d76c3b7974d7af0b))
+- Journal: more automatic day title formats (#571) ([b11deee](https://github.com/yannicschuller/flowplan/commit/b11deee181ca51306cb8945b076b57b4a028da69))
+- Release notes: ticking tasks without the keyboard ([b99c100](https://github.com/yannicschuller/flowplan/commit/b99c10087a758f9c7461d40711bb6de01d4f0e97))
+- Browser spec: exact locators for the tick-focus spec ([88f5565](https://github.com/yannicschuller/flowplan/commit/88f556589c0a8f07e7064923b51130b00ea819a7))
+- Tasks: ticking a box does not focus the editor ([f3c4383](https://github.com/yannicschuller/flowplan/commit/f3c43839ec6170954378df7367cbba5c2adc278a))
+- File pages: quota tests with a whole-MB quota (PostgreSQL); help docs ([a2e1a6d](https://github.com/yannicschuller/flowplan/commit/a2e1a6d1fd3fd97a172473beba401f6008ae6fb8))
+- Visual baselines from ubuntu-latest ([9347a91](https://github.com/yannicschuller/flowplan/commit/9347a91f658c353079b3000c96fe680aa4d0c3a7))
+- Release notes: the sidebar without its account row (#570) ([a4b9aff](https://github.com/yannicschuller/flowplan/commit/a4b9affa43912ce8e5724972120b3d65d9fe29f8))
+- Upload files straight into a space: one page per file (#569) ([480bd17](https://github.com/yannicschuller/flowplan/commit/480bd17c7cfbb5ef05abc413c7ee6a768f1ca607))
+- Sidebar: drop the account row below the tools (#570) ([bd41c3d](https://github.com/yannicschuller/flowplan/commit/bd41c3d453aa0a89ab1345003a17fae78c41ec65))
+
+</details>
+
 ## v0.12.0 – 2026-11-26
 
 ### New
