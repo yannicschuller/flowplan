@@ -98,7 +98,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "6adf587ee981b2c8",
    "state": "0fe6097842aa02a5"
@@ -168,7 +168,7 @@
    ],
    "properties": {
     "due:date": "\"2026-04-16\"",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "5844f77e1e99d6a9",
    "state": "8821b453a6beb647"
@@ -251,7 +251,7 @@
     "tag-8"
    ],
    "properties": {
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "77cb9c7f5e679613",
    "state": "f66d0c19977e1969"
@@ -272,7 +272,7 @@
     "tag-27"
    ],
    "properties": {
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "8697441419a8331d",
    "state": "5a5e157b4bd3ed9e"
@@ -309,7 +309,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "d1bc601f2782aec0",
    "state": "3eb69871d12d273a"
@@ -379,7 +379,7 @@
    ],
    "properties": {
     "due:date": "\"2026-07-16\"",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "6f2ec7c71b2c18eb",
    "state": "9e491d4ee9eb38f1"
@@ -400,7 +400,7 @@
    "properties": {
     "due:date": "\"2026-07-12\"",
     "rating:number": "3",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "b88ad6d298e98f16",
    "state": "25e2ab419577b40e"
@@ -480,7 +480,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "4d26463d7359937d",
    "state": "f63e98d0b94e81cb"
@@ -554,7 +554,7 @@
    "properties": {
     "due:date": "\"2026-01-12\"",
     "rating:number": "3",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "75fb39d771644854",
    "state": "f42d601106ed878d"
@@ -593,7 +593,7 @@
     "tag-12"
    ],
    "properties": {
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "567acb2c426748a1",
    "state": "7d2ba7568ce5fb03"
@@ -644,7 +644,7 @@
     "tag-22"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "687e9f53cc6ce2b7",
    "state": "7c2265ee2a0105e6"
@@ -763,7 +763,7 @@
    "properties": {
     "due:date": "\"2026-04-12\"",
     "rating:number": "3",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "b8f8857bf50c5e87",
    "state": "87f9f2581bbf5520"
@@ -785,7 +785,7 @@
    ],
    "properties": {
     "due:date": "\"2026-04-18\"",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "84b36592d72bdedc",
    "state": "e19359ed74c8205f"
@@ -803,7 +803,7 @@
    ],
    "properties": {
     "rating:number": "2",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "f4f2d37de48c9eb2",
    "state": "928cef1f1dde2ab7"
@@ -841,7 +841,7 @@
    ],
    "properties": {
     "rating:number": "2",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "b8601c84ca333d1d",
    "state": "6d54540599cd00e4"
@@ -926,7 +926,7 @@
    ],
    "properties": {
     "rating:number": "1",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "9dbacd3a9cc84b76",
    "state": "7961211f61d7c03c"
@@ -959,7 +959,7 @@
    ],
    "properties": {
     "due:date": "\"2026-07-18\"",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "c912aed7ebf81039",
    "state": "9669cb9729bca66e"
@@ -1028,7 +1028,7 @@
    ],
    "properties": {
     "rating:number": "2",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "629c65370f4621e9",
    "state": "ec0e5df438d6232c"
@@ -1049,7 +1049,7 @@
     "tag-22"
    ],
    "properties": {
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "3912113ac10c3ee7",
    "state": "83fbebb1f9c147b9"
@@ -1105,7 +1105,7 @@
    ],
    "properties": {
     "rating:number": "1",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "42470d7211d715d8",
    "state": "f55b13144b23226e"
@@ -1172,7 +1172,7 @@
    ],
    "properties": {
     "due:date": "\"2026-01-18\"",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "34727053705aa399",
    "state": "83de430f0e5ee578"
@@ -1239,7 +1239,7 @@
     "tag-17"
    ],
    "properties": {
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "b9ff050923f716ef",
    "state": "6c28133d9a98392b"
@@ -1309,7 +1309,7 @@
     "tag-12"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "c684a7cc021947b7",
    "state": "3a882226b42ea6be"
@@ -1328,7 +1328,7 @@
    ],
    "properties": {
     "rating:number": "1",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "bc26a2483f54e2cd",
    "state": "4c27617ae74203c5"
@@ -1413,7 +1413,7 @@
     "tag-8"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "824b3b1ff702c01b",
    "state": "ec6032a804b64fe4"
@@ -1433,7 +1433,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "f4ca9fbbbfa79244",
    "state": "6a6037b60156c426"
@@ -1498,7 +1498,7 @@
     "tag-21"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "d24b836b5023f11e",
    "state": "388c2f9ba25aa770"
@@ -1568,7 +1568,7 @@
    ],
    "properties": {
     "due:date": "\"2026-07-10\"",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "078d9c8881ec1bce",
    "state": "3d1fd022e608a508"
@@ -1639,7 +1639,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "3a500d224fe2b1db",
    "state": "e0058529d3b1fbe5"
@@ -1686,7 +1686,7 @@
     "tag-3"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "025e9d9190761c49",
    "state": "522723c09cf5d02f"
@@ -1706,7 +1706,7 @@
    ],
    "properties": {
     "rating:number": "3",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "3a2e41aa2a4229ef",
    "state": "5cd0444fcb873616"
@@ -1757,7 +1757,7 @@
    ],
    "properties": {
     "due:date": "\"2026-01-10\"",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "df2fcf13f5d29daa",
    "state": "4bf540c944821da7"
@@ -1808,7 +1808,7 @@
    ],
    "properties": {
     "rating:number": "4",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "d5f4e1c4485a93b4",
    "state": "66c63540e40ff689"
@@ -1899,7 +1899,7 @@
    ],
    "properties": {
     "rating:number": "3",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "1329c9248799cbe6",
    "state": "0caf3cb9f5a74d75"
@@ -1951,7 +1951,7 @@
    ],
    "properties": {
     "due:date": "\"2026-04-10\"",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "8e35c0097f43f094",
    "state": "a2c80c4ebba710ee"
@@ -1971,7 +1971,7 @@
    "properties": {
     "due:date": "\"2026-04-16\"",
     "rating:number": "2",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "ab6abc62c0483fc3",
    "state": "726a52b2101b6959"
@@ -2070,7 +2070,7 @@
    ],
    "properties": {
     "rating:number": "3",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "0068726ae0ecb62a",
    "state": "4e6a13bb6bd43adb"
@@ -2111,7 +2111,7 @@
     "tag-14"
    ],
    "properties": {
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "b03348bdc504b8cc",
    "state": "4ccc17d90353c2f4"
@@ -2167,7 +2167,7 @@
    "properties": {
     "due:date": "\"2026-07-16\"",
     "rating:number": "2",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "6550f2c5699b8508",
    "state": "24656a366f8bc7c6"
@@ -2266,7 +2266,7 @@
     "tag-13"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "89966b806ea8da7d",
    "state": "b7cc83e31ea1bfb6"
@@ -2299,7 +2299,7 @@
    "properties": {
     "due:date": "\"2026-01-16\"",
     "rating:number": "2",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "a9c9760508cbf08e",
    "state": "8d435198ce861158"
@@ -2355,7 +2355,7 @@
    ],
    "properties": {
     "rating:number": "1",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "60dab4a8a36f3116",
    "state": "b30171b8f0ddea10"
@@ -2387,7 +2387,7 @@
     "tag-16"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "6941a23b476915c7",
    "state": "4999464083ad0958"
@@ -2457,7 +2457,7 @@
    ],
    "properties": {
     "due:date": "\"2026-04-12\"",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "6ed8dc44f89b5794",
    "state": "840efd9c9fd1068a"
@@ -2509,7 +2509,7 @@
    ],
    "properties": {
     "rating:number": "1",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "5f5bfbc133d8cb34",
    "state": "8a31ac3804ae01c6"
@@ -2576,7 +2576,7 @@
    ],
    "properties": {
     "due:date": "\"2026-07-12\"",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "3a5a7cb482765e2a",
    "state": "6d20ba8282091daf"
@@ -2608,7 +2608,7 @@
     "tag-1"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "f306296b1ee2dfe9",
    "state": "885b43869e35467e"
@@ -2731,7 +2731,7 @@
    "properties": {
     "due:date": "\"2026-01-18\"",
     "rating:number": "4",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "5a5a89da4228f10b",
    "state": "8189ec5abecb085e"
@@ -2763,7 +2763,7 @@
     "tag-17"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "edf4502ac24d703f",
    "state": "a28712bfc20c09a8"
@@ -2811,7 +2811,7 @@
     "tag-29"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "f305c4c9f513fdc9",
    "state": "b8846eaac374ec3a"
@@ -2883,7 +2883,7 @@
    "properties": {
     "due:date": "\"2026-04-18\"",
     "rating:number": "4",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "838fd4bdadf538dc",
    "state": "690db7dd8efcb7f3"
@@ -2919,7 +2919,7 @@
    ],
    "properties": {
     "rating:number": "3",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "07f95b26622fde5e",
    "state": "7c6c585a005f2e7d"
@@ -2968,7 +2968,7 @@
     "tag-8"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "8344e44362c51227",
    "state": "52ef11a738d7ff1c"
@@ -3068,7 +3068,7 @@
    ],
    "properties": {
     "rating:number": "3",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "9a9c1eaa3856e6dc",
    "state": "b3c03dc82f600634"
@@ -3106,7 +3106,7 @@
    ],
    "properties": {
     "rating:number": "2",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "5d19b1a188d7f4a1",
    "state": "8062dd4dc17bd934"
@@ -3184,7 +3184,7 @@
     "tag-0"
    ],
    "properties": {
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "775bba45444781f1",
    "state": "81ca9003847e7ddd"
@@ -3254,7 +3254,7 @@
    ],
    "properties": {
     "rating:number": "2",
-    "status:text": "\"in Arbeit\""
+    "status:select": "\"in Arbeit\""
    },
    "html": "087982794634434b",
    "state": "8ac77faf863c10d9"
@@ -3292,7 +3292,7 @@
    "properties": {
     "due:date": "\"2026-04-10\"",
     "rating:number": "1",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "368a40d51bb267b0",
    "state": "d7b23a71e4fe8e29"
@@ -3342,7 +3342,7 @@
     "tag-4"
    ],
    "properties": {
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "a7f19eddedc0b342",
    "state": "a944869c4bbc1790"
@@ -3405,7 +3405,7 @@
    "properties": {
     "due:date": "\"2026-07-10\"",
     "rating:number": "1",
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "d464dd91d4b22b25",
    "state": "4017f32cab782381"
@@ -3478,7 +3478,7 @@
     "tag-18"
    ],
    "properties": {
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "d08deab1c8bedfae",
    "state": "6a15d12bb2fc4445"
@@ -3511,7 +3511,7 @@
     "tag-4"
    ],
    "properties": {
-    "status:text": "\"fertig\""
+    "status:select": "\"fertig\""
    },
    "html": "0cdfc616649789f5",
    "state": "86a2e4131a560ba1"
@@ -3549,7 +3549,7 @@
    "properties": {
     "due:date": "\"2026-01-10\"",
     "rating:number": "1",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "ab10c3974370e54c",
    "state": "8313b3a45331b45e"
@@ -3571,7 +3571,7 @@
    ],
    "properties": {
     "due:date": "\"2026-01-16\"",
-    "status:text": "\"offen\""
+    "status:select": "\"offen\""
    },
    "html": "4fdbae89a0ffd8d7",
    "state": "44ee08fe4437305b"

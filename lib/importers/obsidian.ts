@@ -5,13 +5,16 @@
 // heading or block, whose "^blockid" marker becomes its id, #88),
 // ![[image.png]] images and ![[file.pdf]] file links,
 // callouts (> [!note]) callouts, and tags from the frontmatter and the
-// text (#tag) the page's tags.
+// text (#tag) the page's tags. Frontmatter keys become page properties of
+// the type Obsidian registered (.obsidian/types.json) or the notes' values
+// show (selects, multi-selects; lib/frontmatter-types.ts, #598).
 import { ct } from "../content-locale";
 import { posix } from "node:path";
 import { markdownToRawHtml } from "../markdown-html";
 import { blockMarkers } from "../markdown-import";
 import { splitFrontmatter, type FrontmatterValue } from "../frontmatter";
 import { frontmatterAliases } from "../aliases";
+import { inferPropertyTypes, obsidianTypes } from "../frontmatter-types";
 import { fileRef, mimeOf, pageRef } from "./html";
 import { nameKey } from "../zip-names";
 import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -133,6 +136,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     return dirs.has(same) && folderNote(same) === path ? same : null;
   };
   const pages: ImportPage[] = [];
+  const frontmatters: Record<string, FrontmatterValue>[] = [];
   const folderPages = new Set<string>();
   const folderKey = (dir: string): string | null => {
     if (!dir || dir === ".") return null;
@@ -148,6 +152,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
   for (const path of notes) {
     const source = entries.get(path)!.toString("utf8");
     const { data, body } = splitFrontmatter(source);
+    frontmatters.push(data);
     const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
     const folder = folderOfNote(path);
     const parent = folderKey(posix.dirname(folder ?? path));
@@ -179,5 +184,6 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
-  return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report };
+  const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.get(".obsidian/types.json")?.toString("utf8")));
+  return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report, propertyTypes };
 }

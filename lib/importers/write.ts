@@ -25,6 +25,7 @@ import { enforceUserStorage } from "../user-limits";
 import { sanitizeFileName, verifiedMime } from "../upload-safety";
 import { storedAliases } from "../aliases";
 import { applyPortableMeta, canManageScope, frontmatterMeta, memberByName } from "../page-properties-server";
+import type { PropertyHints } from "../frontmatter-types";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
@@ -551,7 +552,7 @@ export async function writeImport(
       const placeholders = new Map([...pageIds].map(([key, pid]) => [pageRef(key), pid]));
       const dayBodies = new Map<string, { title: string; body: string }[]>();
       const boardBytes = { bytes: preview.bytes };
-      const meta: MetaContext = { spaces, manage: new Map() };
+      const meta: MetaContext = { spaces, manage: new Map(), hints: tree.propertyTypes };
       let written = 0;
       for (const { page } of ordered) {
         await progress("write", written++, ordered.length);
@@ -785,8 +786,9 @@ export function importIcon(value: unknown): string | null {
 
 // What importPageMeta asks once per import instead of once per page (#594):
 // the space of each page the import made, who may create definitions in a
-// space, the workspace's members by name.
-type MetaContext = { spaces: Map<string, string>; manage: Map<string, boolean>; people?: (name: string) => string | undefined };
+// space, the workspace's members by name; the property types decided for
+// the whole import (#598).
+type MetaContext = { spaces: Map<string, string>; manage: Map<string, boolean>; people?: (name: string) => string | undefined; hints?: PropertyHints };
 // The tags (with the source's colours) and frontmatter properties of an
 // imported page; new properties only for workspace owners.
 async function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}, context: MetaContext) {
@@ -795,7 +797,7 @@ async function importPageMeta(user: Identity, workspaceId: string, pageId: strin
   let manage = context.manage.get(spaceId);
   if (manage === undefined) context.manage.set(spaceId, (manage = await canManageScope(user, workspaceId, spaceId)));
   const fromFront = page.properties
-    ? (await frontmatterMeta(page.properties, workspaceId, (context.people ??= await memberByName(workspaceId)), { createDefinitions: manage, spaceId })).meta
+    ? (await frontmatterMeta(page.properties, workspaceId, (context.people ??= await memberByName(workspaceId)), { createDefinitions: manage, spaceId, hints: context.hints })).meta
     : {};
   await applyPortableMeta(
     user,

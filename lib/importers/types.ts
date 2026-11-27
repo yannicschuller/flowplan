@@ -6,6 +6,7 @@
 import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
+import type { PropertyHints } from "../frontmatter-types";
 
 // "notion": Notion's API (lib/importers/notion-api.ts) – not a file; its
 // export ZIP goes through lib/zip-import.ts. "bookstack": BookStack's API
@@ -164,6 +165,10 @@ export type ImportTree = {
   // Set when the source has more pages than one import may bring: the
   // preview counts them, nothing is converted (AFFiNE, #82).
   tooMany?: boolean;
+  // The types of the pages' properties decided for the whole import, by
+  // folded name (Obsidian: .obsidian/types.json and the values of all
+  // notes, #598); a key without one is guessed from each value.
+  propertyTypes?: PropertyHints;
   // Records one database of the import may have (default MAX_IMPORT_ROWS;
   // Anki decks are larger).
   maxRows?: number;

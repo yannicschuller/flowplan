@@ -110,6 +110,13 @@
       ]
     },
     {
+      "de": "Der Obsidian-Import übernimmt die Eigenschaftstypen aus Obsidian (Liste, Zahl, Kontrollkästchen, Datum). Listen werden zur Mehrfachauswahl, wenige wiederkehrende kurze Werte wie „Status: offen“ zur Auswahl – mit allen Werten des Tresors als Optionen. Freier Text bleibt Text.",
+      "en": "The Obsidian import takes over Obsidian’s property types (list, number, checkbox, date). Lists become multi-selects, a few recurring short values like “status: open” a select – with every value of the vault as an option. Free text stays text.",
+      "issues": [
+        598
+      ]
+    },
+    {
       "de": "Die Schnellsuche (⌘K / Strg+K) öffnet sich auch in Arbeitsbereichen mit Tausenden Seiten sofort, und Tippen darin bleibt flüssig: Seitenleiste und geöffnete Seite werden dabei nicht mehr neu aufgebaut.",
       "en": "Quick search (⌘K / Ctrl+K) now opens instantly even in workspaces with thousands of pages, and typing in it stays smooth: the sidebar and the open page are no longer rebuilt meanwhile.",
       "issues": [

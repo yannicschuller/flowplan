@@ -4,6 +4,8 @@
 // aliases, tags, properties, files, and every page's HTML and Yjs state –
 // compared with a snapshot taken before the write phase was optimised.
 // Random ids (pages, files, blocks) are replaced by stable names first.
+// Regenerated for #598: `status` (three short values, each on many notes)
+// is now a select instead of text – nothing else changed.
 // After an intended change of the import's output:
 //   UPDATE_IMPORT_SNAPSHOT=1 node --import tsx --test tests/import-snapshot.test.ts
 import { test } from "node:test";

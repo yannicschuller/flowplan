@@ -26,6 +26,7 @@ import { isEncryptedPage } from "./e2ee-server";
 import { isGuest, memberRole, pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validDateValue } from "./date-values";
+import { guessPropertyType, type PropertyHints } from "./frontmatter-types";
 import {
   cleanName,
   cleanTagName,
@@ -983,12 +984,14 @@ const NOT_PROPERTIES = new Set([
 // What a frontmatter carries for a page: the tags (`tags:`/`tag:` as a
 // list or "a, b" / "a b") and properties – existing definitions by name,
 // unknown keys as new ones when definitions may be created (the type
-// guessed from the value). `consumed` lists the keys taken.
+// guessed from the value, or taken from `hints`: what an import decided for
+// the whole vault, lib/frontmatter-types.ts, #598). `consumed` lists the
+// keys taken.
 export async function frontmatterMeta(
   data: Record<string, unknown>,
   workspaceId: string,
   people: (name: string) => string | undefined,
-  options: { createDefinitions?: boolean; spaceId?: string | null } = {},
+  options: { createDefinitions?: boolean; spaceId?: string | null; hints?: PropertyHints } = {},
 ): Promise<{ meta: PortableMeta; consumed: string[] }> {
   const meta: PortableMeta = { tags: [], properties: [] },
     consumed: string[] = [];
@@ -1011,35 +1014,30 @@ export async function frontmatterMeta(
     const name = key.replace(/ \([0-9a-f-]{36}\)$/i, "");
     const def = defs.find((d) => foldName(d.name) === foldName(name));
     if (!def && !options.createDefinitions) continue;
-    const type: PagePropertyType = def?.type ?? guessType(raw);
+    // An existing definition keeps its type; a new one takes the import's.
+    const hint = def ? undefined : options.hints?.get(foldName(name));
+    const type: PagePropertyType = def?.type ?? hint?.type ?? guessPropertyType(raw);
     if (isComputedProperty(type)) {
       consumed.push(key);
       continue;
     }
     let value: unknown = raw;
     if (type === "person") value = typeof raw === "string" ? (people(raw) ?? null) : null;
-    else if (type === "multiselect") value = (Array.isArray(raw) ? raw : String(raw).split(",")).map((v) => String(v).trim()).filter(Boolean);
+    // A scalar on a property the vault uses as a list is one item, as
+    // Obsidian shows it.
+    else if (type === "multiselect") value = (Array.isArray(raw) ? raw : hint ? [raw] : String(raw).split(",")).map((v) => String(v).trim()).filter(Boolean);
     else if (type === "select" && Array.isArray(raw)) value = raw[0] == null ? null : String(raw[0]);
     else if (type === "checkbox") value = typeof raw === "boolean" ? raw : /^(true|yes|ja|x|1)$/i.test(String(raw));
     else if (Array.isArray(raw)) value = raw.map(String).join(", ");
     else if (type !== "number" && typeof raw !== "string") value = String(raw);
     if (value === null) continue;
-    meta.properties!.push({ name: def?.name ?? cleanName(name, MAX_PROPERTY_NAME), type, value });
+    // The options of the whole vault: the definition is complete with the
+    // first page that creates it.
+    meta.properties!.push({ name: def?.name ?? cleanName(name, MAX_PROPERTY_NAME), type, ...(hint?.options ? { options: hint.options } : {}), value });
     consumed.push(key);
   }
   return { meta, consumed };
 }
-function guessType(raw: unknown): PagePropertyType {
-  if (typeof raw === "boolean") return "checkbox";
-  if (typeof raw === "number") return "number";
-  if (Array.isArray(raw)) return "multiselect";
-  const text = String(raw);
-  if (validDateValue(text)) return "date";
-  if (/^https?:\/\/\S+$/i.test(text)) return "url";
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return "email";
-  return "text";
-}
-
 // GET /api/tags: the workspace's tags with how many readable pages and
 // records (tag-backed database properties, #79) carry each, the property
 // definitions and – with `tagId` – those pages and records.
