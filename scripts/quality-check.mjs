@@ -83,7 +83,8 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // budget is about 3 % above.
 // 2026-11-26: upload progress (#561) and the office card (#562) in the
 // editor chunk the workflow page shares – measured 1063.0 KB, its budget
-// moves to 1070 KB.
+// moves to 1070 KB; the sidebar tools menu and the chart accent (#589, #590) add
+// about 2 KB to the workspace: 1074 KB, monitoring 901 KB.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
@@ -123,7 +124,7 @@ const PAGES = [
   // 2026-11-18 (flashcards phase 5: 1175.2 KB after the offline sending
   // moved out of the shell; that is 3 % above the 1153.2 KB of 2026-11-17,
   // the margin the other pages have).
-  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1070, ready: ".react-flow__node, .wf-list-node" },
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1074, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand
@@ -135,7 +136,7 @@ const PAGES = [
   // administration landing page).
   { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 870, ready: ".sv-glance-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 897, ready: ".mon-health" },
+  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 901, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
   { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 876, ready: "#relay" },
 ];
