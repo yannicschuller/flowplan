@@ -117,8 +117,8 @@
       ]
     },
     {
-      "de": "Die Schnellsuche (⌘K / Strg+K) öffnet sich auch in Arbeitsbereichen mit Tausenden Seiten sofort, und Tippen darin bleibt flüssig: Seitenleiste und geöffnete Seite werden dabei nicht mehr neu aufgebaut.",
-      "en": "Quick search (⌘K / Ctrl+K) now opens instantly even in workspaces with thousands of pages, and typing in it stays smooth: the sidebar and the open page are no longer rebuilt meanwhile.",
+      "de": "Die Schnellsuche (⌘K / Strg+K) öffnet sich in Arbeitsbereichen mit Tausenden Seiten schneller, und Tippen darin ist flüssiger: Seitenleiste und geöffnete Seite werden dabei nicht mehr neu aufgebaut.",
+      "en": "Quick search (⌘K / Ctrl+K) opens faster in workspaces with thousands of pages, and typing in it is smoother: the sidebar and the open page are no longer rebuilt meanwhile.",
       "issues": [
         610
       ]
