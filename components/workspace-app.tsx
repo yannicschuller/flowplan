@@ -580,6 +580,10 @@ export default function WorkspaceApp({
   // Phones (≤ 767 px, app/globals.css): the page's top bar keeps the title;
   // follow, favourite, share and reading mode move into its ⋯ menu.
   const phone = useMedia("(max-width: 767.98px)");
+  // A phone held in the hand (app/mobile-ux.css): "Mehr" is the last entry
+  // of the drawer's list, with no bar of its own below it (#629). A narrow
+  // window with a mouse keeps the bar.
+  const touchPhone = useMedia("(pointer: coarse) and (max-width: 767.98px)");
   // Up to 600 px the page's ⋯ menu is a bottom sheet (components/page-menu.tsx).
   const sheetMenus = useMedia(SHEET_MEDIA);
   const locale = useLocale();
@@ -4605,6 +4609,37 @@ export default function WorkspaceApp({
   };
   // Unread in all, also beyond the first page of the inbox (the badges).
   const unreadNotifications = boot.notificationsUnread ?? boot.notifications.filter((n) => !n.read_at).length;
+  // "Erste Schritte" after the introduction (lib/getting-started.ts) and
+  // "Mehr", the phone's sheet of the less used places: below the list, on a
+  // phone in the hand its last entries (#629).
+  const gettingStarted = boot.gettingStarted && !boot.gettingStarted.hidden ? (
+    <GettingStarted
+      state={boot.gettingStarted}
+      sample={boot.sampleSpace && !boot.sampleSpace.trashed ? boot.sampleSpace : null}
+      mutate={(b) => mutate({ workspaceId: boot.workspace.id, ...b })}
+      onAction={(item) => {
+        if (item === "page") {
+          const first = boot.spaces.find((sp) => !sp.deleted_at);
+          if (first) addPage("document", null, first.id);
+        } else if (item === "task") go("tasks");
+        else if (item === "search") openSearch();
+        // The deck of the template "Flowplan-Tastenkürzel".
+        else if (item === "shortcuts") {
+          const first = boot.spaces.find((sp) => !sp.deleted_at);
+          const name = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en").shortcuts?.name ?? "";
+          if (first) newPageFromTemplate({ starter: "shortcuts", name, kind: "database" }, first.id, null, false);
+        }
+        else
+          location.hash = settingsHash(
+            item === "invite" ? { area: "settings", section: "members" } : item === "app" ? { area: "settings", section: "devices" } : { area: "settings", section: "data", anchor: "import" },
+          );
+      }}
+    />
+  ) : null;
+  // Phones rarely have a keyboard: no "Tastenkürzel" in the sheet (#620;
+  // iPad and wider windows keep it in the row). The sheet follows the row's
+  // choice but always keeps Settings (#589).
+  const sidebarMore = <SidebarMore tools={moreSheetOf(sidebarTools, hiddenTools).filter((tool) => tool.id !== "shortcuts")} />;
   return (
     <AiProvider status={uiAi || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
@@ -5308,43 +5343,26 @@ export default function WorkspaceApp({
               {t("Bereich hinzufügen", "Add space")}
             </button>
           )}
+          {/* On a phone in the hand "Mehr" is an entry of the list, right
+              below the spaces – no bar of its own above the tab bar (#629);
+              "Erste Schritte" follows it. */}
+          {touchPhone && sidebarMore}
+          {touchPhone && gettingStarted}
         </div>
-        <div className="sidebar-bottom">
-          {/* "Erste Schritte" after the introduction (lib/getting-started.ts). */}
-          {boot.gettingStarted && !boot.gettingStarted.hidden && (
-            <GettingStarted
-              state={boot.gettingStarted}
-              sample={boot.sampleSpace && !boot.sampleSpace.trashed ? boot.sampleSpace : null}
-              mutate={(b) => mutate({ workspaceId: boot.workspace.id, ...b })}
-              onAction={(item) => {
-                if (item === "page") {
-                  const first = boot.spaces.find((sp) => !sp.deleted_at);
-                  if (first) addPage("document", null, first.id);
-                } else if (item === "task") go("tasks");
-                else if (item === "search") openSearch();
-                // The deck of the template "Flowplan-Tastenkürzel".
-                else if (item === "shortcuts") {
-                  const first = boot.spaces.find((sp) => !sp.deleted_at);
-                  const name = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en").shortcuts?.name ?? "";
-                  if (first) newPageFromTemplate({ starter: "shortcuts", name, kind: "database" }, first.id, null, false);
-                }
-                else
-                  location.hash = settingsHash(
-                    item === "invite" ? { area: "settings", section: "members" } : item === "app" ? { area: "settings", section: "devices" } : { area: "settings", section: "data", anchor: "import" },
-                  );
-              }}
-            />
-          )}
-          {/* Less used places as one row of symbols (on phones behind
-              "Mehr"): the page tree above keeps the height. Who is signed in
-              and the account's entries are in the workspace menu at the top
-              (#565), so there is no account row below it any more (#570). */}
-          <SidebarToolRow tools={toolRowOf(sidebarTools, hiddenTools)} onHide={hideSidebarTool} onCustomize={customizeSidebarTools} />
-          {/* Phones rarely have a keyboard: no "Tastenkürzel" in the sheet
-              (#620; iPad and wider windows keep it in the row). The sheet
-              follows the row's choice but always keeps Settings (#589). */}
-          <SidebarMore tools={moreSheetOf(sidebarTools, hiddenTools).filter((tool) => tool.id !== "shortcuts")} />
-        </div>
+        {/* On a phone in the hand the drawer's list ends with "Mehr" and
+            "Erste Schritte" (#629, above); elsewhere they stay below it. */}
+        {!touchPhone && (
+          <div className="sidebar-bottom">
+            {gettingStarted}
+            {/* Less used places as one row of symbols (in a narrow window
+                behind "Mehr"): the page tree above keeps the height. Who is
+                signed in and the account's entries are in the workspace menu
+                at the top (#565), so there is no account row below it any
+                more (#570). */}
+            <SidebarToolRow tools={toolRowOf(sidebarTools, hiddenTools)} onHide={hideSidebarTool} onCustomize={customizeSidebarTools} />
+            {sidebarMore}
+          </div>
+        )}
         {/* Over the page (open drawer) the sidebar has a width of its own –
             on tablets; on phones it is as wide as the screen and has no
             edge to drag (#621, #622). */}

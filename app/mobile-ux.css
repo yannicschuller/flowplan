@@ -553,8 +553,7 @@ label.hit-check {
   .add-space {
     min-height: 44px;
   }
-  .sidebar-hide,
-  .sidebar-bottom .icon-button {
+  .sidebar-hide {
     width: 44px;
     height: 44px;
   }
@@ -569,9 +568,6 @@ label.hit-check {
     grid-template-columns: repeat(4, minmax(44px, 1fr));
     gap: 0;
   }
-  .sidebar-bottom {
-    padding-inline: 4px;
-  }
 }
 
 /* ===== The sidebar's less used places on phones (#185,
@@ -579,7 +575,8 @@ label.hit-check {
    layout of app/globals.css) one small "Mehr" button at the left of the
    row where wider screens show the symbols opens them as a list in a
    sheet – one compact row, no bar of its own (#613), the page tree keeps
-   the height. ===== */
+   the height. On a phone in the hand it is the last entry of the list
+   instead (#629, below). ===== */
 .sidebar-more {
   display: none;
 }
@@ -611,6 +608,70 @@ label.hit-check {
      keyboard open, or in focus mode, the bar is gone and it stays). */
   .app-shell:not(.keyboard-open, .focus-mode) .sidebar-hide {
     display: none;
+  }
+}
+/* ===== The drawer's list on a phone in the hand (#629): "Mehr" is its
+   last entry, right below the spaces and "Bereich hinzufügen" – no bar of
+   its own above the tab bar (components/workspace-app.tsx renders no
+   .sidebar-bottom there; "Erste Schritte" follows "Mehr"). Every entry –
+   Startseite, Posteingang, Meine Aufgaben, Favoriten, Sammlungen, the
+   spaces and their pages, "Bereich hinzufügen" and "Mehr" – is 15 px; the
+   filter field keeps 16 px (iOS would zoom into a smaller one), the small
+   labels ("Geteilt") stay labels. The rows keep their 44 px; only the room
+   between the groups is smaller. ===== */
+@media (pointer: coarse) and (max-width: 767.98px) {
+  .sidebar :is(.main-nav > button, .page-nav-title, .favorite-nav, .collection-nav-empty, .add-space, .sidebar-more),
+  .sidebar .nav-section-title > .space-toggle {
+    font-size: 15px;
+  }
+  /* Startseite, Posteingang, Meine Aufgaben: one 44 px row after the
+     other, the filter field close below. */
+  .main-nav {
+    padding-bottom: 4px;
+  }
+  .main-nav > button {
+    margin: 0;
+  }
+  .tree-filter {
+    margin-bottom: 4px;
+  }
+  /* An open section's last page and the next title: a little more than
+     between two pages, not a gap (the title's own 12 px above its name,
+     #627, stay). */
+  .nav-section:not(.space-collapsed) {
+    margin-bottom: 8px;
+  }
+  /* "Bereich hinzufügen" and "Mehr" as rows of the navigation: symbol and
+     name on the axes of Startseite and the others (20 px and 49 px in). */
+  .sidebar .add-space,
+  .sidebar-scroll > .sidebar-more {
+    display: flex;
+    justify-content: flex-start;
+    gap: 10px;
+    width: calc(100% - 20px);
+    min-height: 44px;
+    margin: 0 10px;
+    padding-block: 0;
+    padding-inline: 10px;
+    border-radius: 8px;
+    font-weight: 400;
+  }
+  .sidebar .add-space > svg,
+  .sidebar-scroll > .sidebar-more > svg {
+    flex-shrink: 0;
+    width: 19px;
+    height: 19px;
+  }
+  .sidebar-scroll > .getting-started {
+    margin-top: 8px;
+  }
+  /* The tab bar keeps the home indicator's room; without it (keyboard
+     open, focus mode) the end of the list does. */
+  .sidebar-scroll {
+    padding-bottom: 8px;
+  }
+  .app-shell:is(.keyboard-open, .focus-mode) .sidebar-scroll {
+    padding-bottom: calc(8px + var(--safe-bottom));
   }
 }
 .sidebar-more-list,

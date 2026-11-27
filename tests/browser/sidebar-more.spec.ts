@@ -3,9 +3,9 @@ import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 
-// On phones the sidebar's less used places sit behind one small "Mehr"
-// button at the bottom left of the drawer, where wider windows show the row
-// of symbols, and open as a list in a sheet (#185, #613,
+// On phones the sidebar's less used places sit behind "Mehr", the last
+// entry of the drawer's list right below the spaces (#629; wider windows
+// show the row of symbols), and open as a list in a sheet (#185, #613,
 // components/sidebar-tools.tsx). The sheet holds the tools alone: the
 // account's entries are in the workspace menu at the top (#613), and phones
 // have no "Tastenkürzel" (#620).
@@ -39,14 +39,24 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(more(page)).toBeVisible();
   await expect(more(page)).toHaveAttribute("aria-haspopup", "dialog");
   await expect(more(page)).toHaveAttribute("aria-expanded", "false");
-  // Small, at the bottom left, in one compact row – no bar of its own
-  // (#613); still a 44 px target.
-  const button = (await more(page).boundingBox())!;
+  // An entry of the list right below "Bereich hinzufügen", as large as the
+  // others and on the axes of Startseite (#629) – no bar of its own above
+  // the tab bar; still a 44 px target.
+  await expect(sidebar(page).locator(".sidebar-bottom")).toHaveCount(0);
+  await expect(sidebar(page).locator(".sidebar-scroll > .add-space + .sidebar-more")).toHaveCount(1);
+  // (Measured in one frame: the drawer may still be sliding in.)
+  const [button, add, home] = await sidebar(page).evaluate((aside) =>
+    [".sidebar-more", ".add-space", ".main-nav > button.selected"].map((selector) => {
+      const el = aside.querySelector(selector)!;
+      const { x, y, width, height } = el.getBoundingClientRect();
+      return { x, y, width, height, fontSize: getComputedStyle(el).fontSize };
+    }),
+  );
   expect(button.height).toBeGreaterThanOrEqual(44);
-  expect(button.width).toBeLessThan(120);
-  const bottom = (await sidebar(page).locator(".sidebar-bottom").boundingBox())!;
-  expect(bottom.height).toBeLessThan(50);
-  expect(button.x - bottom.x).toBeLessThan(12);
+  expect(Math.abs(button.y - (add.y + add.height))).toBeLessThan(1);
+  expect(Math.abs(button.x - home.x)).toBeLessThan(1);
+  expect(Math.abs(button.width - home.width)).toBeLessThan(1);
+  for (const entry of [button, add, home]) expect(entry.fontSize).toBe("15px");
 
   await more(page).tap();
   await expect(sheet(page)).toBeVisible();
@@ -122,6 +132,19 @@ test("wider windows keep the row of symbols", async ({ page }, info) => {
   for (const name of PLACES) await expect(row.getByRole("button", { name, exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Medien", exact: true }).click();
   await expect(row.getByRole("button", { name: "Medien", exact: true })).toHaveClass(/selected/);
+});
+
+// A narrow window with a mouse keeps "Mehr" in the bar below the list:
+// the entry in the list is a phone's in the hand (#629).
+test("a narrow window with a mouse keeps Mehr below the list", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "A window with a mouse.");
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#home");
+  await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).click();
+  await expect(page.locator(".nav-open .sidebar")).toBeVisible();
+  await expect(sidebar(page).locator(".sidebar-bottom .sidebar-more")).toBeVisible();
+  await expect(sidebar(page).locator(".sidebar-scroll .sidebar-more")).toHaveCount(0);
 });
 
 // A session with these groups, made directly in the test server's database.

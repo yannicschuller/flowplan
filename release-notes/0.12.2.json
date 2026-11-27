@@ -1,6 +1,14 @@
 {
   "features": [],
-  "improvements": [],
+  "improvements": [
+    {
+      "de": "Auf dem Handy ist „Mehr“ jetzt der letzte Eintrag der Seitenleiste, direkt unter „Bereich hinzufügen“, statt in einer eigenen Leiste. Alle Einträge haben dieselbe, etwas größere Schrift und weniger Leerraum dazwischen; die Tippflächen bleiben so groß wie bisher.",
+      "en": "On a phone, “More” is now the last entry of the sidebar, right below “Add space”, instead of in a bar of its own. Every entry has the same, slightly larger text and less empty space between groups; the tap targets stay as large as before.",
+      "issues": [
+        629
+      ]
+    }
+  ],
   "fixes": [
     {
       "de": "Auf dem iPhone und anderen Touchscreens öffnet sich eine Auswahl-Eigenschaft eines Eintrags („Status ändern“) jetzt ohne Tastatur, sodass alle Optionen sichtbar sind. Ein Tippen auf das Suchfeld holt die Tastatur; wird sie ausgeblendet, bleibt die Liste offen, und ein Tippen daneben schließt sie.",

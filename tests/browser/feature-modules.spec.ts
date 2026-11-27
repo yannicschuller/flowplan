@@ -56,7 +56,7 @@ async function openDrawer(page: Page, mobile: boolean) {
   if (!mobile) return;
   const menu = page.locator(".mobile-tab-bar").getByRole("button", { name: /Navigation öffnen|Menü/ });
   await menu.click();
-  await expect(page.locator("aside.sidebar .sidebar-more")).toBeInViewport();
+  await expect(page.locator(".nav-open aside.sidebar")).toBeVisible();
 }
 // Screenshots for the review (MOD378_SHOTS: a folder), light and dark.
 async function shot(page: Page, name: string) {

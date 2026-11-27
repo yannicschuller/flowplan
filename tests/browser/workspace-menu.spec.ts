@@ -46,7 +46,9 @@ test("the workspace menu shows the person, the workspaces and the account, signi
 
   // No account row below the tools any more (#570), no "⋯" either: who is
   // signed in is at the top of the workspace menu.
-  await expect(sidebar(page).locator(".sidebar-bottom")).not.toContainText(boot.user.name);
+  // On phones there is no bar below the list at all (#629).
+  if (phone) await expect(sidebar(page).locator(".sidebar-bottom")).toHaveCount(0);
+  else await expect(sidebar(page).locator(".sidebar-bottom")).not.toContainText(boot.user.name);
   await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toHaveCount(0);
 
   const menu = await openMenu(page);
