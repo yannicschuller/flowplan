@@ -486,7 +486,7 @@ export type Bootstrap = {
     // The Flowplan Marketplace (lib/marketplace-config.ts); null: switched off.
     marketplace?: import("./marketplace-config").MarketplaceClientConfig | null;
     // Settings → Über Flowplan (lib/about.ts); `update` only for administrators.
-    about?: import("./about").AboutInfo & { update?: import("./update-check").UpdateStatus | null };
+    about?: import("./about").AboutInfo & { diagnostics?: import("./diagnostics-text").BackendDiagnostics; update?: import("./update-check").UpdateStatus | null };
   };
   members: (User & { role: Role; guest?: number })[];
   // AI features, provider and pages closed to the AI (lib/ai/features.ts).

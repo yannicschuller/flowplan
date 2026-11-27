@@ -20,6 +20,8 @@ services:
     env_file: .env
     environment:
       FLOWPLAN_DATA_DIR: /app/data
+      # "Copy for bug report" under Settings → About Flowplan (#630).
+      FLOWPLAN_INSTALL_METHOD: ${FLOWPLAN_INSTALL_METHOD:-docker-compose}
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

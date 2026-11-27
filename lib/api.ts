@@ -47,6 +47,7 @@ import { markdownSource } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
 import { legalLinks } from "./legal-links";
 import { aboutInfo } from "./about";
+import { backendDiagnostics } from "./diagnostics";
 import { knownUpdate } from "./update-check";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { mergeAccounts, mergePreview } from "./account-merge";
@@ -561,7 +562,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       // The marketplace's origin and this version (lib/marketplace-config.ts); null: off.
       marketplace: await marketplaceConfig(),
       // Settings → Über Flowplan; a newer release for administrators.
-      about: { ...aboutInfo(agent), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
+      // `diagnostics`: the backend part of "Für Bug-Report kopieren" (#630,
+      // lib/diagnostics.ts), with the instance details for administrators.
+      about: { ...aboutInfo(agent), diagnostics: await backendDiagnostics(user), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
     },
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: await myLimits(user, workspaces),

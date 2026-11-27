@@ -1,5 +1,13 @@
 {
-  "features": [],
+  "features": [
+    {
+      "de": "„Für Bug-Report kopieren“ unter Einstellungen → Über Flowplan kopiert Version, Build und dein Gerät in einer Zeile; Admins bekommen auch Node.js, Datenbank, Speicher und Installationsart. Dasselbe gibt es per REST-API und MCP. Namen, Adressen und Hosts kommen nie hinein.",
+      "en": "“Copy for bug report” under Settings → About Flowplan copies version, build and your device in one line; admins also get Node.js, database, storage and install method. The same is available from the REST API and MCP. Names, addresses and hosts never go in.",
+      "issues": [
+        630
+      ]
+    }
+  ],
   "improvements": [],
   "fixes": [
     {

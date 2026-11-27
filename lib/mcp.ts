@@ -44,6 +44,7 @@ import { ensureRowDocument, requireRow } from "./row-documents";
 import { localizedMessage } from "./i18n-errors";
 import { contentLocale } from "./content-locale";
 import { buildInfo } from "./build-info";
+import { backendDiagnostics } from "./diagnostics";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 import { workflowTools } from "./workflows/mcp-tools";
@@ -1288,6 +1289,15 @@ const tools: Tool[] = [
       const { meetingStatus } = await import("./meetings");
       return await meetingStatus(user, args.meetingId, { content: true });
     }) as Tool["run"],
+  },
+  {
+    name: "get_diagnostics",
+    title: "Installation details for a bug report",
+    description:
+      "The Flowplan version, release channel, build commit and build date of this instance, with a one-line `text` to paste into a bug report (as Settings → About Flowplan → Copy for bug report, backend part). API tokens get the member view: Node.js, database, storage, mode and install method are only shown to administrators in the browser.",
+    input: z.object({}),
+    write: false,
+    run: async (user) => await backendDiagnostics(user),
   },
   // Workflows (#168, lib/workflows/mcp-tools.ts): no activation, no approvals.
   ...workflowTools,

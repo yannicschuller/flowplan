@@ -2152,6 +2152,26 @@ const schemas: Record<string, Json> = {
     required: ["service", "status"],
     additionalProperties: true,
   },
+  Diagnostics: {
+    type: "object",
+    description: "The backend part of the installation details for bug reports. Everyone signed in gets version, channel, build and build date; administrators (a browser session of the admin group – API tokens never carry admin rights) also Node.js, the install method, the database, the storage and the mode. Never host names, addresses or secrets.",
+    properties: {
+      scope: { type: "string", enum: ["member", "admin"], description: "`admin`: the instance details are included" },
+      version: { type: "string", description: "Flowplan's version, empty when not known" },
+      channel: { type: "string", enum: ["beta", "release", ""] },
+      commit: { type: "string", description: "Short commit of the build (7 characters), empty when not known" },
+      builtAt: { type: "string", description: "Build time (ISO 8601), empty when not known" },
+      node: { type: "string", description: "Administrators only: the Node.js version, e.g. `v26.13.1`" },
+      database: { type: "string", enum: ["sqlite", "postgres"], description: "Administrators only" },
+      databaseVersion: { type: ["integer", "null"], description: "Administrators only: PostgreSQL's major version (null for SQLite or when not known)" },
+      storage: { type: "string", enum: ["local", "s3"], description: "Administrators only: files on the local disk or in S3 object storage" },
+      mode: { type: "string", enum: ["single", "cluster"], description: "Administrators only" },
+      installMethod: { type: "string", description: "Administrators only: as set by the operator (e.g. `docker-compose`, `helm`), otherwise detected (`kubernetes`, `docker`, `podman`, `no container`)" },
+      installMethodSource: { type: "string", enum: ["setting", "detected"], description: "Administrators only" },
+      text: { type: "string", description: "One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser." },
+    },
+    required: ["scope", "version", "channel", "commit", "builtAt", "text"],
+  },
   SiteInfo: {
     type: "object",
     properties: {
@@ -2279,6 +2299,7 @@ const noStore = "Answered with `Cache-Control: no-store`.";
 const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Instance
   { path: "/api/health", method: "get", op: { id: "health", tag: "Instance", summary: "Liveness and readiness", description: "No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator.", security: "none", ok: { schema: ref("Health"), description: "Healthy" }, errors: [503] } },
+  { path: "/api/diagnostics", method: "get", op: { id: "diagnostics", tag: "Instance", summary: "Installation details for a bug report", description: `What Settings → About Flowplan copies with “Copy for bug report”, backend part only (the browser adds the frontend): version, channel, build and build date for everyone; Node.js, install method, database, storage and mode only for administrators signed in in the browser – API tokens get the member view. ${noStore}`, ok: { schema: ref("Diagnostics"), description: "Installation details" }, errors: [401] } },
   { path: "/api/site-info", method: "get", op: { id: "siteInfo", tag: "Instance", summary: "Whether sign-up, the demo and SSO are open", security: "none", ok: { schema: ref("SiteInfo"), description: "Public facts" }, errors: [] } },
   { path: "/api/openapi.json", method: "get", op: { id: "openapi", tag: "Instance", summary: "This document", description: "Signed-in people and API tokens; public (`info.version` with the major version only for visitors) when the instance sets `FLOWPLAN_PUBLIC_API_DOCS=true`.", ok: { schema: { type: "object", additionalProperties: true }, description: "The OpenAPI document" }, errors: [401] } },
   { path: "/api/metrics", method: "get", op: { id: "metrics", tag: "Instance", summary: "Prometheus metrics", description: "Only with `FLOWPLAN_METRICS_TOKEN` set, sent as bearer token. 404 when metrics are off.", security: "metrics", ok: { content: "text/plain", description: "Prometheus text format" }, errors: [401, 404] } },
@@ -2474,7 +2495,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/workflow-approvals/{approvalId}", method: "get", op: { id: "getWorkflowApproval", tag: "Workflows", summary: "One approval with its message and context", params: [p("approvalId", "Approval ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "Approval" } } },
   { path: "/api/workflow-approvals/{approvalId}", method: "post", op: { id: "decideWorkflowApproval", tag: "Workflows", summary: "Approve or reject (signed in only)", description: "A person's decision: refused for every API token (403) and not offered over MCP. The first decision wins (409 afterwards).", write: true, params: [p("approvalId", "Approval ID")], body: { content: "application/json", schema: { type: "object", properties: { decision: { type: "string", enum: ["approved", "rejected"] }, comment: { type: "string", maxLength: 2000 } }, required: ["decision"] }, required: true }, ok: { schema: okSchema(), description: "Decided" }, errors: [400, 401, 403, 404, 409] } },
   // MCP
-  { path: "/api/mcp", method: "post", op: { id: "mcp", tag: "MCP", summary: "MCP server (Streamable HTTP, JSON answers)", description: "For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools.", body: { content: "application/json", schema: ref("McpRequest"), required: true }, ok: { schema: ref("McpResponse"), description: "The JSON-RPC answer (202 without a body for notifications)" }, errors: [400, 401, 403, 413, 429] } },
+  { path: "/api/mcp", method: "post", op: { id: "mcp", tag: "MCP", summary: "MCP server (Streamable HTTP, JSON answers)", description: "For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note, get_diagnostics (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools.", body: { content: "application/json", schema: ref("McpRequest"), required: true }, ok: { schema: ref("McpResponse"), description: "The JSON-RPC answer (202 without a body for notifications)" }, errors: [400, 401, 403, 413, 429] } },
 ];
 
 // Route handlers under app/api that the specification leaves out on purpose:

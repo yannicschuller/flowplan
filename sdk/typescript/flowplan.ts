@@ -1128,6 +1128,35 @@ export type Health = {
   [key: string]: unknown;
 };
 
+/** The backend part of the installation details for bug reports. Everyone signed in gets version, channel, build and build date; administrators (a browser session of the admin group – API tokens never carry admin rights) also Node.js, the install method, the database, the storage and the mode. Never host names, addresses or secrets. */
+export type Diagnostics = {
+  /** `admin`: the instance details are included */
+  scope: "member" | "admin";
+  /** Flowplan's version, empty when not known */
+  version: string;
+  channel: "beta" | "release" | "";
+  /** Short commit of the build (7 characters), empty when not known */
+  commit: string;
+  /** Build time (ISO 8601), empty when not known */
+  builtAt: string;
+  /** Administrators only: the Node.js version, e.g. `v26.13.1` */
+  node?: string;
+  /** Administrators only */
+  database?: "sqlite" | "postgres";
+  /** Administrators only: PostgreSQL's major version (null for SQLite or when not known) */
+  databaseVersion?: number | null;
+  /** Administrators only: files on the local disk or in S3 object storage */
+  storage?: "local" | "s3";
+  /** Administrators only */
+  mode?: "single" | "cluster";
+  /** Administrators only: as set by the operator (e.g. `docker-compose`, `helm`), otherwise detected (`kubernetes`, `docker`, `podman`, `no container`) */
+  installMethod?: string;
+  /** Administrators only */
+  installMethodSource?: "setting" | "detected";
+  /** One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser. */
+  text: string;
+};
+
 export type SiteInfo = {
   signupOpen: boolean;
   demo: boolean;
@@ -4102,6 +4131,11 @@ export class FlowplanClient {
     return this.json<Health>("GET", `/api/health`, {}, options);
   }
 
+  /** Installation details for a bug report — What Settings → About Flowplan copies with “Copy for bug report”, backend part only (the browser adds the frontend): version, channel, build and build date for everyone; Node.js, install method, database, storage and mode only for administrators signed in in the browser – API tokens get the member view. Answered with `Cache-Control: no-store`. (GET /api/diagnostics) */
+  async diagnostics(options?: RequestOptions): Promise<Diagnostics> {
+    return this.json<Diagnostics>("GET", `/api/diagnostics`, {}, options);
+  }
+
   /** Whether sign-up, the demo and SSO are open (GET /api/site-info) */
   async siteInfo(options?: RequestOptions): Promise<SiteInfo> {
     return this.json<SiteInfo>("GET", `/api/site-info`, {}, options);
@@ -5933,7 +5967,7 @@ export class FlowplanClient {
   }>("POST", `/api/workflow-approvals/${encodeURIComponent(approvalId)}`, { json: body }, options);
   }
 
-  /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools. (POST /api/mcp) */
+  /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note, get_diagnostics (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools. (POST /api/mcp) */
   async mcp(body: McpRequest, options?: RequestOptions): Promise<McpResponse> {
     return this.json<McpResponse>("POST", `/api/mcp`, { json: body }, options);
   }

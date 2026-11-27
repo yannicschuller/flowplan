@@ -13,6 +13,7 @@ import { useLocale, useT } from "../../i18n";
 import { docsLanguage } from "@/lib/i18n";
 import { SettingGroup, SettingRow, StatusBadge } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
+import { DiagnosticsCopy } from "../diagnostics-copy";
 
 const noSubscribe = () => () => {};
 
@@ -64,6 +65,8 @@ export default function AboutSection() {
               ))}
           </span>
         </SettingRow>
+        {/* "Für Bug-Report kopieren" (#630): installation details in one line. */}
+        <DiagnosticsCopy anchor="bug-report" backend={about?.diagnostics} />
         {/* "Was ist neu" (#223): the release notes bundled with this version. */}
         <SettingRow anchor="whats-new" label={t("Was ist neu", "What’s new")} description={t("Die Versionshinweise der letzten Versionen.", "The release notes of the latest versions.")}>
           <button type="button" className="button" onClick={openWhatsNew}>
@@ -122,7 +125,7 @@ export default function AboutSection() {
         <SettingRow
           anchor="bug"
           label={t("Fehler melden", "Report a bug")}
-          description={t("Auf GitHub – nenn am besten die Version von oben.", "On GitHub – ideally with the version above.")}
+          description={t("Auf GitHub – füg am besten die Zeile von „Für Bug-Report kopieren“ oben ein.", "On GitHub – ideally with the line from “Copy for bug report” above.")}
         >
           <External href={ISSUES_URL} label={t("Fehler melden", "Report a bug")}>
             {t("GitHub Issues", "GitHub issues")}

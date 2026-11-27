@@ -31,6 +31,7 @@ import { readMultipartStream, sweepIncoming } from "@/lib/multipart-stream";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
 import { storageOverview } from "@/lib/storage-overview";
+import { backendDiagnostics } from "@/lib/diagnostics";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { offlineAssets } from "@/lib/offline-assets-server";
 import { notificationFeed } from "@/lib/notification-feed";
@@ -295,6 +296,10 @@ async function handleGET(
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
+    // Installation details for bug reports (#630, lib/diagnostics.ts): the
+    // backend part, the instance details only for administrators.
+    if (path.length === 1 && path[0] === "diagnostics")
+      return NextResponse.json(await backendDiagnostics(user), { headers: { "Cache-Control": "no-store" } });
     // Workflows (#168, lib/workflows/commands.ts): list, state, runs, versions, catalogue, administration.
     if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals" || (path[0] === "admin" && path[1] === "workflows")) {
       const answer = await withReadMemo(async () => await workflowGet(user, path, url));

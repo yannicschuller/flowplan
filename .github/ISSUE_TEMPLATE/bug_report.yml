@@ -39,11 +39,18 @@ body:
       label: What did you expect?
     validations:
       required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Installation details
+      description: "In Flowplan open **Settings → About Flowplan → Copy for bug report** and paste the line here. It holds the version, build and your device – for admins also Node.js, database, storage and how it is installed – and nothing personal."
+      placeholder: "Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z) · Frontend: Firefox 140, Windows"
+      render: text
   - type: input
     id: version
     attributes:
       label: Flowplan version
-      description: "In Flowplan under **Settings → About Flowplan** (e.g. 0.9.0), or the image tag. On flowplan.org you can write \"flowplan.org\"."
+      description: "In Flowplan under **Settings → About Flowplan** (e.g. 0.9.0), or the image tag – already in the installation details above. On flowplan.org you can write \"flowplan.org\"."
       placeholder: "0.9.0"
     validations:
       required: true

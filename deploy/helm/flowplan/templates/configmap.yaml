@@ -8,6 +8,8 @@ data:
   APP_URL: {{ include "flowplan.appUrl" . | quote }}
   FLOWPLAN_DATA_DIR: /app/data
   FLOWPLAN_LOCAL_LOGIN: {{ .Values.localLogin | toString | quote }}
+  # "Copy for bug report" (#630); an entry in extraEnv overrides it.
+  FLOWPLAN_INSTALL_METHOD: helm
   # The user node's home (an emptyDir: the root file system is read-only).
   HOME: /home/node
   {{- with .Values.oidc }}

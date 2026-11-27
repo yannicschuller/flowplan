@@ -607,6 +607,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [
       { title: { de: "Version", en: "Version" }, keywords: { de: "build commit beta release update", en: "build commit beta release update" }, anchor: "version" },
       { title: { de: "Lizenz & Quellcode", en: "Licence & source code" }, keywords: { de: "lizenz agpl quellcode source github", en: "licence license agpl source code github" }, anchor: "licence" },
+      { title: { de: "Für Bug-Report kopieren", en: "Copy for bug report" }, keywords: { de: "bug report fehlerbericht installation details diagnose kopieren zwischenablage gerät browser", en: "bug report installation details diagnostics copy clipboard device browser" }, anchor: "bug-report" },
       { title: { de: "Fehler melden", en: "Report a bug" }, keywords: { de: "bug issue github", en: "bug issue github" }, anchor: "bug" },
       { title: { de: "Flowplan unterstützen", en: "Support Flowplan" }, keywords: { de: "unterstützen sponsor spenden github sponsors", en: "support sponsor donate github sponsors" }, anchor: "support" },
     ],
@@ -876,7 +877,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "SlidersHorizontal",
     title: { de: "Name & Version", en: "Name & version" },
     description: { de: "Name, öffentliche Demo, Version und Aktualisierung der Instanz.", en: "Name, public demo, version and update of the instance." },
-    keywords: { de: "instanz name demo version update aktualisieren commit admin-gruppe formatierungsleiste startinhalt onboarding", en: "instance name demo version update commit admin group formatting toolbar starter content onboarding" },
+    keywords: { de: "instanz name demo version update aktualisieren commit bug-report diagnose admin-gruppe formatierungsleiste startinhalt onboarding", en: "instance name demo version update commit bug report diagnostics admin group formatting toolbar starter content onboarding" },
     entries: [
       { title: { de: "Name der Instanz", en: "Instance name" }, anchor: "instance" },
       { title: { de: "Öffentliche Demo", en: "Public demo" }, anchor: "instance" },
