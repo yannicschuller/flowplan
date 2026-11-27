@@ -2,6 +2,46 @@
 
 All releases of Flowplan, newest first. Written by the release workflow: the curated notes of release-notes/ where a release has them, and its commits.
 
+## v0.12.2 – 2026-11-27
+
+### New
+
+- “Copy for bug report” under Settings → About Flowplan copies version, build and your device in one line; admins also get Node.js, database, storage and install method. The same is available from the REST API and MCP. Names, addresses and hosts never go in ([#630](https://github.com/yannicschuller/flowplan/issues/630)).
+
+### Improved
+
+- On a phone, “More” is now the last entry of the sidebar, right below “Add space”, instead of in a bar of its own. Every entry has the same, slightly larger text and less empty space between groups; the tap targets stay as large as before ([#629](https://github.com/yannicschuller/flowplan/issues/629)).
+
+### Bug fixes
+
+- On the iPhone and other touch screens, a record’s select property (“Change Status”) now opens without the keyboard, so every option stays visible. A tap on the search field brings up the keyboard; hiding it keeps the list open, and a tap elsewhere closes it ([#625](https://github.com/yannicschuller/flowplan/issues/625)).
+- The quick capture that opens on a phone shows the workspace's accent colour and font instead of the default blue ([#626](https://github.com/yannicschuller/flowplan/issues/626)).
+- In the sidebar, folded sections such as Collections or Favourites follow each other without a large gap, and on a phone a space’s name sits close above its first page. The tap targets stay as large as before ([#627](https://github.com/yannicschuller/flowplan/issues/627), [#628](https://github.com/yannicschuller/flowplan/issues/628)).
+- On a phone, “New row” and the calculations below a table, and “Open library” in the sidebar, are large enough to tap again.
+
+<details>
+<summary>All commits</summary>
+
+- Release notes 0.12.2: touch targets on phones ([e2fc75d](https://github.com/yannicschuller/flowplan/commit/e2fc75dce21bb560a610ac0220a80105444c0988))
+- Bump mathjs from 15.2.0 to 15.3.0 ([52ff352](https://github.com/yannicschuller/flowplan/commit/52ff352e2e6ef97c8f4c0629d7f2648a84214872))
+- Bump pdfjs-dist from 6.4.299 to 6.5.438 ([f1f30e5](https://github.com/yannicschuller/flowplan/commit/f1f30e5b3ced62645c38eee0fb2cfa01fc082771))
+- Bump @types/ssh2 from 1.15.5 to 1.15.6 ([1897fda](https://github.com/yannicschuller/flowplan/commit/1897fda3892236f4019bdac18b0107a1c1838b34))
+- Bump openid-client from 6.8.8 to 6.9.1 ([a0d3bd1](https://github.com/yannicschuller/flowplan/commit/a0d3bd179b0d67b4394762bde372388e454b8e81))
+- Tests for #630: the about answer carries the member diagnostics; PostgreSQL in the admin view ([c530460](https://github.com/yannicschuller/flowplan/commit/c5304603be67c8c748c3392c140add373a114bb8))
+- Visual baselines from ubuntu-latest ([8deffcc](https://github.com/yannicschuller/flowplan/commit/8deffcc3a28f55ddd97d26f5f36f8cf9371771a1))
+- Copy for bug report: installation details in one line (#630) ([b1af728](https://github.com/yannicschuller/flowplan/commit/b1af728c83ac3ae647c3f39cdffd18af1f8fcd67))
+- Phone sidebar: "Mehr" as the list's last entry, one 15 px size, tighter groups (#629) ([acd0ed6](https://github.com/yannicschuller/flowplan/commit/acd0ed6878415c0260a03857d108e70c3bc168ff))
+- Visual baselines from ubuntu-latest ([28c0c38](https://github.com/yannicschuller/flowplan/commit/28c0c38a02738b89224349abeac112d6044511b7))
+- Touch targets: "Neue Zeile", the column calculations and "Bibliothek öffnen" 44 px tall on phones ([5512f58](https://github.com/yannicschuller/flowplan/commit/5512f58d5cebd0abe0b41d356b644f21b25d3b62))
+- Sidebar: space name close to its first page on phones, folded sections compact (#627, #628) ([0150938](https://github.com/yannicschuller/flowplan/commit/01509382e3a42f7cc19a4580c75abcab467edd8e))
+- Quality budgets: +4 KB where #626's workspace look in the start chunk left no room ([c6cf9d5](https://github.com/yannicschuller/flowplan/commit/c6cf9d50e1d62e3113a794ee001abe02c033ed59))
+- Quick capture start screen: the workspace's look and the personal font (#626) ([38d9360](https://github.com/yannicschuller/flowplan/commit/38d9360bb58fc907b324ab29e3ad75e6b84cd1a4))
+- Quality budgets: monitoring 905 KB (measured 901.0 KB after #610, #612, #613) ([b596c95](https://github.com/yannicschuller/flowplan/commit/b596c953675b2773152e033aa7daffe65cb608b1))
+- Option picker on touch screens: open without the keyboard (#625) ([039af3f](https://github.com/yannicschuller/flowplan/commit/039af3f829242e86cf48b9c915f4187da56c4e9c))
+- Help docs: app widgets after app 1.1.9 ([7fe8786](https://github.com/yannicschuller/flowplan/commit/7fe8786ce0749a59babc871d2b3c706bdb1f91b5))
+
+</details>
+
 ## v0.12.1 – 2026-11-27
 
 ### New
