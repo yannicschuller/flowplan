@@ -168,8 +168,12 @@ test("GET /api/diagnostics: the member view for members, the instance details fo
   const a = await (await get(adminToken)).json();
   assert.equal(a.scope, "admin");
   assert.equal(a.node, process.version);
-  assert.equal(a.database, "sqlite");
-  assert.match(a.text, /^Backend: Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, SQLite, local disk, single instance\)$/);
+  // The test database: SQLite, or PostgreSQL in the CI's second run.
+  const postgres = /^postgres/.test(process.env.DATABASE_URL || "");
+  assert.equal(a.database, postgres ? "postgres" : "sqlite");
+  assert.match(a.text, postgres
+    ? /^Backend: Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, PostgreSQL( \d+)?, local disk, single instance\)$/
+    : /^Backend: Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, SQLite, local disk, single instance\)$/);
   // Nothing about the instance's address.
   assert.doesNotMatch(JSON.stringify(a), /example\.test/);
   // Without a session: 401.

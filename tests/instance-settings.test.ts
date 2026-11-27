@@ -1,4 +1,5 @@
 import { aboutInfo } from "../lib/about";
+import { backendDiagnostics } from "../lib/diagnostics";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -79,8 +80,9 @@ test("admins configure the instance; stored values override the environment", as
     legal: {},
     // No FLOWPLAN_MARKETPLACE_URL: the public marketplace (lib/marketplace-config.ts).
     marketplace: { origin: "https://marketplace.flowplan.org", version: process.env.FLOWPLAN_VERSION || "" },
-    // Settings → Über Flowplan (no update shown to non-admins).
-    about: aboutInfo(),
+    // Settings → Über Flowplan (no update shown to non-admins), with the
+    // member view of "Für Bug-Report kopieren" (#630).
+    about: { ...aboutInfo(), diagnostics: await backendDiagnostics({ isAdmin: false }) },
   });
   await assert.rejects(
     async () => await command(person, { action: "workspace.create", name: "Noch einer" }),
