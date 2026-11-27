@@ -20,7 +20,7 @@ export function ErrorIssueDialog({ report, onClose }: { report: PublicErrorRepor
     [t("Was ist passiert?", "What happened?"), issue.fields.what],
     [t("Schritte zum Nachstellen", "Steps to reproduce"), issue.fields.steps],
     [t("Was hast du erwartet?", "What did you expect?"), issue.fields.expected],
-    [t("Flowplan-Version", "Flowplan version"), issue.fields.version],
+    [t("Installationsdetails", "Installation details"), issue.fields.diagnostics],
     [t("Protokoll", "Logs"), issue.fields.logs],
   ];
   return (

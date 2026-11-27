@@ -219,7 +219,7 @@ const stackLines = (frames: string[]) => ["Stack (Flowplan's code):", ...(frames
 
 // The fields of .github/ISSUE_TEMPLATE/bug_report.yml the issue is filled
 // with (by their ids), and its title.
-export type GithubIssue = { url: string; title: string; fields: { what: string; steps: string; expected: string; version: string; logs: string } };
+export type GithubIssue = { url: string; title: string; fields: { what: string; steps: string; expected: string; diagnostics: string; logs: string } };
 export const ISSUE_URL_MAX = 6000;
 function issueFields(r: PublicErrorReport, frames: string[], message: string): GithubIssue["fields"] {
   const recent = r.inRange !== r.count ? ` (${r.inRange}${r.rangeLabel ? ` in ${r.rangeLabel}` : " recently"})` : "";
@@ -236,7 +236,9 @@ function issueFields(r: PublicErrorReport, frames: string[], message: string): G
     ].join("\n"),
     steps: "Not known – recorded by the server's error monitoring (Settings → Administration → Monitoring → Errors in detail).",
     expected: "No server error.",
-    version: versionLine(r),
+    // The template's "Installation details" (#630): what the error report
+    // knows of the server – the version and commit, no instance details.
+    diagnostics: `Backend: Flowplan ${versionLine(r)}`,
     logs: stackLines(frames).join("\n"),
   };
 }

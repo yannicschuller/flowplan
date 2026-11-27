@@ -413,7 +413,7 @@ test("the public report: no request ids, instance or host names, roles, address 
   assert.equal(url.origin + url.pathname, "https://github.com/yannicschuller/flowplan/issues/new");
   assert.equal(url.searchParams.get("template"), "bug_report.yml");
   assert.equal(url.searchParams.get("title"), "Server error: TypeError in POST /api/command · row.update");
-  assert.equal(url.searchParams.get("version"), "0.12.1 (commit 0123456789ab)");
+  assert.equal(url.searchParams.get("diagnostics"), "Backend: Flowplan 0.12.1 (commit 0123456789ab)");
   assert.equal(url.searchParams.get("what")!.split("\n").at(-1), `Error signature: ${group.signature}`);
   assert.match(url.searchParams.get("logs")!, /at loadPage \(lib\/api\.ts:12:3\)\n {2}at \[compiled\]/);
   // The template's field ids exist.

@@ -53,12 +53,12 @@ Ask only for what you cannot deduce. Mandatory (the form requires them):
 - **What happened?** A clear description of the problem.
 - **Steps to reproduce.** The shortest way to make it happen again.
 - **What did you expect?**
-- **Flowplan version.** Under **Settings → About Flowplan** (e.g. 0.9.0), or the image tag. On flowplan.org write "flowplan.org".
+- **Installation details.** The line from **Settings → About Flowplan → Copy for bug report**, copied on the device where the problem happens (version, build, browser or app and device; for admins also Node.js, database, storage and install method). On versions before 0.12.2 there is no button: ask for the version from **Settings → About Flowplan** (or the image tag), the database and the browser, device and operating system, and put them in this field.
 - **Where does it run?** Offer the self-hosted options first, starting with self-hosted with Docker / Docker Compose, then self-hosted on Kubernetes (Helm chart), self-hosted without Docker (Node.js), development (`npm run dev`), and flowplan.org (hosted) last. Use the exact option text of the template's dropdown.
 - **Where do you see the problem?** One or more of: browser on a computer, browser on a phone or tablet, iPhone / iPad app, Android app, desktop app (macOS, Windows, Linux).
 - Confirmation that you searched for existing issues (the form's required checkbox). Step 1 already does this; tell the user the result.
 
-Optional, ask only if relevant: database (self-hosted only: SQLite, PostgreSQL, cluster, or unknown / hosted on flowplan.org), browser, device and operating system (device model and OS version, e.g. iPadOS, Android, macOS or Windows version), screenshots or recordings, and logs.
+Optional, ask only if relevant: screenshots or recordings, and logs.
 
 Ask all questions in one batch. Every answer the reporter does not give is left out of the issue completely (see Rules). Never ask the reporter about the agent or the tooling.
 
@@ -72,13 +72,11 @@ Write the draft in English, using the template's headings in this order, so it r
 2. `### What happened?`
 3. `### Steps to reproduce` – numbered list
 4. `### What did you expect?`
-5. `### Flowplan version`
+5. `### Installation details` – the pasted line as a code block
 6. `### Where does it run?`
-7. `### Database`
-8. `### Where do you see the problem?`
-9. `### Browser, device and operating system`
-10. `### Screenshots or recordings` (omitted from the body, see below)
-11. `### Logs` – the redacted log goes in its own fenced block, the only code block in the draft
+7. `### Where do you see the problem?`
+8. `### Screenshots or recordings` (omitted from the body, see below)
+9. `### Logs` – the redacted log goes in its own fenced block
 
 Omit optional sections the reporter left empty, but keep the required ones. Keep the problem first. Do not invent facts, versions, numbers or quotes. Keep reproduction steps exactly as the reporter described them. Anything you had to infer is worded as the reporter's own description, not as a note about inference.
 
@@ -121,10 +119,8 @@ Checked against the template in Step 0. Update this section whenever the skill i
 - `what` · textarea · "What happened?" · required
 - `steps` · textarea · "Steps to reproduce" · required
 - `expected` · textarea · "What did you expect?" · required
-- `version` · input · "Flowplan version" · required
+- `diagnostics` · textarea · "Installation details" · required · rendered as text
 - `hosting` · dropdown · "Where does it run?" · required · options: flowplan.org (hosted); Self-hosted with Docker / Docker Compose; Self-hosted on Kubernetes (Helm chart); Self-hosted without Docker (Node.js); Development (npm run dev)
-- `database` · dropdown · "Database" · optional · options: SQLite (default); PostgreSQL; Cluster (PostgreSQL, Redis and S3, several instances); I don't know / hosted on flowplan.org
 - `client` · dropdown · "Where do you see the problem?" · multiple · required · options: Browser on a computer; Browser on a phone or tablet; iPhone / iPad app; Android app; Desktop app – macOS; Desktop app – Windows; Desktop app – Linux
-- `environment` · input · "Browser, device and operating system" · optional
 - `screenshots` · textarea · "Screenshots or recordings" · optional
 - `logs` · textarea · "Logs" · optional · rendered as text
