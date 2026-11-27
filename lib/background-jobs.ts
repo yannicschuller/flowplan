@@ -22,6 +22,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { all, one, run } from "./db";
+import { currentTx, dbContext } from "./db-driver/context";
 import { HttpError, type UpstreamMark } from "./auth";
 import type { Identity } from "./types";
 import { enterArea, shiftArea } from "./server-metrics";
@@ -48,7 +49,7 @@ const aliveTimers = () => (alive.flowplanJobsAlive ??= new Map());
 const isInterrupted = (job: { status: string; boot: string; updated_at: number | string }, now: number) =>
   job.status === "running" && job.boot !== BOOT && (!hasPeers() || now - Number(job.updated_at) > JOB_ALIVE_LIMIT);
 
-const current = new AsyncLocalStorage<{ id: string; reported: number }>();
+const current = new AsyncLocalStorage<{ id: string; reported: number; phase?: string }>();
 
 export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string, options: { launched?: boolean } = {}) {
   const jobId = randomUUID(),
@@ -98,21 +99,41 @@ export async function finishJob(jobId: string, error?: unknown, outcome?: string
   );
 }
 
-// The job's share of work done (0–1). At most every half second; outside a
-// job it does nothing.
-export async function jobProgress(share: number) {
+// What a job is at (an import: "Page 812 of 2000", #594), for the page that
+// waits. Kept in `outcome` while the job runs – what its poll answers.
+export type JobStep = { phase: "prepare" | "create" | "write"; done: number; total: number };
+const jobStepSchema = z.object({ phase: z.enum(["prepare", "create", "write"]), done: z.number().int().min(0), total: z.number().int().min(1) });
+
+// The job's share of work done (0–1), and optionally its step. At most
+// every half second (a new phase of the step at once); outside a job it
+// does nothing. Inside a transaction
+// the report is written apart from it (in it, it would only show once the
+// transaction commits): on PostgreSQL on a connection of its own. SQLite's
+// one connection belongs to the transaction until it ends – nobody could
+// read the report meanwhile, so none is written.
+export async function jobProgress(share: number, step?: JobStep) {
   const job = current.getStore();
   if (!job || !Number.isFinite(share)) return;
   const now = Date.now();
-  if (now - job.reported < 500 && share < 1) return;
+  if (now - job.reported < 500 && share < 1 && step?.phase === job.phase) return;
+  const tx = currentTx();
+  if (tx?.backend === "sqlite") return;
   job.reported = now;
-  try {
-    await run(
-      "UPDATE background_jobs SET progress=?,updated_at=? WHERE id=? AND status='running'",
+  job.phase = step?.phase;
+  const write = () =>
+    run(
+      "UPDATE background_jobs SET progress=?,outcome=?,updated_at=? WHERE id=? AND status='running'",
       Math.max(0, Math.min(1, share)),
+      step ? JSON.stringify({ step }) : null,
       now,
       job.id,
     );
+  if (tx) {
+    void dbContext.als.exit(write).catch(() => {});
+    return;
+  }
+  try {
+    await write();
   } catch {}
 }
 
@@ -214,7 +235,7 @@ export async function jobOutcome(
   user: Pick<Identity, "id">,
   jobId: string,
   now = Date.now(),
-): Promise<{ status: "running"; progress: number | null } | { status: "done"; value: unknown } | { status: "failed"; error: unknown } | null> {
+): Promise<{ status: "running"; progress: number | null; step?: JobStep } | { status: "done"; value: unknown } | { status: "failed"; error: unknown } | null> {
   const row = await one<{ status: "running" | "done" | "failed"; progress: number | null; boot: string; updated_at: number; outcome: string | null; expires_at: number | null }>(
     "SELECT status,progress,boot,updated_at,outcome,expires_at FROM background_jobs WHERE id=? AND user_id=? AND launched=1",
     jobId,
@@ -223,7 +244,8 @@ export async function jobOutcome(
   if (!row) return null;
   if (row.status === "running") {
     if (isInterrupted(row, now)) return null;
-    return { status: "running", progress: row.progress == null ? null : Math.round(row.progress * 100) / 100 };
+    const step = runningStep(row.outcome);
+    return { status: "running", progress: row.progress == null ? null : Math.round(row.progress * 100) / 100, ...(step ? { step } : {}) };
   }
   if (!row.outcome || (row.expires_at !== null && Number(row.expires_at) < now)) return null;
   let parsed: { value?: unknown; error?: StoredError };
@@ -233,6 +255,17 @@ export async function jobOutcome(
     return null;
   }
   return row.status === "done" ? { status: "done", value: parsed.value } : { status: "failed", error: restoredError(parsed.error) };
+}
+
+// The step a running job reported last (jobProgress), if any.
+function runningStep(outcome: string | null): JobStep | null {
+  if (!outcome) return null;
+  try {
+    const parsed = jobStepSchema.safeParse((JSON.parse(outcome) as { step?: unknown }).step);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 // A download that is produced while it streams: the job ends with the stream.

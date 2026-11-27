@@ -558,7 +558,7 @@ export async function importAnki(
   const plan = planAnki(pkg, opts, title, { fileBytes: Math.max(1, Math.min(IN_MEMORY_FILE_MB, (await instanceSettings()).maxUploadMb)) * 1024 * 1024, files: maxImportFiles() });
   await jobProgress(0.5);
   if (options.dryRun) return { ...(await previewImport(user, workspaceId, spaceId, plan.tree)), anki: plan.preview };
-  const result = await writeImport(user, workspaceId, spaceId, plan.tree);
+  const result = await writeImport(user, workspaceId, spaceId, plan.tree, "pages", { progress: { from: 0.5, to: 0.85 } });
   let reviews = 0;
   if (opts.state && pkg.reviews.length) {
     await jobProgress(0.85);

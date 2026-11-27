@@ -67,7 +67,7 @@ export async function importBookStack(
       await jobProgress(0.9);
       const own = { shelves: counts.shelves, books: counts.books, chapters: counts.chapters, images: counts.images, attachments: counts.attachments, links: counts.links };
       if (options.dryRun) return { ...(await previewImport(user, workspaceId, spaceId, tree, "pages")), ...own, pages: counts.pages, tags: counts.tags };
-      return { ...(await writeImport(user, workspaceId, spaceId, tree, "pages")), ...own };
+      return { ...(await writeImport(user, workspaceId, spaceId, tree, "pages", { progress: { from: 0.9, to: 1 } })), ...own };
     } finally {
       tree.close?.();
     }

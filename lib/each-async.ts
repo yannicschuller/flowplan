@@ -83,3 +83,24 @@ export async function replaceAsync(
   parts.push(text.slice(last));
   return parts.join("");
 }
+// Up to `limit` items at once (work that waits on the network, such as
+// publishing uploads to the bucket, #594). After a failure no further item
+// starts; the ones running are awaited, then the first error is thrown –
+// nothing is left running behind the caller's back (a rollback cleans up).
+export async function forEachLimited<T>(items: Items<T>, limit: number, fn: (item: T, index: number) => unknown): Promise<void> {
+  const array = list(items);
+  let next = 0,
+    failure: { error: unknown } | null = null;
+  const lane = async () => {
+    while (!failure && next < array.length) {
+      const index = next++;
+      try {
+        await fn(array[index], index);
+      } catch (error) {
+        failure ??= { error };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, array.length)) }, lane));
+  if (failure) throw (failure as { error: unknown }).error;
+}

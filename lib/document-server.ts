@@ -334,7 +334,12 @@ export function jsonHtml(json: Record<string, unknown>) {
   return html;
 }
 export function htmlState(html: string) {
-  const doc = prosemirrorJSONToYDoc(serverDom().schema, htmlJson(cleanHtml(html) || "<p></p>"), "default");
+  return cleanHtmlState(cleanHtml(html));
+}
+// The same for HTML that has been through cleanHtml already (the import
+// writes thousands of pages, #594: it cleans each page once).
+export function cleanHtmlState(clean: string) {
+  const doc = prosemirrorJSONToYDoc(serverDom().schema, htmlJson(clean || "<p></p>"), "default");
   const state = Y.encodeStateAsUpdate(doc);
   doc.destroy();
   return state;

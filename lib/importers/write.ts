@@ -18,7 +18,7 @@ import { appendHtmlToPage } from "../mcp";
 import { boardState, storeBoardImages } from "../whiteboard-import-server";
 import { writeWhiteboard } from "../whiteboard";
 import { importNotebook } from "../notebook";
-import { cleanHtml, htmlState } from "../document-server";
+import { cleanHtml, cleanHtmlState, htmlState } from "../document-server";
 import { withToggleIds } from "../block-ids";
 import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
@@ -34,9 +34,10 @@ import { quotaCheckpoint } from "../instance-ops";
 import { pageIconSchema } from "../page-appearance";
 import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anchors";
 import type { Field, Identity, Page, Space } from "../types";
-import { filterAsync, forEachAsync } from "../each-async";
+import { filterAsync, forEachAsync, forEachLimited } from "../each-async";
 import { sourceName, writeImportReport, type ReportSummary } from "./report";
 import { publishUpload } from "../storage";
+import { jobProgress } from "../background-jobs";
 
 export type ImportMode = "pages" | "database";
 export type ImportPreview = {
@@ -219,7 +220,28 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
 const sqlTime = (iso?: string) => (iso ? iso.replace("T", " ").replace(/\.\d+Z?$|Z$/, "").slice(0, 19) : null);
 const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
 
-export async function writeImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): Promise<ImportResult> {
+// What writeImport's work spans of the job's progress (lib/background-jobs.ts):
+// the callers that did work of their own before report from where they are.
+export type WriteImportOptions = { progress?: { from: number; to: number } };
+// The pages whose content is a document (whiteboards, notebooks and
+// databases with their data are written apart).
+const isDocument = (page: ImportPage) =>
+  !(page.kind === "whiteboard" && page.board) && page.kind !== "notebook" && !(page.kind === "database" && page.database);
+// Files are published to the bucket (cluster mode) a few at a time.
+const PUBLISH_AT_ONCE = 8;
+// Rows of `files` per INSERT.
+const FILE_ROWS = 100;
+// Documents prepared between two turns of the event loop.
+const PREPARE_TURN = 10;
+
+export async function writeImport(
+  user: Identity,
+  workspaceId: string,
+  spaceId: string,
+  tree: ImportTree,
+  mode: ImportMode = "pages",
+  options: WriteImportOptions = {},
+): Promise<ImportResult> {
   const preview = await previewImport(user, workspaceId, spaceId, tree, mode);
   if (!tree.pages.length && !tree.templates?.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
   if (preview.tooMany)
@@ -246,14 +268,125 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
   // the import (as an edit of the live document).
   const appends: { pageId: string; html: string }[] = [];
 
+  // Without journal days nothing the pages' content refers to depends on
+  // the database: the ids are chosen now and every document's HTML and
+  // editor state is prepared before the transaction (#594), while the
+  // person sees the progress and everybody else's requests are answered.
+  // The transaction then mostly writes. With journal days (an existing day
+  // of the date or a new one) the content is prepared inside it, as the
+  // pages are made.
+  const early = mode === "pages" && !ordered.some(({ page }) => page.journalDate);
+  const documents = ordered.filter(({ page }) => isDocument(page));
+  // The job's progress (#594): preparing, making the pages, writing their
+  // content – each with "page n of m".
+  const range = options.progress ?? { from: 0.5, to: 1 };
+  const shares = early ? { prepare: [0, 0.6], create: [0.6, 0.75], write: [0.75, 1] } : { prepare: [0, 0], create: [0, 0.3], write: [0.3, 1] };
+  const progress = (phase: "prepare" | "create" | "write", done: number, total: number) => {
+    const [a, b] = shares[phase];
+    const share = a + ((b - a) * done) / Math.max(1, total);
+    return jobProgress(range.from + (range.to - range.from) * share, { phase, done, total: Math.max(1, total) });
+  };
+
+  const pageIds = new Map<string, string>();
+  const rowIds = new Map<string, string>();
+  const records = new Map<string, { pageId: string; rowId: string }>();
+  // Files: their id, name and type (stored in the transaction).
+  const fileUrls = new Map<string, { url: string; name: string; mime: string }>();
+  let databaseId: string | undefined;
+  // Records that carry a document of the import (#82): their ids before
+  // the content, so links to the document lead to them.
+  const recordIds = () => {
+    for (const { page } of ordered)
+      for (const record of page.kind === "database" ? page.database?.rows.slice(0, tree.maxRows ?? MAX_IMPORT_ROWS) || [] : [])
+        if (record.key && !pageIds.has(record.key) && !records.has(record.key)) records.set(record.key, { pageId: pageIds.get(page.key)!, rowId: id() });
+  };
+  // Block ids (#88): every document's blocks get Flowplan ids; a link to
+  // a block or heading of a page of the import (pageRef with an anchor)
+  // becomes a block link, or the page link when nothing matches.
+  const sources = new Map(tree.pages.map((page) => [page.key, page]));
+  const anchored = new Map<string, DocumentAnchors>();
+  const prepared = (key: string) => {
+    if (!anchored.has(key)) {
+      const page = sources.get(key);
+      anchored.set(key, documentAnchors(page?.html || "", page?.title || "", true));
+    }
+    return anchored.get(key)!;
+  };
+  const pageUrl = (key: string) => {
+    if (databaseId) return rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null;
+    if (pageIds.has(key)) return `/#page=${pageIds.get(key)}`;
+    const record = records.get(key);
+    return record ? `/#page=${record.pageId}&row=${record.rowId}` : null;
+  };
+  // The placeholders of the import as links, images and attachments.
+  // Embedded databases and whiteboards name their page by id.
+  // Toggles get a block id of their own (lib/block-ids.ts, #230).
+  const resolveLinks = (html: string, files = fileUrls) =>
+    withToggleIds(html)
+      .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
+        pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
+      )
+      // Images of files that are no pictures become links.
+      .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
+        const file = files.get(decodeKey(key));
+        if (!file) return "";
+        // The image keeps its block id (#88) and flashcard masks (the
+        // Anki import; cleaned by cleanHtml).
+        const block = /\bdata-block-id="([\w-]{1,64})"/.exec(tag)?.[1];
+        const masks = /\bdata-occlusion="([^"]*)"/.exec(tag)?.[1];
+        return isImage(file.mime)
+          ? `<img src="${esc(file.url)}" alt="${esc(file.name)}"${block ? ` data-block-id="${block}"` : ""}${masks ? ` data-occlusion="${masks}"` : ""}>`
+          : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
+      })
+      // Attachments become the block an upload in the editor creates (#82).
+      .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>
+        attachmentHtml(files.get(decodeKey(key)), title),
+      )
+      .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/page\/[^"]*"[^>]*>/g, "")
+      .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, ref: string) => {
+        const [key, anchor] = ref.split("#", 2);
+        let target = kind === "file" ? files.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
+        const blockId = target && kind === "page" && anchor && sources.has(decodeKey(key)) ? findAnchor(prepared(decodeKey(key)).anchors, decodeKey(anchor)) : null;
+        if (blockId) target += `&block=${blockId}`;
+        return target ? `${name}="${esc(target)}"` : "";
+      });
+  const resolveHtml = (html: string, files = fileUrls) => cleanHtml(resolveLinks(html, files));
+  // A document's HTML as it is stored: a link to where it came from above
+  // its content, cleaned once.
+  const documentBody = (page: ImportPage) => {
+    const source = page.url && /^https?:\/\//i.test(page.url) ? `<p><a href="${esc(page.url)}">${esc(page.url)}</a></p>` : "";
+    return cleanHtml(source + resolveLinks(prepared(page.key).html));
+  };
+  // The documents prepared before the transaction (early), by page key.
+  const ready = new Map<string, { body: string; state: Uint8Array }>();
+  if (early) {
+    for (const { page } of ordered) pageIds.set(page.key, id());
+    recordIds();
+    for (const key of used.keys()) {
+      const file = tree.files.get(key)!;
+      fileUrls.set(key, { url: `/api/files/${id()}`, name: sanitizeFileName(file.name, "datei"), mime: verifiedMime(file.mime, importFileData(file)) });
+    }
+    let done = 0;
+    for (const { page } of documents) {
+      const body = documentBody(page);
+      ready.set(page.key, { body, state: cleanHtmlState(body) });
+      // Every few pages a turn of the event loop: other requests and the
+      // poll of the page that waits are answered meanwhile.
+      if (++done % PREPARE_TURN === 0 || done === documents.length) {
+        await progress("prepare", done, documents.length);
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+  }
+
+  // The pages are made and written now (in one transaction).
+  await progress("create", 0, ordered.length);
   const result = await transaction(async () => {
     const quota = tree.templates?.length ? (await quotaCheckpoint(workspaceId)) : () => {};
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
-    const pageIds = new Map<string, string>();
-    const rowIds = new Map<string, string>();
-    const records = new Map<string, { pageId: string; rowId: string }>();
     const existingDays = new Set<string>();
-    let databaseId: string | undefined;
+    // The space of each page made here (for its tags and properties).
+    const spaces = new Map<string, string>();
     if (mode === "database") {
       databaseId = await createPage(workspaceId, spaceId, user.id, tree.title.slice(0, 200) || "Import", "database");
       for (const { page } of ordered) if (!page.folder) rowIds.set(page.key, id());
@@ -261,6 +394,11 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       // Journal days: an existing day of that date, or one new day per date.
       const days = new Map<string, { id: string; existing: boolean }>();
       const journal = ordered.some(({ page }) => page.journalDate) ? (await importJournal(user, workspaceId, spaceId)) : null;
+      // The pages placed so far, and the last position below each parent
+      // (the pages this import makes have no other children yet).
+      const placed = new Set<string>();
+      const made = new Set<string>();
+      const last = new Map<string, number | null>();
       let created = 0;
       for (const { page } of ordered) {
         if (page.journalDate && journal && mode === "pages") {
@@ -275,55 +413,73 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
             day = existing
               ? { id: existing.id, existing: true }
               : { id: await createPage(workspaceId, journal.spaceId, user.id, await journalDayTitle(journal.id, page.journalDate), "document", journal.id), existing: false };
-            if (!existing)
+            if (!existing) {
               await run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", page.journalDate, -Number(page.journalDate.replaceAll("-", "")), day.id);
+              spaces.set(day.id, journal.spaceId);
+            }
             days.set(page.journalDate, day);
           }
           pageIds.set(page.key, day.id);
+          placed.add(page.key);
           continue;
         }
-        const parent = page.parent ? pageIds.get(page.parent) || null : null;
-        const pid = await createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), special(page) ? page.kind! : "document", parent);
-        // Siblings in the order of the source (pages created within the
-        // same millisecond would otherwise share their position).
-        await run("UPDATE pages SET position=position+? WHERE id=?", ++created, pid);
+        const parent = page.parent && placed.has(page.parent) ? pageIds.get(page.parent)! : null;
+        // At the end of its siblings (as createPage places a page), in the
+        // order of the source: pages made within the same millisecond would
+        // otherwise share their position.
+        const at = `${spaceId}\n${parent ?? ""}`;
+        if (!last.has(at))
+          last.set(
+            at,
+            parent && made.has(parent)
+              ? null
+              : ((await one<{ position: number | null }>("SELECT MAX(position) AS position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ?", spaceId, parent))?.position ?? null),
+          );
+        const position = Math.max(Date.now(), Math.floor(Number(last.get(at) ?? 0)) + 1) + ++created;
+        last.set(at, position);
+        // Icons of documents, folders and collections (journal days keep theirs).
+        const icon = importIcon(page.icon) || undefined;
+        const pid = await createPage(
+          workspaceId,
+          spaceId,
+          user.id,
+          page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"),
+          special(page) ? page.kind! : "document",
+          parent,
+          undefined,
+          early ? pageIds.get(page.key)! : id(),
+          { position, icon },
+        );
+        made.add(pid);
+        spaces.set(pid, spaceId);
         pageIds.set(page.key, pid);
+        placed.add(page.key);
+        await progress("create", created, ordered.length);
       }
       for (const day of days.values()) if (day.existing) existingDays.add(day.id);
-      // Records that carry a document of the import (#82): their ids now, so
-      // links to the document lead to them.
-      for (const { page } of ordered)
-        for (const record of page.kind === "database" ? page.database?.rows.slice(0, tree.maxRows ?? MAX_IMPORT_ROWS) || [] : [])
-          if (record.key && !pageIds.has(record.key) && !records.has(record.key)) records.set(record.key, { pageId: pageIds.get(page.key)!, rowId: id() });
-      // Icons of documents, folders and collections (journal days keep theirs).
-      for (const { page } of ordered) {
-        const icon = importIcon(page.icon);
-        if (icon && !page.journalDate) await run("UPDATE pages SET icon=? WHERE id=?", icon, pageIds.get(page.key)!);
-      }
+      if (!early) recordIds();
     }
     // Files: stored once, at the page that uses them first.
-    const fileUrls = new Map<string, { url: string; name: string; mime: string }>();
+    const fileRows: [string, string, string, string, number, string][] = [];
+    if (used.size) mkdirSync(dir, { recursive: true });
     for (const [key, pageKey] of used) {
       const file = tree.files.get(key)!;
       // Read here (large workspaces): one file in memory at a time.
       const data = importFileData(file);
-      const fid = id();
-      const name = sanitizeFileName(file.name, "datei");
-      const mime = verifiedMime(file.mime, data);
-      mkdirSync(dir, { recursive: true });
+      const known = fileUrls.get(key);
+      const fid = known ? known.url.slice("/api/files/".length) : id();
+      const name = known?.name ?? sanitizeFileName(file.name, "datei");
+      const mime = known?.mime ?? verifiedMime(file.mime, data);
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
-      await publishUpload(fid);
-      await run(
-        "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
-        fid,
-        databaseId || pageIds.get(pageKey)!,
-        name,
-        mime,
-        data.length,
-        user.id,
-      );
+      fileRows.push([fid, databaseId || pageIds.get(pageKey)!, name, mime, data.length, user.id]);
       fileUrls.set(key, { url: `/api/files/${fid}`, name, mime });
+    }
+    // Cluster mode: each file in the bucket before the transaction commits.
+    await forEachLimited(fileRows, PUBLISH_AT_ONCE, ([fid]) => publishUpload(fid));
+    for (let i = 0; i < fileRows.length; i += FILE_ROWS) {
+      const chunk = fileRows.slice(i, i + FILE_ROWS);
+      await run(`INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES${chunk.map(() => "(?,?,?,?,?,?)").join(",")}`, ...chunk.flat());
     }
     // Covers: an image stored at its page.
     if (!databaseId)
@@ -331,57 +487,6 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
         const cover = page.cover ? fileUrls.get(page.cover) : undefined;
         if (cover && isImage(cover.mime) && used.get(page.cover!) === page.key) await run("UPDATE pages SET cover=? WHERE id=?", cover.url, pageIds.get(page.key)!);
       }
-    // Block ids (#88): every document's blocks get Flowplan ids; a link to
-    // a block or heading of a page of the import (pageRef with an anchor)
-    // becomes a block link, or the page link when nothing matches.
-    const sources = new Map(tree.pages.map((page) => [page.key, page]));
-    const anchored = new Map<string, DocumentAnchors>();
-    const prepared = (key: string) => {
-      if (!anchored.has(key)) {
-        const page = sources.get(key);
-        anchored.set(key, documentAnchors(page?.html || "", page?.title || "", true));
-      }
-      return anchored.get(key)!;
-    };
-    const pageUrl = (key: string) => {
-      if (databaseId) return rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null;
-      if (pageIds.has(key)) return `/#page=${pageIds.get(key)}`;
-      const record = records.get(key);
-      return record ? `/#page=${record.pageId}&row=${record.rowId}` : null;
-    };
-    // Embedded databases and whiteboards name their page by id.
-    // Toggles get a block id of their own (lib/block-ids.ts, #230).
-    const resolveHtml = (html: string, files = fileUrls) =>
-      cleanHtml(
-        withToggleIds(html)
-          .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
-            pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
-          )
-          // Images of files that are no pictures become links.
-          .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
-            const file = files.get(decodeKey(key));
-            if (!file) return "";
-            // The image keeps its block id (#88) and flashcard masks (the
-            // Anki import; cleaned by cleanHtml).
-            const block = /\bdata-block-id="([\w-]{1,64})"/.exec(tag)?.[1];
-            const masks = /\bdata-occlusion="([^"]*)"/.exec(tag)?.[1];
-            return isImage(file.mime)
-              ? `<img src="${esc(file.url)}" alt="${esc(file.name)}"${block ? ` data-block-id="${block}"` : ""}${masks ? ` data-occlusion="${masks}"` : ""}>`
-              : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
-          })
-          // Attachments become the block an upload in the editor creates (#82).
-          .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>
-            attachmentHtml(files.get(decodeKey(key)), title),
-          )
-          .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/page\/[^"]*"[^>]*>/g, "")
-          .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, ref: string) => {
-            const [key, anchor] = ref.split("#", 2);
-            let target = kind === "file" ? files.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
-            const blockId = target && kind === "page" && anchor && sources.has(decodeKey(key)) ? findAnchor(prepared(decodeKey(key)).anchors, decodeKey(anchor)) : null;
-            if (blockId) target += `&block=${blockId}`;
-            return target ? `${name}="${esc(target)}"` : "";
-          }),
-      );
     let rows = 0;
     if (databaseId) {
       const notes = ordered.filter(({ page }) => !page.folder);
@@ -440,12 +545,16 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
         );
         if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
         rows++;
+        await progress("write", i + 1, notes.length);
       });
     } else {
       const placeholders = new Map([...pageIds].map(([key, pid]) => [pageRef(key), pid]));
       const dayBodies = new Map<string, { title: string; body: string }[]>();
       const boardBytes = { bytes: preview.bytes };
+      const meta: MetaContext = { spaces, manage: new Map() };
+      let written = 0;
       for (const { page } of ordered) {
+        await progress("write", written++, ordered.length);
         const pid = pageIds.get(page.key)!;
         if (page.kind === "whiteboard" && page.board) {
           const urls = await storeBoardImages(user, pid, workspaceId, page.board, boardBytes);
@@ -515,19 +624,24 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
           });
           continue;
         }
-        const html = resolveHtml(prepared(page.key).html);
+        const doc = ready.get(page.key);
+        ready.delete(page.key);
+        const body = doc?.body ?? documentBody(page);
         // Tags and frontmatter properties become the page's (#70,
         // lib/page-properties-server.ts).
-        await importPageMeta(user, workspaceId, pid, page, tree.tagColors);
-        const source = page.url && /^https?:\/\//i.test(page.url) ? `<p><a href="${esc(page.url)}">${esc(page.url)}</a></p>` : "";
-        const body = cleanHtml(source + html);
+        await importPageMeta(user, workspaceId, pid, page, tree.tagColors, meta);
         if (page.journalDate) {
           dayBodies.set(pid, [...(dayBodies.get(pid) || []), { title: page.title, body }]);
           continue;
         }
-        await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
-        if (page.aliases?.length) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(page.aliases.slice(0, 10)), pid);
-        if (page.updated) await run("UPDATE pages SET updated_at=? WHERE id=?", sqlTime(page.updated), pid);
+        await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, doc?.state ?? cleanHtmlState(body), pid);
+        // Aliases and the source's time of the last change: one statement,
+        // after the content.
+        const set = [
+          ...(page.aliases?.length ? [["aliases", storedAliases(page.aliases.slice(0, 10))] as const] : []),
+          ...(page.updated ? [["updated_at", sqlTime(page.updated)] as const] : []),
+        ];
+        if (set.length) await run(`UPDATE pages SET ${set.map(([column]) => `${column}=?`).join(",")} WHERE id=?`, ...set.map(([, value]) => value), pid);
       }
       for (const [pid, bodies] of dayBodies) {
         // Several documents of one day, or text added to a day that already
@@ -669,16 +783,23 @@ export function importIcon(value: unknown): string | null {
   return pageIconSchema.safeParse(icon).success ? icon : null;
 }
 
+// What importPageMeta asks once per import instead of once per page (#594):
+// the space of each page the import made, who may create definitions in a
+// space, the workspace's members by name.
+type MetaContext = { spaces: Map<string, string>; manage: Map<string, boolean>; people?: (name: string) => string | undefined };
 // The tags (with the source's colours) and frontmatter properties of an
 // imported page; new properties only for workspace owners.
-async function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}) {
-  const space = await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId);
-  if (!space) return;
-  const manage = await canManageScope(user, workspaceId, space.space_id);
-  const fromFront = page.properties ? (await frontmatterMeta(page.properties, workspaceId, await memberByName(workspaceId), { createDefinitions: manage, spaceId: space.space_id })).meta : {};
+async function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}, context: MetaContext) {
+  const spaceId = context.spaces.get(pageId) ?? (await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))?.space_id;
+  if (!spaceId) return;
+  let manage = context.manage.get(spaceId);
+  if (manage === undefined) context.manage.set(spaceId, (manage = await canManageScope(user, workspaceId, spaceId)));
+  const fromFront = page.properties
+    ? (await frontmatterMeta(page.properties, workspaceId, (context.people ??= await memberByName(workspaceId)), { createDefinitions: manage, spaceId })).meta
+    : {};
   await applyPortableMeta(
     user,
-    { id: pageId, workspace_id: workspaceId, space_id: space.space_id },
+    { id: pageId, workspace_id: workspaceId, space_id: spaceId },
     {
       tags: [...(page.tags || []).map((name) => ({ name, color: colors[name] })), ...(fromFront.tags || [])],
       properties: fromFront.properties,
