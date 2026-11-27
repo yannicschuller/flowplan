@@ -87,8 +87,9 @@ test("upload an image as space symbol, see it in the sidebar, remove it again", 
     await expect(image).toHaveAttribute("src", created.icon);
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(128);
     const box = await row.locator(".space-toggle .space-icon").boundingBox();
-    expect(Math.round(box!.width)).toBe(27);
-    expect(Math.round(box!.height)).toBe(27);
+    // The sidebar's square at the size of the space's name (#588).
+    expect(Math.round(box!.width)).toBe(22);
+    expect(Math.round(box!.height)).toBe(22);
     await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/${info.project.name}-space-icon-image.png`, animations: "disabled" });
 
