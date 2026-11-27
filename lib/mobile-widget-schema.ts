@@ -32,6 +32,9 @@ export type WidgetKind = (typeof widgetKinds)[number];
 // Caps of every widget answer.
 export const MAX_ITEMS = 10;
 export const MAX_WIDGET_BYTES = 2048;
+// Lists a large widget fills with ten rows: tasks and pages (about 6 tasks
+// fit into 2 KB).
+export const LIST_WIDGET_BYTES = 4096;
 export const MAX_WIDGETS = 16;
 
 const uuid = z.uuid();

@@ -290,6 +290,8 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
   assert.deepEqual(texts(await one_(O, "tasks", { filter: "overdue" })).filter((t: string) => ["Late", "Now", "Later"].includes(t)), ["Late"]);
   const page = await one_(O, "tasks", { source: "page", pageId: doc, max: 2 });
   assert.deepEqual(texts(page), ["Late", "Now"]);
+  // Overdue counts all open tasks, also those the widget does not get.
+  assert.equal((await one_(O, "tasks", { source: "page", pageId: doc, max: 1 })).overdue, 1);
   assert.equal(page.total, 3);
 
   // Ticking off a document task changes the document like in the browser.
@@ -872,7 +874,7 @@ test("admin incident: administrators only, checked again on every request", asyn
   assert.equal((await widgets(await device(), [{ kind: "incident" }]))[0].status, 403);
 });
 
-test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per request", async () => {
+test("answers stay small: at most 10 items and 2 KB per widget (4 KB for the task and page lists), 16 widgets per request", async () => {
   const big = await makeDatabase(owner.user, wid, sid, "Big", [
     { id: "title", name: "Title", type: "text" },
     { id: "notes", name: "Notes", type: "text" },
@@ -880,7 +882,7 @@ test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per r
   for (let i = 0; i < 30; i++) await addRow(owner.user, big, { title: `${i} ${"long title ".repeat(30)}`, notes: "n".repeat(500) });
   const pinned = await one_(O, "pinned", { mode: "page", pageId: big, properties: ["notes"], max: 10 });
   assert.ok(pinned.items.length <= 10);
-  assert.ok(bytes(pinned) <= W.MAX_WIDGET_BYTES, String(bytes(pinned)));
+  assert.ok(bytes(pinned) <= W.LIST_WIDGET_BYTES, String(bytes(pinned)));
   assert.equal(pinned.total, 30);
   await assert.rejects(async () => await W.widgetsData(O, { widgets: Array.from({ length: 17 }, () => ({ kind: "time" })) }));
   const tooMany = (await W.widgetsData(O, { widgets: [{ kind: "tasks", config: { max: 50 } }] })).widgets[0];
@@ -893,7 +895,7 @@ test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per r
   const all_ = await widgets(O, W.widgetKinds.filter((k) => !["incident", "counter", "forms", "metric", "deadline"].includes(k)).map((kind) => ({ kind, config: {} })));
   for (const w of all_) {
     assert.equal(w.ok, true, `${w.kind}: ${w.error}`);
-    assert.ok(bytes(w.data) <= W.MAX_WIDGET_BYTES, `${w.kind}: ${bytes(w.data)}`);
+    assert.ok(bytes(w.data) <= (w.kind === "tasks" || w.kind === "pinned" ? W.LIST_WIDGET_BYTES : W.MAX_WIDGET_BYTES), `${w.kind}: ${bytes(w.data)}`);
     for (const value of Object.values(w.data!)) if (Array.isArray(value) && w.kind !== "time") assert.ok(value.length <= 10, w.kind);
   }
 });

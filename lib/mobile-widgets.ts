@@ -57,13 +57,14 @@ import {
   dataRequestSchema,
   MAX_ITEMS,
   MAX_WIDGET_BYTES,
+  LIST_WIDGET_BYTES,
   widgetConfigs,
   type WidgetConfig,
   type WidgetKind,
 } from "./mobile-widget-schema";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 
-export { MAX_ITEMS, MAX_WIDGET_BYTES, MAX_WIDGETS, widgetKinds, type WidgetKind } from "./mobile-widget-schema";
+export { MAX_ITEMS, MAX_WIDGET_BYTES, LIST_WIDGET_BYTES, MAX_WIDGETS, widgetKinds, type WidgetKind } from "./mobile-widget-schema";
 const TITLE = 80;
 const DETAIL = 60;
 const uuid = z.uuid();
@@ -504,7 +505,9 @@ async function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
     items.map((item) => ({ ...item.order, item })),
     today,
   ).map(({ item: { order: _order, ...item } }) => item);
-  return { title: heading, total: sorted.length, items: sorted.slice(0, config.max) };
+  // Overdue among all of them, not only the ones sent ("24 offen · 10 überfällig").
+  const overdue = sorted.filter((t) => !!t.due && t.due.slice(0, 10) < today).length;
+  return { title: heading, total: sorted.length, overdue, items: sorted.slice(0, config.max) };
 }
 
 // ---- 3. Today / calendar and 11. Meeting now ----
@@ -1248,7 +1251,7 @@ const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => 
   metric: async (ctx, config) => (await import("./mobile-widget-kinds")).metricData(ctx, config),
   deadline: async (ctx, config) => (await import("./mobile-widget-kinds")).deadlineData(ctx, config),
 };
-export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
+export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = kind === "tasks" || kind === "pinned" ? LIST_WIDGET_BYTES : MAX_WIDGET_BYTES) {
   const parsed = widgetConfigs[kind].parse(config ?? {}) as WidgetConfig<K>;
   return capped(await builders[kind](ctx, parsed), limit);
 }
