@@ -118,3 +118,21 @@ test("offline the capture waits on the device; the workspace sends it", async ({
   await screen.getByRole("button", { name: "Zur App" }).click();
   await expect.poll(async () => (await rows()).length, { timeout: 45_000 }).toBe(1);
 });
+
+test("the capture start screen takes the workspace's accent colour (#626)", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "phones only");
+  const { command, boot } = await setup(page);
+  const ACCENT = "#c2410c";
+  await command({ action: "workspace.theme", workspaceId: boot.workspace.id, theme: { accent: ACCENT } });
+  try {
+    await command({ action: "profile.startScreen", startScreen: "capture" });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/");
+    await expect(page.getByRole("main", { name: "Erfassen" })).toBeVisible({ timeout: 30_000 });
+    const { derivePalette } = await import("../../lib/workspace-theme");
+    const blue = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--blue").trim());
+    expect(blue).toBe(derivePalette(ACCENT, "light").blue);
+  } finally {
+    await command({ action: "workspace.theme", workspaceId: boot.workspace.id, theme: null });
+  }
+});

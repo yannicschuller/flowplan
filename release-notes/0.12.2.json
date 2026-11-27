@@ -8,6 +8,13 @@
       "issues": [
         625
       ]
+    },
+    {
+      "de": "Die Schnellerfassung beim Öffnen auf dem Handy zeigt die Akzentfarbe und Schrift des Arbeitsbereichs statt des Standard-Blaus.",
+      "en": "The quick capture that opens on a phone shows the workspace's accent colour and font instead of the default blue.",
+      "issues": [
+        626
+      ]
     }
   ]
 }

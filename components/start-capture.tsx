@@ -16,6 +16,8 @@ import { AiProvider } from "./ai-context";
 import { useT } from "./i18n";
 import { isQueueable, useOfflineQueue } from "./offline-queue";
 import { QuickCapture } from "./quick-capture";
+import { WorkspaceThemeStyle } from "./workspace-theme-style";
+import { PersonalFontStyle } from "./personal-font-style";
 import { api, friendlyError, isTransient } from "./ui";
 
 const loadWorkspace = () => import("./workspace-app");
@@ -106,6 +108,11 @@ function StartCapture({ initial, onApp }: { initial: WorkspaceProps["initial"]; 
   }, [saved]);
   return (
     <AiProvider status={initial.ai || null} workspaceId={initial.workspace.id}>
+      {/* The workspace's look and this person's typeface, as in the
+          workspace (components/workspace-app.tsx), which is not mounted
+          while the capture start screen shows (#626). */}
+      <WorkspaceThemeStyle look={initial.plainLook ? null : initial.look} />
+      <PersonalFontStyle font={initial.uiFont} />
       <main className="start-capture" aria-labelledby="start-capture-title">
         <header className="start-capture-head">
           <h1 id="start-capture-title">{t("Erfassen", "Capture")}</h1>
