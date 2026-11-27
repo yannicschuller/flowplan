@@ -209,3 +209,17 @@ test("path per hit: space, parents, a record's database; stops at what is not re
   const withoutA = readable.filter((x) => x.id !== "a");
   assert.deepEqual(hitPath({ id: "c", space_id: "s" }, withoutA, spaces), ["Team", "B"]);
 });
+
+// #610: the quick search asks for the path of every row; the lookup by id
+// is built once per page list (a new list after a change gets its own).
+test("the id index is built once per list and follows a replaced list", async () => {
+  const { indexById } = await import("../lib/page-path");
+  const list = [{ id: "a", title: "A" }, { id: "b", title: "B" }];
+  const index = indexById(list);
+  assert.equal(index.get("b")?.title, "B");
+  assert.equal(indexById(list), index);
+  const replaced = [...list, { id: "c", title: "C" }];
+  assert.notEqual(indexById(replaced), index);
+  assert.equal(indexById(replaced).get("c")?.title, "C");
+  assert.equal(index.get("c"), undefined);
+});

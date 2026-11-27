@@ -1152,6 +1152,17 @@ kbd,
     overflow: hidden;
     overscroll-behavior: none;
   }
+  /* What a dialog's scroll lock (Radix, react-remove-scroll-bar) gives the
+     body anyway, set from the start: opening a dialog then changes nothing
+     on the body. Its position laid out the whole workspace again, and its
+     custom property – inherited by every element – restyled all of them:
+     most of the time opening the quick search took in a big workspace
+     (#610). The body is the window's size here and does not scroll, so
+     there is no scrollbar gap (0px, as the lock measures it). */
+  html.shell-document body {
+    position: relative;
+    --removed-body-scroll-bar-size: 0px;
+  }
 }
 .home-content {
   max-width: 1130px;
