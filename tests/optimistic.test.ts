@@ -227,6 +227,27 @@ test("records: edit cells, delete, bulk change, a property removed", () => {
   assert.equal(commandOverlay({ action: "database.update", pageId: "db", fields: [], views: [], relation: { fieldId: "x" } }, ctx), null);
 });
 
+// #608: "Neue Zeile" opens the record before the server answered – the
+// record with the id the browser chose is there at once, with its values
+// and the properties' defaults.
+test("records: a new record with its id shows at once, with defaults", () => {
+  const data = pageData();
+  data.database!.fields[1] = { ...data.database!.fields[1], defaultValue: { kind: "value", value: "Offen" } } as Database["fields"][number];
+  const create = commandOverlay<PageLike>({ action: "row.create", pageId: "db", rowId: "new", cells: { title: "Neue Aufgabe" }, timeZone: "UTC" }, ctx)!;
+  const rows = create.page!(data).rows!;
+  assert.deepEqual(rows.map((r) => r.id), ["r1", "r2", "r3", "new"]);
+  const added = rows[3];
+  assert.deepEqual(added.cells, { title: "Neue Aufgabe", status: "Offen" });
+  assert.equal(added.version, 1);
+  assert.equal(added.created_by, "u");
+  assert.equal(added.created_at, "2026-10-25 10:00:00");
+  // Once the reloaded data has it, the layer adds nothing.
+  const reloaded = { ...data, rows: [...data.rows!, { ...added, cells: { title: "Neue Aufgabe", status: "Erledigt" } }] };
+  assert.equal(create.page!(reloaded), reloaded);
+  // Without an id of its own the record waits for the server.
+  assert.equal(commandOverlay({ action: "row.create", pageId: "db", cells: {} }, ctx), null);
+});
+
 test("board: a card dragged into another column changes its group and column order", () => {
   const data = pageData();
   const moved = applyRowMove(data, { viewId: "board", rowId: "r1", targetId: "r3", placement: "after", group: { from: '"Offen"', to: '"Erledigt"' } });

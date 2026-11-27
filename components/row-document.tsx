@@ -37,9 +37,14 @@ export default function RowDocument({
   templates,
   draftOf,
   readOnlyHint,
+  creating = false,
   onError,
   onChanged,
 }: {
+  // A new record whose creation the server has not answered yet (#608):
+  // nothing to load yet; the document waits (as a skeleton) and is mounted
+  // afresh once the record is there.
+  creating?: boolean;
   pageId: string;
   rowId: string;
   userId: string;
@@ -107,6 +112,7 @@ export default function RowDocument({
     );
   }, [pageId, rowId]);
   useEffect(() => {
+    if (creating) return;
     if (pending) {
       setData((previous) => previous ?? offlineDocument(rowId));
       setUnavailable(false);
@@ -147,7 +153,7 @@ export default function RowDocument({
       clearInterval(timer);
       window.removeEventListener("online", back);
     };
-  }, [refresh, onError, pending, rowId]);
+  }, [refresh, onError, pending, rowId, creating]);
   // The editor of a record made offline: it saves once the record exists.
   const draft = useMemo(
     () =>
@@ -165,7 +171,7 @@ export default function RowDocument({
     [madeOffline, pageId, rowId],
   );
   // Versions and templates are the server's: once the record is there.
-  const notYet = pending ? t("Geht, sobald der Eintrag synchronisiert ist.", "Available once the record is synced.") : undefined;
+  const notYet = pending || creating ? t("Geht, sobald der Eintrag synchronisiert ist.", "Available once the record is synced.") : undefined;
   const onHtml = useCallback(() => {}, []);
   const section = useRef<HTMLElement>(null);
   async function act(action: string, extra: Record<string, unknown> = {}) {
@@ -190,7 +196,7 @@ export default function RowDocument({
           className="icon-button"
           title={notYet ?? t("Datensatz-Versionen", "Record versions")}
           aria-label={t("Datensatz-Versionen", "Record versions")}
-          disabled={pending}
+          disabled={pending || creating}
           onClick={() => setHistory(true)}
         >
           <Clock size={18} />
@@ -208,7 +214,7 @@ export default function RowDocument({
         {editable && (
           <button
             className="button compact"
-            disabled={pending}
+            disabled={pending || creating}
             title={notYet}
             onClick={() => {
               const draft = templates?.find((x) => x.id === draftOf);

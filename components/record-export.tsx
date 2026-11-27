@@ -142,7 +142,7 @@ export function RecordExportMenu({
           </Dropdown.Item>
           <Dropdown.Item className="dropdown-item" disabled={busy} onSelect={word}>
             <FileDoc />
-            {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word (DOCX)", "As Word (DOCX)")}
+            {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word exportieren (DOCX)", "Export as Word (DOCX)")}
           </Dropdown.Item>
           <Dropdown.Item className="dropdown-item" onSelect={() => requestPrint({ kind: "page", run: (options) => printPage(printRoot() || undefined, options) })}>
             <Printer />

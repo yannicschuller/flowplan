@@ -136,3 +136,46 @@ test("commands of other kinds pass unchanged and unqueued", async () => {
   await changes.run(body, () => 1, async (b) => (got = b));
   assert.equal(got, body);
 });
+
+// #608: a record created with an id of the browser's opens at once; what is
+// done to it meanwhile waits for the creation, and goes with a refused one.
+test("changes of a record being created wait for its creation", async () => {
+  const changes = createRowChanges();
+  const log: string[] = [];
+  let finish: (value: unknown) => void = () => {};
+  const send = async (body: Record<string, unknown>) => {
+    log.push(String(body.action));
+    if (body.action === "row.create") return new Promise((resolve) => (finish = resolve));
+    return { ok: true, rowVersion: 2 };
+  };
+  const created = changes.run({ action: "row.create", rowId: "n", cells: {} }, () => undefined, send);
+  assert.equal(changes.creating("n"), true);
+  const title = changes.run({ action: "row.update", rowId: "n", version: 1, cells: { title: "A" } }, () => 1, send);
+  const comment = changes.run({ action: "comment.create", rowId: "n", body: "Hallo" }, () => 1, send);
+  // Another record is not held up.
+  await changes.run({ action: "comment.create", rowId: "other", body: "x" }, () => 1, send);
+  assert.deepEqual(log, ["row.create", "comment.create"]);
+  finish({ id: "n" });
+  assert.deepEqual(await created, { id: "n" });
+  await title;
+  await comment;
+  assert.deepEqual(log, ["row.create", "comment.create", "row.update", "comment.create"]);
+  assert.equal(changes.creating("n"), false);
+});
+
+test("a refused creation takes the changes made meanwhile along", async () => {
+  const changes = createRowChanges();
+  const log: string[] = [];
+  const send = async (body: Record<string, unknown>) => {
+    log.push(String(body.action));
+    if (body.action === "row.create") throw new Error("Keine Berechtigung");
+    return { ok: true };
+  };
+  const created = changes.run({ action: "row.create", rowId: "n", cells: {} }, () => undefined, send);
+  const title = changes.run({ action: "row.update", rowId: "n", version: 1, cells: { title: "A" } }, () => 1, send);
+  const removed = changes.run({ action: "row.delete", rowId: "n" }, () => 1, send);
+  await assert.rejects(created, /Keine Berechtigung/);
+  assert.equal(await title, null);
+  assert.equal(await removed, null);
+  assert.deepEqual(log, ["row.create"]);
+});

@@ -4,6 +4,7 @@
 // lib/optimistic.ts). Only commands whose result is known in advance get
 // one; everything else waits for the server as before.
 import { cellText } from "./cell-text";
+import { withDefaults } from "./field-defaults";
 import { databaseGroups, groupCellValue, groupingField, subgroupingField } from "./database-groups";
 import { orderedGroupRows, orderedRowIds } from "./row-order";
 import type { Bootstrap, Comment, Database, Page, Reaction, Row, View } from "./types";
@@ -354,6 +355,45 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
       const rowId = str(b.rowId);
       if (!pageId || !rowId) return null;
       return { page: onPage((data) => ({ ...data, rows: data.rows?.filter((r) => r.id !== rowId) })) };
+    }
+    // A record with the id the browser chose (#608): it is there – and its
+    // dialog open – before the server answered, with its given values and
+    // the properties' defaults (#411) as the server sets them; the reloaded
+    // data brings what only the server knows (a template's values, its
+    // place, its number).
+    case "row.create": {
+      const rowId = str(b.rowId);
+      const given = b.cells ?? {};
+      if (!pageId || !rowId || typeof given !== "object" || Array.isArray(given)) return null;
+      const at = sqlNow(now);
+      return {
+        page: onPage((data) =>
+          !data.rows || data.rows.some((r) => r.id === rowId)
+            ? data
+            : {
+                ...data,
+                rows: [
+                  ...data.rows,
+                  {
+                    id: rowId,
+                    page_id: pageId,
+                    cells: withDefaults(data.database?.fields || [], given as Record<string, unknown>, {
+                      creator: ctx.userId,
+                      now: now.getTime(),
+                      timeZone: str(b.timeZone),
+                    }),
+                    position: Number.MAX_SAFE_INTEGER,
+                    created_at: at,
+                    updated_at: at,
+                    created_by: ctx.userId,
+                    updated_by: ctx.userId,
+                    version: 1,
+                    role: "editor",
+                  },
+                ],
+              },
+        ),
+      };
     }
     case "rows.bulk": {
       const ids = new Set(

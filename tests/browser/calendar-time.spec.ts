@@ -418,8 +418,10 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     await startCell.evaluate((el) => el.scrollIntoView({ block: "center", inline: "end" }));
     const cellBox = (await startCell.boundingBox())!;
     await startCell.click({ position: { x: cellBox.width - 12, y: cellBox.height / 2 } });
-    await expect(tableRow.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
-    const input = tableRow.getByLabel("Beginn: Uhrzeit", { exact: true });
+    // The date's editor opens in a popover beside the cell (#607).
+    const cellEditor = page.getByRole("dialog", { name: "Beginn", exact: true });
+    await expect(cellEditor.getByLabel("Beginn", { exact: true })).toHaveAttribute("type", "date");
+    const input = cellEditor.getByLabel("Beginn: Uhrzeit", { exact: true });
     await expect(input).toHaveAttribute("type", "time");
     await input.fill("01:45");
     await (await databaseSearch(page)).click();
