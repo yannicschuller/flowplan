@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { join } from "node:path";
@@ -38,10 +38,23 @@ async function setup(page: Page, title: string, initial: Record<string, unknown>
   return { origin, boot, db, row, command, cells, options };
 }
 
+// The search has the focus once the picker opened – on a phone after a tap
+// on it: there it opens without the keyboard, which would cover the list
+// (#625).
+async function toSearch(search: Locator, mobile: boolean) {
+  if (mobile) {
+    await expect(search).toBeVisible();
+    await expect(search).not.toBeFocused();
+    await search.tap();
+  }
+  await expect(search).toBeFocused();
+}
+
 test("select cells: type to filter, Enter picks, a new option is created and set", async ({ page }, info) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  const mobile = info.project.name === "mobile";
   const { db, cells, options } = await setup(page, `Auswahl ${info.project.name} ${Date.now()}`);
   await page.goto(`/#page=${db.id}`);
   const row = page.locator(".data-table tbody tr[data-row-id]").first();
@@ -50,9 +63,10 @@ test("select cells: type to filter, Enter picks, a new option is created and set
   const search = page.getByRole("combobox", { name: "Status: Option suchen oder anlegen" });
   const list = page.getByRole("listbox", { name: "Optionen von Status" });
 
-  // Opening the cell focuses the search; every option is listed.
+  // Opening the cell focuses the search (a phone: a tap on it); every
+  // option is listed.
   await status.click();
-  await expect(search).toBeFocused();
+  await toSearch(search, mobile);
   await expect(list.getByRole("option")).toHaveText(["Offen", "In Arbeit", "Erledigt", "Café"]);
   // Typing filters; without an exact match it offers to create.
   await page.keyboard.type("ARB");
@@ -65,6 +79,7 @@ test("select cells: type to filter, Enter picks, a new option is created and set
 
   // Accents and case aside, an existing option is found and nothing is created.
   await status.click();
+  await toSearch(search, mobile);
   await page.keyboard.type("cafe");
   await expect(list.getByRole("option")).toHaveText(["Café"]);
   await page.keyboard.press("Enter");
@@ -72,6 +87,7 @@ test("select cells: type to filter, Enter picks, a new option is created and set
 
   // Arrow keys move the highlight.
   await status.click();
+  await toSearch(search, mobile);
   await page.keyboard.type("e");
   await expect(list.getByRole("option")).toHaveText(["Erledigt", "Offen", "In Arbeit", "Café", "„e“ anlegen"]);
   await page.keyboard.press("ArrowDown");
@@ -81,6 +97,7 @@ test("select cells: type to filter, Enter picks, a new option is created and set
 
   // A new one: created in the property and set on the record in one go.
   await status.click();
+  await toSearch(search, mobile);
   await page.keyboard.type("Wartet auf Kunde");
   await expect(list.getByRole("option")).toHaveText(["„Wartet auf Kunde“ anlegen"]);
   await page.keyboard.press("Enter");
@@ -99,6 +116,7 @@ test("select cells: type to filter, Enter picks, a new option is created and set
 
   // Escape closes without a change.
   await status.click();
+  await toSearch(search, mobile);
   await page.keyboard.type("Off");
   await page.keyboard.press("Escape");
   await expect(search).toBeHidden();
@@ -111,6 +129,7 @@ test("multi-select cells stay open: two options, one of them new", async ({ page
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  const mobile = info.project.name === "mobile";
   const { db, cells, options } = await setup(page, `Mehrfach ${info.project.name} ${Date.now()}`);
   await page.goto(`/#page=${db.id}`);
   const row = page.locator(".data-table tbody tr[data-row-id]").first();
@@ -118,7 +137,7 @@ test("multi-select cells stay open: two options, one of them new", async ({ page
   await row.locator("td").nth(3).click();
   const search = page.getByRole("combobox", { name: "Labels: Option suchen oder anlegen" });
   const list = page.getByRole("listbox", { name: "Optionen von Labels" });
-  await expect(search).toBeFocused();
+  await toSearch(search, mobile);
   await page.keyboard.type("grün");
   await expect(list.getByRole("option")).toHaveText(["„grün“ anlegen"]);
   await page.keyboard.press("Enter");
@@ -146,22 +165,27 @@ test("multi-select cells stay open: two options, one of them new", async ({ page
   await row.getByRole("button", { name: /^Eintrag öffnen/ }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await entry.getByRole("button", { name: "Labels: grün, Blau, ändern" }).click();
-  await expect(page.getByRole("combobox", { name: "Labels: Option suchen oder anlegen" })).toBeFocused();
+  await toSearch(search, mobile);
   await page.getByRole("group", { name: "Gewählt: Labels" }).getByRole("button", { name: "„grün“ entfernen" }).click();
   await expect.poll(async () => (await cells()).labels).toEqual(["Blau"]);
   // A tap or click on an option picks it.
   await page.getByRole("listbox", { name: "Optionen von Labels" }).getByRole("option", { name: "Rot" }).click();
   await expect.poll(async () => (await cells()).labels).toEqual(["Blau", "Rot"]);
+  // A phone keeps the keyboard down after the taps: Escape from the search.
+  if (mobile) await search.tap();
   await page.keyboard.press("Escape");
   await expect(entry.getByRole("button", { name: "Labels: Blau, Rot, ändern" })).toBeFocused();
   // The single select in the record: the same search.
   await entry.getByRole("button", { name: /^Status: / }).click();
+  const statusSearch = page.getByRole("combobox", { name: "Status: Option suchen oder anlegen" });
+  await toSearch(statusSearch, mobile);
   await page.keyboard.type("erl");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await cells()).status).toBe("Erledigt");
   await expect(entry.getByRole("button", { name: "Status: Erledigt" })).toBeVisible();
   // Escape closes the search, the record stays open.
   await entry.getByRole("button", { name: "Status: Erledigt" }).click();
+  await toSearch(statusSearch, mobile);
   await page.keyboard.press("Escape");
   await expect(entry.getByRole("button", { name: "Status: Erledigt" })).toBeFocused();
   await expect(entry).toBeVisible();
@@ -175,6 +199,7 @@ test("chosen values above the search: Backspace, Delete and the chips' ✕", asy
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  const mobile = info.project.name === "mobile";
   const { db, cells } = await setup(page, `Abwählen ${info.project.name} ${Date.now()}`, { status: "Offen", labels: ["Rot", "Blau"] });
   await page.goto(`/#page=${db.id}`);
   const row = page.locator(".data-table tbody tr[data-row-id]").first();
@@ -183,7 +208,7 @@ test("chosen values above the search: Backspace, Delete and the chips' ✕", asy
   // Multi-select: the chips above the search, each with its ✕.
   await row.locator("td").nth(3).click();
   const search = page.getByRole("combobox", { name: "Labels: Option suchen oder anlegen" });
-  await expect(search).toBeFocused();
+  await toSearch(search, mobile);
   const chosen = page.getByRole("group", { name: "Gewählt: Labels" });
   await expect(chosen.getByRole("button", { name: "„Rot“ entfernen" })).toBeVisible();
   await expect(chosen.getByRole("button", { name: "„Blau“ entfernen" })).toBeVisible();
@@ -213,6 +238,8 @@ test("chosen values above the search: Backspace, Delete and the chips' ✕", asy
   // The chip's ✕ by click or tap.
   await chosen.getByRole("button", { name: "„Blau“ entfernen" }).click();
   await expect.poll(async () => (await cells()).labels).toEqual([]);
+  // A phone keeps the keyboard down after the tap: the search takes a tap.
+  if (mobile) await search.tap();
   await expect(search).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(search).toBeHidden();
@@ -220,21 +247,73 @@ test("chosen values above the search: Backspace, Delete and the chips' ✕", asy
   // Select: its value as a chip; Backspace in the empty search clears it.
   await row.locator("td").nth(2).click();
   await expect(page.getByRole("group", { name: "Gewählt: Status" }).getByRole("button", { name: "„Offen“ entfernen" })).toBeVisible();
+  const statusSearch = page.getByRole("combobox", { name: /^Status: Option suchen/ });
+  await toSearch(statusSearch, mobile);
   await page.keyboard.press("Backspace");
   await expect.poll(async () => (await cells()).status).toBe("");
-  await expect(page.getByRole("combobox", { name: /^Status: Option suchen/ })).toBeHidden();
+  await expect(statusSearch).toBeHidden();
   await expect(row.locator("td").nth(2)).toHaveText("");
 
   // In the record: pick, then the chip's ✕ in the open search.
   await row.getByRole("button", { name: /^Eintrag öffnen/ }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await entry.getByRole("button", { name: "Status: leer" }).click();
+  await toSearch(statusSearch, mobile);
   await page.keyboard.type("Erl");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await cells()).status).toBe("Erledigt");
   await entry.getByRole("button", { name: "Status: Erledigt" }).click();
   await page.getByRole("group", { name: "Gewählt: Status" }).getByRole("button", { name: "„Erledigt“ entfernen" }).click();
   await expect.poll(async () => (await cells()).status).toBe("");
+  expect(errors).toEqual([]);
+});
+
+// #625: on a phone a record's select opens as a sheet with the list, not
+// the keyboard over it; hiding the keyboard (the search losing the focus)
+// keeps the list, a tap on an option sets it, a tap elsewhere closes it.
+test("a phone: the record's select opens without the keyboard and stays open when it hides", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "Touch screens only.");
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { db, row, cells } = await setup(page, `Telefon ${info.project.name} ${Date.now()}`, { status: "Offen" });
+  await page.goto(`/#page=${db.id}&row=${row.id}`);
+  const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  const value = entry.getByRole("button", { name: "Status: Offen, ändern" });
+  await expect(value).toBeVisible({ timeout: 30_000 });
+  await value.tap();
+  const sheet = page.getByRole("dialog", { name: "Status ändern" });
+  const search = page.getByRole("combobox", { name: "Status: Option suchen oder anlegen" });
+  const list = page.getByRole("listbox", { name: "Optionen von Status" });
+  await expect(sheet).toBeVisible();
+  // No focus in the search (no keyboard), every option in view.
+  await expect(list.getByRole("option")).toHaveText(["Offen", "In Arbeit", "Erledigt", "Café"]);
+  for (const option of await list.getByRole("option").all()) await expect(option).toBeInViewport();
+  await page.waitForTimeout(300);
+  await expect(search).not.toBeFocused();
+  // A tap on the search brings up the keyboard; hiding it blurs the
+  // search, and the list stays.
+  await search.tap();
+  await expect(search).toBeFocused();
+  await search.evaluate((el) => (el as HTMLInputElement).blur());
+  await page.waitForTimeout(300);
+  await expect(search).not.toBeFocused();
+  await expect(list).toBeVisible();
+  // A tap on an option sets it and closes the sheet.
+  await list.getByRole("option", { name: "Erledigt" }).tap();
+  await expect.poll(async () => (await cells()).status).toBe("Erledigt");
+  await expect(sheet).toBeHidden();
+  await expect(entry.getByRole("button", { name: "Status: Erledigt, ändern" })).toBeVisible();
+  // A tap outside the search and its list closes them without a change.
+  await entry.getByRole("button", { name: "Status: Erledigt, ändern" }).tap();
+  await expect(list).toBeVisible();
+  await expect(search).not.toBeFocused();
+  await sheet.getByRole("heading", { name: "Status ändern" }).tap();
+  await expect(list).toBeHidden();
+  await expect(search).toBeHidden();
+  await page.waitForTimeout(300);
+  expect((await cells()).status).toBe("Erledigt");
+  await expect(entry).toBeVisible();
   expect(errors).toEqual([]);
 });
 

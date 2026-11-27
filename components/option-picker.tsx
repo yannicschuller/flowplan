@@ -63,6 +63,9 @@ function useLook(field: Field, people: readonly PickerPerson[] | undefined): Loo
   };
 }
 
+// A finger is the main input (lib/keyboard-hints.ts uses the same query).
+const TOUCH_INPUT = "(hover: none) and (pointer: coarse)";
+
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && !!v) : typeof value === "string" && value ? [value] : [];
 
@@ -232,9 +235,34 @@ function OptionSearch({
   const [active, setActive] = useState(() => (multi ? 0 : Math.max(0, found.matches.indexOf(chosen[0] ?? ""))));
   const current = Math.min(active, entries.length - 1);
   const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    input.current?.focus({ preventScroll: true });
-    return () => clearTimeout(blurTimer.current);
+    onCloseRef.current = onClose;
+  });
+  // On a touch screen the list opens without the keyboard, which would hide
+  // most of it; a tap on the field brings it up to search (#625). There a
+  // tap outside closes the list, not the field losing the focus: hiding the
+  // keyboard blurs it, and the list must stay.
+  const touch = useRef(typeof matchMedia === "function" && matchMedia(TOUCH_INPUT).matches);
+  // Back to the search after a pick or a removed chip – not on touch:
+  // focusing it would bring the keyboard up again.
+  const refocus = () => {
+    if (!touch.current) input.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (!touch.current) input.current?.focus({ preventScroll: true });
+    const outside = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (box.current?.contains(target) || list.current?.contains(target)) return;
+      // The floating "hide keyboard" button (components/hide-keyboard-button.tsx).
+      if (target instanceof Element && target.closest(".hide-keyboard-fab")) return;
+      onCloseRef.current(false);
+    };
+    if (touch.current) document.addEventListener("pointerdown", outside, true);
+    return () => {
+      clearTimeout(blurTimer.current);
+      document.removeEventListener("pointerdown", outside, true);
+    };
   }, []);
   // The list goes to the window (or the dialog), so a table's scroll area
   // does not cut it off; it follows the field when the page scrolls.
@@ -286,7 +314,7 @@ function OptionSearch({
     setActive(0);
     void onPick(entry.value);
     if (!multi) onClose(true);
-    else input.current?.focus({ preventScroll: true });
+    else refocus();
   };
   const keyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
@@ -314,7 +342,7 @@ function OptionSearch({
   const remove = (option: string) => {
     if (!removable) return;
     void onRemove(option);
-    input.current?.focus({ preventScroll: true });
+    refocus();
   };
   const chipKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     if ((e.key === "Delete" || e.key === "Backspace") && removable) {
@@ -339,6 +367,8 @@ function OptionSearch({
   // Enter or Escape – closes nothing (the next cell may be open by then).
   const left = (to: Node | null) => {
     if (box.current?.contains(to) || list.current?.contains(to)) return;
+    // Touch: hiding the keyboard blurs the field; a tap outside closes (above).
+    if (touch.current) return;
     clearTimeout(blurTimer.current);
     blurTimer.current = setTimeout(() => {
       if (box.current && !box.current.contains(document.activeElement)) onClose(false);
@@ -394,6 +424,9 @@ function OptionSearch({
         aria-busy={busy || undefined}
         placeholder={create && !look.person ? t("Suchen oder anlegen …", "Find or create …") : t("Suchen …", "Find …")}
         autoComplete="off"
+        // Not focused on opening on a touch screen (#625), nor by the
+        // record's panel around it (components/record-property-value.tsx).
+        data-no-autofocus={touch.current ? "" : undefined}
         enterKeyHint={multi ? "enter" : "done"}
         maxLength={MAX_OPTION_LENGTH}
         value={query}

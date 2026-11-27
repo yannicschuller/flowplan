@@ -1,0 +1,13 @@
+{
+  "features": [],
+  "improvements": [],
+  "fixes": [
+    {
+      "de": "Auf dem iPhone und anderen Touchscreens öffnet sich eine Auswahl-Eigenschaft eines Eintrags („Status ändern“) jetzt ohne Tastatur, sodass alle Optionen sichtbar sind. Ein Tippen auf das Suchfeld holt die Tastatur; wird sie ausgeblendet, bleibt die Liste offen, und ein Tippen daneben schließt sie.",
+      "en": "On the iPhone and other touch screens, a record’s select property (“Change Status”) now opens without the keyboard, so every option stays visible. A tap on the search field brings up the keyboard; hiding it keeps the list open, and a tap elsewhere closes it.",
+      "issues": [
+        625
+      ]
+    }
+  ]
+}

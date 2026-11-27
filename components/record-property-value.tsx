@@ -80,10 +80,15 @@ export function RecordPropertyValue({
   // panel, so Escape still closes only the panel.
   useEffect(() => {
     if (!open || !bodyEl) return;
+    // A field marked data-no-autofocus (an option search on a touch screen,
+    // #625: the keyboard would cover its list) waits for a tap; the panel
+    // itself holds the focus meanwhile.
     const focus = () => {
       const el = bodyEl;
-      if (!el || el.contains(document.activeElement)) return;
-      (el.querySelector<HTMLElement>(FIELD) || el.querySelector<HTMLElement>(FOCUSABLE) || el).focus({ preventScroll: true });
+      const active = document.activeElement;
+      if (!el || (el.contains(active) && !active?.hasAttribute("data-no-autofocus"))) return;
+      const field = el.querySelector<HTMLElement>(FIELD);
+      (field?.hasAttribute("data-no-autofocus") ? el : field || el.querySelector<HTMLElement>(FOCUSABLE) || el).focus({ preventScroll: true });
     };
     focus();
     const frame = requestAnimationFrame(focus);
