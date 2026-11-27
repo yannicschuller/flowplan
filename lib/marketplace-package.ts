@@ -223,7 +223,13 @@ async function payloadFor(user: Identity, source: PackageSource): Promise<Payloa
         entries.push([file, f.data]);
         return { id: f.id, name: f.name, file };
       });
-      const data = { format: LOOK_FORMAT, version: 1, theme: look.theme, fonts: listed };
+      // The marketplace takes a theme with accent, background and typefaces
+      // only (its package check, a contract with flowplan-marketplace): the
+      // mark's own colour (#591) stays in this workspace.
+      const { logoColor: _logo, ...theme } = look.theme;
+      void _logo;
+      if (!Object.keys(theme).length) throw fail("Dieser Arbeitsbereich hat noch kein eigenes Erscheinungsbild.");
+      const data = { format: LOOK_FORMAT, version: 1, theme, fonts: listed };
       return {
         kind: "appearance",
         title: "",

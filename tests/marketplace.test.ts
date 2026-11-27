@@ -302,12 +302,15 @@ test("appearance: owners only, with the typefaces it uses; replaces the look whe
   const face = await fonts.uploadWorkspaceFont(owner, wid, { name: "Hausschrift", file: { name: "Hausschrift.woff2", bytes: inter } });
   const faceId = face.id;
   await assert.rejects(() => pkgs.packageDraft(owner, { kind: "appearance", workspaceId: wid }), /kein eigenes Erscheinungsbild/);
-  await fonts.saveWorkspaceTheme(owner, wid, { accent: "#2f6f5e", fonts: { ui: `custom:${faceId}` } });
+  await fonts.saveWorkspaceTheme(owner, wid, { accent: "#2f6f5e", logoColor: "#be123c", fonts: { ui: `custom:${faceId}` } });
   for (const who of [editor, viewer, guest]) await assert.rejects(() => pkgs.buildPackage(who, { kind: "appearance", workspaceId: wid }, meta("x")), status(403), who.name);
   const { entries, parsed, preview } = await roundTrip("appearance", null);
   const file = JSON.parse(entries.get("payload/theme.json")!.toString());
   assert.equal(file.format, "flowplan.workspace-look");
   assert.equal(file.theme.accent, "#2f6f5e");
+  // The marketplace takes accent, background and typefaces only: the logo's
+  // own colour (#591) stays in the workspace.
+  assert.equal(file.theme.logoColor, undefined);
   assert.ok(entries.has(`payload/fonts/${faceId}.woff2`));
   assert.deepEqual(preview.creates.fonts, ["Hausschrift"]);
   await fonts.saveWorkspaceTheme(other, target, { accent: "#aa0000" });

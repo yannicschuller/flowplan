@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 140;
+export const SCHEMA_VERSION = 141;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1715,6 +1715,9 @@ function migrate(d: DatabaseSync) {
   // Schema 140 – the workspace as a library and its hidden places (#564,
   // lib/workspace-navigation.ts).
   migrateWorkspaceNavigation(d);
+  // Schema 141 – "Symbole unten in der Seitenleiste" per person (#589,
+  // lib/sidebar-tools-pref.ts).
+  migrateSidebarToolsPref(d);
   // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
   // a new nullable column an older version leaves alone, so the schema
   // number stays.
@@ -1724,6 +1727,14 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 141 – users.sidebar_tools (#589, lib/sidebar-tools-pref.ts): the
+// symbols of the sidebar's bottom row this person hid, as JSON (NULL:
+// every symbol shown). An older version would show every symbol, hence
+// the number.
+function migrateSidebarToolsPref(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "sidebar_tools"))
+    d.exec("ALTER TABLE users ADD COLUMN sidebar_tools TEXT");
 }
 // Schema 140 – workspaces.navigation (#564, lib/workspace-navigation.ts):
 // JSON { library, hidden }, NULL = every space as it is set, every place of

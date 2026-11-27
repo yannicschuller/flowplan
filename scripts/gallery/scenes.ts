@@ -308,6 +308,19 @@ const pages: Scene[] = [
       await page.getByRole("menu").waitFor();
     },
   },
+  // A symbol of the sidebar's bottom row, right-clicked (#589): hide it or
+  // customize the row.
+  {
+    id: "sidebar-tool-menu",
+    group: "Pages",
+    title: "Sidebar – menu of a bottom symbol",
+    path: "#home",
+    devices: ["desktop"],
+    steps: async (page) => {
+      await page.locator("aside.sidebar .sidebar-tools").getByRole("button", { name: "Trash", exact: true }).click({ button: "right" });
+      await page.getByRole("menu", { name: "Actions for Trash" }).waitFor();
+    },
+  },
   { id: "tasks", group: "Pages", title: "My tasks", path: "#tasks" },
   {
     id: "tasks-range",

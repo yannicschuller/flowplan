@@ -42,6 +42,7 @@ import { formattingToolbar, setFormattingToolbarLocal, useFormattingToolbar } fr
 import { ToolbarLayoutEditor } from "./toolbar-layout-editor";
 import { AppearancePreview } from "../previews";
 import { FeatureModulesSettings } from "./feature-modules";
+import { SidebarToolsSettings } from "./sidebar-tools-settings";
 import type { MotionPref } from "@/lib/motion-pref";
 import { motionPref, setMotionPrefLocal, useMotionPref } from "@/lib/motion-pref-client";
 import { fullWidthPages, setFullWidthPagesLocal, useFullWidthPages } from "@/lib/page-width-pref-client";
@@ -427,6 +428,7 @@ export default function AppearanceSection() {
           </SettingRow>
         )}
       </SettingGroup>
+      <SidebarToolsSettings />
       <FeatureModulesSettings />
       <SettingGroup id="start" title={t("Beim Öffnen", "On opening")}>
         <SettingRow

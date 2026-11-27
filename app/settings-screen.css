@@ -376,13 +376,13 @@
   stroke: var(--hover);
 }
 .sv-ring-track.unlimited {
-  stroke: color-mix(in srgb, var(--chart-1) 45%, var(--hover));
+  stroke: color-mix(in srgb, var(--chart-accent) 45%, var(--hover));
 }
 .sv-ring.tone-2 .sv-ring-track.unlimited {
   stroke: color-mix(in srgb, var(--chart-2) 45%, var(--hover));
 }
 .sv-ring-value {
-  stroke: var(--chart-1);
+  stroke: var(--chart-accent);
   transition: stroke-dasharray 0.4s ease;
 }
 .sv-ring.tone-2 .sv-ring-value {

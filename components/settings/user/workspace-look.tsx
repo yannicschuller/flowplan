@@ -1,6 +1,6 @@
 "use client";
 // Settings → Arbeitsbereich → Erscheinungsbild (#196): the workspace's
-// accent colour, background tint and typefaces, with a preview in light and
+// accent colour, the logo's colour (#591), background tint and typefaces, with a preview in light and
 // dark, and the faces its owners uploaded. Owners change it; everyone sees
 // it (each person may choose Flowplan's own look in Darstellung & Sprache).
 // No custom CSS: lib/workspace-theme.ts says why.
@@ -14,10 +14,13 @@ import { api } from "../../ui";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import {
   BACKGROUND_PRESETS,
+  DEFAULT_LOGO,
   appFontUrl,
   backgroundPreset,
   derivePalette,
   fontFaceRule,
+  logoColorOf,
+  logoColors,
   normalizeTheme,
   themeVariables,
   type BackgroundId,
@@ -29,6 +32,7 @@ import {
 import { BUNDLED_FONTS, CUSTOM_PREFIX, DEFAULT_FONTS, FONT_SLOTS, SYSTEM_FONT, bundledFont, bundledFontFaces, fontStack, type FontCategory, type FontSlot } from "@/lib/theme-fonts";
 import { useUserSettings } from "../user-context";
 import { PublishButton } from "../../marketplace";
+import { BrandMark } from "../../brand-mark";
 
 // A few accents to start from; any other colour through the picker.
 const SWATCHES = ["#3b3fd8", "#2563eb", "#0e7490", "#0f766e", "#15803d", "#a16207", "#c2410c", "#be123c", "#be185d", "#7c3aed", "#475569"];
@@ -192,6 +196,7 @@ export default function WorkspaceLookSection() {
             )}
           </div>
         </SettingRow>
+        <LogoColorRow draft={draft} owner={owner} onChange={(logoColor) => setDraft((d) => ({ ...d, logoColor }))} />
         <SettingRow label={t("Hintergrund", "Background")} description={t("Ein Farbton für Seiten, Seitenleiste und Linien – jeweils mit dunkler Fassung.", "A tint for pages, sidebar and lines – each with a dark counterpart.")} wide>
           <div className="look-backgrounds" role="radiogroup" aria-label={t("Hintergrund", "Background")}>
             {BACKGROUND_PRESETS.map((p) => {
@@ -266,6 +271,66 @@ export default function WorkspaceLookSection() {
         />
       )}
     </form>
+  );
+}
+
+// "Logo-Farbe" (#591): the mark at the top of the sidebar and in the
+// browser tab follows the accent by default, or takes a colour of its own
+// (any colour: the glyph turns white or ink for contrast, lib/workspace-theme.ts
+// logoColors). The mark beside it shows the result.
+function LogoColorRow({ draft, owner, onChange }: { draft: WorkspaceTheme; owner: boolean; onChange: (color: string | null) => void }) {
+  const t = useT();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const own = draft.logoColor ?? null;
+  const shown = logoColorOf(draft);
+  const colours = shown ? logoColors(shown) : DEFAULT_LOGO;
+  const preview = { "--logo-from": colours.from, "--logo-to": colours.to, "--logo-ink": colours.ink, "--logo-glow": `${colours.from}59` } as CSSProperties;
+  const label = t("Logo-Farbe", "Logo colour");
+  return (
+    <SettingRow label={label} description={t("Für das Logo oben in der Seitenleiste und im Browser-Tab.", "For the logo at the top of the sidebar and in the browser tab.")} wide>
+      <div className="look-accent">
+        <div className="look-swatches" role="radiogroup" aria-label={label}>
+          <span className="look-logo-preview" style={preview} aria-hidden>
+            <BrandMark size={28} />
+          </span>
+          <button type="button" role="radio" aria-checked={!own} className={`button compact look-logo-follow${!own ? " active" : ""}`} disabled={!owner} onClick={() => onChange(null)}>
+            {!own && <Check size={14} weight="bold" aria-hidden />}
+            {t("Folgt dem Akzent", "Follows the accent")}
+          </button>
+          {SWATCHES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              role="radio"
+              aria-checked={own === c}
+              aria-label={c}
+              title={c}
+              className={`look-swatch${own === c ? " active" : ""}`}
+              style={{ "--swatch": c } as CSSProperties}
+              disabled={!owner}
+              onClick={() => onChange(c)}
+            >
+              {own === c && <Check size={14} weight="bold" aria-hidden />}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`button compact look-custom${own && !SWATCHES.includes(own) ? " active" : ""}`}
+            aria-expanded={pickerOpen}
+            disabled={!owner}
+            onClick={() => setPickerOpen((v) => !v)}
+          >
+            <Palette aria-hidden />
+            {own && !SWATCHES.includes(own) ? <code>{own}</code> : t("Eigene Farbe", "Own colour")}
+          </button>
+        </div>
+        {pickerOpen && owner && (
+          <div className="look-picker">
+            <ColorPicker value={own ?? shown ?? "#3b3fd8"} onChange={(c) => onChange(c)} />
+          </div>
+        )}
+      </div>
+    </SettingRow>
   );
 }
 

@@ -146,6 +146,15 @@
 .look-custom code {
   font-size: 12px;
 }
+/* "Logo-Farbe" (#591): the mark as it will look, then "Folgt dem Akzent"
+   and the colours. */
+.look-logo-preview {
+  display: inline-flex;
+  margin-inline-end: 4px;
+}
+.look-logo-follow.active {
+  border-color: var(--blue);
+}
 .look-picker {
   width: min(280px, 100%);
 }

@@ -9,7 +9,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { useT } from "./i18n";
 
-import { SERIES } from "./sparkline";
+import { SERIES, seriesColor } from "@/lib/chart-colors";
 export { SERIES, Sparkline } from "./sparkline";
 
 function useWidth<T extends HTMLElement>() {
@@ -48,7 +48,7 @@ export function Legend({ items }: { items: { label: string; color: number; value
     <ul className="vz-legend">
       {items.map((item) => (
         <li key={item.label}>
-          <i className={item.line ? "line" : undefined} style={{ background: SERIES[item.color] }} aria-hidden />
+          <i className={item.line ? "line" : undefined} style={{ background: seriesColor(item.color, 0, items.length) }} aria-hidden />
           {item.label}
           {item.value !== undefined && <strong>{item.value}</strong>}
         </li>
@@ -202,7 +202,8 @@ export function LineChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [all],
   );
-  const colorOf = (k: number) => SERIES[all[k].s.color ?? k];
+  // One series alone in the first colour: the accent (#590).
+  const colorOf = (k: number) => seriesColor(all[k].s.color, k, all.length);
   const valueText = (k: number, index: number) => {
     const v = all[k].s.values[index];
     return typeof v === "number" ? formatOf(k)(v) : "–";
@@ -414,7 +415,7 @@ export function BarChart({
                     const d = r
                       ? `M${xl},${y1 + h}V${y1 + r}Q${xl},${y1} ${xl + r},${y1}H${xl + barW - r}Q${xl + barW},${y1} ${xl + barW},${y1 + r}V${y1 + h}Z`
                       : `M${xl},${y1 + h}V${y1}H${xl + barW}V${y1 + h}Z`;
-                    return <path key={p.s.key} d={d} fill={SERIES[p.s.color ?? p.n]} />;
+                    return <path key={p.s.key} d={d} fill={seriesColor(p.s.color, p.n, series.length)} />;
                   })}
                   {k % labelEvery === 0 && (
                     <text x={cx(k)} y={height - 6} textAnchor="middle" className="vz-axis">
@@ -431,7 +432,7 @@ export function BarChart({
             <strong>{(tips || labels)[i]}</strong>
             {series.map((s, k) => (
               <span key={s.key} className="vz-tip-row">
-                <i style={{ background: SERIES[s.color ?? k] }} />
+                <i style={{ background: seriesColor(s.color, k, series.length) }} />
                 {s.label}
                 <b>{formatY(s.values[i] || 0)}</b>
               </span>

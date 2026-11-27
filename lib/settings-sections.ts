@@ -184,6 +184,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Darstellung des Arbeitsbereichs verwenden", en: "Use the workspace's appearance" }, keywords: { de: "akzentfarbe schrift standard", en: "accent font default" }, anchor: "workspace-look", level: "normal" },
       { title: { de: "Schriftart", en: "Font" }, keywords: { de: "schrift schriftart typografie lesbarkeit systemschrift serifen", en: "font typeface typography readability system font serif" }, anchor: "font", level: "normal" },
       {
+        title: { de: "Symbole unten in der Seitenleiste", en: "Symbols at the bottom of the sidebar" },
+        keywords: {
+          de: "seitenleiste leiste symbole icons werkzeuge ausblenden einblenden vorlagen medien lernen tags graph papierkorb einstellungen tastenkürzel aufgeräumt",
+          en: "sidebar toolbar symbols icons tools hide show templates media study tags graph trash settings keyboard shortcuts tidy",
+        },
+        anchor: "sidebar-tools",
+      },
+      {
         title: { de: "Funktionen", en: "Features" },
         keywords: {
           de: "funktionen module ausblenden einblenden aufgeräumt übersichtlich lernkarten whiteboards notizbücher journal dashboards workflows draw.io ki ansichten board kalender zeitleiste galerie diagramm formulare besprechungen",
