@@ -15,6 +15,14 @@
       "issues": [
         626
       ]
+    },
+    {
+      "de": "In der Seitenleiste folgen zugeklappte Abschnitte wie Sammlungen oder Favoriten ohne große Lücke aufeinander, und auf dem Handy steht der Name eines Bereichs dicht über seiner ersten Seite. Die Tippflächen bleiben so groß wie bisher.",
+      "en": "In the sidebar, folded sections such as Collections or Favourites follow each other without a large gap, and on a phone a space’s name sits close above its first page. The tap targets stay as large as before.",
+      "issues": [
+        627,
+        628
+      ]
     }
   ]
 }

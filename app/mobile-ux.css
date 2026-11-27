@@ -518,6 +518,29 @@ label.hit-check {
   .nav-section-title {
     min-height: 44px;
   }
+  /* A section's name stands at the foot of its 44 px row, close to its
+     first page like a heading (#627): the room in the row lies above the
+     name, none below it. The toggle keeps the whole row; the tools are
+     drawn 32 px high on the name's line and reach up to the row's top with
+     an invisible ::after – nothing reaches into the first page's row. */
+  .nav-section-title {
+    padding-bottom: 0;
+  }
+  .nav-section-title > .space-toggle {
+    padding-top: 12px;
+  }
+  .nav-section-title > .nav-section-tools {
+    align-self: flex-end;
+  }
+  .nav-section-title .nav-section-tools .icon-button {
+    position: relative;
+    height: 32px;
+  }
+  .nav-section-title .nav-section-tools .icon-button::after {
+    content: "";
+    position: absolute;
+    inset: -12px 0 0;
+  }
   .sidebar-top .brand,
   .add-space {
     min-height: 44px;
