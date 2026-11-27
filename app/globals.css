@@ -702,6 +702,15 @@ kbd,
   min-height: 30px;
   gap: 4px;
 }
+/* A folded section (Favoriten, Sammlungen, a space) is one row: the next
+   title follows at the rhythm of the rows (#628). The gap below a section
+   is for its open content. */
+.nav-section.space-collapsed {
+  margin-bottom: 2px;
+}
+.nav-section.space-collapsed > .nav-section-title {
+  padding-bottom: 0;
+}
 .nav-section-title > span {
   min-width: 0;
   flex: 1;
