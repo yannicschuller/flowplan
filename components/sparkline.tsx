@@ -1,10 +1,10 @@
 // A trend without axes (tiles of the administration, KPI cards), kept apart
 // from components/charts.tsx so the landing pages load only this. Colours
-// from the --chart-* tokens of app/globals.css; gaps (null) stay gaps.
-
-// Categorical colours in fixed order (validated for colour-blind separation
-// in both themes); status colours are never used for series.
-export const SERIES = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-other)"] as const;
+// from the --chart-* tokens of app/globals.css (lib/chart-colors.ts): in the
+// workspace's accent (#590) unless another tone is asked for (errors);
+// gaps (null) stay gaps.
+import { SERIES, seriesColor } from "@/lib/chart-colors";
+export { SERIES };
 
 export function Sparkline({ values, label, tone = 1, height = 32, area = true }: { values: (number | null)[]; label: string; tone?: 1 | 2 | 3 | 4 | 5; height?: number; area?: boolean }) {
   const all = values.map((v) => (typeof v === "number" && Number.isFinite(v) ? v : null));
@@ -29,7 +29,7 @@ export function Sparkline({ values, label, tone = 1, height = 32, area = true }:
       last.to = i;
     } else runs.push({ from: i, to: i, d: `M${x(i).toFixed(2)},${y(v).toFixed(2)}` });
   });
-  const color = SERIES[tone - 1];
+  const color = seriesColor(tone - 1, 0, 1);
   return (
     <svg className="sparkline" viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ height }} role="img" aria-label={label}>
       {runs.map((r) => (

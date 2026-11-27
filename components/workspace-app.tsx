@@ -355,6 +355,8 @@ import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-li
 import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
 import { setToolbarLayoutFromServer } from "@/lib/toolbar-layout-client";
+import { hiddenSidebarTools, primeHiddenSidebarTools, saveHiddenSidebarTools, setHiddenSidebarToolsFromServer, useHiddenSidebarTools } from "@/lib/sidebar-tools-pref-client";
+import { isSidebarToolId, moreSheetOf, setSidebarToolShown, settingsInMenu, toolRowOf } from "@/lib/sidebar-tools-pref";
 import { setSettingsLevelFromServer } from "@/lib/settings-level-client";
 import { primeFeatureModules, setFeatureModulesFromServer, useFeatureModules } from "@/lib/feature-modules-client";
 import { moduleShownIn, PAGE_KIND_MODULE, type FeatureModule } from "@/lib/feature-modules";
@@ -784,6 +786,12 @@ export default function WorkspaceApp({
   useEffect(() => setFeatureModulesFromServer(boot.modules), [boot.modules]);
   const { effective: hiddenModules, off: offModules } = useFeatureModules();
   const featureShown = (module: FeatureModule | undefined) => moduleShownIn(hiddenModules, module);
+  // The symbols this person hid from the sidebar's bottom row (#589,
+  // lib/sidebar-tools-pref.ts): from the first bootstrap before anything
+  // renders, later ones in the effect.
+  primeHiddenSidebarTools(boot.hiddenSidebarTools);
+  useEffect(() => setHiddenSidebarToolsFromServer(boot.hiddenSidebarTools), [boot.hiddenSidebarTools]);
+  const hiddenTools = useHiddenSidebarTools();
   // The sidebar's places the workspace does without (#564,
   // lib/workspace-navigation.ts): their entries go, their screens still
   // open from links.
@@ -4683,6 +4691,25 @@ export default function WorkspaceApp({
       onSelect: () => setShortcuts(true),
     },
   ];
+  // Each person's choice of symbols (#589, lib/sidebar-tools-pref.ts): the
+  // row leaves the hidden ones out; the phone's "Mehr" sheet too, but keeps
+  // Settings; the quick search still has them all.
+  const saveSidebarTools = (next: ReturnType<typeof hiddenSidebarTools>) =>
+    saveHiddenSidebarTools(next, (hidden) => mutate({ action: "profile.sidebarTools", hidden }));
+  const hideSidebarTool = (id: string) => {
+    if (!isSidebarToolId(id)) return;
+    const label = sidebarTools.find((tool) => tool.id === id)?.label ?? id;
+    saveSidebarTools(setSidebarToolShown(hiddenSidebarTools(), id, false)).then(
+      () =>
+        showUndo(t(`„${label}“ ist nicht mehr in der Leiste.`, `“${label}” is no longer in the toolbar.`), () =>
+          saveSidebarTools(setSidebarToolShown(hiddenSidebarTools(), id, true)),
+        ),
+      (e) => notifyError(e),
+    );
+  };
+  const customizeSidebarTools = () => {
+    location.hash = settingsHash({ area: "settings", section: "appearance", anchor: "sidebar-tools" });
+  };
   const signOut = async () => {
     await clearAccountData();
     const done = await fetch("/api/auth/logout", { method: "POST" })
@@ -4874,6 +4901,14 @@ export default function WorkspaceApp({
               )}
               <Dropdown.Separator className="dropdown-separator" />
               <Dropdown.Group aria-label={t("Konto", "Account")}>
+                {/* Settings hidden from the row (#589): here instead, so the
+                    choice can always be undone in one step. */}
+                {settingsInMenu(hiddenTools) && (
+                  <Dropdown.Item className="dropdown-item" onSelect={() => go("settings")}>
+                    <GearSix />
+                    {t("Einstellungen", "Settings")}
+                  </Dropdown.Item>
+                )}
                 {accountItems.map(({ id, label, icon: ItemIcon, href, external, onSelect }) =>
                   href ? (
                     <Dropdown.Item key={id} className="dropdown-item" asChild>
@@ -5460,8 +5495,8 @@ export default function WorkspaceApp({
               "Mehr"): the page tree above keeps the height. Who is signed in
               and the account's entries are in the workspace menu at the top
               (#565), so there is no account row below it any more (#570). */}
-          <SidebarToolRow tools={sidebarTools} />
-          <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
+          <SidebarToolRow tools={toolRowOf(sidebarTools, hiddenTools)} onHide={hideSidebarTool} onCustomize={customizeSidebarTools} />
+          <SidebarMore tools={moreSheetOf(sidebarTools, hiddenTools)} account={accountItems} signOut={signOutItem} />
         </div>
         {/* Over the page (open drawer) the sidebar has a width of its own. */}
         {mobile ? (

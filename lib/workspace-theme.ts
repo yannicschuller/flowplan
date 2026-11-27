@@ -4,7 +4,9 @@
 // Flowplan's own look for themselves (users.plain_look). Light or dark stays
 // each person's choice (lib/theme.ts): the accent's palette is derived for
 // both, in OKLCH, and its lightness moved until text on the accent and the
-// accent as text on the page backgrounds reach WCAG AA (4.5:1).
+// accent as text on the page backgrounds reach WCAG AA (4.5:1). The mark
+// (logo, browser tab icon) follows the accent unless the look gives it a
+// colour of its own (`logoColor`, #591).
 // No custom CSS: CSS can read out content (attribute selectors with
 // background URLs) and would break with every update of the app.
 // Pure: no React, no DOM, no database (the server part is
@@ -222,11 +224,16 @@ export function logoSvg({ from, to, ink }: LogoColors = DEFAULT_LOGO) {
     `<g fill="none" stroke="${ink}" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 16 16 20.6 25.2 16" opacity=".72"/><path d="M6.8 20.6 16 25.2 25.2 20.6" opacity=".42"/></g></svg>`
   );
 }
-// The browser tab's icon for a look with an accent (null: Flowplan's own,
-// /icon.svg). Installed apps keep their icons (manifest, apple-touch-icon).
+// The colour the mark is drawn from (#591): its own colour if the look has
+// one, else the accent ("Folgt dem Akzent"); null: Flowplan's own mark.
+export const logoColorOf = (theme: WorkspaceTheme | null | undefined) => theme?.logoColor || theme?.accent || null;
+// The browser tab's icon for a look with an accent or a logo colour (null:
+// Flowplan's own, /icon.svg). Installed apps keep their icons (manifest,
+// apple-touch-icon).
 export function faviconHref(theme: WorkspaceTheme | null | undefined) {
-  if (!theme?.accent) return null;
-  return `data:image/svg+xml,${encodeURIComponent(logoSvg(logoColors(theme.accent)))}`;
+  const color = logoColorOf(theme);
+  if (!color) return null;
+  return `data:image/svg+xml,${encodeURIComponent(logoSvg(logoColors(color)))}`;
 }
 
 // ---- The stored look ----
@@ -242,6 +249,8 @@ const fontRef = z
 export const workspaceThemeSchema = z
   .object({
     accent: hex.nullable().optional(),
+    // The mark's own colour (#591); absent or null: it follows the accent.
+    logoColor: hex.nullable().optional(),
     background: z.enum(BACKGROUND_IDS).optional(),
     fonts: z
       .object({ ui: fontRef.optional(), display: fontRef.optional(), mono: fontRef.optional() })
@@ -255,6 +264,7 @@ export type WorkspaceTheme = z.infer<typeof workspaceThemeSchema>;
 export function normalizeTheme(theme: WorkspaceTheme): WorkspaceTheme | null {
   const out: WorkspaceTheme = {};
   if (theme.accent) out.accent = theme.accent.toLowerCase();
+  if (theme.logoColor) out.logoColor = theme.logoColor.toLowerCase();
   if (theme.background && theme.background !== "standard") out.background = theme.background;
   const fonts: Partial<Record<FontSlot, string>> = {};
   for (const slot of FONT_SLOTS) {
@@ -322,15 +332,18 @@ export function themeVariables(theme: WorkspaceTheme | null, mode: Mode, fonts: 
       "--accent-ink": p.onAccent,
       "--accent-hover": p.accentStrong,
     });
-    const logo = logoColors(theme.accent);
     const avatar = readableOn(theme.accent);
+    Object.assign(vars, { "--avatar-bg": avatar.bg, "--avatar-ink": avatar.ink });
+  }
+  // The mark: its own colour (#591) or the accent's.
+  const logoColor = logoColorOf(theme);
+  if (logoColor) {
+    const logo = logoColors(logoColor);
     Object.assign(vars, {
       "--logo-from": logo.from,
       "--logo-to": logo.to,
       "--logo-ink": logo.ink,
       "--logo-glow": `${logo.from}59`,
-      "--avatar-bg": avatar.bg,
-      "--avatar-ink": avatar.ink,
     });
   }
   for (const slot of FONT_SLOTS) {

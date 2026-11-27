@@ -352,6 +352,9 @@ export type Bootstrap = {
   // "Schriftart" (#512, lib/personal-font.ts): this person's typeface
   // for the interface and text, null: the default.
   uiFont?: import("./personal-font").PersonalFont;
+  // "Symbole unten in der Seitenleiste" (#589, lib/sidebar-tools-pref.ts):
+  // the symbols this person hid from the sidebar's bottom row.
+  hiddenSidebarTools?: import("./sidebar-tools-pref").SidebarToolId[];
   // The workspace's automatic link rules (#202, lib/auto-link.ts).
   linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).

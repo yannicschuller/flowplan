@@ -41,7 +41,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 141;
+export const SCHEMA_VERSION = 142;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1718,6 +1718,9 @@ function migrate(d: DatabaseSync) {
   // Schema 141 – what the weekly error digest knows of each error
   // signature beyond the 14 days of the error details (lib/error-digest.ts).
   migrateErrorDigest(d);
+  // Schema 142 – "Symbole unten in der Seitenleiste" per person (#589,
+  // lib/sidebar-tools-pref.ts).
+  migrateSidebarToolsPref(d);
   // "Verwandte Seiten" of records folded or open (lib/page-view-prefs.ts):
   // a new nullable column an older version leaves alone, so the schema
   // number stays.
@@ -1738,6 +1741,14 @@ function migrate(d: DatabaseSync) {
 function migrateErrorDigest(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS error_digest_state(signature TEXT PRIMARY KEY,first_seen INTEGER NOT NULL,last_seen INTEGER NOT NULL,last_digest_at INTEGER,reported_at INTEGER,issue_url TEXT,muted_until INTEGER);
     CREATE INDEX IF NOT EXISTS error_digest_state_last ON error_digest_state(last_seen);`);
+}
+// Schema 142 – users.sidebar_tools (#589, lib/sidebar-tools-pref.ts): the
+// symbols of the sidebar's bottom row this person hid, as JSON (NULL:
+// every symbol shown). An older version would show every symbol, hence
+// the number.
+function migrateSidebarToolsPref(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "sidebar_tools"))
+    d.exec("ALTER TABLE users ADD COLUMN sidebar_tools TEXT");
 }
 // Schema 140 – workspaces.navigation (#564, lib/workspace-navigation.ts):
 // JSON { library, hidden }, NULL = every space as it is set, every place of

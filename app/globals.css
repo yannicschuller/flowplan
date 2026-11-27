@@ -16647,8 +16647,14 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 /* ---------- Charts (components/charts.tsx, components/sparkline.tsx) ----------
    Categorical colours in fixed order, validated for colour-blind separation
    against both page backgrounds (light: #fcfbf8, dark: #16151b). Axis text
-   and grid lines have their own tokens so they stay readable in dark mode. */
+   and grid lines have their own tokens so they stay readable in dark mode.
+   --chart-accent (#590) colours charts of one colour – sparklines, charts
+   of a single series, usage rings and meters: a workspace's accent (--accent,
+   set by its look in lib/workspace-theme.ts, already moved per mode to at
+   least 4.5:1 on every page background, so light accents read as well),
+   else --chart-1. Charts of several series keep the palette. */
 :root {
+  --chart-accent: var(--accent, var(--chart-1));
   --chart-1: #3b3fd8;
   --chart-2: #eb6834;
   --chart-3: #1baf7a;
@@ -17053,7 +17059,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   fill: var(--chart-grid);
 }
 .mon-share-fill {
-  fill: var(--chart-1);
+  fill: var(--chart-accent);
 }
 .mon-small {
   margin: 8px 0 0;
@@ -17306,14 +17312,14 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   height: 8px;
   margin-bottom: 6px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--chart-1) 16%, transparent);
+  background: color-mix(in srgb, var(--chart-accent) 16%, transparent);
   overflow: hidden;
 }
 .settings-tile-meter > span {
   display: block;
   height: 100%;
   border-radius: 4px;
-  background: var(--chart-1);
+  background: var(--chart-accent);
 }
 .settings-tile-meter.high > span {
   background: var(--chart-4);
@@ -17557,14 +17563,14 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   grid-column: 1 / -1;
   height: 6px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--chart-1) 14%, transparent);
+  background: color-mix(in srgb, var(--chart-accent) 14%, transparent);
   overflow: hidden;
 }
 .mon-bars b {
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--chart-1);
+  background: var(--chart-accent);
 }
 .mon-filters {
   display: flex;
@@ -35359,6 +35365,31 @@ html.split-resizing * {
 }
 .toolbar-layout-check span {
   overflow-wrap: anywhere;
+}
+/* "Symbole unten in der Seitenleiste" (#589,
+   components/settings/user/sidebar-tools-settings.tsx): the symbols with a
+   checkbox each, in columns as wide as the names need. */
+.sidebar-tools-choice {
+  display: grid;
+  gap: 10px;
+}
+.sidebar-tools-choice ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sidebar-tools-choice svg {
+  flex: none;
+  color: var(--secondary);
+}
+.sidebar-tools-choice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
 }
 /* Whether the bar is customized, above its buttons. */
 .toolbar-layout-status {

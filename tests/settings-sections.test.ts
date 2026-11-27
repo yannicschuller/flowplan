@@ -124,6 +124,7 @@ test("search targets of the personal and connection sections exist in their pane
     "components/settings/user/appearance.tsx",
     "components/settings/user/toolbar-layout-editor.tsx",
     "components/settings/user/feature-modules.tsx",
+    "components/settings/user/sidebar-tools-settings.tsx",
     "components/settings/user/usage.tsx",
   ]
     .map((file) => readFileSync(file, "utf8"))

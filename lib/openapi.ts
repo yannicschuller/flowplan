@@ -22,6 +22,7 @@ import { strikeDoneTasksSchema } from "./done-strike-pref";
 import { unassignedTasksSchema } from "./unassigned-tasks-pref";
 import { whiteboardCanvasSchema } from "./whiteboard-canvas-pref";
 import { PERSONAL_FONTS, personalFontSchema } from "./personal-font";
+import { SIDEBAR_TOOL_IDS, hiddenSidebarToolsSchema } from "./sidebar-tools-pref";
 import { notificationSoundSchema } from "./notification-sound";
 import { startScreenSchema } from "./start-screen";
 import { updateNotesLevelSchema } from "./update-notes-pref";
@@ -93,7 +94,7 @@ const taskTargetSchema = z.discriminatedUnion("kind", [
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.printPresets", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.font", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.strikeDoneTasks", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "gettingStarted.start", "gettingStarted.mark", "gettingStarted.hide", "sample.create", "sample.remove", "profile.language", "profile.plainLook", "profile.font", "profile.sidebarTools", "profile.textMenu", "profile.print", "profile.pageIcon", "profile.externalLinkIcon", "profile.quoteShortcut", "profile.formattingToolbar", "profile.toolbarLayout", "profile.motion", "profile.fullWidthPages", "profile.commentMargin", "profile.strikeDoneTasks", "profile.whiteboardCanvas", "profile.notificationSound", "profile.startScreen", "profile.updateNotes", "profile.settingsLevel", "profile.modules", "profile.htmlScripts", "profile.htmlScriptsClear", "releaseNotes.list", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete", "account.keepLink",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -360,7 +361,7 @@ export const commandActions: ActionDoc[] = [
     action: "workspace.theme",
     summary: "Set the workspace's appearance",
     description:
-      "Needs the owner role. The look every member, guest, publication and form of the workspace shows: `accent` (#rrggbb; its light and dark palette is derived, its lightness adjusted for WCAG AA contrast), `background` (a preset) and `fonts` per slot (`ui`, `display`, `mono`): a bundled face id or `custom:<id>` of a face uploaded with POST /api/workspace-fonts. Values equal to the default are dropped; `theme: null` restores Flowplan's own look. No custom CSS. Answers the look with every uploaded face.",
+      "Needs the owner role. The look every member, guest, publication and form of the workspace shows: `accent` (#rrggbb; its light and dark palette is derived, its lightness adjusted for WCAG AA contrast), `logoColor` (#rrggbb, #591: the colour of the logo in the sidebar and the browser tab; absent or null: it follows the accent), `background` (a preset) and `fonts` per slot (`ui`, `display`, `mono`): a bundled face id or `custom:<id>` of a face uploaded with POST /api/workspace-fonts. Values equal to the default are dropped; `theme: null` restores Flowplan's own look. No custom CSS. Answers the look with every uploaded face.",
     input: z.object({
       action: z.literal("workspace.theme"),
       workspaceId: uuid,
@@ -418,6 +419,13 @@ export const commandActions: ActionDoc[] = [
     description: `For the caller, in every workspace and on all devices (#512): the face of the interface and of the text of pages, records and comments, over the workspace's interface font; headings, code and pages set in serif or mono keep theirs. One of ${PERSONAL_FONTS.map((f) => "`" + f + "`").join(", ")} (\`system\`: the device's own interface font); null for the default – the workspace's interface font, or Flowplan's own. Published pages and forms are not affected. The bootstrap returns it as \`uiFont\`.`,
     input: z.object({ action: z.literal("profile.font"), font: personalFontSchema }),
     result: z.object({ font: personalFontSchema }),
+  },
+  {
+    action: "profile.sidebarTools",
+    summary: "Choose which symbols the sidebar's bottom row shows",
+    description: `For the caller, in every workspace and on all devices (#589): \`hidden\` lists the symbols left out of the row at the bottom of the sidebar (${SIDEBAR_TOOL_IDS.map((id) => "`" + id + "`").join(", ")}); an empty list shows them all. Hidden places stay reachable through the quick search; on phones the "More" sheet leaves them out too but always keeps \`settings\`, and on wider windows a hidden \`settings\` appears in the workspace menu. A workspace that hides Study or Graph for everyone still does. The bootstrap returns it as \`hiddenSidebarTools\`.`,
+    input: z.object({ action: z.literal("profile.sidebarTools"), hidden: hiddenSidebarToolsSchema }),
+    result: z.object({ hidden: z.array(z.enum(SIDEBAR_TOOL_IDS)) }),
   },
   {
     action: "profile.textMenu",

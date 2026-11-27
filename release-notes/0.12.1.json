@@ -17,6 +17,20 @@
     {
       "de": "Serverfehler melden: Unter Überwachung → Fehler im Detail zeigt „GitHub-Issue öffnen“ genau, was ins Issue geht (ohne Fehler-IDs und Hostnamen), „Schon gemeldet?“ sucht die buildunabhängige Signatur. Montags nennt die „Wöchentliche Fehlerübersicht“ neue und wiedergekehrte Fehler.",
       "en": "Report server errors: under Monitoring → Errors in detail, “Open GitHub issue” shows exactly what goes into the issue (no error IDs or host names), and “Already reported?” searches for its build-independent signature. On Mondays the “Weekly error summary” names new and returning errors."
+    },
+    {
+      "de": "Wähle selbst, welche Symbole unten in der Seitenleiste stehen: in Darstellung & Sprache → Seitenleiste oder per Rechtsklick (auf Touchscreens lange drücken) auf ein Symbol. Ausgeblendetes bleibt über die Schnellsuche erreichbar. Gilt auf allen Geräten.",
+      "en": "Choose which symbols sit at the bottom of the sidebar: in Appearance & language → Sidebar, or right-click a symbol (long-press on touch screens). Hidden places stay reachable through the quick search. Applies on all devices.",
+      "issues": [
+        589
+      ]
+    },
+    {
+      "de": "Eigene Logo-Farbe: Im Erscheinungsbild des Arbeitsbereichs bekommt das Logo oben in der Seitenleiste und im Browser-Tab auf Wunsch eine eigene Farbe – sonst folgt es wie bisher der Akzentfarbe.",
+      "en": "An own logo colour: in the workspace appearance, the logo at the top of the sidebar and in the browser tab can get a colour of its own – otherwise it follows the accent colour as before.",
+      "issues": [
+        591
+      ]
     }
   ],
   "improvements": [
@@ -79,6 +93,13 @@
       "en": "A database's calendar sync now sits in the “…” menu with the other tools instead of as an icon of its own in the toolbar.",
       "issues": [
         605
+      ]
+    },
+    {
+      "de": "Diagramme mit nur einer Farbe – Verlaufslinien, Diagramme mit einer Reihe, Speicherringe und Balken – nehmen jetzt die Akzentfarbe des Arbeitsbereichs an, gut lesbar in Hell und Dunkel. Diagramme mit mehreren Reihen behalten ihre für Farbenblindheit geprüften Farben.",
+      "en": "Charts of a single colour – sparklines, single-series charts, usage rings and bars – now take the workspace’s accent colour, readable in light and dark. Charts with several series keep their colour-blind-safe palette.",
+      "issues": [
+        590
       ]
     }
   ],

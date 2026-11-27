@@ -16,6 +16,7 @@ import { setUserCommentMargin, userCommentMargin } from "./user-comment-margin";
 import { setUserStrikeDoneTasks, userStrikeDoneTasks } from "./user-done-strike";
 import { setUserWhiteboardCanvas, userWhiteboardCanvas } from "./user-whiteboard-canvas";
 import { setUserFont, userFont } from "./user-font";
+import { setUserHiddenSidebarTools, userHiddenSidebarTools } from "./user-sidebar-tools";
 import { setUserNotificationSound, userNotificationSound } from "./user-notification-sound";
 import { setUserStartScreen, userStartScreen } from "./user-start-screen";
 import { adminSetUpdateNotes, recentReleaseNotes, setUserUpdateNotes, userUpdateNotes } from "./user-update-notes";
@@ -448,6 +449,9 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // "Schriftart" (#512, lib/personal-font.ts): this person's typeface,
     // over the workspace's interface font.
     uiFont: await userFont(user.id),
+    // "Symbole unten in der Seitenleiste" (#589, lib/sidebar-tools-pref.ts):
+    // the symbols this person hid from the sidebar's bottom row.
+    hiddenSidebarTools: await userHiddenSidebarTools(user.id),
     // Automatic links (#202, lib/auto-link.ts) for the editors.
     linkRules: await workspaceLinkRules(workspace.id),
     // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
@@ -1184,6 +1188,10 @@ async function runCommand(
       // The typeface this person reads Flowplan in (#512, lib/personal-font.ts).
       case "profile.font":
         result = await setUserFont(user, b.font);
+        break;
+      // The symbols hidden from the sidebar's bottom row (#589, lib/sidebar-tools-pref.ts).
+      case "profile.sidebarTools":
+        result = await setUserHiddenSidebarTools(user, b.hidden);
         break;
       // The text menu on selecting text (#200, lib/text-menu-pref.ts).
       case "profile.textMenu":
