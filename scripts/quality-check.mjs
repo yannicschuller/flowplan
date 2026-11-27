@@ -85,6 +85,7 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // editor chunk the workflow page shares – measured 1063.0 KB, its budget
 // moves to 1070 KB; the sidebar tools menu and the chart accent (#589, #590) add
 // about 2 KB to the workspace: 1074 KB, monitoring 901 KB.
+// 2026-11-27: after #610/#612/#613 monitoring measured 901.0 KB: 905 KB.
 const PAGES = [
   { path: "/login", jsKb: 255 },
   { path: "/register", jsKb: 255 },
@@ -136,7 +137,7 @@ const PAGES = [
   // administration landing page).
   { path: "/#settings/instance", name: "settings: instance", signedIn: true, jsKb: 870, ready: ".sv-glance-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
-  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 901, ready: ".mon-health" },
+  { path: "/#settings/instance/monitoring", name: "monitoring", signedIn: true, jsKb: 905, ready: ".mon-health" },
   // The push relay's state (components/settings/admin/push.tsx).
   { path: "/#settings/instance/push", name: "push status", signedIn: true, jsKb: 876, ready: "#relay" },
 ];
