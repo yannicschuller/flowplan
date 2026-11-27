@@ -654,6 +654,23 @@ Health = TypedDict("Health", {
     "uptimeSeconds": int,
 }, total=False)
 
+# The backend part of the installation details for bug reports. Everyone signed in gets version, channel, build and build date; administrators (a browser session of the admin group – API tokens never carry admin rights) also Node.js, the install method, the database, the storage and the mode. Never host names, addresses or secrets.
+Diagnostics = TypedDict("Diagnostics", {
+    "scope": Required[Literal["member", "admin"]],  # `admin`: the instance details are included
+    "version": Required[str],  # Flowplan's version, empty when not known
+    "channel": Required[Literal["beta", "release", ""]],
+    "commit": Required[str],  # Short commit of the build (7 characters), empty when not known
+    "builtAt": Required[str],  # Build time (ISO 8601), empty when not known
+    "node": str,  # Administrators only: the Node.js version, e.g. `v26.13.1`
+    "database": Literal["sqlite", "postgres"],  # Administrators only
+    "databaseVersion": Optional[int],  # Administrators only: PostgreSQL's major version (null for SQLite or when not known)
+    "storage": Literal["local", "s3"],  # Administrators only: files on the local disk or in S3 object storage
+    "mode": Literal["single", "cluster"],  # Administrators only
+    "installMethod": str,  # Administrators only: as set by the operator (e.g. `docker-compose`, `helm`), otherwise detected (`kubernetes`, `docker`, `podman`, `no container`)
+    "installMethodSource": Literal["setting", "detected"],  # Administrators only
+    "text": Required[str],  # One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser.
+}, total=False)
+
 SiteInfo = TypedDict("SiteInfo", {
     "signupOpen": Required[bool],
     "demo": Required[bool],
@@ -3045,6 +3062,10 @@ class FlowplanClient:
         """Liveness and readiness — No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator. (GET /api/health)"""
         return self._json("GET", "/api/health", headers=headers)
 
+    def diagnostics(self, headers: Optional[dict[str, str]] = None) -> "Diagnostics":
+        """Installation details for a bug report — What Settings → About Flowplan copies with “Copy for bug report”, backend part only (the browser adds the frontend): version, channel, build and build date for everyone; Node.js, install method, database, storage and mode only for administrators signed in in the browser – API tokens get the member view. Answered with `Cache-Control: no-store`. (GET /api/diagnostics)"""
+        return self._json("GET", "/api/diagnostics", headers=headers)
+
     def site_info(self, headers: Optional[dict[str, str]] = None) -> "SiteInfo":
         """Whether sign-up, the demo and SSO are open (GET /api/site-info)"""
         return self._json("GET", "/api/site-info", headers=headers)
@@ -3762,7 +3783,7 @@ class FlowplanClient:
         return self._json("POST", "/api/workflow-approvals/" + _p(approval_id), json_body=body, headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
-        """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools. (POST /api/mcp)"""
+        """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, list_collections, run_collection, read_page, query_database, get_record, my_tasks, get_meeting_note, get_diagnostics (reading); create_page, append_to_page, update_page, move_page, trash_page, set_task, create_record, update_record, trash_record, save_collection, delete_collection, create_meeting_note (writing; nothing is deleted permanently – trash_page and trash_record move to the trash); and the workflow tools. (POST /api/mcp)"""
         return self._json("POST", "/api/mcp", json_body=body, headers=headers)
 
 

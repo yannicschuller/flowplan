@@ -6811,6 +6811,36 @@ mark[data-color],
   color: var(--blue);
   font-weight: 500;
 }
+/* "Für Bug-Report kopieren" (#630, components/settings/diagnostics-copy.tsx). */
+.about-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.about-diagnostics-text {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.about-diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.about-diagnostics-status {
+  color: var(--muted);
+  font-size: 12.5px;
+}
 .about-sponsor > svg {
   color: #d03a5f;
 }

@@ -20,6 +20,7 @@ import { InstanceToolbarLayout } from "./toolbar-layout-default";
 import { StarterContent } from "./starter-content";
 import { InstanceModules, InstanceModulesOff } from "./modules-default";
 import { SettingsFile } from "./settings-file";
+import { DiagnosticsCopy } from "../diagnostics-copy";
 
 export default function GeneralSection() {
   const t = useT();
@@ -121,6 +122,8 @@ export default function GeneralSection() {
             </span>
           )}
         </SettingRow>
+        {/* "Für Bug-Report kopieren" (#630), with the instance details. */}
+        <DiagnosticsCopy />
         <SettingRow
           label={t("Admin-Gruppe", "Admin group")}
           description={t("Personen dieser SSO- oder LDAP-Gruppe verwalten die Instanz (OIDC_ADMIN_GROUP).", "People in this SSO or LDAP group administer the instance (OIDC_ADMIN_GROUP).")}

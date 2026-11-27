@@ -441,7 +441,7 @@ Sicherheitslücken bitte vertraulich melden – wie, was dazugehört und welche 
 - Volltextsuche inklusive Texterkennung für gescannte PDFs und Office-Dateien
 - Prometheus-Metriken und Health-Endpunkt; **Einstellungen → Über Flowplan** zeigt laufende Version, Commit und Build-Datum und meldet Admins eine neuere Version
 - Eine ganze Instanz auf einen anderen Server umziehen unter **Einstellungen → Instanz → Speicher & Sicherung**: Der neue Server holt Datenbank, Dateien und Schlüssel direkt vom alten, mit kurzer Schlusssynchronisierung im Nur-Lesen-Modus
-- `FLOWPLAN_SOURCE_URL` lässt die Quellcode-Links auf deinen geänderten Code zeigen (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` blendet die Sponsoring-Karte auf der Seite „Über Flowplan“ aus
+- `FLOWPLAN_SOURCE_URL` lässt die Quellcode-Links auf deinen geänderten Code zeigen (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` blendet die Sponsoring-Karte auf der Seite „Über Flowplan“ aus; **Für Bug-Report kopieren** dort fasst Version, Build und Gerät (für Admins auch Node.js, Datenbank, Speicher und die Installationsart, `FLOWPLAN_INSTALL_METHOD`) in einer Zeile zusammen
 - Docker-Image für `amd64` und `arm64`, ein **Helm-Chart** für Kubernetes
 
 </details>

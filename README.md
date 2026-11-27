@@ -469,7 +469,7 @@ Please report vulnerabilities privately – see [SECURITY.md](SECURITY.md) for h
 - Full-text search including OCR for scanned PDFs and Office files
 - Prometheus metrics and a health endpoint; **Settings → About Flowplan** shows the running version, commit and build date, and tells admins about a newer release
 - Move a whole instance to another server from **Settings → Instance → Storage & backup**: the new server pulls the database, files and keys directly from the old one, with a short read-only final sync
-- `FLOWPLAN_SOURCE_URL` points the source links to your modified code (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` hides the sponsor card on the About page
+- `FLOWPLAN_SOURCE_URL` points the source links to your modified code (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` hides the sponsor card on the About page; **Copy for bug report** there puts version, build and device (for admins also Node.js, database, storage and the install method, `FLOWPLAN_INSTALL_METHOD`) into one line
 - Docker image for `amd64` and `arm64`, a **Helm chart** for Kubernetes
 
 </details>
