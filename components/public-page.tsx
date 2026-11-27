@@ -573,7 +573,8 @@ async function renderPublishedPage({
         </div>
       ) : d && !record ? (
         <div className="data-table-scroll">
-          <table className="data-table">
+          {/* "Zellen umbrechen" (#638): the view's setting, as in the app. */}
+          <table className={activeView?.wrapCells ? "data-table wrap-cells" : "data-table"}>
             <thead>
               <tr>
                 {visible?.map((f) => (
@@ -584,17 +585,21 @@ async function renderPublishedPage({
             <tbody>
               {records.map((r: Row) => (
                 <tr key={r.id}>
-                  {visible?.map((f) => (
-                    <td key={f.id}>
-                      {f.id === "title" ? (
+                  {visible?.map((f) => {
+                    const value =
+                      f.id === "title" ? (
                         <a href={rowHref(r.id)}>
                           {cellText(r.cells[f.id]) || t("Ohne Titel", "Untitled")}
                         </a>
                       ) : (
-                        publicValue(f, r.cells[f.id], d.fields, { links: true })
-                      )}
-                    </td>
-                  ))}
+                        publicValue(f, r.cells[f.id], d.fields, { links: true, block: !!activeView?.wrapCells })
+                      );
+                    return (
+                      <td key={f.id}>
+                        {activeView?.wrapCells ? <span className="cell-wrap">{value}</span> : value}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

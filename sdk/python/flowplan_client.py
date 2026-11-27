@@ -407,6 +407,7 @@ View = TypedDict("View", {
     "calculations": list[list[Any]],
     "recordOpen": Literal["center", "side", "full"],
     "sidePanel": Literal["beside", "over"],
+    "wrapCells": bool,
 }, total=False)
 
 Database = TypedDict("Database", {

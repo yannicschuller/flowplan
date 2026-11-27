@@ -301,6 +301,8 @@ export type View = {
   recordOpen?: import("./record-layout").RecordOpenMode;
   // Where "Seitenleiste" opens: beside the view (it narrows) or over it (#392).
   sidePanel?: import("./side-panel").SidePanelPlace;
+  // Table: cells wrap to show their whole content (#638); unset is one line.
+  wrapCells?: boolean;
 };
 export type Database = {
   page_id: string;

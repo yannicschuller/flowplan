@@ -187,6 +187,10 @@ export const view = z
     recordOpen: z.enum(["center", "side", "full"]).optional(),
     // "Seitenleiste" beside the view or over it (#392, lib/side-panel.ts).
     sidePanel: z.enum(["beside", "over"]).optional(),
+    // Table: "Zellen umbrechen" (#638) – cells show their whole content
+    // (text wraps, chips wrap), each row as tall as its tallest cell; unset
+    // is one line with an ellipsis.
+    wrapCells: z.boolean().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.filterGroup && v.filters.length)

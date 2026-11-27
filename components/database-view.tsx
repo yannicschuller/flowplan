@@ -785,6 +785,9 @@ export default function DatabaseView({
       (f) => !view.hiddenFields?.includes(f.id),
     );
   const viewRecordMode = viewRecordOpenMode(view, recordLayout);
+  // "Zellen umbrechen" (#638): the table's cells show their whole content
+  // (app/globals.css .wrap-cells caps each at ten lines).
+  const wrapCells = view.type === "table" && !!view.wrapCells;
   // "Seitenleiste" beside the view (#392): the view narrows, the panel
   // takes the right column. Too narrow for that: a page of its own (a
   // dialog across the window where the database is not the page itself).
@@ -2428,7 +2431,7 @@ export default function DatabaseView({
     const v = r.cells[f.id];
     // Formatted text (#126).
     if (isFormattedText(f, fields))
-      return cellText(v).trim() ? <InlineText value={cellText(v)} links={place !== "button"} oneLine={place !== "block"} /> : <span className="muted">—</span>;
+      return cellText(v).trim() ? <InlineText value={cellText(v)} links={place !== "button"} oneLine={place === "button" || (place === "cell" && !wrapCells)} /> : <span className="muted">—</span>;
     if (f.type === "files") {
       const names = new Map((data.files || []).map((x) => [x.url, x.name]));
       const urls = fileUrls(v);
@@ -3605,7 +3608,7 @@ export default function DatabaseView({
               </span>
             ) : (
               <span
-                className={f.id === fields[0].id ? "title-cell" : ""}
+                className={f.id === fields[0].id ? "title-cell" : wrapCells ? "cell-wrap" : ""}
                 style={tree && f.id === fields[0].id ? { paddingLeft: tree.depth * 18 } : undefined}
               >
                 {tree && f.id === fields[0].id && (
@@ -4053,7 +4056,7 @@ export default function DatabaseView({
             ref={stickyHead}
             role="grid"
             aria-label={t(`${view.name} – Tabelle`, `${view.name} – table`)}
-            className="data-table configurable-table"
+            className={`data-table configurable-table${wrapCells ? " wrap-cells" : ""}`}
             style={{
               // The selection column is wider on touch screens
               // (--selection-column, app/mobile-ux.css); the pinned first
@@ -5164,6 +5167,17 @@ export default function DatabaseView({
               disabled={!viewEditable}
               onChange={(wip) => updateView({ wip })}
             />
+          )}
+          {view.type === "table" && (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                disabled={!viewEditable}
+                checked={!!view.wrapCells}
+                onChange={(e) => updateView({ wrapCells: e.target.checked || undefined })}
+              />
+              {t("Zellen umbrechen", "Wrap cells")}
+            </label>
           )}
           {view.type === "table" && subtaskParent && (
             <label className="checkbox-label">

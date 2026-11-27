@@ -32561,6 +32561,43 @@ tr:hover .row-open-mark,
 .title-cell {
   gap: 8px;
 }
+/* "Zellen umbrechen" (#638, view.wrapCells, also in linked databases and
+   published tables): every cell shows its whole content – text wraps and
+   keeps its line breaks, the chips of multi-selects, relations and people
+   wrap – and each row is as tall as its tallest cell, its cells aligned at
+   the top. Cap: one huge value must not blow up the table, so a cell shows
+   at most 10 lines and ends in "…" (line-clamp); chips, which are not
+   lines of text, stop at the height of those 10 lines (max-height: 10 ×
+   the 1.5 line height). Unset, the cells stay one line with an ellipsis. */
+.data-table.wrap-cells td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.data-table.wrap-cells :is(.cell-wrap, .row-title-text) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  max-height: 15em;
+  overflow: hidden;
+  white-space: pre-line;
+  text-overflow: ellipsis;
+}
+.data-table.wrap-cells :is(.title-cell, .row-title-link) {
+  align-items: flex-start;
+}
+.data-table.wrap-cells .row-title-link :is(.row-icon, .row-open-mark) {
+  margin-top: 2px;
+}
+.data-table.wrap-cells :is(.tag, .cell-link, .cell-link-text, .person-cell),
+.data-table.wrap-cells td .date-cell-text {
+  white-space: normal;
+}
+.data-table.wrap-cells .tag {
+  max-width: 100%;
+}
 @media (max-width: 640px) {
   .chip-popover {
     min-width: min(300px, calc(100vw - 16px));

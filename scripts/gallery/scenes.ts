@@ -1412,6 +1412,33 @@ const databaseScenes: Scene[] = [
       await page.locator(".cell-popover input[type=time]").waitFor();
     },
   },
+  // "Wrap cells" (#638): long notes and several tags on more than one line,
+  // each row as tall as its tallest cell (ten lines at most).
+  {
+    id: "database-table-wrapped",
+    group: "Databases",
+    title: "Table with wrapped cells",
+    steps: async (page, ctx) => {
+      const db = await ctx.fixture({ kind: "database", title: "Release plan" });
+      const { database } = await (await ctx.api.get(`/api/pages/${db}`)).json();
+      await ctx.command({
+        action: "database.update",
+        pageId: db,
+        version: database.version,
+        fields: [...database.fields, { id: "notes", name: "Notes", type: "text" }],
+        views: database.views.map((v: { type: string }) => (v.type === "table" ? { ...v, wrapCells: true } : v)),
+      });
+      const long = "Check the migration on a copy of the production data first, then write down every step that needed a manual fix. ";
+      for (const cells of [
+        { title: "Prepare the release notes for the next version", status: "In progress", tags: ["Design", "Product", "Engineering"], notes: long.repeat(2) },
+        { title: "Short one", status: "Done", tags: ["Design"], notes: "Done." },
+        { title: "A very long note", status: "Not started", notes: long.repeat(8) },
+      ])
+        await ctx.command({ action: "row.create", pageId: db, cells });
+      await ctx.open(`#page=${db}`);
+      await page.locator(".data-table.wrap-cells tbody tr").nth(2).waitFor();
+    },
+  },
   {
     id: "form-public",
     group: "Public",

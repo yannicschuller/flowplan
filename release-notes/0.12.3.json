@@ -1,0 +1,13 @@
+{
+  "features": [
+    {
+      "de": "„Zellen umbrechen“ unter „Ansicht konfigurieren“ einer Tabelle zeigt den ganzen Inhalt jeder Zelle: Text und Auswahl-Chips brechen um, jede Zeile wird so hoch wie ihre längste Zelle (höchstens zehn Zeilen). Gilt pro Ansicht für alle, auch verknüpft und veröffentlicht.",
+      "en": "“Wrap cells” under a table’s “Configure view” shows the whole content of every cell: text and chips wrap, and each row grows to its longest cell (at most ten lines). It is set per view and applies to everyone, also in linked databases and published tables.",
+      "issues": [
+        638
+      ]
+    }
+  ],
+  "improvements": [],
+  "fixes": []
+}

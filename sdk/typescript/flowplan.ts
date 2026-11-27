@@ -749,6 +749,7 @@ export type View = {
   calculations?: unknown[][];
   recordOpen?: "center" | "side" | "full";
   sidePanel?: "beside" | "over";
+  wrapCells?: boolean;
 };
 
 export type Database = {
@@ -3228,6 +3229,7 @@ export type CommandDatabaseUpdate = {
     calculations?: unknown[][];
     recordOpen?: "center" | "side" | "full";
     sidePanel?: "beside" | "over";
+    wrapCells?: boolean;
   })[];
   optionRenames?: {
     field: string;
