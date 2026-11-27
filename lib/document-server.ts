@@ -348,27 +348,127 @@ export function htmlState(html: string) {
 // blank page instead: the empty paragraph is deleted (a tombstone, so a
 // copy of it that comes back later stays deleted). Updates of editors that
 // loaded the page refer to its paragraph and merge as usual.
+//
+// An editor may have typed into that paragraph before it heard of the
+// replacement. Yjs drops an insert into a deleted element (it lands deleted
+// and is garbage-collected), so such text is re-attached: the deleted
+// paragraph's id is recorded in the document (REPLACED_BLANKS), and an
+// update that puts something into it gets the paragraph rebuilt from the
+// update alone (rebuiltBlank) and inserted as a new paragraph where the
+// deleted one stands. That is where Yjs puts the paragraph when the typed
+// text arrives first (the page is not blank then and both merge as usual),
+// so both orders give the same document: the typed text above or below the
+// content, as the client ids order the two. The other ways out do not work
+// with Yjs: a deleted item cannot be revived, nothing moves an item, and
+// handing the editor's own items to another parent would leave the editor
+// and the server with different documents (the editor keeps its items where
+// it put them). Keeping the empty paragraph until it gets text would leave
+// the empty line this replacement exists to avoid. Limits: what the editor
+// sends in a later update into the text it already sent (keystrokes made
+// while that save was on its way, before the editor applied the answer) is
+// not re-attached, nor is a second editor's text into the same paragraph
+// merged into the first one's copy – each becomes a paragraph of its own.
+//
+// Returns the state vector of what was written for the sender – the update
+// and text re-attached for it, not the record of a replaced paragraph – for
+// "who wrote what" (lib/document-authors.ts).
 export function applyDocumentUpdate(doc: Y.Doc, update: Uint8Array) {
   const fragment = doc.getXmlFragment("default");
   const only = fragment.length === 1 ? fragment.get(0) : null;
   const blank = only instanceof Y.XmlElement && only.nodeName === "paragraph" && only.length === 0;
+  // The server's own changes go in a transaction apart from the update's:
+  // Yjs takes one that applies an update for a remote one and gives the
+  // document a new client id when it also wrote with its own.
   if (blank && independentUpdate(doc, update)) {
-    doc.transact(() => {
-      fragment.delete(0, 1);
-      Y.applyUpdate(doc, update);
-    });
-    // Nothing came with it: the page keeps a paragraph.
-    if (!fragment.length) fragment.insert(0, [new Y.XmlElement("paragraph")]);
-    return;
+    Y.applyUpdate(doc, update);
+    const written = Y.encodeStateVector(doc);
+    const id = only._item!.id;
+    // Its blocks deleted again within it: the page keeps its paragraph.
+    if (fragment.length > 1)
+      doc.transact(() => {
+        fragment.delete(fragment.toArray().indexOf(only), 1);
+        doc.getMap(REPLACED_BLANKS).set(`${id.client}:${id.clock}`, true);
+      });
+    return written;
   }
+  const replaced = doc.getMap(REPLACED_BLANKS);
+  const copies = replaced.size ? reattached(doc, update, replaced) : [];
   Y.applyUpdate(doc, update);
+  if (copies.length)
+    doc.transact(() => {
+      for (const { at, paragraph } of copies) {
+        const index = liveBefore(fragment, at);
+        if (index !== null) fragment.insert(index, [paragraph]);
+      }
+    });
+  return Y.encodeStateVector(doc);
 }
-// Whether an update neither contains nor refers to anything of `doc`.
+// The ids ("client:clock") of blank paragraphs replaced by content written
+// from scratch (applyDocumentUpdate), a map at the document's root: editors
+// read only the "default" fragment.
+const REPLACED_BLANKS = "replacedBlanks";
+// For each replaced blank paragraph that `update` puts something new into:
+// the paragraph as the update makes it, as a copy to insert.
+function reattached(doc: Y.Doc, update: Uint8Array, replaced: Y.Map<unknown>) {
+  const known = Y.decodeStateVector(Y.encodeStateVector(doc));
+  const targets = new Map<string, Y.ID>();
+  for (const s of Y.decodeUpdate(update).structs) {
+    if (!(s instanceof Y.Item) || !(s.parent instanceof Y.ID)) continue;
+    // Repeated delivery: only what the document does not have yet.
+    if (s.id.clock + s.length <= (known.get(s.id.client) || 0)) continue;
+    const key = `${s.parent.client}:${s.parent.clock}`;
+    if (replaced.has(key)) targets.set(key, s.parent);
+  }
+  const copies: { at: Y.ID; paragraph: Y.XmlElement }[] = [];
+  for (const at of targets.values()) {
+    const paragraph = rebuiltBlank(doc, update, at);
+    if (paragraph) copies.push({ at, paragraph });
+  }
+  return copies;
+}
+// The blank paragraph `at` as `update` fills it, rebuilt in a document of
+// its own where it is not deleted: the paragraph at the same id (after
+// filler for the client's earlier clocks), then the update and whatever the
+// stored document holds back for missing parts (updates out of order).
+// A copy of its content, or null when nothing visible came into it.
+function rebuiltBlank(doc: Y.Doc, update: Uint8Array, at: Y.ID) {
+  const scratch = new Y.Doc({ gc: false });
+  try {
+    scratch.clientID = at.client;
+    if (at.clock) scratch.getText("filler").insert(0, "x".repeat(at.clock));
+    const paragraph = new Y.XmlElement("paragraph");
+    scratch.getXmlFragment("default").insert(0, [paragraph]);
+    // Done writing as that client (Yjs warns when an update brings its own id).
+    scratch.clientID = at.client ? 0 : 1;
+    Y.applyUpdate(scratch, update);
+    const pending = (doc.store as unknown as { pendingStructs: { update: Uint8Array } | null; pendingDs: Uint8Array | null });
+    if (pending.pendingStructs) Y.applyUpdate(scratch, pending.pendingStructs.update);
+    if (pending.pendingDs) Y.applyUpdate(scratch, pending.pendingDs);
+    const visible = paragraph.toArray().some((child) => !(child instanceof Y.XmlText) || child.length > 0);
+    return visible ? (paragraph.clone() as Y.XmlElement) : null;
+  } finally {
+    scratch.destroy();
+  }
+}
+// How many visible blocks of the fragment come before the (deleted) item
+// with id `at`; null when it is not in the fragment.
+function liveBefore(fragment: Y.XmlFragment, at: Y.ID) {
+  let index = 0;
+  for (let item = fragment._start; item; item = item.right) {
+    if (item.id.client === at.client && item.id.clock <= at.clock && at.clock < item.id.clock + item.length) return index;
+    if (!item.deleted && item.countable) index += item.length;
+  }
+  return null;
+}
+// Whether an update neither contains nor refers to anything of `doc` and
+// puts content into the page (a block at the fragment's top level): one
+// without any keeps the blank paragraph.
 function independentUpdate(doc: Y.Doc, update: Uint8Array) {
   const known = Y.decodeStateVector(Y.encodeStateVector(doc));
   const ours = (id: unknown) => id instanceof Y.ID && known.has(id.client);
   const { structs, ds } = Y.decodeUpdate(update);
-  if (!structs.length || [...ds.clients.keys()].some((client) => known.has(client))) return false;
+  if (!structs.some((s) => s instanceof Y.Item && (s.parent as unknown) === "default")) return false;
+  if ([...ds.clients.keys()].some((client) => known.has(client))) return false;
   return structs.every(
     (s) =>
       !known.has(s.id.client) &&

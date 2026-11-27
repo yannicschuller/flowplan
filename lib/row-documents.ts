@@ -107,11 +107,11 @@ export async function syncRowDocument(
   try {
     Y.applyUpdate(doc, previous.state);
     const before = Y.encodeStateVector(doc);
-    applyDocumentUpdate(doc, Buffer.from(encoded, "base64"));
+    const written = applyDocumentUpdate(doc, Buffer.from(encoded, "base64"));
     const state = Y.encodeStateAsUpdate(doc);
     // Refused above the size cap (lib/document-size.ts) before anything is written.
     requireDocumentSize(state, previous.state.byteLength);
-    await recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, Y.encodeStateVector(doc));
+    await recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, written);
     const html = stateHtml(doc);
     if (
       html !== previous.html &&

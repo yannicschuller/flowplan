@@ -89,7 +89,7 @@ function edited(base: Uint8Array, sessions: { edits: Edit[]; seen: number }[]) {
   return updates.flat();
 }
 // The server's copy: the stored state and every update, in this order.
-function merged(base: Uint8Array, updates: Uint8Array[], merge = applyDocumentUpdate) {
+function merged(base: Uint8Array, updates: Uint8Array[], merge: (doc: Y.Doc, update: Uint8Array) => unknown = applyDocumentUpdate) {
   const doc = load(base);
   doc.clientID = 1;
   for (const update of updates) merge(doc, update);
@@ -164,20 +164,66 @@ test("upstream: formatted text merges the same in any order", { todo: "Yjs 13.6.
   assert.deepEqual(deltas[1], deltas[0]);
 });
 
-// Found while writing the property above (reported, a design question): a
-// blank page is replaced by content written from scratch only while it is
-// blank (applyDocumentUpdate). Text typed into its paragraph by an editor
-// survives when it arrives first and is lost when the content arrives first.
-test("design: text typed into a blank page survives content written from scratch", { todo: "the blank paragraph it was typed into is deleted" }, () => {
-  const blank = htmlState("");
-  const editor = load(blank);
-  const typed: Uint8Array[] = [];
-  editor.on("update", (update: Uint8Array) => typed.push(update));
-  (editor.getXmlFragment("default").get(0) as Y.XmlElement).insert(0, [new Y.XmlText("typed")]);
-  const scratch = htmlState("<p>from scratch</p>");
-  // Which comes first is up to the client ids; both must be there.
-  assert.match(merged(blank, [...typed, scratch]), /^(?=.*<p>typed<\/p>)(?=.*<p>from scratch<\/p>)/);
-  assert.match(merged(blank, [scratch, ...typed]), /^(?=.*<p>typed<\/p>)(?=.*<p>from scratch<\/p>)/);
+// Found while writing the property above (D2): a blank page is replaced by
+// content written from scratch only while it is blank (applyDocumentUpdate).
+// Text typed into its paragraph by an editor that had not heard of the
+// replacement is re-attached, so it survives in either order – above or
+// below the content, as Yjs orders the paragraph and the content by their
+// client ids, the same in both orders.
+test("property: text typed into a blank page survives content written from scratch, in any order", () => {
+  check(
+    fc.property(
+      fc.integer({ min: 2, max: 2 ** 31 }),
+      fc.integer({ min: 2, max: 2 ** 31 }),
+      fc.integer({ min: 2, max: 2 ** 31 }),
+      fc.constantFrom("typed", "a", "😀 b", "中文"),
+      fc.constantFrom("<p>from scratch</p>", "<h2>Title</h2><p>from scratch</p>", "<ul><li><p>from scratch</p></li></ul>"),
+      fc.boolean(),
+      fc.array(fc.nat(), { minLength: 8, maxLength: 8 }),
+      (blankClient, editorClient, scratchClient, text, html, fullState, keys) => {
+        fc.pre(new Set([blankClient, editorClient, scratchClient]).size === 3);
+        const page = new Y.Doc();
+        page.clientID = blankClient;
+        page.getXmlFragment("default").insert(0, [new Y.XmlElement("paragraph")]);
+        const blank = Y.encodeStateAsUpdate(page);
+        const editor = load(blank);
+        editor.clientID = editorClient;
+        const typed: Uint8Array[] = [];
+        editor.on("update", (update: Uint8Array) => typed.push(update));
+        // Typed key by key, as an editor writes each keystroke.
+        const paragraph = editor.getXmlFragment("default").get(0) as Y.XmlElement;
+        const t = new Y.XmlText();
+        paragraph.insert(0, [t]);
+        for (const char of text) t.insert(t.length, char);
+        // One save: the editor's first sends its whole state, later ones
+        // the changes since the last (merged). What it sends in a later
+        // save into text the server re-attached already is a known limit
+        // (lib/document-server.ts).
+        const sent = [fullState ? Y.encodeStateAsUpdate(editor) : Y.mergeUpdates(typed)];
+        const writer = new Y.Doc();
+        writer.clientID = scratchClient;
+        Y.applyUpdate(writer, htmlState(html));
+        const scratch = Y.encodeStateAsUpdate(writer);
+        const updates = [...sent, scratch];
+        const shuffled = updates
+          .map((u, i) => [keys[i % keys.length], i, u] as const)
+          .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+          .map(([, , u]) => u);
+        const results = new Set<string>();
+        for (const order of [updates, [...updates].reverse(), shuffled])
+          // Also delivered twice, and the last one once before all.
+          for (const delivered of [order, [...order, ...order], [order[order.length - 1], ...order]]) {
+            const result = merged(blank, delivered);
+            assert.ok(result.includes(`<p>${text}</p>`), result);
+            assert.ok(result.includes("from scratch"), result);
+            assert.ok(!result.includes("<p></p>"), result);
+            results.add(result);
+          }
+        assert.equal(results.size, 1, [...results].join(" | "));
+      },
+    ),
+    80,
+  );
 });
 
 test("property: HTML to the stored document and back is stable", () => {

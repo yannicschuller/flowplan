@@ -147,6 +147,10 @@
       "issues": [
         611
       ]
+    },
+    {
+      "de": "Text, der in eine neue, leere Seite getippt wird, geht nicht mehr verloren, wenn im selben Moment Inhalt von anderswo ankommt (etwa „Umwandeln in → Seite“ oder ein Skript).",
+      "en": "Text typed into a new, empty page is no longer lost when content arrives from elsewhere at the same moment (such as “Turn into → Page” or a script)."
     }
   ]
 }

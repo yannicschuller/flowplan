@@ -29,6 +29,48 @@ test("content written from scratch replaces a blank page, without an empty line 
   assert.equal(stateHtml(merged), "<p>Oben</p><p></p>");
 });
 
+// D2 (tests/properties-yjs.test.ts): the content written from scratch
+// reaches the server first and deletes the blank paragraph; the text an
+// editor typed into it arrives afterwards and gets it back, where the
+// paragraph stood.
+test("text typed into a blank page that content from scratch replaced is kept", () => {
+  for (const client of CLIENTS) {
+    const stored = blank(client);
+    const editor = new Y.Doc();
+    Y.applyUpdate(editor, Y.encodeStateAsUpdate(stored));
+    const typed: Uint8Array[] = [];
+    editor.on("update", (u: Uint8Array) => typed.push(u));
+    (editor.getXmlFragment("default").get(0) as Y.XmlElement).insert(0, [new Y.XmlText("Getippt")]);
+    const scratch = htmlState("<p>Neu</p>");
+    // What the server notes of the replacement is nobody's writing ("who
+    // wrote what" gets the update's sessions only).
+    const written = Y.decodeStateVector(applyDocumentUpdate(stored, scratch));
+    assert.equal(written.get(client), 1);
+    assert.ok(Y.decodeStateVector(Y.encodeStateVector(stored)).get(client)! > 1);
+    assert.equal(stateHtml(stored), "<p>Neu</p>");
+    for (const u of typed) applyDocumentUpdate(stored, u);
+    const html = stateHtml(stored);
+    assert.ok(html === "<p>Neu</p><p>Getippt</p>" || html === "<p>Getippt</p><p>Neu</p>", html);
+    // Delivered again (and the whole state of the editor): no second copy.
+    for (const u of [...typed, Y.encodeStateAsUpdate(editor)]) applyDocumentUpdate(stored, u);
+    assert.equal(stateHtml(stored), html);
+    // Stored and loaded again, the next copy of the server keeps it.
+    const reloaded = new Y.Doc();
+    Y.applyUpdate(reloaded, Y.encodeStateAsUpdate(stored));
+    applyDocumentUpdate(reloaded, typed[0]);
+    assert.equal(stateHtml(reloaded), html);
+  }
+});
+
+test("an update from scratch without blocks keeps the blank paragraph", () => {
+  const stored = blank(1);
+  const other = new Y.Doc();
+  other.getMap("other").set("a", 1);
+  applyDocumentUpdate(stored, Y.encodeStateAsUpdate(other));
+  assert.equal(stateHtml(stored), "<p></p>");
+  assert.equal(stored.getXmlFragment("default").length, 1);
+});
+
 test("edits of an editor that loaded the blank page merge as usual", () => {
   for (const client of CLIENTS) {
     const stored = blank(client);
