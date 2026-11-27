@@ -15,14 +15,19 @@ export function requireBodySize(req: Request, max: number, message: string) {
   if (Number(header) > max) throw new HttpError(413, message);
 }
 
+// The same name comes out when it goes through again (idempotent): no
+// half of an emoji at the cut (the download's encodeURIComponent would
+// throw), no space before it, no dot after leading spaces (" .htaccess").
 export function sanitizeFileName(name: string, fallback = "datei") {
-  const clean = name
+  let clean = name
+    .toWellFormed()
     .normalize("NFC")
-    .replace(/[\u0000-\u001f\u007f/\\]/g, "")
-    .replace(/^\.+/, "")
-    .trim()
-    .slice(0, 200);
-  return clean || fallback;
+    // Path separators and control characters (C0, DEL and C1).
+    .replace(/[\u0000-\u001f\u007f-\u009f/\\]/g, "")
+    // Not hidden, not "." or "..".
+    .replace(/^[\s.]+/, "");
+  if (clean.length > 200) clean = clean.slice(0, /[\ud800-\udbff]/.test(clean[199]) ? 199 : 200);
+  return clean.trimEnd() || fallback;
 }
 
 const signatures: [RegExp, (b: Buffer) => boolean][] = [

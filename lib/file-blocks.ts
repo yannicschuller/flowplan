@@ -46,5 +46,7 @@ export function fileBlock(file: { url: string; name: string; type: string; alt?:
 export function filePageTitle(name: string) {
   const clean = name.trim();
   const bare = clean.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
-  return (bare || clean).slice(0, 300);
+  const title = bare || clean;
+  // Cut at 300 without halving an emoji or ending with a space.
+  return (title.length > 300 ? title.slice(0, /[\ud800-\udbff]/.test(title[299]) ? 299 : 300) : title).trimEnd();
 }

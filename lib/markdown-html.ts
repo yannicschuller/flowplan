@@ -417,7 +417,8 @@ export function markdownToRawHtml(
         const cellColors = CELL_COLORS_COMMENT.exec(text.trim());
         if (cellColors) return `<!--flowplan-cells:${[...parseCellColors(cellColors[1])].map(([at, value]) => `${at}=${value}`).join(" ")}-->`;
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
-        if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
+        // <code> as lib/markdown.ts writes code with "\|" in table cells.
+        if (/^<\/?(?:u|mark|sup|sub|strong|em|s|code)>$|^<br\s*\/?>$/i.test(text)) return text;
         // A page break as lib/markdown.ts writes it (and Pandoc, Typora):
         // <div style="page-break-after: always"></div> (#216).
         if (/^<div\s+(?:class="page-break"\s+)?style="\s*(?:page-)?break-(?:after|before)\s*:\s*(?:always|page)\s*;?\s*"\s*(?:\/>|>\s*<\/div>)\s*$/i.test(text)) return PAGE_BREAK_HTML;

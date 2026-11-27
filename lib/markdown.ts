@@ -50,22 +50,38 @@ export type MarkdownContext = {
 const MARKER_ID = /^[A-Za-z0-9-]{1,64}$/;
 // Text blocks carry the marker at the end of their (last) line.
 const LINE_MARKED = new Set(["paragraph", "heading"]);
+const LISTS = new Set(["bulletList", "orderedList", "taskList"]);
+// The character of the marks written as Markdown delimiters.
+const DELIMITERS: Record<string, string | undefined> = { bold: "*", italic: "*", strike: "~" };
 export function markdownText(text: string) {
   return text
     .replaceAll("&", "&amp;")
     .replace(/\\/g, "\\\\")
     .replace(/[`*_{}\[\]<>|~$]/g, "\\$&")
-    .replace(/^(\s*)(#{1,6}|[-+])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*\d+)([.)])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
+    // Also at the end of the text: a line of only "#", "+" or "1." is an
+    // empty heading or list item.
+    .replace(/^(\s*)(#{1,6}|[-+])(?=\s|$)/gm, "$1\\$2")
+    .replace(/^(\s*\d+)([.)])(?=\s|$)/gm, "$1\\$2")
+    // The spaces after a setext underline stay (text may follow).
+    .replace(/^(\s*)(=+|-+)(?=\s*$)/gm, "$1\\$2")
     // " ^word" would read as a block id marker (lib/markdown-import.ts).
     .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^")
+    // "^[" would read as an inline footnote inside a link's text.
+    .replace(/\^(?=\\\[)/g, "\\^")
     // Bare web and mail addresses stay text: unescaped, GitHub Markdown
     // would make them links (with the backslashes above in the address).
     .replace(/(?<=[A-Za-z]):\/\//g, "\\://")
     .replace(/\b(www)\./gi, "$1\\.")
-    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@");
+    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@")
+    // The import (marked) ends a table row at a line or paragraph separator.
+    .replace(/[\u2028\u2029]/g, (c) => `&#${c.charCodeAt(0)};`);
 }
+// The import trims a block's text as JavaScript does, which also takes
+// no-break spaces, byte order marks and other Unicode spaces from its ends:
+// there they are written as character references.
+const UNICODE_SPACES = /^[^\S\t\n\v\f\r ]+|[^\S\t\n\v\f\r ]+$/g;
+const keepEdges = (markdown: string) =>
+  markdown.replace(UNICODE_SPACES, (run) => [...run].map((c) => `&#${c.codePointAt(0)};`).join(""));
 export function markdownUrl(url: string) {
   return url.replace(/[\s<>\\"()|]/g, (c) => encodeURIComponent(c));
 }
@@ -88,11 +104,13 @@ function codeMeta(node: Node, language: string) {
 }
 // In a table cell "|" ends the cell: it is written "\|", which GitHub
 // Markdown reads back as "|" inside code too. Only code with line breaks
-// (or "\|" of its own) stays HTML there.
+// (or "\|" of its own) stays HTML there. Markdown still applies between
+// HTML tags, so every ASCII punctuation character inside is a character
+// reference ("\" would escape the "&" of "&#124;", "*" make emphasis).
 const htmlCodeInTable = (source: string) => /\n|\\\|/.test(source);
 function inlineCode(source: string, inTable = false) {
   if (inTable && htmlCodeInTable(source))
-    return `<code>${htmlText(source).replaceAll("|", "&#124;").replace(/\n/g, "<br>")}</code>`;
+    return `<code>${source.replace(/[!-/:-@[-`{-~]/g, (c) => `&#${c.charCodeAt(0)};`).replace(/\n/g, "<br>")}</code>`;
   const fence = "`".repeat(
     Math.max(1, ...(source.match(/`+/g) || []).map((run) => run.length + 1)),
   );
@@ -116,14 +134,20 @@ function wrapMark(text: string, delimiter: string, close = delimiter) {
 // "**Note:**text" is no bold in Markdown: a delimiter between punctuation
 // inside and a letter outside does not open or close. There the marks are
 // written as HTML (<strong>Note:</strong>text), which the import reads.
-const WORD = /[\p{L}\p{N}]/u,
+// A letter is what Markdown takes for one: anything but white space and
+// punctuation (also combining accents, "e\u0301**!**", and zero-width
+// characters); emoji are punctuation ("**😀**x" is no bold). As the import
+// (marked) reads it, the character before a delimiter is a UTF-16 unit, so
+// an emoji there counts as a letter ("😀**!**"), and after a closing "*"
+// the "~~" of struck text does too ("**Note:**~~old~~").
+const LETTER = /[^\s\p{P}\p{S}]/u,
   PUNCTUATION = /[\p{P}\p{S}]/u;
 function needsHtmlMarks(markdown: string, before: string, after: string) {
-  const inner = markdown.trim();
-  if (!inner) return false;
+  const inner = [...markdown.trim()];
+  if (!inner.length) return false;
   return (
-    (!/^\s/.test(markdown) && PUNCTUATION.test(inner[0]) && WORD.test(before)) ||
-    (!/\s$/.test(markdown) && PUNCTUATION.test(inner[inner.length - 1]) && WORD.test(after))
+    (!/^\s/.test(markdown) && PUNCTUATION.test(inner[0]) && LETTER.test(before)) ||
+    (!/\s$/.test(markdown) && PUNCTUATION.test(inner[inner.length - 1]) && (LETTER.test(after) || after === "~"))
   );
 }
 // The character next to an inline node, as far as it decides the above.
@@ -132,7 +156,13 @@ function edge(node: Node, end: boolean) {
   if (node.type.name === "pageLink") return end ? ")" : "[";
   if (!node.isText) return "";
   const text = node.text || "";
-  return (end ? text[text.length - 1] : text[0]) || "";
+  // Struck text starts with "~~" (unless it starts with a space, which
+  // goes before the delimiter – but not out of code or a link).
+  const marks = new Set(node.marks.map((mark) => mark.type.name));
+  if (!end && marks.has("strike") && (/^\S/.test(text) || marks.has("code") || marks.has("link"))) return "~";
+  // The first character whole, the last one as its last UTF-16 unit (see
+  // above).
+  return (end ? text[text.length - 1] : [...text.slice(0, 2)][0]) || "";
 }
 // Source view ("Als Markdown bearbeiten"): what Markdown cannot hold stays
 // intact. Blocks without a Markdown form become a marker
@@ -305,7 +335,8 @@ export function htmlToMarkdown(
     if (node.attrs.reactions) source.lossy.add(tr("Reaktionen", "Reactions"));
     if (node.attrs.journalSince || node.attrs.journalContinued) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
   }
-  function inline(node: Node, inTable = false, before = "", after = ""): string {
+  // `glued`: the last character written right before this node.
+  function inline(node: Node, inTable = false, before = "", after = "", glued = ""): string {
     if (node.type.name === "hardBreak") return "  \n";
     // In the source view a citation stays as HTML, so applying keeps it.
     if (node.type.name === "citation" && source) {
@@ -338,7 +369,7 @@ export function htmlToMarkdown(
       const link = node.type.schema.marks.link;
       const title = String(node.attrs.title || "");
       if (!title) return "";
-      return inline(node.type.schema.text(title, link ? [...node.marks, link.create({ href: String(node.attrs.href || "") })] : node.marks), inTable, before, after);
+      return inline(node.type.schema.text(title, link ? [...node.marks, link.create({ href: String(node.attrs.href || "") })] : node.marks), inTable, before, after, glued);
     }
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
@@ -353,16 +384,39 @@ export function htmlToMarkdown(
       node.forEach((child, _offset, index) => {
         const previous = index > 0 ? edge(node.child(index - 1), true) : "",
           next = index < node.childCount - 1 ? edge(node.child(index + 1), false) : "";
-        result += inline(child, inTable, previous, next);
+        const piece = inline(child, inTable, previous, next, result.slice(-1));
+        // "!" or "^" right before a link would make it an image or an
+        // inline footnote ("^[…]"): escaped there.
+        if (piece[0] === "[" && /[!^]$/.test(result)) result = result.slice(0, -1) + "\\" + result.slice(-1);
+        result += piece;
       });
       return result;
     }
     const isCode = node.marks.some((mark) => mark.type.name === "code");
-    let result = isCode
+    const text = isCode
       ? inlineCode(node.text || "", inTable)
       : markdownText(node.text || "");
-    const html = needsHtmlMarks(result, before, after);
+    const marked = wrapMarks(node, text, before, after);
+    // Two runs that share a mark but not all of them, side by side
+    // ("**a**" and "**[b](…)**", "~~a~~" and "~~*b*~~"): the delimiters
+    // that touch fuse into one run ("****"), which neither closes nor
+    // opens. The second run's marks are written as HTML then
+    // ("**a**<strong>[b](…)</strong>"), which the import reads.
+    return /^[*~]/.test(marked) && marked[0] === glued ? wrapMarks(node, text, before, after, true) : marked;
+  }
+  function wrapMarks(node: Node, text: string, before: string, after: string, allHtml = false) {
+    // What a delimiter has inside it, as far as needsHtmlMarks goes: the
+    // text with the links, HTML and other delimiters around it
+    // ("**[Link](…)**中文" and "~~*a*~~b" are no bold or strike), except
+    // a delimiter of the same character, which forms one run with it
+    // ("***a***b" is bold and italic): `run` is what that run has inside.
+    let result = text,
+      run = text,
+      runChar = "";
     for (const mark of node.marks) {
+      const char = DELIMITERS[mark.type.name],
+        html = allHtml || needsHtmlMarks(char && char === runChar ? run : result, before, after),
+        inside = result;
       if (mark.type.name === "bold") result = html ? wrapMark(result, "<strong>", "</strong>") : wrapMark(result, "**");
       if (mark.type.name === "italic") result = html ? wrapMark(result, "<em>", "</em>") : wrapMark(result, "*");
       if (mark.type.name === "strike") result = html ? wrapMark(result, "<s>", "</s>") : wrapMark(result, "~~");
@@ -388,14 +442,23 @@ export function htmlToMarkdown(
         if (wrap) result = wrap.open + result + wrap.close;
         else source.lossy.add(mark.type.name);
       }
+      if (char && !html) {
+        if (char !== runChar) [run, runChar] = [inside, char];
+      } else [run, runChar] = [result, ""];
     }
     return result;
   }
+  // Lists written right after a list of the same kind, with the other
+  // marker ("*", "1)"): with the same one, Markdown reads both as one list.
+  const otherMarker = new Set<Node>();
   function children(node: Node, inTable = false) {
     const result: string[] = [];
-    let previous: Node | null = null;
+    let previous: Node | null = null,
+      written: Node | null = null;
     node.forEach((child) => {
+      if (written?.type === child.type && LISTS.has(child.type.name) && !otherMarker.has(written)) otherMarker.add(child);
       let text = block(child, inTable);
+      if (text) written = child;
       // A paragraph below a table or code block that would read as its
       // caption ("Table: …") keeps its colon escaped.
       if (previous && child.type.name === "paragraph" && previous.type.name in CAPTION_LINE && !captionText(previous.attrs.caption))
@@ -426,13 +489,13 @@ export function htmlToMarkdown(
     lose(node);
     switch (node.type.name) {
       case "paragraph":
-        return inline(node, inTable);
+        return keepEdges(inline(node, inTable));
       case "heading":
         return (
           "#".repeat(Math.max(1, Math.min(6, Number(node.attrs.level) || 1))) +
           " " +
           // A trailing "#" run would be read as the closing sequence.
-          inline(node, inTable).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
+          keepEdges(inline(node, inTable)).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
         );
       case "horizontalRule":
         return "---";
@@ -489,12 +552,14 @@ export function htmlToMarkdown(
       case "taskList": {
         const result: string[] = [];
         node.forEach((item, _offset, index) => {
+          const other = otherMarker.has(node),
+            bullet = other ? "* " : "- ";
           const prefix =
             node.type.name === "orderedList"
-              ? `${(Number(node.attrs.start) || 1) + index}. `
+              ? `${(Number(node.attrs.start) || 1) + index}${other ? ")" : "."} `
               : node.type.name === "taskList"
-                ? `- [${markdownSymbol(item.attrs)}] `
-                : "- ";
+                ? `${bullet}[${markdownSymbol(item.attrs)}] `
+                : bullet;
           lose(item);
           const content = children(item, inTable).split("\n");
           // An empty first line with subitems below stays empty: the
