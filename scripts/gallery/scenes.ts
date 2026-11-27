@@ -160,9 +160,15 @@ async function openDrawer(page: Page) {
 }
 
 // Templates, media, trash, settings …: a row of symbols, on phones
-// behind "More" in the drawer (tests/browser/sidebar-tools.ts).
+// behind "More" in the drawer (tests/browser/sidebar-tools.ts). The keyboard
+// shortcuts are not in the phone's sheet (#620): there the quick search
+// opens them.
 async function sidebarTool(page: Page, ctx: SceneContext, name: string) {
-  if (ctx.phone) {
+  if (ctx.phone && name === "Keyboard shortcuts") {
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByLabel("Search or command").fill(name);
+    await dialog(page, "Quick search").getByRole("option", { name }).first().click();
+  } else if (ctx.phone) {
     await openDrawer(page);
     await page.locator("aside.sidebar .sidebar-more").click();
     await dialog(page, "More").getByRole("button", { name, exact: true }).click();
@@ -194,16 +200,11 @@ async function openShare(page: Page, ctx: SceneContext) {
 }
 
 // The account menu: part of the workspace menu at the top of the sidebar
-// (#565), on phones in the "More" sheet.
+// (#565), on phones too (#613).
 async function accountMenu(page: Page, ctx: SceneContext) {
-  if (ctx.phone) {
-    await openDrawer(page);
-    await page.locator("aside.sidebar .sidebar-more").click();
-    await waitDialog(page, "More");
-  } else {
-    await page.locator("aside.sidebar .workspace-switch").click();
-    await menu(page).waitFor();
-  }
+  if (ctx.phone) await openDrawer(page);
+  await page.locator("aside.sidebar .workspace-switch").click();
+  await menu(page).waitFor();
 }
 
 // A page of its own with the given HTML, opened, the editor ready.
@@ -1791,7 +1792,7 @@ const dialogScenes: Scene[] = [
     covers: ["components/whats-new.tsx"],
     steps: async (page, ctx) => {
       await accountMenu(page, ctx);
-      await page.getByRole(ctx.phone ? "button" : "menuitem", { name: "What’s new" }).first().click();
+      await page.getByRole("menuitem", { name: "What’s new" }).first().click();
       await page.getByRole("dialog").last().waitFor();
     },
   },

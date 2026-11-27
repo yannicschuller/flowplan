@@ -7933,10 +7933,15 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     left: 0;
     top: 0;
     bottom: 0;
-    /* Its own width over the page (#285, --overlay-width: dragged at its
-       right edge, kept per device apart from the docked width); the page
-       stays visible beside it. */
-    width: min(var(--overlay-width, min(360px, 85vw)), calc(100vw - 48px));
+    /* As wide as the screen (#622): a fringe of the page beside it was too
+       narrow to use; "× Navigation" in the bottom bar, a swipe to the left
+       (components/drawer-swipe.ts) or Esc lead back to the page. Tablets
+       keep a width of their own over the page (#285, below). */
+    width: 100%;
+    /* The browser scrolls the tree up and down; sideways moves are the
+       drawer's swipe alone, so it follows the finger from the first pixel
+       instead of fighting a pan (#621). */
+    touch-action: pan-y;
     z-index: 42;
     transform: translate3d(-100%, 0, 0);
     transition: transform 0.18s ease;
@@ -7948,6 +7953,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     /* Closed, nothing of it peeks in at the left edge (the profile row is a
        few pixels wider than the drawer). */
     overflow-x: clip;
+  }
+  /* (The tree scrolls on its own: the restriction stops at a scroller.) */
+  .sidebar .sidebar-scroll {
+    touch-action: pan-y;
   }
   .nav-open .sidebar {
     transform: translate3d(0, 0, 0);
@@ -31959,6 +31968,46 @@ td.ai-filled {
   }
   .nav-section-title {
     min-height: 40px;
+  }
+}
+/* Two axes in the sidebar (#614). On the left, a page's caret stands where
+   the section titles' carets stand (Favoriten, Sammlungen, the spaces: 8 px
+   in from the row's edge), each level of the tree one indent further: the
+   hit area starts at the row's edge and the glyph sits at its start. On the
+   right, the sidebar's own button, the workspace menu's chevron, the
+   navigation's fold, the section tools and a page's "+" share one column,
+   10 px in from the edge (the rows' right margin) plus half a button. */
+.page-nav > .tree-toggle {
+  width: 34px;
+  margin-left: -12px;
+  justify-content: flex-start;
+  padding-left: 0;
+}
+.sidebar-top {
+  padding-right: 11px;
+}
+.workspace-switch {
+  padding-right: 9px;
+}
+@media (max-width: 767.98px) {
+  .page-nav > .tree-toggle {
+    width: 40px;
+  }
+}
+/* Phones: 44 px buttons (app/mobile-ux.css). */
+@media (pointer: coarse) and (max-width: 767.98px) {
+  .page-nav > .tree-toggle {
+    width: 44px;
+    margin-left: -14px;
+    padding-left: 2px;
+  }
+  .workspace-switch {
+    padding-right: 15px;
+  }
+  /* A section title without tools of its own (Favoriten) is a 44 px
+     target too. */
+  .nav-section-title > .space-toggle {
+    min-height: 44px;
   }
 }
 /* Onboarding: the step heading takes the focus; the starter cards say that

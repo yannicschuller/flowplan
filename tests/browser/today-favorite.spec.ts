@@ -30,9 +30,14 @@ async function setup(page: Page) {
   const todayId = async () => (await bootstrap()).pages.find((p) => p.parent_id === journalId && p.journal_date === localDay() && !p.deleted_at)?.id;
   return { command, journalId, docId, title, bootstrap, todayId };
 }
-// The sidebar (on phones the drawer, opened first).
+// The sidebar (on phones the drawer, opened first, whose favourites start
+// folded, #616).
 async function sidebar(page: Page) {
-  if (phoneTopBar(page)) await page.locator("button.mobile-menu").click();
+  if (phoneTopBar(page)) {
+    await page.locator("button.mobile-menu").click();
+    const toggle = page.locator(".favorites-section .space-toggle");
+    if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  }
   return page.locator("#favorites-list");
 }
 

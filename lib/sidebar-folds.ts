@@ -9,12 +9,14 @@
 //   g:favorites         the favourites folded
 //   g:collections       the collections folded
 //   g:nav               the navigation at the top folded into a row of icons (#452)
+//   go:favorites        the favourites unfolded by hand (phones start with them
+//   go:collections      … and the collections folded, #616)
 //   jo:<journal>:<y|m>  a year or month folder of a journal opened by hand
 //   jc:<journal>:<y|m>  … closed by hand (lib/journal-nav.ts)
 export const SIDEBAR_STATE_LIMIT = 3000;
 export const SIDEBAR_CHANGES_LIMIT = 2000;
 const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const KEY = new RegExp(`^(?:p:${uuid}|so?:${uuid}|g:(?:favorites|collections|nav)|j[oc]:${uuid}:\\d{4}(?:-\\d{2})?)$`, "i");
+const KEY = new RegExp(`^(?:p:${uuid}|so?:${uuid}|g:(?:favorites|collections|nav)|go:(?:favorites|collections)|j[oc]:${uuid}:\\d{4}(?:-\\d{2})?)$`, "i");
 export const isSidebarKey = (key: unknown): key is string => typeof key === "string" && KEY.test(key);
 
 // The page or space a key belongs to (null for groups).

@@ -114,8 +114,8 @@ test("gone with the person", async () => {
 
 test("keys: only the known kinds", () => {
   const u = "0b7c6a4e-1d2f-4a3b-9c8d-7e6f5a4b3c2d";
-  for (const key of [`p:${u}`, `s:${u}`, "g:favorites", "g:collections", `jo:${u}:2025`, `jc:${u}:2025-03`]) assert.ok(folds.isSidebarKey(key), key);
-  for (const key of ["p:abc", `q:${u}`, "g:other", `jo:${u}:25`, `jo:${u}:2025-3`, `p:${u} `, 5, null]) assert.ok(!folds.isSidebarKey(key), String(key));
+  for (const key of [`p:${u}`, `s:${u}`, "g:favorites", "g:collections", "go:favorites", "go:collections", `jo:${u}:2025`, `jc:${u}:2025-03`]) assert.ok(folds.isSidebarKey(key), key);
+  for (const key of ["p:abc", `q:${u}`, "g:other", "go:nav", `jo:${u}:25`, `jo:${u}:2025-3`, `p:${u} `, 5, null]) assert.ok(!folds.isSidebarKey(key), String(key));
 });
 
 test("applying changes: newest last, limited", () => {

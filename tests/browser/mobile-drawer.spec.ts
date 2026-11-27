@@ -119,7 +119,8 @@ for (const inApp of [true, false]) {
       await expect(page).toHaveURL(/#settings\/appearance$/);
       await menuTab(page).tap();
       await expectDrawer(page, true);
-      await page.locator(".mobile-scrim").tap({ position: { x: 370, y: 300 } });
+      // (The drawer fills the screen, #622: "× Navigation" closes it.)
+      await menuTab(page).tap();
       await expectDrawer(page, false);
 
       expect(await transitionsWithDrawer(page)).toBe(0);

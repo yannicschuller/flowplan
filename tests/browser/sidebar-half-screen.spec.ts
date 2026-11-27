@@ -25,6 +25,7 @@ const shell = (page: Page) => page.locator(".app-shell");
 const sidebar = (page: Page) => page.locator(".app-shell > .sidebar");
 const openButton = (page: Page) => page.locator(".topbar .mobile-menu");
 const hideButton = (page: Page) => page.locator(".sidebar-hide");
+const closeTab = (page: Page) => page.getByRole("navigation", { name: "Schnellnavigation" }).getByRole("button", { name: "Navigation schließen" });
 // The closed drawer waits beside the window (moved out, not hidden).
 const drawerOpen = (page: Page, timeout?: number) => expect(sidebar(page)).toBeInViewport({ ratio: 0.5, timeout });
 const drawerClosed = (page: Page, timeout?: number) => expect(sidebar(page)).not.toBeInViewport({ timeout });
@@ -83,7 +84,10 @@ test("a window of 767.2 px (half a screen at 125 %) gets the drawer", async ({ p
     await openButton(page).click();
     await expect(shell(page)).toHaveClass(/\bnav-open\b/, { timeout: 15000 });
     await drawerOpen(page);
-    await hideButton(page).click();
+    // The bottom bar's "× Navigation" closes it; the sidebar has no close
+    // button of its own beside it (#617).
+    await expect(hideButton(page)).toBeHidden();
+    await closeTab(page).click();
     await expect(shell(page)).not.toHaveClass(/\bnav-open\b/);
     await drawerClosed(page);
 
@@ -107,7 +111,8 @@ for (const width of [683, 768, 960]) {
       // sidebar for later, wider windows.
       await drawerClosed(page);
       await shortcut(page, () => drawerOpen(page, 1000));
-      await hideButton(page).click();
+      await expect(hideButton(page)).toBeHidden();
+      await closeTab(page).click();
       await drawerClosed(page);
       await expect(shell(page)).not.toHaveClass(/\bdesktop-collapsed\b/);
       await page.setViewportSize({ width: 1100, height: 800 });

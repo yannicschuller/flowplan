@@ -20,6 +20,13 @@ test("quick search saves a collection that lists matching pages live", async ({ 
         })
       ).json()
     ).id as string;
+  // Phones start with the collections folded (#616); unfolded once, they
+  // stay open (stored with the account).
+  if (testInfo.project.name === "mobile")
+    await page.request.post("/api/command", {
+      headers: { origin },
+      data: { action: "sidebar.state", workspaceId: boot.workspace.id, changes: { "go:collections": true } },
+    });
   const first = await create(`Gespeichert ${tag}`);
   await page.goto(`/#page=${first}`);
   await expect(page.locator(".tiptap")).toBeVisible();

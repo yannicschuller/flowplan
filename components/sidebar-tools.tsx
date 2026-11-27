@@ -2,15 +2,16 @@
 // The less used places at the bottom of the sidebar (Vorlagen, Medien, Tags,
 // Graph, Papierkorb, Einstellungen, Tastenkürzel, Administration). Wider
 // windows show them as one row of symbols; on phones (the navigation drawer,
-// up to 767 px, app/globals.css) one labelled "Mehr" button next to the
-// profile opens them as a list in a bottom sheet, so the page tree above
-// keeps the height (#185). Both come from the same list, rendered by
-// components/workspace-app.tsx. On phones the sheet also carries the account
-// menu (design, about, legal, sign out), so the profile row has one button
-// and the name and status keep the room (#197). Which symbols the row
-// shows is each person's choice (#589, lib/sidebar-tools-pref.ts): a right
-// click – on touch screens a long press – on a symbol offers to hide it or
-// to customize the row in Settings.
+// up to 767 px, app/globals.css) one small "Mehr" button at the left of that
+// row opens them as a list in a bottom sheet, so the page tree above keeps
+// the height (#185, #613). Both come from the same list, rendered by
+// components/workspace-app.tsx. The account's entries (design, about,
+// legal, sign out) are in the workspace menu at the top of the sidebar on
+// every screen (#565), so the sheet holds the tools alone (#613). Which
+// symbols the row shows is each person's choice (#589,
+// lib/sidebar-tools-pref.ts): a right click – on touch screens a long
+// press – on a symbol offers to hide it or to customize the row in
+// Settings.
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { EyeSlash, SlidersHorizontal, Toolbox, type Icon } from "@phosphor-icons/react";
@@ -28,19 +29,6 @@ export type SidebarTool = {
   selected?: boolean;
   className?: string;
   onSelect: () => void;
-};
-
-// An entry of the sheet's account part: an action or a link.
-export type SidebarAccountItem = {
-  id: string;
-  label: string;
-  icon: Icon;
-  href?: string;
-  // Opens in a new tab (legal notice, privacy).
-  external?: boolean;
-  // Leaves the sheet open (the design switch shows its effect at once).
-  keepOpen?: boolean;
-  onSelect?: () => void;
 };
 
 // The row of symbols (hidden on phones, app/mobile-ux.css). With `onHide`
@@ -197,18 +185,7 @@ export function SidebarToolRow({ tools, onHide, onCustomize }: { tools: SidebarT
 }
 
 // "Mehr" and its sheet (shown on phones only, app/mobile-ux.css).
-export function SidebarMore({
-  tools,
-  account = [],
-  signOut,
-}: {
-  tools: SidebarTool[];
-  // The account's entries (phones; wider windows have them in the
-  // workspace menu at the top of the sidebar, #565).
-  account?: SidebarAccountItem[];
-  // Last and set apart, so it is not tapped by mistake.
-  signOut?: SidebarAccountItem;
-}) {
+export function SidebarMore({ tools }: { tools: SidebarTool[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   // A chosen tool takes the focus where it leads (another dialog, a screen
@@ -229,7 +206,7 @@ export function SidebarMore({
           setOpen(true);
         }}
       >
-        <Toolbox size={20} aria-hidden />
+        <Toolbox size={18} aria-hidden />
         <span>{title}</span>
       </button>
       <Modal
@@ -264,60 +241,7 @@ export function SidebarMore({
             </li>
           ))}
         </ul>
-        {(account.length > 0 || signOut) && (
-          <div className="sidebar-more-account" role="group" aria-label={t("Konto", "Account")}>
-            <ul className="sidebar-more-account-list">
-              {account.map((item) => (
-                <li key={item.id}>
-                  <AccountEntry
-                    item={item}
-                    onPick={() => {
-                      if (item.keepOpen) return;
-                      // A screen of the app takes the focus; after a new
-                      // tab it returns to "Mehr".
-                      chosen.current = !!item.href && !item.external;
-                      setOpen(false);
-                    }}
-                  />
-                </li>
-              ))}
-            </ul>
-            {signOut && (
-              <AccountEntry
-                item={signOut}
-                className="sidebar-more-sign-out"
-                onPick={() => {
-                  chosen.current = true;
-                  setOpen(false);
-                }}
-              />
-            )}
-          </div>
-        )}
       </Modal>
     </>
-  );
-}
-
-function AccountEntry({ item, className, onPick }: { item: SidebarAccountItem; className?: string; onPick: () => void }) {
-  const { label, icon: ItemIcon, href, external, onSelect } = item;
-  const content = (
-    <>
-      <ItemIcon size={22} aria-hidden />
-      <span>{label}</span>
-    </>
-  );
-  const select = () => {
-    onPick();
-    onSelect?.();
-  };
-  return href ? (
-    <a href={href} className={className} onClick={select} {...(external ? { target: "_blank", rel: "noopener" } : {})}>
-      {content}
-    </a>
-  ) : (
-    <button type="button" className={className} onClick={select}>
-      {content}
-    </button>
   );
 }

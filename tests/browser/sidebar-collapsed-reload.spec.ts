@@ -117,7 +117,10 @@ test.describe("iPhone", () => {
     await page.goto("/#home");
     await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).tap();
     await expect(shell(page)).toHaveClass(/\bnav-open\b/);
-    await page.locator(".sidebar-hide").tap();
+    // With the bottom bar's "× Navigation" there, the sidebar has no close
+    // button of its own (#617).
+    await expect(page.locator(".sidebar-hide")).toBeHidden();
+    await page.getByRole("navigation", { name: "Schnellnavigation" }).getByRole("button", { name: "Navigation schließen" }).tap();
     await expect(shell(page)).not.toHaveClass(/\bnav-open\b/);
     await page.waitForTimeout(300);
     // No cookie yet (nothing to keep) or one with the sidebar shown.

@@ -139,10 +139,12 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
       .getByRole("button", { name: "Speichern", exact: true })
       .click();
     await expect(dialog).toHaveCount(0);
+    // (On phones the drawer fills the screen, #622: "× Navigation" closes it.)
     if (mobile)
       await page
-        .locator(".mobile-scrim")
-        .click({ position: { x: page.viewportSize()!.width - 10, y: 10 } });
+        .getByRole("navigation", { name: "Schnellnavigation" })
+        .getByRole("button", { name: "Navigation schließen" })
+        .click();
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
