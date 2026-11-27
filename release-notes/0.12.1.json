@@ -52,6 +52,13 @@
         587,
         588
       ]
+    },
+    {
+      "de": "„Meine Aufgaben“ aufgeräumt: Oben stehen nur „Aufgabe hinzufügen …“, „Liste / Board“ und „Filter“ mit der Zahl gesetzter Filter; Arbeitsbereiche, Quelle und Fälligkeit liegen dahinter. Gesetzte Filter erscheinen als Chips, die du einzeln entfernst oder mit „Zurücksetzen“ alle.",
+      "en": "Tidier “My tasks”: the top shows only “Add a task …”, “List / Board” and “Filters” with the number of filters set; workspaces, source and due range are behind it. Filters that are set show as chips you remove one by one or all at once with “Reset”.",
+      "issues": [
+        612
+      ]
     }
   ],
   "fixes": [

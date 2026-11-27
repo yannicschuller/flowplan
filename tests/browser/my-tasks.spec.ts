@@ -139,8 +139,10 @@ test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to
   // choices stay on this device.
   await withTaskFilters(page, (filters) => filters.locator(".my-tasks-person label", { hasText: "Eigene" }).click());
   await expect(item).toBeVisible();
-  // On phones "Filter (1)": one filter of the sheet differs from the default.
-  if (info.project.name === "mobile") await expect(page.getByRole("button", { name: "Filter, 1 gesetzt" })).toHaveText("Filter (1)");
+  // "Filter (1)" and a chip for it below the row (#612).
+  await expect(page.getByRole("button", { name: "Filter, 1 gesetzt" })).toHaveText(/^Filter \(1\)/);
+  const chips = page.getByRole("group", { name: "Gesetzte Filter" });
+  await expect(chips.getByRole("button")).toHaveText(["Person: Eigene"]);
   await chooseSource(page, "Datenbanken");
   await expect(item).toHaveCount(0);
   await expect(page.locator(".my-tasks .empty-state")).toBeVisible();
@@ -149,25 +151,35 @@ test("Aufgabe hinzufügen: Enter writes into the own page, the filter narrows to
   // The tools for records are gone while only documents are shown.
   await expect(page.getByRole("group", { name: "Nur für Einträge aus Datenbanken" })).toHaveCount(0);
   // "Heute" hides a task due tomorrow, "Nächste 7 Tage" shows it.
-  await page.getByRole("button", { name: /^Fälligkeit: / }).click();
-  await page.getByRole("dialog", { name: "Fälligkeit" }).getByRole("radio", { name: /^Heute/ }).click();
+  await withTaskFilters(page, (filters) => filters.getByRole("radiogroup", { name: "Fälligkeit" }).getByRole("radio", { name: "Heute" }).check());
   await expect(item).toHaveCount(0);
-  await page.getByRole("button", { name: "Fälligkeit: Heute" }).click();
-  await page.getByRole("dialog", { name: "Fälligkeit" }).getByRole("radio", { name: /^Nächste 7 Tage/ }).click();
+  await withTaskFilters(page, (filters) => filters.getByRole("radiogroup", { name: "Fälligkeit" }).getByRole("radio", { name: "Nächste 7 Tage" }).check());
   await expect(item).toBeVisible();
   await page.reload();
-  await withTaskFilters(page, (filters) => expect(filters.locator('.my-tasks-person label[data-active="true"]')).toHaveText("Eigene"));
-  if (info.project.name === "mobile") await expect(page.locator(".my-tasks-bar").getByLabel("Quelle", { exact: true })).toHaveValue("documents");
-  else await expect(page.locator('.my-tasks-source label[data-active="true"]')).toHaveText("Dokumente");
-  await expect(page.getByRole("button", { name: "Fälligkeit: Nächste 7 Tage" })).toBeVisible();
+  await withTaskFilters(page, async (filters) => {
+    await expect(filters.locator('.my-tasks-person label[data-active="true"]')).toHaveText("Eigene");
+    await expect(filters.locator('.my-tasks-source label[data-active="true"]')).toHaveText("Dokumente");
+  });
+  await expect(chips.getByRole("button")).toHaveText(["Quelle: Dokumente", "Person: Eigene", "Fällig: Nächste 7 Tage", "Zurücksetzen"]);
   await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
-  // The page is a normal page: it opens from My tasks (on phones from the
-  // sheet "Filter").
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Filter, 1 gesetzt" }).click();
+  // A chip removes its filter (from the keyboard; the focus moves on to
+  // what is now in its place).
+  await chips.getByRole("button", { name: "Filter entfernen: Fällig: Nächste 7 Tage" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(chips.getByRole("button")).toHaveText(["Quelle: Dokumente", "Person: Eigene", "Zurücksetzen"]);
+  await expect(chips.getByRole("button", { name: "Zurücksetzen" })).toBeFocused();
+  await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
+  // The page is a normal page: it opens from My tasks (in "Filter").
+  await page.getByRole("button", { name: "Filter, 2 gesetzt" }).click();
   await page.getByRole("button", { name: "Seite „Aufgaben“ öffnen" }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
   await page.goto("/#tasks");
-  await withTaskFilters(page, (filters) => filters.locator(".my-tasks-person label", { hasText: "Mir zugewiesen" }).click());
-  await chooseSource(page, "Alle");
+  // "Zurücksetzen" removes them all, kept on this device as well.
+  await chips.getByRole("button", { name: "Zurücksetzen" }).click();
+  await expect(chips).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Filter", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".my-tasks-group li", { hasText: text })).toBeVisible();
+  await expect(chips).toHaveCount(0);
   expect(errors).toEqual([]);
 });

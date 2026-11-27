@@ -1,6 +1,7 @@
 // My tasks → "Alle Arbeitsbereiche" and the board (#564,
 // components/my-tasks.tsx, components/my-tasks-board.tsx).
 import { test, expect, type Page } from "@playwright/test";
+import { withTaskFilters } from "./my-tasks-filters";
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 async function signIn(page: Page) {
@@ -40,7 +41,10 @@ test("Alle Arbeitsbereiche: one list with the workspace of each task, filtered, 
   await page.goto("/#tasks");
   // This workspace: the other one's task in its own section.
   await expect(page.locator(".my-tasks-others")).toContainText(there);
-  await page.locator(".my-tasks-workspace-scope label", { hasText: "Alle Arbeitsbereiche" }).click();
+  // In "Filter" since #612; then a chip for it below the row.
+  await withTaskFilters(page, (filters) => filters.getByRole("radiogroup", { name: "Arbeitsbereiche" }).getByRole("radio", { name: "Alle Arbeitsbereiche" }).check());
+  const scopeChip = page.getByRole("group", { name: "Gesetzte Filter" }).getByRole("button", { name: "Filter entfernen: Alle Arbeitsbereiche" });
+  await expect(scopeChip).toBeVisible();
   const thereItem = page.locator(".my-tasks-group li", { hasText: there });
   const hereItem = page.locator(".my-tasks-group li", { hasText: here });
   await expect(thereItem).toBeVisible();
@@ -60,11 +64,18 @@ test("Alle Arbeitsbereiche: one list with the workspace of each task, filtered, 
   await expect(hereItem).toBeVisible();
   // Kept on this device.
   await page.reload();
-  await expect(page.locator('.my-tasks-workspace-scope label[data-active="true"]')).toHaveText("Alle Arbeitsbereiche");
+  await expect(scopeChip).toBeVisible();
+  await withTaskFilters(page, (filters) => expect(filters.locator('.my-tasks-workspace-scope label[data-active="true"]')).toHaveText("Alle Arbeitsbereiche"));
   await expect(thereItem.locator(".my-task-workspace > span:last-child")).toHaveText(name);
   // Ticking off and the date work across workspaces as in the normal list.
   await thereItem.getByRole("button", { name: /^Fälligkeit von .* entfernen$/ }).click();
   await expect(page.locator(".my-tasks-group", { hasText: "Ohne Datum" }).locator("li", { hasText: there })).toBeVisible();
+  // The chip goes back to this workspace; the filter again brings all.
+  await scopeChip.click();
+  await expect(page.locator(".my-tasks-others")).toContainText(there);
+  await expect(page.getByRole("group", { name: "Arbeitsbereiche filtern" })).toHaveCount(0);
+  await withTaskFilters(page, (filters) => filters.getByRole("radio", { name: "Alle Arbeitsbereiche" }).check());
+  await expect(thereItem.locator(".my-task-workspace > span:last-child")).toHaveText(name);
   // A click opens the task's page in its workspace.
   await thereItem.getByRole("button", { name: `Bauantrag ${stamp}` }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(there);

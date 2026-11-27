@@ -29,12 +29,9 @@
 // always there). Stored per person on the server (lib/unassigned-tasks-
 // pref.ts, command `tasks.unassigned`), so the widgets and the apps follow.
 //
-// Phones (design review): the filters in one row – Quelle as a select, the
-// date chip and "Filter (n)", n the filters that differ from the default –
-// so the tasks start on the first screen. "Filter" opens a bottom sheet
-// with the rest (Person, "Erledigte zeigen", the unassigned tasks, the
-// tools for records); the date range is a bottom sheet as well, above the
-// bottom navigation. Larger screens keep the row as it was.
+// Phones (design review): "Filter (n)" opens a bottom sheet, so the tasks
+// start on the first screen; since #612 (below) every screen size works
+// that way, with a panel instead of the sheet on larger screens.
 //
 // #564: "Dieser Arbeitsbereich / Alle Arbeitsbereiche" shows the tasks and
 // records of all the person's workspaces in one list (GET /api/tasks/all,
@@ -46,6 +43,15 @@
 // to another column gets that column's date (lib/board-due.ts). Both
 // choices, and the chosen workspaces, are kept on this device like the
 // filters.
+//
+// #612: the top holds only "Aufgabe hinzufügen", "Filter (n)" and "Liste /
+// Board". Everything else – the workspaces, Quelle, Person, the date range,
+// "Erledigte zeigen", the unassigned tasks, the tools for records and the
+// link to the own page – is behind "Filter": a panel below the chip on
+// larger screens, the bottom sheet on phones, with the same content. The
+// filters that differ from the default show as chips below the row
+// (lib/task-filter-count.ts), each removing its filter, with "Zurücksetzen"
+// when there are several.
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
@@ -53,11 +59,10 @@ import { loadView } from "./view-fallback";
 import { WorkspaceIcon } from "./workspace-icon";
 import type { BoardCard } from "./my-tasks-board";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
-import { CalendarBlank, CaretDown, CheckSquare, FunnelSimple, Plus, Tray, X } from "@phosphor-icons/react";
+import { CheckSquare, FunnelSimple, Plus, Tray, X } from "@phosphor-icons/react";
 import { optimistic } from "@/lib/optimistic";
 import { api, Modal, PageIcon, SHEET_MEDIA } from "./ui";
-import { Select } from "./select";
-import { sheetFilterCount } from "@/lib/task-filter-count";
+import { activeTaskFilters, type TaskFilterKey } from "@/lib/task-filter-count";
 import { RecordRow, RecordTools, RecordViews, type RecordsResult, type RecordView, type TaskRecord } from "./my-records";
 import { ChipPopover } from "./chip-popover";
 import { ListSkeleton } from "./skeleton";
@@ -225,9 +230,11 @@ export function MyTasks({
   const [database, setDatabase] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState("");
-  const [rangeOpen, setRangeOpen] = useState(false);
-  // Phones: the sheet with the other filters.
+  // "Filter": its panel (larger screens) or sheet (phones).
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // The row with "Filter" and the chips of the filters set, for the focus
+  // after a chip is removed.
+  const filterRow = useRef<HTMLDivElement>(null);
   const phone = usePhoneLayout();
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
@@ -681,9 +688,16 @@ export function MyTasks({
     dated: [t("Mit Datum", "With a date"), t("Alles mit Fälligkeit", "Everything with a due date")],
     undated: [t("Ohne Datum", "No date"), t("Alles ohne Fälligkeit", "Everything without a due date")],
   };
-  const rangeLabel = range === "any" ? t("Beliebiges Datum", "Any date") : rangeNames[range][0];
-  const segmented = <V extends string>(name: string, label: string, value: V, options: [V, string, string][], onPick: (v: V) => void, className: string) => (
-    <span className={`segmented my-tasks-filter ${className}`} role="radiogroup" aria-label={label}>
+  const segmented = <V extends string>(
+    name: string,
+    label: string,
+    value: V,
+    options: [V, string, string][],
+    onPick: (v: V) => void,
+    className: string,
+    describedBy?: string,
+  ) => (
+    <span className={`segmented my-tasks-filter ${className}`} role="radiogroup" aria-label={label} aria-describedby={describedBy}>
       {options.map(([option, text, hint]) => (
         <label key={option} data-active={value === option} title={hint}>
           <input type="radio" name={name} checked={value === option} onChange={() => onPick(option)} />
@@ -940,27 +954,14 @@ export function MyTasks({
     (value) => setFilters({ person: value }),
     "my-tasks-person",
   );
-  const rangeChoices = (
-    <fieldset className="chip-panel chip-options my-tasks-ranges">
-      <legend className="sr-only">{t("Fälligkeit", "Due")}</legend>
-      {DUE_RANGES.map((option) => (
-        <label key={option} data-active={range === option}>
-          <input
-            type="radio"
-            name="my-tasks-range"
-            checked={range === option}
-            onChange={() => {
-              setFilters({ range: option });
-              setRangeOpen(false);
-            }}
-          />
-          <span>
-            {rangeNames[option][0]}
-            <small>{rangeNames[option][1]}</small>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+  const rangeFilter = segmented(
+    "my-tasks-range",
+    t("Fälligkeit", "Due"),
+    range,
+    DUE_RANGES.map((option): [DueRange, string, string] => [option, rangeNames[option][0], rangeNames[option][1]]),
+    (value) => setFilters({ range: value }),
+    "my-tasks-range",
+    "my-tasks-range-hint",
   );
   const doneFilter = (
     <label className="my-tasks-done">
@@ -1007,7 +1008,106 @@ export function MyTasks({
       onSave={saveView}
     />
   );
-  const sheetFilters = sheetFilterCount({ person, done, unassigned, database, query, records: wantRecords });
+  const sourceName = Object.fromEntries(sourceOptions.map(([value, text]) => [value, text])) as Record<Source, string>;
+  const personName: Record<Person, string> = { mine: t("Mir zugewiesen", "Assigned to me"), all: t("Alle", "All"), own: t("Eigene", "My own||tasks") };
+  const databaseName = (id: string) => {
+    const known = records?.databases.find((d) => d.id === id);
+    return known ? known.title || t("Ohne Titel", "Untitled") : t("Datenbank", "Database");
+  };
+  // The filters that differ from the default: the count on "Filter" and
+  // the chips below the row, each with its text and how it goes.
+  const active = activeTaskFilters({ everywhere, source, person, range, done, unassigned, database, query, records: wantRecords });
+  const chipOf: Record<TaskFilterKey, () => [string, () => void]> = {
+    scope: () => [t("Alle Arbeitsbereiche", "All workspaces"), () => setScope("here")],
+    source: () => [t(`Quelle: ${sourceName[source]}`, `Source: ${sourceName[source]}`), () => setFilters({ source: "all" })],
+    person: () => [t(`Person: ${personName[person]}`, `Person: ${personName[person]}`), () => setFilters({ person: "mine" })],
+    range: () => [t(`Fällig: ${rangeNames[range][0]}`, `Due: ${rangeNames[range][0]}`), () => setFilters({ range: "any" })],
+    done: () => [t("Erledigte zeigen", "Show completed"), () => setFilters({ done: false })],
+    unassigned: () => [t("Ohne Person aus meinen Seiten", "Unassigned from my pages"), () => void chooseUnassigned(false)],
+    database: () => [
+      t(`Datenbank: ${databaseName(database)}`, `Database: ${databaseName(database)}`),
+      () => {
+        setView("");
+        setDatabase("");
+      },
+    ],
+    query: () => [
+      t(`Suche: „${query.trim()}“`, `Search: “${query.trim()}”`),
+      () => {
+        setView("");
+        setQuery("");
+      },
+    ],
+  };
+  // A removed chip hands the focus to the one now in its place, the last
+  // one or "Filter", so the keyboard does not land on the page.
+  const refocus = (index: number) =>
+    requestAnimationFrame(() => {
+      const row = filterRow.current;
+      if (!row) return;
+      const chips = row.querySelectorAll<HTMLButtonElement>(".my-tasks-active-filters button");
+      (chips[Math.min(index, chips.length - 1)] || row.querySelector<HTMLButtonElement>(".my-tasks-more button, button.my-tasks-more"))?.focus();
+    });
+  const resetFilters = () => {
+    if (everywhere) setScope("here");
+    setFilters(DEFAULTS);
+    setDatabase("");
+    setQuery("");
+    if (unassigned) void chooseUnassigned(false);
+    refocus(0);
+  };
+  const filterName = active.length ? t(`Filter, ${active.length} gesetzt`, `Filters, ${active.length} set`) : t("Filter", "Filters");
+  const filterLabel = active.length ? `${t("Filter", "Filters")} (${active.length})` : t("Filter", "Filters");
+  // The content of "Filter", the same in the panel and in the sheet.
+  const filterBody = (
+    <div className="my-tasks-filter-body">
+      {workspaces.length > 1 && (
+        <div className="my-tasks-filter-field">
+          <span className="my-tasks-filter-heading" aria-hidden="true">
+            {t("Arbeitsbereiche", "Workspaces")}
+          </span>
+          {segmented(
+            "my-tasks-everywhere",
+            t("Arbeitsbereiche", "Workspaces"),
+            everywhere ? "all" : "here",
+            [
+              ["here", t("Dieser Arbeitsbereich", "This workspace"), t("Nur die Aufgaben dieses Arbeitsbereichs, die der anderen darunter", "Only this workspace's tasks, the others' below")],
+              ["all", t("Alle Arbeitsbereiche", "All workspaces"), t("Die Aufgaben aller deiner Arbeitsbereiche in einer Liste", "The tasks of all your workspaces in one list")],
+            ],
+            (value) => setScope(value as Scope),
+            "my-tasks-workspace-scope",
+          )}
+        </div>
+      )}
+      <div className="my-tasks-filter-field">
+        <span className="my-tasks-filter-heading" aria-hidden="true">
+          {t("Quelle", "Source")}
+        </span>
+        {segmented("my-tasks-source", t("Quelle", "Source"), source, sourceOptions, (value) => setFilters({ source: value }), "my-tasks-source")}
+      </div>
+      <div className="my-tasks-filter-field">
+        <span className="my-tasks-filter-heading" aria-hidden="true">
+          {t("Person", "Person")}
+        </span>
+        {personFilter}
+      </div>
+      <div className="my-tasks-filter-field">
+        <span className="my-tasks-filter-heading" aria-hidden="true">
+          {t("Fälligkeit", "Due")}
+        </span>
+        {rangeFilter}
+        <small id="my-tasks-range-hint" className="my-tasks-range-hint">
+          {rangeNames[range][1]}
+        </small>
+      </div>
+      <div className="my-tasks-filter-checks">
+        {doneFilter}
+        {unassignedFilter}
+      </div>
+      {wantRecords && records && !everywhere && recordTools}
+      {pageLink}
+    </div>
+  );
   return (
     <div className={`utility-content my-tasks${layout === "board" ? " my-tasks-wide" : ""}`} ref={list}>
       <div className="utility-title">
@@ -1066,115 +1166,79 @@ export function MyTasks({
           {notice}
         </p>
       )}
-      <div className="my-tasks-modes">
-        {workspaces.length > 1 &&
-          segmented(
-            "my-tasks-everywhere",
-            t("Arbeitsbereiche", "Workspaces"),
-            everywhere ? "all" : "here",
-            [
-              ["here", t("Dieser Arbeitsbereich", "This workspace"), t("Nur die Aufgaben dieses Arbeitsbereichs, die der anderen darunter", "Only this workspace's tasks, the others' below")],
-              ["all", t("Alle Arbeitsbereiche", "All workspaces"), t("Die Aufgaben aller deiner Arbeitsbereiche in einer Liste", "The tasks of all your workspaces in one list")],
-            ],
-            (value) => setScope(value as Scope),
-            "my-tasks-workspace-scope",
+      <div className="my-tasks-modes" ref={filterRow}>
+        <div className="my-tasks-modes-row">
+          {phone ? (
+            <>
+              <button
+                type="button"
+                className={`toolbar-chip my-tasks-more${active.length ? " active" : ""}`}
+                aria-haspopup="dialog"
+                aria-expanded={filtersOpen}
+                aria-label={filterName}
+                onClick={() => setFiltersOpen(true)}
+              >
+                <FunnelSimple size={15} aria-hidden />
+                <span className="toolbar-chip-text">{filterLabel}</span>
+              </button>
+              <Modal open={filtersOpen} sheet title={t("Filter", "Filters")} className="my-tasks-sheet my-tasks-filters-sheet" onClose={() => setFiltersOpen(false)}>
+                {filterBody}
+              </Modal>
+            </>
+          ) : (
+            <ChipPopover
+              icon={<FunnelSimple size={15} aria-hidden />}
+              label={filterLabel}
+              name={filterName}
+              active={active.length > 0}
+              panelLabel={t("Filter", "Filters")}
+              className="my-tasks-more"
+              panelClassName="my-tasks-filters-panel"
+              open={filtersOpen}
+              onOpenChange={setFiltersOpen}
+            >
+              {filterBody}
+            </ChipPopover>
           )}
-        {segmented(
-          "my-tasks-layout",
-          t("Ansicht", "View"),
-          layout,
-          [
-            ["list", t("Liste", "List"), t("Die Aufgaben untereinander, nach Fälligkeit gruppiert", "The tasks one below the other, grouped by due date")],
-            ["board", t("Board", "Board"), t("Eine Spalte je Fälligkeit; zum Verschieben ziehen oder „Verschieben nach …“", "A column per due date; drag or use “Move to …” to move a task")],
-          ],
-          (value) => setLayout(value as Layout),
-          "my-tasks-layout",
-        )}
-      </div>
-      <div className={`my-tasks-bar${phone ? " compact" : ""}`}>
-        {phone ? (
-          <Select
-            className="my-tasks-scope"
-            aria-label={t("Quelle", "Source")}
-            value={source}
-            onChange={(e) => setFilters({ source: e.target.value as Source })}
-          >
-            {sourceOptions.map(([value, text]) => (
-              <option key={value} value={value}>
-                {text}
-              </option>
-            ))}
-          </Select>
-        ) : (
-          segmented("my-tasks-source", t("Quelle", "Source"), source, sourceOptions, (value) => setFilters({ source: value }), "my-tasks-source")
-        )}
-        {!phone && personFilter}
-        {phone ? (
-          // A bottom sheet above the bottom navigation, not a panel it cuts off.
-          <div className="chip-popover-anchor my-tasks-range">
-            <button
-              type="button"
-              className={`toolbar-chip${range !== "any" ? " active" : ""}${rangeOpen ? " open" : ""}`}
-              aria-haspopup="dialog"
-              aria-expanded={rangeOpen}
-              aria-label={t(`Fälligkeit: ${rangeLabel}`, `Due: ${rangeLabel}`)}
-              onClick={() => setRangeOpen(true)}
-            >
-              <CalendarBlank size={15} />
-              <span className="toolbar-chip-text">{rangeLabel}</span>
-              <CaretDown size={11} className="toolbar-chip-caret" aria-hidden="true" />
-            </button>
-            <Modal open={rangeOpen} sheet title={t("Fälligkeit", "Due")} className="my-tasks-sheet" onClose={() => setRangeOpen(false)}>
-              {rangeChoices}
-            </Modal>
+          {segmented(
+            "my-tasks-layout",
+            t("Ansicht", "View"),
+            layout,
+            [
+              ["list", t("Liste", "List"), t("Die Aufgaben untereinander, nach Fälligkeit gruppiert", "The tasks one below the other, grouped by due date")],
+              ["board", t("Board", "Board"), t("Eine Spalte je Fälligkeit; zum Verschieben ziehen oder „Verschieben nach …“", "A column per due date; drag or use “Move to …” to move a task")],
+            ],
+            (value) => setLayout(value as Layout),
+            "my-tasks-layout",
+          )}
+        </div>
+        {active.length > 0 && (
+          <div className="my-tasks-active-filters" role="group" aria-label={t("Gesetzte Filter", "Filters set")}>
+            {active.map((key, index) => {
+              const [text, remove] = chipOf[key]();
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="toolbar-chip my-tasks-active-filter"
+                  aria-label={t(`Filter entfernen: ${text}`, `Remove filter: ${text}`)}
+                  disabled={key === "unassigned" && unassignedBusy}
+                  onClick={() => {
+                    remove();
+                    refocus(index);
+                  }}
+                >
+                  <span className="toolbar-chip-text">{text}</span>
+                  <X size={12} aria-hidden="true" />
+                </button>
+              );
+            })}
+            {active.length > 1 && (
+              <button type="button" className="text-button my-tasks-reset" onClick={resetFilters}>
+                {t("Zurücksetzen", "Reset")}
+              </button>
+            )}
           </div>
-        ) : (
-          <ChipPopover
-            icon={<CalendarBlank size={15} />}
-            label={rangeLabel}
-            name={t(`Fälligkeit: ${rangeLabel}`, `Due: ${rangeLabel}`)}
-            active={range !== "any"}
-            panelLabel={t("Fälligkeit", "Due")}
-            className="my-tasks-range"
-            panelClassName="my-tasks-range-panel"
-            open={rangeOpen}
-            onOpenChange={setRangeOpen}
-          >
-            {rangeChoices}
-          </ChipPopover>
-        )}
-        {phone ? (
-          <>
-            <button
-              type="button"
-              className={`toolbar-chip my-tasks-more${sheetFilters ? " active" : ""}`}
-              aria-haspopup="dialog"
-              aria-expanded={filtersOpen}
-              aria-label={sheetFilters ? t(`Filter, ${sheetFilters} gesetzt`, `Filters, ${sheetFilters} set`) : t("Filter", "Filters")}
-              onClick={() => setFiltersOpen(true)}
-            >
-              <FunnelSimple size={15} aria-hidden />
-              <span className="toolbar-chip-text">
-                {t("Filter", "Filters")}
-                {sheetFilters > 0 && ` (${sheetFilters})`}
-              </span>
-            </button>
-            <Modal open={filtersOpen} sheet title={t("Filter", "Filters")} className="my-tasks-sheet my-tasks-filters-sheet" onClose={() => setFiltersOpen(false)}>
-              <div className="my-tasks-sheet-body">
-                {personFilter}
-                {doneFilter}
-                {unassignedFilter}
-                {wantRecords && records && !everywhere && recordTools}
-                {pageLink}
-              </div>
-            </Modal>
-          </>
-        ) : (
-          <>
-            {doneFilter}
-            {unassignedFilter}
-            {pageLink}
-          </>
         )}
       </div>
       {everywhere && (
@@ -1193,9 +1257,8 @@ export function MyTasks({
           })}
         </div>
       )}
-      {wantRecords && records && !everywhere && (!phone || records.views.length > 0) && (
+      {wantRecords && records && !everywhere && records.views.length > 0 && (
         <div className="my-tasks-records">
-          {!phone && recordTools}
           <RecordViews views={records.views} active={view} onPick={pickView} onDelete={(v) => void deleteView(v)} />
         </div>
       )}
