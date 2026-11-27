@@ -155,8 +155,10 @@ export function ImageTools({
     (menu && menuImage?.type.name === "image" ? { pos: menu.pos, src: String(menuImage.attrs.src || ""), alt: String(menuImage.attrs.alt || "") } : null) ||
     (hovered && editor.state.doc.nodeAt(hovered.pos)?.type.name === "image" ? hovered : null) ||
     selected;
-  const origin = layer.current?.getBoundingClientRect();
   const element = shown ? imageElement(editor, shown.pos) : null;
+  // Only with an image to place: read while rendering, the layer's box
+  // forces the layout of the whole document (#604).
+  const origin = element ? layer.current?.getBoundingClientRect() : undefined;
   const box = element && origin ? element.getBoundingClientRect() : null;
 
   const keep = (event: React.MouseEvent | React.PointerEvent) => event.preventDefault();
