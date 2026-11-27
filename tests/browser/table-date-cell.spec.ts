@@ -94,7 +94,7 @@ test("#607: a table's date opens in a popover beside the cell, keys as in the ot
   await time.press("Enter");
   await expect(editor).toHaveCount(0);
   await expect(tr).toBeFocused();
-  await expect.poll(due).toBe("2026-11-03T10:30:00.000Z");
+  await expect.poll(due).toBe("2026-11-03T10:30:00Z");
   await expect(cell).toContainText("10:30");
 
   // Escape closes without saving.
@@ -105,7 +105,7 @@ test("#607: a table's date opens in a popover beside the cell, keys as in the ot
   await expect(editor).toHaveCount(0);
   await expect(tr).toBeFocused();
   await page.waitForTimeout(400);
-  expect(await due()).toBe("2026-11-03T10:30:00.000Z");
+  expect(await due()).toBe("2026-11-03T10:30:00Z");
 
   if (info.project.name === "desktop") {
     // Tab past the last control saves and goes on from the cell.
@@ -115,7 +115,7 @@ test("#607: a table's date opens in a popover beside the cell, keys as in the ot
     await controls.last().focus();
     await page.keyboard.press("Tab");
     await expect(editor).toHaveCount(0);
-    await expect.poll(due).toBe("2026-12-24T10:30:00.000Z");
+    await expect.poll(due).toBe("2026-12-24T10:30:00Z");
     // Shift+Tab before the first one goes back from the cell.
     await cell.click();
     await expect(date).toBeFocused();

@@ -93,9 +93,15 @@ export function CellPopover({
     el.style.setProperty("--cell-popover-top", `${place.top}px`);
     el.style.setProperty("--cell-popover-left", `${place.left}px`);
     el.style.setProperty("--cell-popover-width", `${place.width}px`);
-    // Not past the window's right edge (a column at the right, a phone).
-    const rect = el.getBoundingClientRect();
-    const over = Math.min(rect.right - (window.innerWidth - 8), rect.left - 8);
+    // Not past the window's right edge (a column at the right, a phone) –
+    // from the cell and the popover's layout width: the opening animation
+    // scales it, so its box on screen is still smaller now.
+    const cell = (anchor.current?.closest("td") ?? anchor.current)?.getBoundingClientRect();
+    if (!cell) return;
+    // The visible width: on phones the layout viewport grows with content
+    // that sticks out (the popover itself), window.innerWidth with it.
+    const visible = Math.min(window.innerWidth, document.documentElement.clientWidth, window.visualViewport?.width ?? Infinity);
+    const over = Math.min(cell.left + el.offsetWidth - (visible - 8), cell.left - 8);
     if (over > 0) el.style.setProperty("--cell-popover-left", `${place.left - over}px`);
   });
   // The editor's first field takes the focus once the popover is placed.

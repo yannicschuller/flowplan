@@ -217,7 +217,7 @@ import { RecordSubPages } from "./record-sub-pages";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { studyViewSchema } from "@/lib/study-schema";
 import { InlineText } from "./inline-text";
-import { Modal, viewIcons, download, Avatar, api, ApiError, PageIcon, requireConnection } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, ApiError, PageIcon, reportError, requireConnection } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -1576,14 +1576,15 @@ export default function DatabaseView({
         : b;
     return rowChanges.run(withBase, shown, send);
   };
+  const sendCommand = (sent: Record<string, unknown>) => {
+    // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
+    const key = idempotencyKeyOf(sent);
+    const body = { pageId: page.id, ...sent };
+    return mutate(key ? keyed(body, key) : body);
+  };
   const act = async (b: Record<string, unknown>) => {
     try {
-      return await rowChange(b, (sent) => {
-        // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
-        const key = idempotencyKeyOf(sent);
-        const body = { pageId: page.id, ...sent };
-        return mutate(key ? keyed(body, key) : body);
-      });
+      return await rowChange(b, sendCommand);
     } catch (e) {
       onError((e as Error).message);
       return null;
@@ -2277,7 +2278,8 @@ export default function DatabaseView({
     // the document, comments and the like – wait; with a template, which
     // only the server fills in, the whole record does.
     const id = crypto.randomUUID();
-    const created = act({
+    let refusal: unknown = null;
+    const created = (rowChange({
       action: "row.create",
       rowId: id,
       // Only a text title is called "Neue Aufgabe" (a date or number title
@@ -2289,7 +2291,10 @@ export default function DatabaseView({
       // in the person's time zone.
       timeZone: browserZone(),
       ...(rawTemplate ? { rawTemplate: true } : {}),
-    }) as Promise<{ id: string } | null>;
+    }, sendCommand) as Promise<{ id: string } | null>).catch((e: unknown) => {
+      refusal = e;
+      return null;
+    });
     setCreatingRows((current) => new Map(current).set(id, withTemplate ? "template" : "blank"));
     if (open) {
       setFreshRowId(id);
@@ -2301,11 +2306,12 @@ export default function DatabaseView({
       next.delete(id);
       return next;
     });
-    // Refused (act showed the server's message): the record is gone again,
-    // and so is its dialog.
+    // Refused: the record is gone again, and so is its dialog; the server's
+    // message as a toast – shown in the dialog, it would go with it.
     if (!r) {
       setFreshRowId((fresh) => (fresh === id ? null : fresh));
       if (rowIdNow.current === id) setRowId(null);
+      if (refusal) reportError(refusal, { toast: true });
     }
     return r;
   }

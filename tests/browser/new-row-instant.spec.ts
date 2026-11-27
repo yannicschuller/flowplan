@@ -87,8 +87,10 @@ test("#608: a refused creation closes the record with the server's message", asy
   await expect(record).toBeVisible({ timeout: 2000 });
   await record.getByLabel("Titel des Eintrags").fill("Geht nicht");
   create.release();
-  await expect(page.getByText("Keine Berechtigung.").first()).toBeVisible({ timeout: 15_000 });
+  // The message stays after the dialog closed: a toast, not in the dialog.
+  await expect(page.getByText(/Berechtigung/).first()).toBeVisible({ timeout: 15_000 });
   await expect(record).toHaveCount(0);
+  await expect(page.getByText(/Berechtigung/).first()).toBeVisible();
   await expect(page.locator(".data-table tbody tr[data-row-id]")).toHaveCount(0);
   await page.unroute("**/api/command");
   await page.waitForTimeout(500);
