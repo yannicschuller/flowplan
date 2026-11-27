@@ -7,6 +7,8 @@ import { join } from "node:path";
 // there, the spaces open (#616), and a page dragged by its handle with a
 // finger lands where it is let go and leaves no drop marks behind –
 // whether it is dropped, cancelled by the browser or stopped with Esc (#618).
+// While it is dragged a light copy follows the finger, only the target row
+// is marked, and the workspace does not render again per move (#637).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 
 // A person of their own, made directly in the test server's database: the
@@ -98,11 +100,21 @@ const center = async (page: Page, selector: string) => {
   const box = (await page.locator(selector).boundingBox())!;
   return { x: box.x + box.width / 2, y: box.y + box.height / 2, top: box.y, height: box.height };
 };
-// Nothing left of a drag: no drop line or frame, no lifted or pressed handle.
+// Nothing left of a drag: no drop line or frame, no lifted or pressed
+// handle, no copy following the finger.
 async function noMarks(page: Page) {
   await expect(page.locator(".drop-before, .drop-after, .drop-inside, .drop-records, .file-drop, .space-file-drop")).toHaveCount(0);
   await expect(page.locator("[data-drag-lifted], [data-drag-pressing], [data-drag-source]")).toHaveCount(0);
   await expect(page.locator("html.pointer-dragging")).toHaveCount(0);
+  await expect(page.locator(".pointer-drag-preview")).toHaveCount(0);
+}
+// How often WorkspaceApp has rendered (the specs' build counts, #610).
+const renders = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __flowplanWorkspaceRenders?: number }).__flowplanWorkspaceRenders ?? -1);
+// Exactly one row carries a drop mark: the one given.
+async function onlyMarked(page: Page, id: string, placement: "before" | "after" | "inside") {
+  await expect(page.locator(`.page-nav[data-page-id="${id}"].drop-${placement}`)).toHaveCount(1);
+  await expect(page.locator(".page-nav.drop-before, .page-nav.drop-after, .page-nav.drop-inside, .page-nav.drop-records")).toHaveCount(1);
 }
 // Holds the handle of `from` and moves the finger to `y` in steps.
 async function liftAndMove(page: Page, hand: ReturnType<typeof finger>, from: string, x: number, y: number) {
@@ -110,7 +122,11 @@ async function liftAndMove(page: Page, hand: ReturnType<typeof finger>, from: st
   await hand.down(handle.x, handle.y);
   // Held past the long press (lib/pointer-drag.ts LONG_PRESS_MS).
   await page.waitForTimeout(450);
-  await expect(page.locator(`.page-nav[data-page-id="${from}"][data-drag-lifted]`)).toHaveCount(1);
+  // The row fades in place and a copy of it follows the finger (#637).
+  await expect(page.locator(`.page-nav[data-page-id="${from}"][data-drag-source]`)).toHaveCount(1);
+  await expect(page.locator(".pointer-drag-preview")).toHaveCount(1);
+  // The copy is no row of the tree.
+  await expect(page.locator(".pointer-drag-preview [data-page-id]")).toHaveCount(0);
   const steps = 12;
   for (let i = 1; i <= steps; i++) {
     await hand.move(handle.x + ((x - handle.x) * i) / steps, handle.y + ((y - handle.y) * i) / steps);
@@ -143,9 +159,8 @@ test("a page dragged by its handle with a finger lands where it is let go, witho
   await page.waitForTimeout(300);
   let target = await center(page, `.page-nav[data-page-id="${a}"]`);
   await liftAndMove(page, hand, c, target.x, target.top + target.height * 0.15);
-  await expect(page.locator(`.page-nav[data-page-id="${a}"].drop-before`)).toHaveCount(1);
   // Only one row is marked at a time.
-  await expect(page.locator(".page-nav.drop-before, .page-nav.drop-after, .page-nav.drop-inside")).toHaveCount(1);
+  await onlyMarked(page, a, "before");
   await hand.up();
   await noMarks(page);
   await expect.poll(order).toEqual([c, a, b]);
@@ -155,14 +170,14 @@ test("a page dragged by its handle with a finger lands where it is let go, witho
   // Cancelled by the browser half way: nothing moves, nothing stays marked.
   target = await center(page, `.page-nav[data-page-id="${b}"]`);
   await liftAndMove(page, hand, a, target.x, target.top + target.height * 0.9);
-  await expect(page.locator(`.page-nav[data-page-id="${b}"].drop-after`)).toHaveCount(1);
+  await onlyMarked(page, b, "after");
   await hand.cancel();
   await noMarks(page);
 
   // Esc while dragging: the same, and letting go afterwards drops nothing.
   target = await center(page, `.page-nav[data-page-id="${c}"]`);
   await liftAndMove(page, hand, b, target.x, target.top + target.height * 0.5);
-  await expect(page.locator(`.page-nav[data-page-id="${c}"].drop-inside`)).toHaveCount(1);
+  await onlyMarked(page, c, "inside");
   await page.keyboard.press("Escape");
   await noMarks(page);
   await hand.up();
@@ -170,5 +185,29 @@ test("a page dragged by its handle with a finger lands where it is let go, witho
   await page.waitForTimeout(500);
   await expect.poll(order).toEqual([c, a, b]);
   await expect(page.locator(".app-shell.nav-open")).toBeVisible();
+
+  // Many moves up and down over the rows: the workspace renders a few times
+  // at most (no render per move), and one row at a time is marked (#637).
+  const top = await center(page, `.page-nav[data-page-id="${c}"]`);
+  const bottom = await center(page, `.page-nav[data-page-id="${b}"]`);
+  const handle = await center(page, `.page-nav[data-page-id="${a}"] .nav-drag`);
+  await hand.down(handle.x, handle.y);
+  await page.waitForTimeout(450);
+  await expect(page.locator(".pointer-drag-preview")).toHaveCount(1);
+  const before = await renders(page);
+  expect(before).toBeGreaterThan(0);
+  for (let i = 0; i < 50; i++) {
+    const t = (i % 25) / 24,
+      down = Math.floor(i / 25) % 2 === 0;
+    await hand.move(handle.x, top.top + 4 + (bottom.top + bottom.height - top.top - 8) * (down ? t : 1 - t));
+    // Over the dragged page itself no row is marked.
+    if (i % 5 === 4) expect(await page.locator(".page-nav.drop-before, .page-nav.drop-after, .page-nav.drop-inside").count()).toBeLessThanOrEqual(1);
+  }
+  await expect(page.locator(".page-nav.drop-before, .page-nav.drop-after, .page-nav.drop-inside")).toHaveCount(1);
+  expect((await renders(page)) - before).toBeLessThanOrEqual(3);
+  await page.keyboard.press("Escape");
+  await hand.up();
+  await noMarks(page);
+  await expect.poll(order).toEqual([c, a, b]);
   await cdp.detach();
 });

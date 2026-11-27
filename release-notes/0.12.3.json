@@ -9,5 +9,13 @@
     }
   ],
   "improvements": [],
-  "fixes": []
+  "fixes": [
+    {
+      "de": "Auf dem Handy und Tablet folgt eine Seite, die du am Griff in der Seitenleiste ziehst, jetzt ruckelfrei deinem Finger. Eine schlichte Linie zeigt, wo sie landet, eine leichte Tönung, wenn sie zur Unterseite wird; zum Umsortieren reicht der obere oder untere Teil einer Zeile.",
+      "en": "On a phone or tablet, a page you drag by its handle in the sidebar now follows your finger smoothly. A plain line shows where it lands and a light tint when it becomes a sub-page; the top or bottom part of a row is enough to reorder.",
+      "issues": [
+        637
+      ]
+    }
+  ]
 }
