@@ -5,6 +5,15 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { isMainThread } from "node:worker_threads";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// Next.js picks its request-scope storage when its modules load: a real
+// AsyncLocalStorage only if the global exists then (Next's server sets it,
+// next/dist/server/node-environment-baseline). Tests that call route
+// handlers in a request scope (tests/helpers/next-request.ts) need it even
+// when another test file in the same process loaded Next first – as in the
+// PostgreSQL run, where the files share a process.
+if (typeof globalThis.AsyncLocalStorage !== "function") globalThis.AsyncLocalStorage = AsyncLocalStorage;
 
 // The server's language catalogues load on first use (instrumentation.ts
 // sets up the loader in the app; lib/i18n-catalogs-server.ts) – in the test
