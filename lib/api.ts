@@ -2469,9 +2469,9 @@ async function runCommand(
         try {
           if (existing?.state) Y.applyUpdate(d, existing.state);
           const before = Y.encodeStateVector(d);
-          applyDocumentUpdate(d, Buffer.from(update, "base64"));
+          const written = applyDocumentUpdate(d, Buffer.from(update, "base64"));
           // Who wrote what: the editor sessions in this update are this person's.
-          await recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
+          await recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, written);
           const merged = Y.encodeStateAsUpdate(d);
           // Refused above the size cap (lib/document-size.ts) – before the
           // document is rendered or anything is written.
