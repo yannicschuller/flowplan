@@ -1,9 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // #285: on iPhone and iPad a swipe from the left edge opens the sidebar over
-// the current page – nothing navigates, the page stays visible beside it and
-// a tap beside it closes it. Over the page the sidebar has a width of its
-// own, kept per device apart from the docked width. In the app the person
+// the current page – nothing navigates. On the iPad the page stays visible
+// beside it and a tap beside it closes it; over the page the sidebar has a
+// width of its own, kept per device apart from the docked width. On the
+// iPhone it fills the screen (#622) and closes with "× Navigation" or a
+// swipe to the left that it follows (#621). In the app the person
 // may choose "Zurück" instead ("Wischen vom linken Rand", Settings →
 // Darstellung & Sprache): the very edge is then the app's back swipe again
 // and the sidebar opens a little further in, as before.
@@ -133,47 +135,78 @@ test.describe("iPhone (app)", () => {
     await swipe(page, 3, 300);
     await expectOverlay(page, true);
     expect(await place(page)).toEqual(before);
-    // Its own width: min(360px, 85vw), the page visible beside it.
-    const width = await sidebarWidth(page);
-    expect(width).toBe(Math.round(390 * 0.85));
-    expect(width).toBeLessThanOrEqual(390 - 48);
-    // The page beside it is out of reach while it is open.
+    // As wide as the screen on a phone (#622): no fringe of the page.
+    expect(await sidebarWidth(page)).toBe(390);
+    // The page behind it is out of reach while it is open.
     await expect(page.locator("main.main")).toHaveAttribute("inert", "");
 
-    await page.locator(".mobile-scrim").tap({ position: { x: 370, y: 300 } });
+    // "× Navigation" in the bottom bar closes it; the sidebar's own close
+    // button is not shown beside it (#617).
+    await expect(sidebar(page).locator(".sidebar-hide")).toBeHidden();
+    await page.getByRole("navigation", { name: "Schnellnavigation" }).getByRole("button", { name: "Navigation schließen" }).tap();
     await expectOverlay(page, false);
     expect(await place(page)).toEqual(before);
 
-    // A swipe to the left on the open sidebar closes it too.
+    // A swipe to the left on the open sidebar closes it too (from a title,
+    // not a drag handle).
     await swipe(page, 3, 300);
     await expectOverlay(page, true);
-    await swipe(page, 300, 20);
+    await swipe(page, 200, 20);
     await expectOverlay(page, false);
     expect(await place(page)).toEqual(before);
   });
 
-  test("its width is dragged at its right edge and remembered on this device", async ({ page }, info) => {
+  test("on a phone it fills the screen: no width of its own, no edge to drag (#621, #622)", async ({ page }, info) => {
+    test.skip(info.project.name !== "mobile", "Touch emulation runs in the mobile project.");
+    await setUp(page, true);
+    // A width stored before (#285) no longer applies on the phone.
+    await page.addInitScript(() => localStorage.setItem("flowplan-sidebar-overlay-width", "260"));
+    await page.goto("/#home");
+    await swipeReady(page);
+    await swipe(page, 3, 300);
+    await expectOverlay(page, true);
+    expect(await sidebarWidth(page)).toBe(390);
+    await expect(sidebar(page).locator(".sidebar-resize")).toHaveCount(0);
+  });
+
+  test("on a phone the open sidebar follows the finger to the left; scrolling its tree leaves it open (#621)", async ({ page }, info) => {
     test.skip(info.project.name !== "mobile", "Touch emulation runs in the mobile project.");
     await setUp(page, true);
     await page.goto("/#home");
     await swipeReady(page);
     await swipe(page, 3, 300);
     await expectOverlay(page, true);
-    const handle = sidebar(page).locator(".sidebar-resize");
-    await expect(handle).toBeVisible();
-    const box = (await handle.boundingBox())!;
-    await swipe(page, box.x + box.width / 2, 260);
-    await expect.poll(() => sidebarWidth(page)).toBe(260);
-    // Dragging the handle does not close the sidebar.
-    await expectOverlay(page, true);
-    expect(await page.evaluate(() => localStorage.getItem("flowplan-sidebar-overlay-width"))).toBe("260");
-    expect(await page.evaluate(() => localStorage.getItem("flowplan-sidebar-width"))).toBeNull();
 
-    await page.reload();
-    await swipeReady(page);
-    await swipe(page, 3, 300);
+    // Up and down over the tree, drifting sideways a little: it scrolls,
+    // the sidebar stays.
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", x: number, y: number) =>
+      cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    await touch("touchStart", 200, 600);
+    for (let i = 1; i <= 8; i++) {
+      await touch("touchMove", 200 - i * 3, 600 - i * 30);
+      await page.waitForTimeout(16);
+    }
+    await touch("touchEnd", 0, 0);
+    await page.waitForTimeout(400);
     await expectOverlay(page, true);
-    expect(await sidebarWidth(page)).toBe(260);
+
+    // Half way to the left the sidebar is half way out, under the finger.
+    await touch("touchStart", 250, 420);
+    for (let i = 1; i <= 10; i++) {
+      await touch("touchMove", 250 - i * 15, 420);
+      await page.waitForTimeout(16);
+    }
+    await expect.poll(async () => Math.round((await sidebar(page).boundingBox())!.x)).toBe(-150);
+    // Back to the right before letting go: it settles open again.
+    for (let i = 1; i <= 10; i++) {
+      await touch("touchMove", 100 + i * 15, 420);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(150);
+    await touch("touchEnd", 0, 0);
+    await expectOverlay(page, true);
+    await cdp.detach();
   });
 
   test("“Zurück”: the very edge is back again, the sidebar opens a little further in", async ({ page }, info) => {

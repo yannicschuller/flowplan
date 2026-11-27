@@ -79,9 +79,10 @@ export function drawerSwipeApplies(layout: { phone: boolean; collapsed: boolean 
 // The sidebar over the page has a width of its own, wider than the docked
 // one by default (nested trees are easier to read), dragged at its right
 // edge and kept per device apart from the docked width (lib/layout-cookie.ts
-// SIDEBAR_WIDTH_KEY). null: the stylesheet's default – min(360px, 85vw) on
-// phones, 400px on tablets (app/globals.css). The page always stays visible
-// beside it (the stylesheet keeps 48px free).
+// SIDEBAR_WIDTH_KEY). null: the stylesheet's default, 400px (app/globals.css).
+// The page always stays visible beside it (the stylesheet keeps 48px free).
+// Tablets and wider windows only: on phones the drawer is as wide as the
+// screen and has no edge to drag (#622).
 export const OVERLAY_WIDTH_KEY = "flowplan-sidebar-overlay-width";
 export const OVERLAY_MIN = 240;
 export const OVERLAY_MAX = 600;

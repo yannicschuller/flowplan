@@ -18,7 +18,9 @@ async function openNavigation(page: Page, info: TestInfo) {
 }
 async function closeNavigation(page: Page, info: TestInfo) {
   if (mobile(info) && (await drawerOpen(page))) {
-    await page.locator("aside.sidebar").getByRole("button", { name: "Navigation schließen" }).click();
+    // "× Navigation" in the bottom bar (the sidebar has no close button of
+    // its own beside it, #617).
+    await page.getByRole("navigation", { name: "Schnellnavigation" }).getByRole("button", { name: "Navigation schließen" }).click();
     await expect(page.locator(".app-shell.nav-open")).toHaveCount(0);
   }
 }

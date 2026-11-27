@@ -1811,7 +1811,7 @@ CommandJournalCompletedMineResult = TypedDict("CommandJournalCompletedMineResult
     "mine": Required[bool],
 }, total=False)
 
-# Remember what you folded or unfolded in the sidebar of a workspace, for yourself on all devices. `changes` maps keys to true (set) or false (remove): `p:<pageId>` a page unfolded in the tree (pages start folded), `s:<spaceId>` a space folded, `g:favorites` / `g:collections` that group folded, `jo:<journalId>:<YYYY or YYYY-MM>` / `jc:…` a journal folder opened / closed by hand. Unknown keys are ignored; keys of deleted pages and spaces, and of pages without sub-pages, drop out. The answer is the stored list (the bootstrap sends it as `sidebar`).
+# Remember what you folded or unfolded in the sidebar of a workspace, for yourself on all devices. `changes` maps keys to true (set) or false (remove): `p:<pageId>` a page unfolded in the tree (pages start folded), `s:<spaceId>` a space folded, `g:favorites` / `g:collections` that group folded, `go:favorites` / `go:collections` that group unfolded by hand (phones start with both folded), `jo:<journalId>:<YYYY or YYYY-MM>` / `jc:…` a journal folder opened / closed by hand. Unknown keys are ignored; keys of deleted pages and spaces, and of pages without sub-pages, drop out. The answer is the stored list (the bootstrap sends it as `sidebar`).
 CommandSidebarState = TypedDict("CommandSidebarState", {
     "action": Required[Literal["sidebar.state"]],
     "workspaceId": Required[str],

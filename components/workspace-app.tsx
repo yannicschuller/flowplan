@@ -76,8 +76,8 @@ import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
 import { DatabaseLabelsContext } from "./database-picker";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
-import { Tag as TagIcon } from "@phosphor-icons/react";
-import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
+import { Tag as TagIcon, type Icon } from "@phosphor-icons/react";
+import { SidebarMore, SidebarToolRow, type SidebarTool } from "./sidebar-tools";
 import { PageTitleField } from "./page-title-field";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import type { AskRequest } from "./ai-ask";
@@ -266,6 +266,7 @@ import { HideKeyboardButton } from "./hide-keyboard-button";
 import {
   Modal,
   PageIcon,
+  SIDEBAR_EMOJI,
   Avatar,
   setAvatarDirectory,
   api,
@@ -1053,11 +1054,18 @@ export default function WorkspaceApp({
   const lastSelected = useRef<string | null>(null),
     touchDrag = useRef<{ source: string; pointer: number } | null>(null),
     touchHold = useRef<(() => void) | null>(null),
+    // Ends a page drag by the handle (startTreeHandleDrag) quietly.
+    treeHandleEnd = useRef<(() => void) | null>(null),
+    treeHandleDropRef = useRef((_source: string, _x: number, _y: number) => {}),
+    // Whether the last press on a row of the tree was a finger.
+    rowPressedByTouch = useRef(false),
     touchHoverRef = useRef((_x: number, _y: number) => {}),
     // Holding the tree handle near the edge of the page list scrolls it.
     [treeScroll] = useState(() =>
       edgeScroller((x, y) => touchHoverRef.current(x, y)),
     );
+  // A page drag by the handle ends with the workspace (no stray drop marks).
+  useEffect(() => () => treeHandleEnd.current?.(), []);
   const [privateTemplate, setPrivateTemplate] = useState(false);
   // The scope of a template being saved (#136): the page's space (null:
   // the whole workspace); `templateSpaceRefs` holds the server's answer when
@@ -2883,6 +2891,13 @@ export default function WorkspaceApp({
   // fold them), journal folders follow lib/journal-nav.ts (jo:/jc:).
   const folds = useSidebarFolds(boot.workspace.id, boot.sidebar);
   const navCompact = folds.has("g:nav");
+  // Favoriten and Sammlungen: open on wider screens until folded (g:), on
+  // phones folded until opened (go:, #616) – there the spaces come first.
+  // Either choice is stored for every device, as before.
+  const groupFolded = (group: "favorites" | "collections") =>
+    folds.has(`g:${group}`) || (phone && !folds.has(`go:${group}`));
+  const foldGroup = (group: "favorites" | "collections", fold: boolean) =>
+    folds.change({ [`g:${group}`]: fold, [`go:${group}`]: !fold });
   // A library (#329) starts folded: its tree opens by hand (so:<space>).
   const foldSpace = (id: string, fold: boolean) =>
     folds.change(boot.spaces.find((sp) => sp.id === id)?.library ? { [`so:${id}`]: !fold } : { [`s:${id}`]: fold });
@@ -3548,6 +3563,74 @@ export default function WorkspaceApp({
     setTreeDrop(target && target.id !== drag.source ? target : null);
   }
   touchHoverRef.current = touchHover;
+  // Moves a page dropped by the handle onto a row of the tree.
+  treeHandleDropRef.current = (source, x, y) => {
+    const target = touchTarget(x, y);
+    if (!target || target.id === source) return;
+    void movingChecked([source], { pageId: target.id }, (meta) => {
+      markTreeMove();
+      return act({ action: "page.move", pageId: source, targetId: target.id, placement: target.placement, ...(meta ? { meta } : {}) });
+    });
+  };
+  // A page lifted by its handle (touch, after the hold of touchHold; pen and
+  // mouse at once) follows the finger until it is let go (#618). The window
+  // listens, not the handle: its pointer capture can be refused or lost on
+  // touch screens (iOS), and then the moves and the release never reached
+  // it – the drag stalled and a drop line stayed behind. Every end – let
+  // go, cancelled by the browser, Esc, the window losing the focus, the
+  // tree going away – clears the drop marks.
+  function startTreeHandleDrag(handle: HTMLElement, pointer: number, source: string) {
+    treeHandleEnd.current?.();
+    try {
+      // The finger keeps the handle's touch while it leaves the row.
+      handle.setPointerCapture(pointer);
+    } catch {}
+    touchDrag.current = { source, pointer };
+    treeScroll.start(handle);
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointer) return;
+      if (ev.cancelable) ev.preventDefault();
+      touchHoverRef.current(ev.clientX, ev.clientY);
+      treeScroll.move(ev.clientX, ev.clientY);
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === pointer) end(ev);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId === pointer) end(null);
+    };
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      end(null);
+    };
+    const lost = () => end(null);
+    const end = (drop: PointerEvent | null) => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("blur", lost);
+      if (treeHandleEnd.current === quit) treeHandleEnd.current = null;
+      // The lifted handle and row go down as well (Esc comes before the
+      // finger lets go).
+      touchHold.current?.();
+      touchHold.current = null;
+      const drag = touchDrag.current;
+      touchDrag.current = null;
+      treeScroll.stop();
+      setTreeDrop(null);
+      if (drop && drag?.pointer === drop.pointerId) treeHandleDropRef.current(drag.source, drop.clientX, drop.clientY);
+    };
+    const quit = () => end(null);
+    treeHandleEnd.current = quit;
+    window.addEventListener("pointermove", move, { capture: true, passive: false });
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", cancel, true);
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("blur", lost);
+  }
   // A record dragged out of a database (components/database-view.tsx, with
   // pointer events since #100) onto another database in the sidebar moves
   // there; with Alt (⌥) held it is copied.
@@ -3976,9 +4059,16 @@ export default function WorkspaceApp({
                 setPageMenu({ page: p, x: e.clientX, y: e.clientY });
               }}
               {...pressMenu(p)}
+              onPointerDownCapture={(e) => {
+                rowPressedByTouch.current = e.pointerType === "touch";
+              }}
               draggable={canCreate}
               onDragStart={(e) => {
-                if ((e.target as HTMLElement).closest(".nav-drag")) {
+                // On phones a held row opens its menu and pages move by the
+                // handle alone: the browser's own drag of the row (iOS lifts
+                // it after a long press) would mark rows it never unmarks
+                // (#618).
+                if ((e.target as HTMLElement).closest(".nav-drag") || (phone && rowPressedByTouch.current)) {
                   e.preventDefault();
                   return;
                 }
@@ -4128,7 +4218,7 @@ export default function WorkspaceApp({
                   tabs.openPlace(`page=${p.id}`, openModeOf(e));
                 }}
               >
-                <PageIcon name={shownPageIcon(p.icon, p.kind)} size={17} />
+                <PageIcon name={shownPageIcon(p.icon, p.kind)} size={17} emojiSize={SIDEBAR_EMOJI} />
                 <span className="page-nav-label">{p.title}</span>
                 {place.today && <span className="nav-badge">{t("Heute", "Today")}</span>}
                 {p.locked === 1 && <Lock size={12} />}
@@ -4153,42 +4243,10 @@ export default function WorkspaceApp({
                     touchHold.current = holdForTouch(
                       e,
                       () => {
-                        if (!handle.isConnected) return;
-                        handle.setPointerCapture(pointer);
-                        touchDrag.current = { source: p.id, pointer };
-                        treeScroll.start(handle);
+                        if (handle.isConnected) startTreeHandleDrag(handle, pointer, p.id);
                       },
                       { lift: handle.closest<HTMLElement>(".page-nav") },
                     );
-                  }}
-                  onPointerMove={(e) => {
-                    if (touchDrag.current?.pointer !== e.pointerId) return;
-                    touchHover(e.clientX, e.clientY);
-                    treeScroll.move(e.clientX, e.clientY);
-                  }}
-                  onPointerUp={(e) => {
-                    const drag = touchDrag.current;
-                    touchDrag.current = null;
-                    treeScroll.stop();
-                    if (drag?.pointer !== e.pointerId) return;
-                    const target = touchTarget(e.clientX, e.clientY);
-                    setTreeDrop(null);
-                    if (target && target.id !== drag.source)
-                      void movingChecked([drag.source], { pageId: target.id }, (meta) => {
-                        markTreeMove();
-                        return act({
-                          action: "page.move",
-                          pageId: drag.source,
-                          targetId: target.id,
-                          placement: target.placement,
-                          ...(meta ? { meta } : {}),
-                        });
-                      });
-                  }}
-                  onPointerCancel={() => {
-                    touchDrag.current = null;
-                    treeScroll.stop();
-                    setTreeDrop(null);
                   }}
                 >
                   <DotsSixVertical size={14} />
@@ -4691,11 +4749,13 @@ export default function WorkspaceApp({
     // Signed in through a reverse proxy: its portal signs out as well.
     location.href = done.redirect || "/";
   };
-  // The account's entries: in the workspace menu (#565) and in the phone's
-  // "Mehr" sheet (#197); signing out comes last, set apart.
+  // The account's entries: in the workspace menu (#565) on every screen –
+  // the phone's "Mehr" sheet holds the tools alone (#613); signing out
+  // comes last, set apart.
   const legal = boot.instance?.legal;
-  const accountItems: SidebarAccountItem[] = [
-    { id: "theme", label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), icon: dark ? Sun : Moon, keepOpen: true, onSelect: toggleTheme },
+  type AccountItem = { id: string; label: string; icon: Icon; href?: string; external?: boolean; onSelect?: () => void };
+  const accountItems: AccountItem[] = [
+    { id: "theme", label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), icon: dark ? Sun : Moon, onSelect: toggleTheme },
     { id: "about", label: t("Über Flowplan", "About Flowplan"), icon: InfoIcon, href: "#settings/about" },
     { id: "whats-new", label: t("Was ist neu", "What’s new"), icon: Gift, onSelect: openWhatsNew },
     ...(legal?.imprint ? [{ id: "imprint", label: t("Impressum", "Legal notice"), icon: Scales, href: legal.imprint, external: true }] : []),
@@ -4734,7 +4794,6 @@ export default function WorkspaceApp({
   };
   // Unread in all, also beyond the first page of the inbox (the badges).
   const unreadNotifications = boot.notificationsUnread ?? boot.notifications.filter((n) => !n.read_at).length;
-  const signOutItem: SidebarAccountItem = { id: "sign-out", label: t("Abmelden", "Sign out"), icon: SignOut, onSelect: () => void signOut() };
   return (
     <AiProvider status={uiAi || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
@@ -4830,7 +4889,8 @@ export default function WorkspaceApp({
           <Dropdown.Portal>
             {/* One menu for the workspace and the account (#565): who is
                 signed in, the workspaces, then the account's entries (on
-                phones also in "Mehr", #197) and signing out last, apart. */}
+                phones too: "Mehr" holds the tools alone, #613) and signing
+                out last, apart. */}
             <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown workspace-menu" align="start" sideOffset={4}>
               <Dropdown.Label className="workspace-menu-person">
                 <Avatar name={boot.user.name} userId={boot.user.id} small />
@@ -4891,9 +4951,9 @@ export default function WorkspaceApp({
                 )}
               </Dropdown.Group>
               <Dropdown.Separator className="dropdown-separator" />
-              <Dropdown.Item className="dropdown-item workspace-menu-sign-out" onSelect={signOutItem.onSelect}>
+              <Dropdown.Item className="dropdown-item workspace-menu-sign-out" onSelect={() => void signOut()}>
                 <SignOut />
-                {signOutItem.label}
+                {t("Abmelden", "Sign out")}
               </Dropdown.Item>
             </Dropdown.Content>
           </Dropdown.Portal>
@@ -5003,24 +5063,24 @@ export default function WorkspaceApp({
           {/* A focused branch (#318) is the tree alone, as while filtering. */}
           {!filterMatches && !branchPage && (favorites.length > 0 || todayFavorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section
-              className={`nav-section favorites-section${folds.has("g:favorites") ? " space-collapsed" : ""}`}
+              className={`nav-section favorites-section${groupFolded("favorites") ? " space-collapsed" : ""}`}
               aria-label={t("Favoriten", "Favourites")}
             >
               <div className="nav-section-title">
                 <button
                   type="button"
                   className="space-toggle"
-                  aria-expanded={!folds.has("g:favorites")}
+                  aria-expanded={!groupFolded("favorites")}
                   aria-controls="favorites-list"
-                  onClick={() => folds.change({ "g:favorites": !folds.has("g:favorites") })}
+                  onClick={() => foldGroup("favorites", !groupFolded("favorites"))}
                 >
                   <CaretRight size={10} className="space-caret" aria-hidden="true" />
                   <span className="space-name">{t("Favoriten", "Favourites")}</span>
                   <Star size={13} aria-hidden="true" />
                 </button>
               </div>
-              <Collapse open={!folds.has("g:favorites")} className="space-tree">
-              {!folds.has("g:favorites") ? (
+              <Collapse open={!groupFolded("favorites")} className="space-tree">
+              {!groupFolded("favorites") ? (
               <div id="favorites-list">
               {/* Page favourites and journals' "Heute" links (#537) in the
                   order of the page tree; a journal's "Heute" right after
@@ -5070,7 +5130,7 @@ export default function WorkspaceApp({
                   }}
                   {...pressMenu(p)}
                 >
-                  <PageIcon name={shownPageIcon(p.icon, p.kind)} />
+                  <PageIcon name={shownPageIcon(p.icon, p.kind)} emojiSize={SIDEBAR_EMOJI} />
                   <span>{p.title}</span>
                 </button>
               ))}
@@ -5087,7 +5147,7 @@ export default function WorkspaceApp({
                     // The address opens it (the hash route); the drawer closes.
                     onClick={() => setMobile(false)}
                   >
-                    <PageIcon name={shownPageIcon(f.icon, "document")} />
+                    <PageIcon name={shownPageIcon(f.icon, "document")} emojiSize={SIDEBAR_EMOJI} />
                     <span>{f.title}</span>
                   </a>
                 );
@@ -5107,8 +5167,8 @@ export default function WorkspaceApp({
               onDuplicate={(c) => void duplicateCollection(c)}
               onDelete={(c) => void deleteCollection(c)}
               onReorder={(order) => reorderCollections(order)}
-              folded={folds.has("g:collections")}
-              onFold={(fold) => folds.change({ "g:collections": fold })}
+              folded={groupFolded("collections")}
+              onFold={(fold) => foldGroup("collections", fold)}
             />
           )}
           {(selecting || selectedPages.length > 0) && (
@@ -5461,10 +5521,14 @@ export default function WorkspaceApp({
               and the account's entries are in the workspace menu at the top
               (#565), so there is no account row below it any more (#570). */}
           <SidebarToolRow tools={sidebarTools} />
-          <SidebarMore tools={sidebarTools} account={accountItems} signOut={signOutItem} />
+          {/* Phones rarely have a keyboard: no "Tastenkürzel" in the sheet
+              (#620; iPad and wider windows keep it in the row). */}
+          <SidebarMore tools={sidebarTools.filter((tool) => tool.id !== "shortcuts")} />
         </div>
-        {/* Over the page (open drawer) the sidebar has a width of its own. */}
-        {mobile ? (
+        {/* Over the page (open drawer) the sidebar has a width of its own –
+            on tablets; on phones it is as wide as the screen and has no
+            edge to drag (#621, #622). */}
+        {mobile && phone ? null : mobile ? (
           <SidebarResize
             key="overlay"
             width={overlayWidth}

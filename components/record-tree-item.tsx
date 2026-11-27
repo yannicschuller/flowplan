@@ -7,7 +7,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { CaretRight, Plus } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Collapse } from "./motion";
-import { PageIcon } from "./ui";
+import { PageIcon, SIDEBAR_EMOJI } from "./ui";
 import type { TreeKeyItem } from "./journal-nav";
 
 export function RecordTreeItem({
@@ -81,7 +81,7 @@ export function RecordTreeItem({
         </button>
         {/* A real link: ⌘/Ctrl or the middle button open a new tab. */}
         <a className="page-nav-title" tabIndex={-1} href={href} onClick={onOpen}>
-          <PageIcon name={icon || "file"} size={17} />
+          <PageIcon name={icon || "file"} size={17} emojiSize={SIDEBAR_EMOJI} />
           <span className="page-nav-label">{label || t("Ohne Titel", "Untitled")}</span>
         </a>
         {onAdd && (

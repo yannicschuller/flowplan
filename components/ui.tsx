@@ -81,13 +81,20 @@ const icons = {
   // Records without an icon of their own (links to them, #96).
   record: Rows,
 };
+// The emoji of a page in the sidebar's rows (the tree, Favoriten): as large
+// to the eye as the 17–18 px line icons beside it (#619).
+export const SIDEBAR_EMOJI = 14;
 export function PageIcon({
   name,
   size = 18,
+  emojiSize,
   ...props
 }: {
   name: string;
   size?: number;
+  // An emoji fills its box more than a line icon fills its own: rows of
+  // icons (the sidebar, #619) draw it smaller in the same box.
+  emojiSize?: number;
   className?: string;
 }) {
   if (name?.startsWith("icon:"))
@@ -115,7 +122,7 @@ export function PageIcon({
       <span
         {...props}
         className={`page-emoji ${props.className || ""}`}
-        style={{ fontSize: size, width: size, height: size }}
+        style={{ fontSize: emojiSize ?? size, width: size, height: size }}
         aria-hidden="true"
       >
         {name}

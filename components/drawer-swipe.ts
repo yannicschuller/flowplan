@@ -3,8 +3,10 @@
 // pulls it in over the page, a swipe to the left on the open sidebar (or the
 // dimmed page beside it) pushes it out – released past a third of its width
 // or with some speed, it settles open or closed, otherwise it springs back.
-// Nothing navigates. On phones, and on tablets whose sidebar is collapsed
-// (#285: there it lies over the page with a width of its own); a docked,
+// Nothing navigates. On phones (there the drawer is as wide as the screen,
+// #622, and the browser only scrolls it up and down, so a sideways swipe on
+// it is the drawer's from the start, #621), and on tablets whose sidebar is
+// collapsed (#285: there it lies over the page with a width of its own); a docked,
 // visible sidebar is already there. Vertical swipes, dialogs, whiteboards
 // and places that pan sideways themselves are left alone. Who owns the very
 // edge – "back" in Safari, the person's choice in the iOS app – decides
@@ -19,6 +21,9 @@ import { nativeApp } from "@/lib/native-app";
 const PHONE = "(max-width: 767.98px)";
 // Moved this far before deciding: sideways (drawer) or not (scroll).
 const DECIDE = 10;
+// Sideways only when clearly more sideways than up or down: scrolling the
+// page tree by a thumb drifts sideways a little.
+const SLANT = 1.3;
 const IGNORE =
   "[role=dialog], canvas, .whiteboard, .wb-root, input[type=range], [data-no-edge-swipe], .sidebar-resize";
 
@@ -142,8 +147,13 @@ export function useDrawerSwipe(
         dy = touch.clientY - start.y;
       if (!dragging) {
         if (Math.abs(dx) < DECIDE && Math.abs(dy) < DECIDE) return;
-        // Up or down, or the wrong way: not the drawer.
-        if (Math.abs(dy) > Math.abs(dx) || (start.open ? dx > 0 : dx < 0)) {
+        // Up or down (a slanted swipe counts as scrolling, #621), the wrong
+        // way, or a move the browser already scrolls with: not the drawer.
+        if (
+          Math.abs(dy) * SLANT > Math.abs(dx) ||
+          (start.open ? dx > 0 : dx < 0) ||
+          !e.cancelable
+        ) {
           start = null;
           unlisten?.();
           return;

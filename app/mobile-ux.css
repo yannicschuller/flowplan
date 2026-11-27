@@ -545,9 +545,10 @@ label.hit-check {
 
 /* ===== The sidebar's less used places on phones (#185,
    components/sidebar-tools.tsx): in the drawer (up to 767 px, the phone
-   layout of app/globals.css) one labelled "Mehr" button replaces the row of
-   symbols and opens them as a list in a sheet – the bottom block is that
-   button alone (#570), the page tree keeps the height. ===== */
+   layout of app/globals.css) one small "Mehr" button at the left of the
+   row where wider screens show the symbols opens them as a list in a
+   sheet – one compact row, no bar of its own (#613), the page tree keeps
+   the height. ===== */
 .sidebar-more {
   display: none;
 }
@@ -558,21 +559,27 @@ label.hit-check {
   .sidebar-more {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-shrink: 0;
     min-height: 44px;
-    margin: 8px 6px;
+    margin: 0;
     padding-block: 0;
-    padding-inline: 10px 14px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 14px;
+    padding-inline: 12px 14px;
+    border-radius: 8px;
+    color: var(--secondary);
+    font-size: 13px;
     font-weight: 600;
   }
+  .sidebar-more:hover,
   .sidebar-more[aria-expanded="true"] {
     background: var(--hover);
+    color: var(--text);
+  }
+  /* The bottom bar's "× Navigation" closes the drawer (#617): no second
+     close button at the top right while the bar is there (with the
+     keyboard open, or in focus mode, the bar is gone and it stays). */
+  .app-shell:not(.keyboard-open, .focus-mode) .sidebar-hide {
+    display: none;
   }
 }
 .sidebar-more-list,

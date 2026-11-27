@@ -3,11 +3,15 @@ import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 
-// On phones the sidebar's less used places sit behind one labelled "Mehr"
-// button in the drawer's profile row and open as a list in a sheet; wider
-// windows keep the row of symbols (#185, components/sidebar-tools.tsx).
+// On phones the sidebar's less used places sit behind one small "Mehr"
+// button at the bottom left of the drawer, where wider windows show the row
+// of symbols, and open as a list in a sheet (#185, #613,
+// components/sidebar-tools.tsx). The sheet holds the tools alone: the
+// account's entries are in the workspace menu at the top (#613), and phones
+// have no "Tastenkürzel" (#620).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const PLACES = ["Vorlagen", "Medien", "Lernen", "Tags", "Graph", "Papierkorb", "Einstellungen", "Tastenkürzel"];
+const PHONE_PLACES = PLACES.filter((name) => name !== "Tastenkürzel");
 
 async function signIn(page: Page) {
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -35,46 +39,31 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(more(page)).toBeVisible();
   await expect(more(page)).toHaveAttribute("aria-haspopup", "dialog");
   await expect(more(page)).toHaveAttribute("aria-expanded", "false");
-  const button = await more(page).boundingBox();
-  expect(button!.height).toBeGreaterThanOrEqual(44);
-  // The bottom block is the "Mehr" button alone (#570).
-  const bottom = await sidebar(page).locator(".sidebar-bottom").boundingBox();
-  expect(bottom!.height).toBeLessThan(70);
+  // Small, at the bottom left, in one compact row – no bar of its own
+  // (#613); still a 44 px target.
+  const button = (await more(page).boundingBox())!;
+  expect(button.height).toBeGreaterThanOrEqual(44);
+  expect(button.width).toBeLessThan(120);
+  const bottom = (await sidebar(page).locator(".sidebar-bottom").boundingBox())!;
+  expect(bottom.height).toBeLessThan(50);
+  expect(button.x - bottom.x).toBeLessThan(12);
 
   await more(page).tap();
   await expect(sheet(page)).toBeVisible();
   // (Behind the dialog the drawer is hidden from the accessibility tree.)
   await expect(sidebar(page).locator(".sidebar-more")).toHaveAttribute("aria-expanded", "true");
-  // Every place with its name, in the order of the row.
+  // Every place with its name, in the order of the row – no keyboard
+  // shortcuts on a phone (#620).
   const items = sheet(page).locator(".sidebar-more-list button");
-  await expect(items).toHaveText(PLACES);
-  for (const name of PLACES) {
+  await expect(items).toHaveText(PHONE_PLACES);
+  for (const name of PHONE_PLACES) {
     const box = await sheet(page).getByRole("button", { name, exact: true }).boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-
-  // The account menu is part of the sheet (#197): no "⋯" at the bottom
-  // row (wider windows: the workspace menu, #565); design, about and what's new (#223) below a line, signing out
-  // last and apart.
-  await expect(sidebar(page).getByRole("button", { name: "Kontomenü" })).toBeHidden();
-  const account = sheet(page).getByRole("group", { name: "Konto" });
-  await expect(account.locator("button, a")).toHaveText(["Dunkles Design", "Über Flowplan", "Was ist neu", "Abmelden"]);
-  for (const entry of await account.locator("button, a").all()) expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  // (Measured at one moment: the sheet may still be sliding in.)
-  const gaps = await account.evaluate((group) => {
-    const box = (el: Element | null) => el!.getBoundingClientRect();
-    const places = box(group.previousElementSibling),
-      list = box(group.querySelector("ul")),
-      signOut = box(group.querySelector(".sidebar-more-sign-out"));
-    return { line: box(group).top - places.bottom, signOut: signOut.top - list.bottom, last: signOut.top >= list.bottom };
-  });
-  expect(gaps.line).toBeGreaterThanOrEqual(0);
-  expect(gaps.signOut).toBeGreaterThanOrEqual(16);
-  // The design switches with the sheet left open.
-  await account.getByRole("button", { name: "Dunkles Design" }).tap();
-  await expect(account.getByRole("button", { name: "Helles Design" })).toBeVisible();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await account.getByRole("button", { name: "Helles Design" }).tap();
+  // The tools alone: the account's entries are in the workspace menu.
+  await expect(sheet(page).getByRole("group", { name: "Konto" })).toHaveCount(0);
+  await expect(sheet(page).getByText("Abmelden")).toHaveCount(0);
+  await expect(sheet(page).getByText("Dunkles Design")).toHaveCount(0);
 
   // Escape closes it, the focus goes back to "Mehr".
   await page.keyboard.press("Escape");
@@ -100,15 +89,21 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(page.getByRole("dialog", { name: "Vorlagen", exact: true })).toBeVisible();
   await expect(sheet(page)).toBeHidden();
 
-  // "Über Flowplan" opens the settings' about page.
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Vorlagen", exact: true })).toBeHidden();
   // (The drawer stays open behind a dialog.)
   await expect(page.locator(".nav-open .sidebar")).toBeVisible();
-  await more(page).tap();
-  await sheet(page).getByRole("link", { name: "Über Flowplan" }).tap();
+
+  // Every entry the sheet had for the account is in the workspace menu at
+  // the top on phones too (#613); signing out last.
+  await sidebar(page).locator(".workspace-switch").tap();
+  const menu = page.getByRole("menu");
+  const account = menu.getByRole("group", { name: "Konto" });
+  await expect(account.getByRole("menuitem")).toHaveText(["Dunkles Design", "Über Flowplan", "Was ist neu"]);
+  await expect(menu.getByRole("menuitem").last()).toHaveText("Abmelden");
+  for (const entry of await account.getByRole("menuitem").all()) await expect(entry).toBeInViewport();
+  await account.getByRole("menuitem", { name: "Über Flowplan" }).tap();
   await expect(page).toHaveURL(/#settings\/about$/);
-  await expect(sheet(page)).toBeHidden();
   } finally {
     await context.close();
   }
@@ -166,7 +161,7 @@ test("administrators find the instance in Einstellungen behind Mehr", async ({ b
     await page.goto(`${origin}/#home`);
     await openDrawer(page);
     await more(page).tap();
-    await expect(sheet(page).locator(".sidebar-more-list button")).toHaveText(PLACES);
+    await expect(sheet(page).locator(".sidebar-more-list button")).toHaveText(PHONE_PLACES);
     await sheet(page).getByRole("button", { name: "Einstellungen", exact: true }).tap();
     await expect(page.getByRole("heading", { name: "Instanz auf einen Blick" })).toBeVisible({ timeout: 30_000 });
     await expect(sheet(page)).toBeHidden();

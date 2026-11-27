@@ -80,6 +80,32 @@
       "issues": [
         605
       ]
+    },
+    {
+      "de": "Die Seitenleiste füllt auf dem Handy den ganzen Bildschirm. Nach links gewischt folgt sie dem Finger und schließt sich; Scrollen im Seitenbaum schließt sie nicht mehr. Oben rechts fehlt der zweite Schließen-Knopf – „× Navigation“ unten tut dasselbe.",
+      "en": "On phones the sidebar fills the whole screen. Swiped to the left it follows your finger and closes; scrolling the page tree no longer closes it. The second close button at the top right is gone – “× Navigation” at the bottom does the same.",
+      "issues": [
+        617,
+        621,
+        622
+      ]
+    },
+    {
+      "de": "„Mehr“ steht auf dem Handy klein unten links und enthält nur die Werkzeuge, ohne Tastenkürzel; Design, Über Flowplan, Rechtliches und Abmelden sind im Menü des Arbeitsbereichs oben. Favoriten und Sammlungen sind dort anfangs zugeklappt.",
+      "en": "On phones “More” sits small at the bottom left and holds only the tools, without keyboard shortcuts; theme, About Flowplan, the legal pages and Sign out are in the workspace menu at the top. Favourites and Collections start collapsed there.",
+      "issues": [
+        613,
+        616,
+        620
+      ]
+    },
+    {
+      "de": "In der Seitenleiste stehen die Pfeile zum Auf- und Zuklappen links auf einer Linie und die Knöpfe rechts in einer Spalte; Emoji als Seitensymbol sind so groß wie die anderen Symbole.",
+      "en": "In the sidebar the carets for expanding and collapsing line up on the left and the buttons on the right share one column; emoji page icons are as large as the other icons.",
+      "issues": [
+        614,
+        619
+      ]
     }
   ],
   "fixes": [
@@ -125,6 +151,13 @@
       "en": "Calendar view: the selects, date field and buttons in its bar share one height and font size.",
       "issues": [
         611
+      ]
+    },
+    {
+      "de": "Seiten in der Seitenleiste mit dem Finger am Griff umsortieren klappt zuverlässig: Die Seite landet, wo du loslässt, und keine farbigen Ablagelinien bleiben zurück – auch nicht nach einem Abbruch oder Esc.",
+      "en": "Reordering pages in the sidebar by their handle with a finger works reliably: the page lands where you let go, and no coloured drop lines stay behind – also not after a cancel or Esc.",
+      "issues": [
+        618
       ]
     }
   ]

@@ -153,6 +153,8 @@ test("on phones a long press opens the page menu", async ({ page }, info) => {
   const { host } = await setup(page, "document", title);
   await page.goto("/#home");
   await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
+  // Measured once the drawer has slid in (it crosses the whole screen).
+  await expect.poll(async () => Math.round((await page.locator("aside.sidebar").boundingBox())?.x ?? -1)).toBe(0);
   const row = page.locator(`.page-nav[data-page-id="${host.id}"] .page-nav-title`);
   await row.scrollIntoViewIfNeeded();
   const box = (await row.boundingBox())!;
