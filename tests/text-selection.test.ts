@@ -41,5 +41,5 @@ test("content, editors and inputs stay selectable, also inside the chrome", () =
 
 test("the tab bar is chrome and search snippets are content in the markup", () => {
   assert.match(readFileSync("components/mobile-tab-bar.tsx", "utf8"), /className="mobile-tab-bar"/);
-  assert.match(readFileSync("components/workspace-app.tsx", "utf8"), /"search-snippet"/);
+  assert.match(readFileSync("components/command-palette.tsx", "utf8"), /"search-snippet"/);
 });

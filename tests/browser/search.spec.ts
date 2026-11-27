@@ -112,3 +112,39 @@ test("quick search finds compound words and records, filters by kind and opens e
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });
+
+// #610: the palette keeps its state to itself – opening it, typing and the
+// recently viewed list arriving do not render the workspace (sidebar tree,
+// open page) again. Counted by the browser specs' build only
+// (components/workspace-app.tsx). Something else may render the workspace
+// meanwhile (a refresh, a presence update), so one quiet opening out of a
+// few is enough; before #610 every opening rendered it at least twice.
+test("opening the quick search and typing do not render the workspace", async ({ page }, info) => {
+  // On a phone the focused input brings up the software keyboard, which the
+  // workspace answers once (the tab bar steps aside).
+  test.skip(info.project.name !== "desktop", "Desktop: no software keyboard.");
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.goto("/#home");
+  await expect(page.locator(".app-shell")).toBeVisible();
+  const renders = () => page.evaluate(() => (window as unknown as { __flowplanWorkspaceRenders?: number }).__flowplanWorkspaceRenders ?? -1);
+  // The server's markup shows the shell first; the count starts once the
+  // workspace has hydrated.
+  await expect.poll(renders).toBeGreaterThan(0);
+  const dialog = page.getByRole("dialog", { name: "Schnellsuche", exact: true });
+  const counts: number[] = [];
+  const list = dialog.getByRole("listbox", { name: "Ergebnisse und Befehle" });
+  for (let i = 0; i < 3 && !counts.includes(0); i++) {
+    const before = await renders();
+    await page.keyboard.press("ControlOrMeta+k");
+    const input = dialog.getByLabel("Suchen oder Befehl");
+    await expect(input).toBeFocused();
+    await expect(list).toBeVisible();
+    await input.pressSequentially("> them");
+    await expect(list.getByRole("option").first()).toContainText(/Design/);
+    counts.push((await renders()) - before);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  }
+  expect(Math.min(...counts), `workspace renders per opening: ${counts.join(", ")}`).toBe(0);
+});

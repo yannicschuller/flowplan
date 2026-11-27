@@ -21,7 +21,6 @@ import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
 import { holdViewTransitions, transitionView, withoutViewTransition } from "@/lib/view-transition";
 import { Select } from "./select";
-import { SearchTagFilter, useTagSuggest } from "./tag-suggestions";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
 import {
@@ -54,7 +53,7 @@ import { SplitDivider, SplitPane, SplitUnsupported, clampSplit } from "./split-p
 import { TabBar, TabEdgeDrop, frameOfElement, pageOfPlace, useFrameTabs, validPlaceIn, type PlaceLook } from "./frame-tabs";
 import { setSubPageCreator, type SubPageCreator } from "./sub-page-create";
 import { placeOf, tabOf } from "@/lib/frame-tabs";
-import { openModeOf, type OpenMode } from "@/lib/open-place";
+import { openModeOf } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
@@ -75,7 +74,7 @@ import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
 import { DatabaseLabelsContext } from "./database-picker";
-import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
+import { contextOf } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
 import { PageTitleField } from "./page-title-field";
@@ -84,7 +83,6 @@ import type { AskRequest } from "./ai-ask";
 import { useMedia } from "./use-media";
 import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
 import { dockState, evictDock, serverDockState, subscribeDock } from "@/lib/side-dock";
-import { isPdfName, openPdfPanel } from "./pdf-viewer";
 import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import type { AiSummaryTarget } from "./ai-summary";
@@ -93,8 +91,7 @@ import type { AiCardsStart } from "./study/ai-cards";
 import {
   imageFileId,
 } from "@/lib/page-appearance";
-import type { RecentVisit, SearchKind, SearchResult, SearchSort } from "@/lib/search-index";
-import { groupByDay, hitPath } from "@/lib/search-palette";
+import { CommandPalette, type CommandAction, type CommandPaletteProps, type PaletteDeck, type PaletteHandle, type PaletteOpenOptions } from "./command-palette";
 import { IconImagePicker } from "./icon-image-picker";
 import { IconLibraryPicker } from "./icon-library-picker";
 import { iconPixels } from "@/lib/page-appearance";
@@ -140,7 +137,8 @@ import { dropSpace, moveSpaceBy } from "@/lib/space-moves";
 import { useSidebarFolds } from "./sidebar-folds-state";
 import { setLinkTargetPages } from "./page-link-icons-store";
 import { shownPageIcon } from "@/lib/page-link-icons";
-import { structuralPath } from "@/lib/page-path";
+import { indexById, structuralPath } from "@/lib/page-path";
+import { e2eBuild } from "@/lib/e2e-build";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/lib/sidebar-folds";
 import { branchPath, branchUp, leavesBranch, readBranch, writeBranch } from "@/lib/sidebar-branch";
@@ -149,7 +147,7 @@ import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/li
 import { clearAccountData } from "./sign-out";
 import { workspaceCookie } from "@/lib/last-workspace";
 import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
-import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
+import { configurePrefetch, installPrefetch, pendingPrefetch } from "./prefetch";
 import { ListSkeleton, SettingsSkeleton, ViewSkeleton, viewShapeOf } from "./skeleton";
 import { RoutePendingPlaceholder } from "./route-pending";
 import { PageMissing } from "./page-missing";
@@ -166,7 +164,6 @@ import * as PageMenu from "./page-menu";
 import {
   Images,
   Cards,
-  BookmarkSimple,
   Stack,
   CaretDown,
   CaretUp,
@@ -343,7 +340,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { Books, CalendarX, CloudCheck, Compass, ListChecks, LockKey, Storefront } from "@phosphor-icons/react";
+import { Books, CloudCheck, Compass, ListChecks, LockKey, Storefront } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { PersonalFontStyle } from "./personal-font-style";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
@@ -516,33 +513,13 @@ type PageData = DatabaseData & {
   }[];
   present: { id: string; name: string }[];
 };
-type CommandAction = {
-  label: string;
-  keywords: string;
-  icon: import("@phosphor-icons/react").Icon;
-  run: () => void;
-  // The feature it belongs to: left out while that is switched off (#378).
-  module?: FeatureModule;
-  // The place of the sidebar it leads to: left out while the workspace
-  // hides it (#564).
-  place?: WorkspacePlace;
-};
-// One row of the command palette: a search hit, a recently viewed page or a
-// command. The id names the option for aria-activedescendant.
-type PaletteItem =
-  | { kind: "result"; id: string; result: SearchResult }
-  | { kind: "recent"; id: string; result: RecentVisit }
-  | { kind: "command"; id: string; action: CommandAction };
+// No record parents in the bootstrap: one empty list, so lookups over it
+// stay cached (lib/page-path.ts).
+const NO_RECORD_PARENTS: NonNullable<Bootstrap["recordParents"]> = [];
 // Typing there: "?" is a character, not the shortcut overlay.
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement &&
   (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-const normalizeCommand = (value: string) =>
-  value
-    .toLocaleLowerCase("de")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
 type Screen =
   | "home"
   | "page"
@@ -587,6 +564,12 @@ export default function WorkspaceApp({
   const printOpenPageRef = useRef(() => {});
   const printOpenPage = () => printOpenPageRef.current();
   const t = useT();
+  // The browser specs' build only (lib/e2e-build.ts): how often the
+  // workspace rendered, so tests/browser/search.spec.ts can assert that the
+  // quick search opens and filters without it (#610).
+  useEffect(() => {
+    if (e2eBuild) (window as unknown as { __flowplanWorkspaceRenders?: number }).__flowplanWorkspaceRenders = ((window as unknown as { __flowplanWorkspaceRenders?: number }).__flowplanWorkspaceRenders ?? 0) + 1;
+  });
   // The open page's save state: a store of its own, shown by
   // SaveStatusBadge only (components/save-status-badge.tsx).
   const saveStatus = useSaveStatusStore("Gespeichert");
@@ -631,25 +614,19 @@ export default function WorkspaceApp({
     // person (404/403): an empty state in its place instead of a toast.
     [missingPage, setMissingPage] = useState<{ id: string; status: number } | null>(null),
     [mobile, setMobile] = useState(false),
-    [search, setSearch] = useState(false),
     // The keyboard shortcut overlay ("?", ⌘/, command, sidebar).
     [shortcuts, setShortcuts] = useState(false),
     // The AI flashcards dialog and where it was opened from (the study
     // view, a selection in the editor, the command palette).
     [aiCards, setAiCards] = useState<AiCardsStart | null>(null),
-    // The decks for "Lernen: <Stapel>" (loaded when the palette opens) and
-    // the session started from there.
-    [paletteDecks, setPaletteDecks] = useState<{ pageId: string; title: string; left: number }[]>([]),
+    // The study session started from "Lernen: <Stapel>" in the palette.
     [studyDeck, setStudyDeck] = useState<{ pageId: string; title: string } | null>(null),
-    // The highlighted row of the command palette (aria-activedescendant).
-    [paletteActive, setPaletteActive] = useState(0),
     // The page that is the Tab stop of its space's tree (roving tabindex).
     [treeFocus, setTreeFocus] = useState<string | null>(null),
     // "KI fragen", the panel on the right (components/ai-ask.tsx): null while
     // closed, otherwise the last request to open it (with an optional first
     // question).
     [ask, setAsk] = useState<AskRequest | null>(null),
-    [query, setQuery] = useState(""),
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
     [newKind, setNewKind] = useState<PageKind>("document"),
@@ -952,10 +929,6 @@ export default function WorkspaceApp({
     }),
     // Wider than 1024 px: split view is possible.
     [wide, setWide] = useState(false),
-    // The quick search opens the chosen page in the split view.
-    [paletteSplit, setPaletteSplit] = useState(false),
-    // The quick search for a new tab (#444): the frame the chosen page opens in.
-    [paletteTab, setPaletteTab] = useState<number | null>(null),
     // A page from the tree is being dragged: the drop zone at the right edge shows.
     [pageDrag, setPageDrag] = useState(false),
     [splitDropOver, setSplitDropOver] = useState(false);
@@ -1076,12 +1049,6 @@ export default function WorkspaceApp({
   // category in the gallery, hidden while there are none (#132).
   const [savedTemplateCount, setSavedTemplateCount] = useState(0);
   const shownCategory = galleryCategory === "mine" && !savedTemplateCount ? "all" : galleryCategory;
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  // Nothing typed (#243): the person's recently visited pages and records.
-  const [recentHits, setRecentHits] = useState<RecentVisit[] | null>(null);
-  // Best match, last edited or created first (#243).
-  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
-  const [searchKind, setSearchKind] = useState<SearchKind>("all");
   const [iconTab, setIconTab] = useState<"emoji" | "image" | "library">(
     "emoji",
   );
@@ -1089,137 +1056,23 @@ export default function WorkspaceApp({
     id: string;
     label: string;
   } | null>(null);
-  const [searchSpace, setSearchSpace] = useState("");
-  // "Ohne Journaltage": hits on journal days left out (remembered here).
-  const [searchNoDays, setSearchNoDays] = useState(false);
-  useEffect(() => {
-    try {
-      setSearchNoDays(localStorage.getItem("flowplan:search-no-days") === "1");
-    } catch {}
-  }, []);
-  const toggleSearchNoDays = () =>
-    setSearchNoDays((on) => {
-      try {
-        localStorage.setItem("flowplan:search-no-days", on ? "0" : "1");
-      } catch {}
-      return !on;
-    });
   // Collections (#86): the one shown and the editor's draft.
   const [collectionId, setCollectionId] = useState<string | null>(null),
     [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
   // The library shown (#329): its space and the book opened, if any; null
   // on the library's start (#library).
   const [libraryPlace, setLibraryPlace] = useState<ReturnType<typeof parseLibraryHash>>(null);
-  // The element that opened the quick search gets the focus back when it
-  // closes (the search button, a tree item or the editor).
-  const searchOpener = useRef<HTMLElement | null>(null),
-    searchOpen = useRef(false),
-    mainRef = useRef<HTMLElement>(null);
-  searchOpen.current = search;
-  // "Lernen: <Stapel>": the decks of the workspace with cards left today,
-  // once per opening of the palette (the deck list is not in the bootstrap).
-  useEffect(() => {
-    if (!search || deviceOffline()) return;
-    let live = true;
-    void api<{ decks: { pageId: string; title: string; new: number; learning: number; review: number }[] }>(
-      `/api/study/due?${new URLSearchParams({ workspace: boot.workspace.id, zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" })}`,
-    )
-      .then((due) => live && setPaletteDecks(due.decks.map((d) => ({ pageId: d.pageId, title: d.title, left: d.new + d.learning + d.review })).filter((d) => d.left > 0).slice(0, 30)))
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, [search, boot.workspace.id]);
-  const openSearch = useCallback(() => {
-    if (!searchOpen.current) searchOpener.current = document.activeElement as HTMLElement | null;
-    setSearch(true);
-  }, []);
-  const closeSearch = () => {
-    setSearch(false);
-    setPaletteSplit(false);
-    setPaletteTab(null);
-    setQuery("");
-  };
+  const mainRef = useRef<HTMLElement>(null);
+  // The quick search and command palette (components/command-palette.tsx):
+  // its state is its own, so opening it and typing in it never re-render
+  // the workspace (#610). Opened and closed through this handle.
+  const palette = useRef<PaletteHandle>(null);
+  const openSearch = useCallback((options?: PaletteOpenOptions) => palette.current?.open(options), []);
+  const closeSearch = () => palette.current?.close();
+  const searchOpen = () => !!palette.current?.isOpen();
   // A new tab (#444): the quick search; the page picked opens in a new tab
   // of that frame. Nothing is opened before, so Esc leaves the tabs alone.
-  newTabSearch.current = (frame: number) => {
-    setPaletteSplit(false);
-    setPaletteTab(frame);
-    openSearch();
-  };
-  // The tags the search offers (#328): the chosen space's and the
-  // workspace's, or all with the space's name as a hint (#136).
-  const searchTagChoices = useMemo(
-    () => (searchSpace ? contextOf(boot.taxonomy?.tags ?? [], searchSpace) : (boot.taxonomy?.tags ?? [])),
-    [boot.taxonomy, searchSpace],
-  );
-  const searchTagHint = (tag: { spaceId?: string | null }) =>
-    !searchSpace && tag.spaceId ? boot.spaces.find((sp) => sp.id === tag.spaceId)?.name : undefined;
-  // Typing `#` in the search input suggests tags; not in command mode.
-  const hashTags = useTagSuggest({ value: query, onChange: setQuery, tags: searchTagChoices, disabled: query.startsWith(">"), hint: searchTagHint });
-  // `#tag` and `name:value` in the search (lib/page-properties.ts), shown
-  // as chips under the input.
-  const searchTokens = useMemo(
-    () => parseSearchTokens(query.startsWith(">") ? "" : query, { tags: boot.taxonomy?.tags ?? [], properties: boot.taxonomy?.properties ?? [] }),
-    [query, boot.taxonomy],
-  );
-  // A search is on its way: placeholders instead of "Nothing found".
-  const [searching, setSearching] = useState(false);
-  useEffect(() => {
-    if (!search || query.trim()) return;
-    const controller = new AbortController();
-    fetch(
-      `/api/search/recent?${new URLSearchParams({
-        workspace: boot.workspace.id,
-        kind: searchKind,
-        ...(searchSpace ? { space: searchSpace } : {}),
-        limit: "20",
-      })}`,
-      { signal: controller.signal },
-    )
-      .then((r) => (r.ok ? r.json() : null))
-      .then((list) => list && setRecentHits(list))
-      .catch(() => {});
-    return () => controller.abort();
-  }, [query, search, boot.workspace.id, searchKind, searchSpace]);
-  useEffect(() => {
-    if (!search) return;
-    // Nothing typed: the recently visited list above, no search.
-    if (!query.trim()) {
-      setSearchResults([]);
-      setSearching(false);
-      return;
-    }
-    const controller = new AbortController();
-    setSearching(true);
-    const timer = setTimeout(() => {
-      fetch(
-        `/api/search?${new URLSearchParams({
-          workspace: boot.workspace.id,
-          q: query,
-          kind: searchKind,
-          ...(searchSpace ? { space: searchSpace } : {}),
-          ...(searchNoDays ? { days: "0" } : {}),
-          ...(searchSort !== "relevance" ? { sort: searchSort } : {}),
-          // For created:today and the like (#86).
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        })}`,
-        { signal: controller.signal },
-      )
-        .then((r) => (r.ok ? r.json() : []))
-        .then((results) => {
-          setSearchResults(results);
-          setSearching(false);
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) setSearching(false);
-        });
-    }, 200);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, search, boot.workspace.id, searchKind, searchSpace, searchNoDays, searchSort]);
+  newTabSearch.current = (frame: number) => openSearch({ split: false, tab: frame });
   const currentId = useRef(pageId),
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
@@ -1701,9 +1554,10 @@ export default function WorkspaceApp({
     },
     [mutate, boot.workspace.id],
   );
-  useEffect(() => {
-    if (checklistOpen && search && !searchTicked) tick("search");
-  }, [checklistOpen, search, searchTicked, tick]);
+  // Called by the palette each time it opens.
+  const onPaletteOpened = () => {
+    if (checklistOpen && !searchTicked) tick("search");
+  };
   useEffect(() => {
     if (!checklistOpen || appTicked) return;
     let standalone = false;
@@ -1715,11 +1569,11 @@ export default function WorkspaceApp({
   // Journals get a page for the new day while one of their pages is open:
   // when it opens, comes back to the foreground and at local midnight (the
   // journal page rolls its own journal as well). Other pages do not ask.
-  const openedPage = screen === "page" && pageId ? boot.pages.find((page) => page.id === pageId) : undefined;
-  const hasJournal =
-    !!openedPage &&
-    (openedPage.kind === "journal" || !!openedPage.journal_date) &&
-    boot.pages.some((page) => page.kind === "journal" && !page.deleted_at);
+  const openedPage = screen === "page" && pageId ? indexById(boot.pages).get(pageId) : undefined;
+  // Once per change of the page list, not per render (#610): the palette's
+  // "Ohne Journaltage" asks too.
+  const workspaceHasJournal = useMemo(() => boot.pages.some((page) => page.kind === "journal" && !page.deleted_at), [boot.pages]);
+  const hasJournal = !!openedPage && (openedPage.kind === "journal" || !!openedPage.journal_date) && workspaceHasJournal;
   const rollJournal = useCallback(
     async (pageId: string | null, date: string, recreate = false) => {
       const result = await api<{ changed?: boolean }>("/api/command", {
@@ -2330,10 +2184,7 @@ export default function WorkspaceApp({
         window.history.replaceState(null, "", `${location.pathname}#${back}`);
         if (workspace && /^[0-9a-f-]{36}$/i.test(workspace) && workspace !== currentWorkspace.current)
           void switchWorkspace(workspace);
-        if (text !== null) {
-          openSearch();
-          setQuery(text.slice(0, 200));
-        }
+        if (text !== null) openSearch({ query: text.slice(0, 200) });
       }
     };
     // What the app opens with comes without a transition.
@@ -2526,7 +2377,7 @@ export default function WorkspaceApp({
       notify(t("Präsentieren geht mit einem geöffneten Dokument.", "Presenting works with an open document."));
       return;
     }
-    setSearch(false);
+    palette.current?.hide();
     setShortcuts(false);
     setPresenting({ html: readHtml(), title: d.page.title || t("Ohne Titel", "Untitled") });
   };
@@ -2545,8 +2396,7 @@ export default function WorkspaceApp({
       notify(t("Die geteilte Ansicht braucht ein Fenster breiter als 1024 Pixel.", "Split view needs a window wider than 1024 pixels."));
       return;
     }
-    setPaletteSplit(true);
-    openSearch();
+    openSearch({ split: true });
   };
   // "KI fragen" (#59): a panel beside the page, not a dialog. Every entry
   // point (sidebar, command palette, search, shortcut) opens it this way.
@@ -2579,7 +2429,7 @@ export default function WorkspaceApp({
     setAsk(null);
     setComments(false);
     // Opened from a hit of the search (its menu): the search closes.
-    if (searchOpen.current) closeSearch();
+    if (searchOpen()) closeSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dock?.owner]);
   // Narrow wide screens (an iPad, a small window): the panel lies over the
@@ -2606,11 +2456,9 @@ export default function WorkspaceApp({
   const runShortcut = (action: ShortcutAction) => {
     switch (action) {
       case "search":
-        if (searchOpen.current) setSearch(false);
-        else {
-          setPaletteSplit(false);
-          openSearch();
-        }
+        // Open: closes and keeps what was typed for the next time.
+        if (searchOpen()) palette.current?.hide();
+        else openSearch({ split: false });
         break;
       case "find":
         setFind((f) => ({ open: true, key: f.key + 1 }));
@@ -4378,185 +4226,181 @@ export default function WorkspaceApp({
     setTheme(choice);
     setDark(setThemeChoice(choice));
   }
-  // Commands for the quick search ("> …" or matching words).
-  const openPageData = screen === "page" && data ? data : null;
-  const commandActions: CommandAction[] = [
-    { label: t("Neue Seite", "New page"), keywords: t("dokument anlegen erstellen notiz", "dokument anlegen erstellen notiz document new create note page"), icon: FileText, run: () => addPage() },
-    { label: t("Erfassen", "Capture"), keywords: t("eingang inbox notiz schnell erfassen", "eingang inbox notiz schnell erfassen inbox note quick capture"), icon: Tray, run: () => setCapture(true) },
-    { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
-    { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard"), module: PAGE_KIND_MODULE.whiteboard },
-    { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal"), module: PAGE_KIND_MODULE.journal },
-    // "Journal: Heute" – with several journals one per journal, the last used first.
-    ...journalsByUse().map((journal, _, list) => ({
-      label: list.length > 1 ? t(`Journal: Heute – ${journal.title || t("Ohne Titel", "Untitled")}`, `Journal: Today – ${journal.title || t("Ohne Titel", "Untitled")}`) : t("Journal: Heute", "Journal: Today"),
-      keywords: `${t("tagebuch tag heute eintrag", "tagebuch tag heute diary day today entry journal")} ${journal.title}`,
-      icon: CalendarCheck,
-      run: () => void openJournalToday(journal.id),
-      module: "journal" as const,
-      place: "journal" as const,
-    })),
-    { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook"), module: PAGE_KIND_MODULE.notebook },
-    ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow"), module: PAGE_KIND_MODULE.workflow }]),
-    { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard"), module: PAGE_KIND_MODULE.dashboard },
-    { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
-    { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Compass, run: () => { setOnboardingStep(undefined); setOnboarding(true); } },
-    // The checklist after the introduction, hidden earlier (lib/getting-started.ts).
-    ...(boot.gettingStarted?.hidden
-      ? [{ label: t("Erste Schritte anzeigen", "Show getting started"), keywords: t("checkliste einstieg start", "checkliste einstieg start checklist onboarding getting started"), icon: CheckSquare, run: () => void mutate({ action: "gettingStarted.hide", workspaceId: boot.workspace.id, hidden: false }) }]
-      : []),
-    // Administrators: the introduction's traffic lights for the instance.
-    ...(boot.user.isAdmin
-      ? [{ label: t("Instanz einrichten", "Set up the instance"), keywords: t("admin status ampel mail sso sicherung backup ki https", "admin status ampel mail sso sicherung backup ki https traffic light setup backup ai"), icon: Compass, run: () => { setOnboardingStep("setup"); setOnboarding(true); } }]
-      : []),
-    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
-    { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
-    {
-      label: t("Startseite anpassen", "Customize home page"),
-      keywords: t("widgets anordnen personalisieren dashboard", "widgets anordnen personalisieren dashboard arrange personalize customize home"),
-      icon: SlidersHorizontal,
-      run: () => {
-        go("home");
-        setCustomizeHome((n) => n + 1);
-      },
-    },
-    { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
-    { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks"), place: "tasks" },
-    { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
-    ...(hasLibrary ? [{ label: t("Bibliothek öffnen", "Open library"), keywords: t("bibliothek regale bücher wissen", "bibliothek regale bücher library shelves books knowledge"), icon: Books, run: openLibraryHome }] : []),
-    { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
-    { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards", place: "study" },
-    // Each deck with something left today (#study's counts, loaded when the
-    // palette opens).
-    ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || t("Ohne Titel", "Untitled")}`, `Study: ${d.title || t("Ohne Titel", "Untitled")}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const, place: "study" as const })),
-    // From the open page (a deck: into it), else from pasted text or a file.
-    ...(aiUsable(uiAi, "flashcards") && !boot.workspace.guest && featureShown("flashcards")
-      ? [
-          {
-            label: t("Lernkarten mit KI erstellen", "Create flashcards with AI"),
-            keywords: t("ki karteikarten lernen generieren vorschlagen pdf", "ki karteikarten lernen generieren vorschlagen pdf ai flashcards generate cards quiz"),
-            icon: Cards,
-            run: () =>
-              setAiCards(
-                openPageData && !openPageData.encrypted
-                  ? openPageData.page.kind === "database"
-                    ? { deckId: openPageData.page.id }
-                    : { pageId: openPageData.page.id, pageTitle: openPageData.page.title }
-                  : {},
-              ),
-          },
-        ]
-      : []),
-    { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph"), place: "graph" },
-    { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
-    { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
-    { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
-    { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => void (toPlace("settings/about") || (location.hash = "settings/about")) },
-    { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
-    // The instance's part of the settings (#532; formerly "Administration").
-    ...(boot.user.isAdmin
-      ? [{ label: t("Einstellungen: Instanz", "Settings: instance"), keywords: t("admin administration instanz betrieb", "admin administration instanz betrieb instance operations"), icon: ShieldCheck, run: () => void (toPlace(settingsHash({ area: "admin" }).slice(1)) || (location.hash = settingsHash({ area: "admin" }))) }]
-      : []),
-    { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
-    { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
-    ...(wide
-      ? [
-          splitShown
-            ? { label: t("Geteilte Ansicht schließen", "Close split view"), keywords: t("split nebeneinander zwei seiten", "split nebeneinander zwei seiten side by side two pages"), icon: SquareSplitHorizontal, run: () => tabs.closeFrame(1) }
-            : { label: t("Seite daneben öffnen …", "Open a page beside it …"), keywords: t("split geteilte ansicht nebeneinander zwei seiten", "split geteilte ansicht nebeneinander zwei seiten view side by side two pages"), icon: SquareSplitHorizontal, run: () => setTimeout(openSplitSearch) },
-        ]
-      : []),
-    ...(openPageData
-      ? [
-          { label: t("Fokusmodus", "Focus mode"), keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
-          ...(canRead
-            ? [
-                reading
-                  ? { label: t("Bearbeiten", "Edit"), keywords: "lesemodus bearbeiten schreiben edit read", icon: PencilSimple, run: toggleReading }
-                  : { label: t("Lesemodus", "Reading mode"), keywords: "lesemodus lesen nur lesen read view", icon: BookOpen, run: toggleReading },
-              ]
-            : []),
-          {
-            label: boot.favorites.includes(openPageData.page.id) ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites"),
-            keywords: "favorit stern",
-            icon: Star,
-            run: () =>
-              void act({ action: "favorite", pageId: openPageData.page.id, value: !boot.favorites.includes(openPageData.page.id) }),
-          },
-          ...(todayJournal
-            ? [
-                {
-                  label: boot.todayFavorites?.includes(todayJournal.id) ? t("Heute aus Favoriten entfernen", "Remove today from favourites") : t("Heute zu Favoriten", "Add today to favourites"),
-                  keywords: t("favorit stern journal tag heute", "favorit stern journal tag heute favourite favorite star journal day today"),
-                  icon: CalendarDot,
-                  run: () => void toggleTodayFavorite(todayJournal.id),
-                },
-              ]
-            : []),
-          {
-            label: openPageData.following ? t("Seite nicht mehr folgen", "Unfollow page") : t("Seite folgen", "Follow page"),
-            keywords: "benachrichtigen glocke follow",
-            icon: Bell,
-            run: () => void act({ action: "page.follow", pageId: openPageData.page.id, follow: !openPageData.following }),
-          },
-          { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
-          { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
-          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => printOpenPage() },
-          { label: t("QR-Code der Seite", "Page QR code"), keywords: "qr code etikett label scan", icon: QrCode, run: () => setPageQr(true) },
-          ...(openPageData.page.kind === "document" && !openPageData.locked
-            ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
-            : []),
-          // Folding headings (lib/heading-folds.ts): the page's text, or an open record's.
-          ...(["document", "journal", "database"].includes(openPageData.page.kind)
-            ? [
-                {
-                  label: t("Alle Abschnitte einklappen", "Collapse all sections"),
-                  keywords: t("überschriften zuklappen falten gliederung abschnitte", "überschriften zuklappen falten gliederung abschnitte headings fold collapse outline sections"),
-                  icon: ArrowsInLineVertical,
-                  run: () => foldAllSections(true),
-                },
-                {
-                  label: t("Alle Abschnitte ausklappen", "Expand all sections"),
-                  keywords: t("überschriften aufklappen entfalten gliederung abschnitte", "überschriften aufklappen entfalten gliederung abschnitte headings unfold expand outline sections"),
-                  icon: ArrowsOutLineVertical,
-                  run: () => foldAllSections(false),
-                },
-              ]
-            : []),
-          ...(openPageData.page.kind === "document"
-            ? [
-                {
-                  label: t("Als Markdown bearbeiten", "Edit as Markdown"),
-                  keywords: "markdown quelltext source text md",
-                  icon: MarkdownLogo,
-                  run: () => setSourcePage(openPageData.page.id),
-                },
-              ]
-            : []),
-          { label: t("Versionsverlauf", "Version history"), keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
-          { label: t("Teilen", "Share"), keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
-        ]
-      : []),
-  ];
+  // Commands for the quick search ("> …" or matching words): built only
+  // while the palette is open and asks for them, not on every render of
+  // the workspace (components/command-palette.tsx, #610).
   const canAsk = aiUsable(uiAi, "ask");
-  if (canAsk)
-    commandActions.unshift({
-      label: t("KI fragen …", "Ask AI …"),
-      keywords: t("ki fragen frage antwort assistent chat", "ki fragen frage antwort assistent chat ai ask question answer assistant"),
-      icon: Sparkle,
-      // The text typed so far becomes the question.
-      run: () => openAsk(query.replace(/^>\s*/, "").replace(/^(ki fragen|ask ai)\s*…?\s*/i, "").trim()),
-    });
-  const commandQuery = normalizeCommand(query.replace(/^>\s*/, ""));
-  const shownActions =
-    query.startsWith(">") || commandQuery.length >= 2
-      ? commandActions
-          .filter((a) => featureShown(a.module) && placeShown(a.place))
-          .filter((a) => !commandQuery || normalizeCommand(`${a.label} ${a.keywords}`).includes(commandQuery))
-          .slice(0, query.startsWith(">") ? 20 : 4)
-      : [];
-  const runCommand = (action: CommandAction) => {
-    const intoTab = paletteTab;
-    closeSearch();
+  const paletteCommands = (query: string, paletteDecks: readonly PaletteDeck[]): CommandAction[] => {
+    const openPageData = screen === "page" && data ? data : null;
+    const commandActions: CommandAction[] = [
+      { label: t("Neue Seite", "New page"), keywords: t("dokument anlegen erstellen notiz", "dokument anlegen erstellen notiz document new create note page"), icon: FileText, run: () => addPage() },
+      { label: t("Erfassen", "Capture"), keywords: t("eingang inbox notiz schnell erfassen", "eingang inbox notiz schnell erfassen inbox note quick capture"), icon: Tray, run: () => setCapture(true) },
+      { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
+      { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard"), module: PAGE_KIND_MODULE.whiteboard },
+      { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal"), module: PAGE_KIND_MODULE.journal },
+      // "Journal: Heute" – with several journals one per journal, the last used first.
+      ...journalsByUse().map((journal, _, list) => ({
+        label: list.length > 1 ? t(`Journal: Heute – ${journal.title || t("Ohne Titel", "Untitled")}`, `Journal: Today – ${journal.title || t("Ohne Titel", "Untitled")}`) : t("Journal: Heute", "Journal: Today"),
+        keywords: `${t("tagebuch tag heute eintrag", "tagebuch tag heute diary day today entry journal")} ${journal.title}`,
+        icon: CalendarCheck,
+        run: () => void openJournalToday(journal.id),
+        module: "journal" as const,
+        place: "journal" as const,
+      })),
+      { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook"), module: PAGE_KIND_MODULE.notebook },
+      ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow"), module: PAGE_KIND_MODULE.workflow }]),
+      { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard"), module: PAGE_KIND_MODULE.dashboard },
+      { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
+      { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Compass, run: () => { setOnboardingStep(undefined); setOnboarding(true); } },
+      // The checklist after the introduction, hidden earlier (lib/getting-started.ts).
+      ...(boot.gettingStarted?.hidden
+        ? [{ label: t("Erste Schritte anzeigen", "Show getting started"), keywords: t("checkliste einstieg start", "checkliste einstieg start checklist onboarding getting started"), icon: CheckSquare, run: () => void mutate({ action: "gettingStarted.hide", workspaceId: boot.workspace.id, hidden: false }) }]
+        : []),
+      // Administrators: the introduction's traffic lights for the instance.
+      ...(boot.user.isAdmin
+        ? [{ label: t("Instanz einrichten", "Set up the instance"), keywords: t("admin status ampel mail sso sicherung backup ki https", "admin status ampel mail sso sicherung backup ki https traffic light setup backup ai"), icon: Compass, run: () => { setOnboardingStep("setup"); setOnboarding(true); } }]
+        : []),
+      { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
+      { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
+      {
+        label: t("Startseite anpassen", "Customize home page"),
+        keywords: t("widgets anordnen personalisieren dashboard", "widgets anordnen personalisieren dashboard arrange personalize customize home"),
+        icon: SlidersHorizontal,
+        run: () => {
+          go("home");
+          setCustomizeHome((n) => n + 1);
+        },
+      },
+      { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
+      { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks"), place: "tasks" },
+      { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
+      ...(hasLibrary ? [{ label: t("Bibliothek öffnen", "Open library"), keywords: t("bibliothek regale bücher wissen", "bibliothek regale bücher library shelves books knowledge"), icon: Books, run: openLibraryHome }] : []),
+      { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
+      { label: t("Lernen: fällige Karten", "Study: due cards"), keywords: t("lernkarten karteikarten wiederholen stapel vokabeln", "lernkarten karteikarten flashcards cards review decks spaced repetition study"), icon: Cards, run: () => go("study"), module: "flashcards", place: "study" },
+      // Each deck with something left today (#study's counts, loaded when the
+      // palette opens).
+      ...paletteDecks.map((d) => ({ label: t(`Lernen: ${d.title || t("Ohne Titel", "Untitled")}`, `Study: ${d.title || t("Ohne Titel", "Untitled")}`), keywords: t(`lernkarten stapel fällig ${d.left}`, `lernkarten stapel flashcards deck due ${d.left}`), icon: Cards, run: () => setStudyDeck({ pageId: d.pageId, title: d.title }), module: "flashcards" as const, place: "study" as const })),
+      // From the open page (a deck: into it), else from pasted text or a file.
+      ...(aiUsable(uiAi, "flashcards") && !boot.workspace.guest && featureShown("flashcards")
+        ? [
+            {
+              label: t("Lernkarten mit KI erstellen", "Create flashcards with AI"),
+              keywords: t("ki karteikarten lernen generieren vorschlagen pdf", "ki karteikarten lernen generieren vorschlagen pdf ai flashcards generate cards quiz"),
+              icon: Cards,
+              run: () =>
+                setAiCards(
+                  openPageData && !openPageData.encrypted
+                    ? openPageData.page.kind === "database"
+                      ? { deckId: openPageData.page.id }
+                      : { pageId: openPageData.page.id, pageTitle: openPageData.page.title }
+                    : {},
+                ),
+            },
+          ]
+        : []),
+      { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph"), place: "graph" },
+      { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
+      { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
+      { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
+      { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => void (toPlace("settings/about") || (location.hash = "settings/about")) },
+      { label: t("Was ist neu", "What’s new"), keywords: t("neu neuigkeiten update version änderungen changelog versionshinweise", "neu neuigkeiten new news update version changes changelog release notes"), icon: Gift, run: openWhatsNew },
+      // The instance's part of the settings (#532; formerly "Administration").
+      ...(boot.user.isAdmin
+        ? [{ label: t("Einstellungen: Instanz", "Settings: instance"), keywords: t("admin administration instanz betrieb", "admin administration instanz betrieb instance operations"), icon: ShieldCheck, run: () => void (toPlace(settingsHash({ area: "admin" }).slice(1)) || (location.hash = settingsHash({ area: "admin" }))) }]
+        : []),
+      { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
+      { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: toggleCollapsed },
+      ...(wide
+        ? [
+            splitShown
+              ? { label: t("Geteilte Ansicht schließen", "Close split view"), keywords: t("split nebeneinander zwei seiten", "split nebeneinander zwei seiten side by side two pages"), icon: SquareSplitHorizontal, run: () => tabs.closeFrame(1) }
+              : { label: t("Seite daneben öffnen …", "Open a page beside it …"), keywords: t("split geteilte ansicht nebeneinander zwei seiten", "split geteilte ansicht nebeneinander zwei seiten view side by side two pages"), icon: SquareSplitHorizontal, run: () => setTimeout(openSplitSearch) },
+          ]
+        : []),
+      ...(openPageData
+        ? [
+            { label: t("Fokusmodus", "Focus mode"), keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
+            ...(canRead
+              ? [
+                  reading
+                    ? { label: t("Bearbeiten", "Edit"), keywords: "lesemodus bearbeiten schreiben edit read", icon: PencilSimple, run: toggleReading }
+                    : { label: t("Lesemodus", "Reading mode"), keywords: "lesemodus lesen nur lesen read view", icon: BookOpen, run: toggleReading },
+                ]
+              : []),
+            {
+              label: boot.favorites.includes(openPageData.page.id) ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites"),
+              keywords: "favorit stern",
+              icon: Star,
+              run: () =>
+                void act({ action: "favorite", pageId: openPageData.page.id, value: !boot.favorites.includes(openPageData.page.id) }),
+            },
+            ...(todayJournal
+              ? [
+                  {
+                    label: boot.todayFavorites?.includes(todayJournal.id) ? t("Heute aus Favoriten entfernen", "Remove today from favourites") : t("Heute zu Favoriten", "Add today to favourites"),
+                    keywords: t("favorit stern journal tag heute", "favorit stern journal tag heute favourite favorite star journal day today"),
+                    icon: CalendarDot,
+                    run: () => void toggleTodayFavorite(todayJournal.id),
+                  },
+                ]
+              : []),
+            {
+              label: openPageData.following ? t("Seite nicht mehr folgen", "Unfollow page") : t("Seite folgen", "Follow page"),
+              keywords: "benachrichtigen glocke follow",
+              icon: Bell,
+              run: () => void act({ action: "page.follow", pageId: openPageData.page.id, follow: !openPageData.following }),
+            },
+            { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
+            { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
+            { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => printOpenPage() },
+            { label: t("QR-Code der Seite", "Page QR code"), keywords: "qr code etikett label scan", icon: QrCode, run: () => setPageQr(true) },
+            ...(openPageData.page.kind === "document" && !openPageData.locked
+              ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
+              : []),
+            // Folding headings (lib/heading-folds.ts): the page's text, or an open record's.
+            ...(["document", "journal", "database"].includes(openPageData.page.kind)
+              ? [
+                  {
+                    label: t("Alle Abschnitte einklappen", "Collapse all sections"),
+                    keywords: t("überschriften zuklappen falten gliederung abschnitte", "überschriften zuklappen falten gliederung abschnitte headings fold collapse outline sections"),
+                    icon: ArrowsInLineVertical,
+                    run: () => foldAllSections(true),
+                  },
+                  {
+                    label: t("Alle Abschnitte ausklappen", "Expand all sections"),
+                    keywords: t("überschriften aufklappen entfalten gliederung abschnitte", "überschriften aufklappen entfalten gliederung abschnitte headings unfold expand outline sections"),
+                    icon: ArrowsOutLineVertical,
+                    run: () => foldAllSections(false),
+                  },
+                ]
+              : []),
+            ...(openPageData.page.kind === "document"
+              ? [
+                  {
+                    label: t("Als Markdown bearbeiten", "Edit as Markdown"),
+                    keywords: "markdown quelltext source text md",
+                    icon: MarkdownLogo,
+                    run: () => setSourcePage(openPageData.page.id),
+                  },
+                ]
+              : []),
+            { label: t("Versionsverlauf", "Version history"), keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
+            { label: t("Teilen", "Share"), keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
+          ]
+        : []),
+    ];
+    if (canAsk)
+      commandActions.unshift({
+        label: t("KI fragen …", "Ask AI …"),
+        keywords: t("ki fragen frage antwort assistent chat", "ki fragen frage antwort assistent chat ai ask question answer assistant"),
+        icon: Sparkle,
+        // The text typed so far becomes the question.
+        run: () => openAsk(query.replace(/^>\s*/, "").replace(/^(ki fragen|ask ai)\s*…?\s*/i, "").trim()),
+      });
+    return commandActions.filter((a) => featureShown(a.module) && placeShown(a.place));
+  };
+  // A command chosen in the palette (closed by then).
+  const runPaletteCommand = (action: CommandAction, intoTab: number | null) => {
     // After the "+" of the tab bar (#444): a command that leads to a screen
     // (My tasks, Inbox, Settings …) opens it in a new tab of that frame;
     // dialogs and other commands run as usual.
@@ -4567,53 +4411,8 @@ export default function WorkspaceApp({
       commandTab.current = null;
     }
   };
-  // The rows of the palette in order: hits, recently viewed pages (while
-  // nothing is typed), then the commands – ">" shows commands only.
-  const commandsOnly = query.startsWith(">");
-  // Nothing typed: the recently visited pages and records (#243), until
-  // they arrive the start page's list. Pages under the titles the
-  // workspace knows (decrypted, readable); records as the server names them.
-  const recentPages: RecentVisit[] = commandsOnly || query.trim()
-    ? []
-    : (recentHits ??
-        (boot.recentVisits || []).flatMap((visit): RecentVisit[] => {
-          const page = activePages.find((p) => p.id === visit.pageId);
-          return page ? [{ id: page.id, title: page.title, icon: page.icon, space_id: page.space_id, kind: page.kind === "database" || page.kind === "whiteboard" ? page.kind : "document", snippet: "", updatedAt: page.updated_at, visitedAt: visit.seenAt }] : [];
-        }))
-        .flatMap((hit) => {
-          if (hit.rowId) return [hit];
-          const page = activePages.find((p) => p.id === hit.id);
-          return page ? [{ ...hit, title: page.title, icon: page.icon }] : [];
-        })
-        .slice(0, 20);
-  const recentGroups = groupByDay(recentPages);
-  const paletteResults = commandsOnly || !query.trim() ? [] : searchResults;
-  const resultPath = (hit: { id: string; rowId?: string; space_id: string }) =>
-    hitPath(hit, activePages, boot.spaces, boot.recordParents || [], phone ? 3 : 4);
-  const edited = (value?: string) => {
-    if (!value) return "";
-    const ms = Date.parse(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
-    return Number.isFinite(ms) ? t(`Bearbeitet ${ago(ms, clock ?? Date.now(), locale)}`, `Edited ${ago(ms, clock ?? Date.now(), locale)}`) : "";
-  };
-  const paletteItems: PaletteItem[] = [
-    ...recentGroups.flatMap((group) => group.items).map((result): PaletteItem => ({ kind: "recent", id: `recent-${result.id}-${result.rowId || ""}`, result })),
-    ...paletteResults.map((result): PaletteItem => ({ kind: "result", id: `result-${result.kind}-${result.id}-${result.rowId || ""}`, result })),
-    ...shownActions.map((action, i): PaletteItem => ({ kind: "command", id: `command-${i}`, action })),
-  ];
-  const activeIndex = Math.min(paletteActive, Math.max(0, paletteItems.length - 1)),
-    activeItem = paletteItems[activeIndex];
-  // The highlight starts at the top whenever the rows change.
-  useEffect(() => {
-    setPaletteActive(0);
-  }, [query, searchResults, searchKind, searchSpace, searchNoDays]);
-  useEffect(() => {
-    if (search && activeItem) document.getElementById(`palette-${activeItem.id}`)?.scrollIntoView({ block: "nearest" });
-  }, [search, activeItem]);
-  const runItem = (item: PaletteItem, mode: OpenMode = "here") => {
-    if (item.kind === "command") return runCommand(item.action);
-    const intoSplit = paletteSplit,
-      intoTab = paletteTab;
-    closeSearch();
+  // A hit or recently viewed page chosen in the palette (closed by then).
+  const openPaletteHit: CommandPaletteProps["onOpen"] = (item, mode, { split: intoSplit, tab: intoTab }) => {
     // Chosen for the split view: the page opens next to the open one.
     if (intoSplit) return openSplit(item.result.id);
     const p = item.result;
@@ -4624,42 +4423,10 @@ export default function WorkspaceApp({
     if (tabs.on && (mode !== "here" || !p.rowId) && tabs.openPlace(pageLocationHash({ pageId: p.id, rowId: p.rowId }).slice(1), mode)) return;
     if (item.kind === "recent") return void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
     // The block with the hit flashes once the page is open.
-    const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
+    const hit = item.result.kind === "comment" || item.result.kind === "file" ? "" : snippetHit(item.result.snippet);
     if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
     void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
   };
-  // Hovering or highlighting a hit loads its page ahead (components/prefetch.ts).
-  const prefetchOf = (item: PaletteItem) =>
-    item.kind === "command"
-      ? {}
-      : { "data-prefetch-page": item.result.id, ...(item.result.rowId ? { "data-prefetch-row": item.result.rowId } : {}) };
-  useEffect(() => {
-    if (!search || !activeItem || activeItem.kind === "command") return;
-    const timer = setTimeout(() => {
-      const target = { id: activeItem.result.id, row: activeItem.result.rowId };
-      if (target.row) prefetchRecord(target.id, target.row);
-      else prefetchPage(target.id);
-    }, INTENT_DELAY);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, activeItem?.id]);
-  // A PDF among the files found: also into the side panel (#392).
-  const pdfHit = (p: SearchResult) => (p.kind === "file" && p.fileId && isPdfName(p.title) ? `/api/files/${p.fileId}` : null);
-  const paletteOption = (item: PaletteItem, index: number, content: React.ReactNode) => (
-    <div
-      key={item.id}
-      {...prefetchOf(item)}
-      id={`palette-${item.id}`}
-      role="option"
-      aria-selected={index === activeIndex}
-      className={`palette-option${index === activeIndex ? " active" : ""}`}
-      onClick={(e) => runItem(item, openModeOf(e))}
-      onMouseMove={() => index !== paletteActive && setPaletteActive(index)}
-    >
-      {content}
-      {index === activeIndex && <kbd aria-hidden="true">↵</kbd>}
-    </div>
-  );
   // The less used places at the sidebar's bottom: a row of symbols, on
   // phones behind "Mehr" (components/sidebar-tools.tsx).
   const sidebarTools: SidebarTool[] = [
@@ -4902,7 +4669,7 @@ export default function WorkspaceApp({
           {/* The navigation folds into one row of icons (#452): g:nav, stored
               like the other sidebar folds. */}
           <nav className={`main-nav${navCompact ? " compact" : ""}`} aria-label={t("Navigation", "Navigation")}>
-            <button title={navCompact ? t("Suchen", "Search") : undefined} onClick={openSearch}>
+            <button title={navCompact ? t("Suchen", "Search") : undefined} onClick={() => openSearch()}>
               <MagnifyingGlass size={19} />
               <span className="main-nav-label">{t("Suchen", "Search")}</span>
               {keyHints.visible && shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
@@ -7052,322 +6819,28 @@ export default function WorkspaceApp({
           </button>
         </div>
       </Modal>
-      <Modal
-        open={search}
-        onClose={closeSearch}
-        title={t("Schnellsuche", "Quick search")}
-        className="command-palette"
-        onCloseAutoFocus={(e) => {
-          // Back to where the search was opened from, not to <body>.
-          e.preventDefault();
-          // "KI fragen" from the palette has taken focus into its panel.
-          if (document.querySelector(".ask-panel")?.contains(document.activeElement)) return;
-          const opener = searchOpener.current;
-          if (opener && document.contains(opener)) opener.focus();
+      <CommandPalette
+        handle={palette}
+        workspaceId={boot.workspace.id}
+        pages={activePages}
+        spaces={boot.spaces}
+        recordParents={boot.recordParents ?? NO_RECORD_PARENTS}
+        taxonomy={boot.taxonomy}
+        recentVisits={boot.recentVisits}
+        hasJournal={workspaceHasJournal}
+        phone={phone}
+        canAsk={canAsk}
+        clock={clock}
+        commands={paletteCommands}
+        onCommand={runPaletteCommand}
+        onOpen={openPaletteHit}
+        onAsk={openAsk}
+        onSaveCollection={(query, name) => {
+          newCollection(query);
+          setCollectionDraft((d) => d && { ...d, name });
         }}
-      >
-        <div className="command-search">
-          <MagnifyingGlass size={22} />
-          <input
-            autoFocus
-            role="combobox"
-            aria-label={t("Suchen oder Befehl", "Search or command")}
-            aria-expanded="true"
-            // While tags are suggested after `#` (#328), they are the list.
-            aria-controls={hashTags.open ? hashTags.listId : "palette-list"}
-            aria-autocomplete="list"
-            aria-activedescendant={hashTags.open ? hashTags.activeId : activeItem ? `palette-${activeItem.id}` : undefined}
-            placeholder={
-              paletteSplit
-                ? t("Seite für die geteilte Ansicht suchen …", "Find a page for the split view …")
-                : paletteTab !== null
-                  ? t("Seite für den neuen Tab suchen …", "Find a page for the new tab …")
-                  : t("Suchen … oder > für Befehle", "Search … or > for commands")
-            }
-            value={query}
-            {...hashTags.fieldProps}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              hashTags.changed(e.target);
-            }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return;
-              if (hashTags.keyDown(e)) return;
-              // The arrows move over the rows while the focus stays here;
-              // Tab reaches the filters as before.
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                const count = paletteItems.length;
-                if (count) setPaletteActive((activeIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                if (activeItem) runItem(activeItem, openModeOf(e));
-              }
-            }}
-          />
-          <kbd>esc</kbd>
-          {hashTags.list}
-        </div>
-        {searchTokens.tokens.length > 0 && (
-          <div className="search-tokens" role="group" aria-label={t("Aktive Filter", "Active filters")}>
-            {searchTokens.tokens.map((token) => (
-              <span key={token} className="chip active search-token">
-                {token}
-                <button
-                  type="button"
-                  className="search-token-remove"
-                  aria-label={t(`Filter ${token} entfernen`, `Remove filter ${token}`)}
-                  onClick={() => setQuery((q) => q.replace(token, " ").replace(/\s+/g, " ").trimStart())}
-                >
-                  <X size={11} weight="bold" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {paletteTab !== null && !paletteSplit && (
-          <p className="palette-split-hint" role="note">
-            <Plus size={15} aria-hidden="true" />
-            {t("Die gewählte Seite öffnet sich in einem neuen Tab.", "The chosen page opens in a new tab.")}
-          </p>
-        )}
-        {paletteSplit && (
-          <p className="palette-split-hint" role="note">
-            <SquareSplitHorizontal size={15} aria-hidden="true" />
-            {t("Die gewählte Seite öffnet sich in der geteilten Ansicht rechts.", "The chosen page opens in the split view on the right.")}
-          </p>
-        )}
-        <div className="search-filters">
-          <div role="radiogroup" aria-label={t("Suchergebnisse filtern", "Filter search results")}>
-            {(
-              [
-                ["all", t("Alles", "Everything")],
-                ["document", t("Dokumente", "Documents")],
-                ["database", t("Datenbanken", "Databases")],
-                ["whiteboard", t("Whiteboards", "Whiteboards")],
-                ["row", t("Einträge", "Records")],
-                ["comment", t("Kommentare", "Comments")],
-                ["file", t("Dateien", "Files")],
-              ] as const
-            ).map(([kind, label]) => (
-              <button
-                key={kind}
-                role="radio"
-                aria-checked={searchKind === kind}
-                className={`chip${searchKind === kind ? " active" : ""}`}
-                onClick={() => setSearchKind(kind)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {boot.pages.some((p) => p.kind === "journal" && !p.deleted_at) && (
-            <button
-              type="button"
-              className={`chip${searchNoDays ? " active" : ""}`}
-              aria-pressed={searchNoDays}
-              onClick={toggleSearchNoDays}
-            >
-              <CalendarX size={13} /> {t("Ohne Journaltage", "Without journal days")}
-            </button>
-          )}
-          <Select
-            aria-label={t("Bereich", "Space")}
-            value={searchSpace}
-            onChange={(e) => setSearchSpace(e.target.value)}
-          >
-            <option value="">{t("Alle Bereiche", "All spaces")}</option>
-            {boot.spaces.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-          {/* Tags (#70): adds #tag to the search; recognised tokens show
-              below. Found by typing (#328); with a space chosen its tags and
-              the workspace's, for all spaces every tag, a space's with its
-              name as a hint (#136). */}
-          {searchTagChoices.length > 0 && (
-            <SearchTagFilter
-              tags={searchTagChoices}
-              hint={searchTagHint}
-              onPick={(tag) => setQuery((q) => `${q.trim()} ${tagToken(tag.name)} `.trimStart())}
-            />
-          )}
-          {canAsk && query.trim() && !query.startsWith(">") && (
-            <button
-              className="button compact"
-              onClick={() => {
-                openAsk(query.trim());
-                setSearch(false);
-                setQuery("");
-              }}
-            >
-              <Sparkle size={15} /> {t("KI fragen", "Ask AI")}
-            </button>
-          )}
-          {query.trim() && !query.startsWith(">") && (
-            <button
-              className="button compact"
-              onClick={() => {
-                // The kind and space chosen above become part of the query.
-                const space = boot.spaces.find((x) => x.id === searchSpace);
-                const kinds: Record<string, string> = { document: "document", database: "database", whiteboard: "whiteboard", row: "record" };
-                const extra = [kinds[searchKind] ? `type:${kinds[searchKind]}` : "", space ? `in:"${space.name.replace(/"/g, "")}"` : ""].filter(Boolean).join(" ");
-                newCollection(extra ? `${/\bOR\b|\|/.test(query) ? `(${query.trim()})` : query.trim()} ${extra}` : query.trim());
-                setCollectionDraft((d) => d && { ...d, name: query.trim().slice(0, 120) });
-                closeSearch();
-              }}
-            >
-              <BookmarkSimple size={15} /> {t("Als Sammlung speichern", "Save as collection")}
-            </button>
-          )}
-        </div>
-        {/* One list for hits, recent pages and commands: the input keeps the
-            focus and names the highlighted row (aria-activedescendant). */}
-        <div
-          className="palette-list"
-          id="palette-list"
-          role="listbox"
-          aria-label={t("Ergebnisse und Befehle", "Results and commands")}
-        >
-          {recentGroups.map((group, g) => {
-            const offset = recentGroups.slice(0, g).reduce((n, x) => n + x.items.length, 0);
-            return (
-              <div key={group.day} className="search-results palette-group" role="group" aria-labelledby={g === 0 ? "palette-recent-title" : `palette-recent-${group.day}`}>
-                <small className="palette-group-title" id={g === 0 ? "palette-recent-title" : `palette-recent-${group.day}`}>
-                  {g === 0 && <>{t("Zuletzt angesehen", "Recently viewed")} · </>}
-                  {group.label === "today"
-                    ? t("Heute", "Today")
-                    : group.label === "yesterday"
-                      ? t("Gestern", "Yesterday")
-                      : new Date(`${group.day}T12:00:00`).toLocaleDateString(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long" })}
-                </small>
-                {group.items.map((p, i) => {
-                  const path = resultPath(p);
-                  return paletteOption(
-                    paletteItems[offset + i],
-                    offset + i,
-                    <>
-                      <PageIcon name={shownPageIcon(p.icon, p.kind === "row" ? "row" : p.kind)} />
-                      <span>
-                        {p.title || t("Ohne Titel", "Untitled")}
-                        {(path.length > 0 || p.updatedAt) && (
-                        <small className="palette-path">
-                          {path.join(" / ")}
-                          {p.updatedAt && <span className="palette-date-inline">{path.length ? " · " : ""}{edited(p.updatedAt)}</span>}
-                        </small>
-                      )}
-                      </span>
-                      <small className="palette-date">{edited(p.updatedAt)}</small>
-                    </>,
-                  );
-                })}
-              </div>
-            );
-          })}
-          {paletteResults.length > 0 && (
-            <div className="palette-results-head">
-              <small className="palette-group-title" role="status">
-                {paletteResults.length >= 50
-                  ? t("Mehr als 50 Treffer", "More than 50 hits")
-                  : paletteResults.length === 1
-                    ? t("1 Treffer", "1 hit")
-                    : t(`${paletteResults.length} Treffer`, `${paletteResults.length} hits`)}
-              </small>
-              <Select
-                aria-label={t("Sortierung", "Sort order")}
-                className="palette-sort"
-                value={searchSort}
-                onChange={(e) => setSearchSort(e.target.value as SearchSort)}
-              >
-                <option value="relevance">{t("Beste Treffer", "Best match")}</option>
-                <option value="edited">{t("Zuletzt bearbeitet", "Last edited")}</option>
-                <option value="created">{t("Zuletzt erstellt", "Recently created")}</option>
-              </Select>
-            </div>
-          )}
-          {paletteResults.length > 0 && (
-            <div className="search-results palette-group" role="group" aria-label={t("Treffer", "Hits")}>
-              {paletteResults.map((p, i) => {
-                const path = resultPath(p);
-                return paletteOption(
-                  paletteItems[recentPages.length + i],
-                  recentPages.length + i,
-                  <>
-                    <PageIcon name={shownPageIcon(p.icon, p.kind === "comment" || p.kind === "file" ? "document" : p.kind)} />
-                    <span {...(pdfHit(p) ? { "data-pdf-src": pdfHit(p), "data-pdf": p.title } : {})}>
-                      {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
-                      {p.alias && <span className="alias-hit"> · {p.alias}</span>}
-                      {p.pageTitle && (p.kind === "comment" || p.kind === "file") && (
-                        <small className="search-context">
-                          {p.kind === "comment"
-                            ? t(`Kommentar in ${p.pageTitle}`, `Comment in ${p.pageTitle}`)
-                            : t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)}
-                        </small>
-                      )}
-                      {(path.length > 0 || p.updatedAt) && (
-                        <small className="palette-path">
-                          {path.join(" / ")}
-                          {p.updatedAt && <span className="palette-date-inline">{path.length ? " · " : ""}{edited(p.updatedAt)}</span>}
-                        </small>
-                      )}
-                      {p.snippet && (
-                        <small className="search-snippet">
-                          <SearchSnippet text={p.snippet} />
-                        </small>
-                      )}
-                    </span>
-                    <small className="palette-date">{edited(p.updatedAt)}</small>
-                    {pdfHit(p) && (
-                      <button
-                        type="button"
-                        className="icon-button palette-side-panel"
-                        aria-label={t(`„${p.title}“ im Seitenfenster öffnen`, `Open “${p.title}” in the side panel`)}
-                        title={t("Im Seitenfenster öffnen", "Open in side panel")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeSearch();
-                          openPdfPanel(pdfHit(p)!, p.title);
-                        }}
-                      >
-                        <SidebarSimple size={16} />
-                      </button>
-                    )}
-                  </>,
-                );
-              })}
-            </div>
-          )}
-          {shownActions.length > 0 && (
-            <div className="command-actions palette-group" role="group" aria-labelledby="palette-actions-title">
-              <small className="palette-group-title" id="palette-actions-title">
-                {t("Aktionen", "Actions")}
-              </small>
-              {shownActions.map((action, i) =>
-                paletteOption(
-                  paletteItems[recentPages.length + paletteResults.length + i],
-                  recentPages.length + paletteResults.length + i,
-                  <>
-                    <action.icon size={17} />
-                    <span>{action.label}</span>
-                  </>,
-                ),
-              )}
-            </div>
-          )}
-          {searching && !paletteResults.length && !commandsOnly && (
-            <ListSkeleton rows={4} label={t("Suche läuft …", "Searching …")} />
-          )}
-          {!paletteItems.length && !searching && (
-            <div className="empty-state small">
-              {query.trim()
-                ? t("Nichts gefunden.", "Nothing found.")
-                : t("Suche nach Seiten, Einträgen, Kommentaren und Dateien – oder tippe > für Befehle.", "Search for pages, records, comments and files – or type > for commands.")}
-            </div>
-          )}
-        </div>
-      </Modal>
+        onOpened={onPaletteOpened}
+      />
       {/* Mounted with the first opening and kept: a closed panel keeps its
           conversation (and a running answer) for the next time. */}
       {canAsk && (askMounted || !!ask) && (
@@ -8566,14 +8039,6 @@ export default function WorkspaceApp({
     </AiProvider>
   );
 }
-// Comment hits are indexed with a German title (lib/search-index.ts).
-function commentHitTitle(title: string, t: (de: string, en: string) => string) {
-  const comment = title.match(/^Kommentar von (.+)$/);
-  if (comment) return t(`Kommentar von ${comment[1]}`, `Comment by ${comment[1]}`);
-  const inline = title.match(/^Textkommentar von (.+)$/);
-  if (inline) return t(`Textkommentar von ${inline[1]}`, `Text comment by ${inline[1]}`);
-  return title;
-}
 // Who else has the page open: avatars pop in when someone arrives and
 // shrink away when they leave.
 function PresenceAvatars({ users }: { users: { id: string; name: string }[] }) {
@@ -8586,23 +8051,6 @@ function PresenceAvatars({ users }: { users: { id: string; name: string }[] }) {
         </span>
       ))}
     </div>
-  );
-}
-function SearchSnippet({ text }: { text: string }) {
-  // Server marks hits with \u0002…\u0003; everything is rendered as text.
-  return (
-    <>
-      {text.split("\u0002").map((part, i) => {
-        if (!i) return <span key={i}>{part}</span>;
-        const [hit, rest = ""] = part.split("\u0003");
-        return (
-          <span key={i}>
-            <mark>{hit}</mark>
-            {rest}
-          </span>
-        );
-      })}
-    </>
   );
 }
 

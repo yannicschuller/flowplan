@@ -5,7 +5,7 @@
 // The path comes from lib/page-path.ts (#231), over the pages the person
 // may read (the bootstrap's list): it stops at the first parent that is
 // not readable, so a hit never shows titles of hidden pages above it.
-import { structuralPath, type PathPage, type PathRecordParent } from "./page-path";
+import { indexById, structuralPath, type PathPage, type PathRecordParent } from "./page-path";
 
 export type HitPlace = { id: string; rowId?: string; space_id: string };
 
@@ -19,8 +19,8 @@ export function hitPath(
   records: readonly PathRecordParent[] = [],
   room = 4,
 ): string[] {
-  const page = readable.find((p) => p.id === hit.id);
-  const space = spaces.find((s) => s.id === hit.space_id)?.name;
+  const page = indexById(readable).get(hit.id);
+  const space = indexById(spaces).get(hit.space_id)?.name;
   if (!page) return space ? [space] : [];
   const segments = structuralPath(readable, page, null, records).map((s) => s.title || "…");
   // A page: the path above it; a record: its database too.

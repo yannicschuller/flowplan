@@ -1588,6 +1588,7 @@ const dialogScenes: Scene[] = [
     id: "command-palette",
     group: "Dialogs",
     title: "Command palette (>)",
+    covers: ["components/command-palette.tsx"],
     path: "#home",
     steps: async (page) => {
       await page.keyboard.press("ControlOrMeta+k");

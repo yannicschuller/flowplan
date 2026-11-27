@@ -40,14 +40,38 @@ export type PathSegment = {
 const MAX_DEPTH = 64;
 
 export type PathRecordParent = { pageId: string; rowId: string; title: string; icon: string };
+
+// Lookups by id over a list the app keeps as immutable state (the
+// bootstrap's pages): built once per list, not per call – the quick search
+// asks for the path of every hit and recent visit, the breadcrumb on every
+// render (#610). A list changed in place would keep its old index, so only
+// lists that are replaced on change belong here.
+const byIdCache = new WeakMap<readonly { id: string }[], ReadonlyMap<string, { id: string }>>();
+export function indexById<T extends { id: string }>(list: readonly T[]): ReadonlyMap<string, T> {
+  let index = byIdCache.get(list) as ReadonlyMap<string, T> | undefined;
+  if (!index) {
+    index = new Map(list.map((item) => [item.id, item]));
+    byIdCache.set(list, index);
+  }
+  return index;
+}
+const recordCache = new WeakMap<readonly PathRecordParent[], ReadonlyMap<string, PathRecordParent>>();
+function recordIndex(records: readonly PathRecordParent[]) {
+  let index = recordCache.get(records);
+  if (!index) {
+    index = new Map(records.map((r) => [`${r.pageId}:${r.rowId}`, r]));
+    recordCache.set(records, index);
+  }
+  return index;
+}
 export function structuralPath(
   readable: readonly PathPage[],
   current: PathPage,
   record?: PathRecord | null,
   records: readonly PathRecordParent[] = [],
 ): PathSegment[] {
-  const byId = new Map(readable.map((p) => [p.id, p]));
-  const recordOf = new Map(records.map((r) => [`${r.pageId}:${r.rowId}`, r]));
+  const byId = indexById(readable);
+  const recordOf = recordIndex(records);
   const page = (p: PathPage): PathSegment => ({
     kind: p.kind,
     key: p.id,
