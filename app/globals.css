@@ -19370,17 +19370,87 @@ label.task-due {
   font-size: 13px;
   color: var(--secondary);
 }
-/* Filter, "Erledigte zeigen" and the link to the own page in one row. */
-.my-tasks-bar {
+/* "Filter (n)" (#612): its panel on larger screens (the sheet on phones
+   has the same content) – the choices one below the other, each with a
+   small heading; the records' tools and the link to the own page last. */
+.my-tasks-filters-panel {
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(72dvh, 640px);
+  padding: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.my-tasks-filter-body {
+  display: grid;
+  gap: 14px;
+}
+.my-tasks-filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.my-tasks-filter-heading {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Six date ranges wrap instead of widening the panel. */
+.segmented.my-tasks-range {
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+}
+.my-tasks-range-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.my-tasks-filter-checks {
+  display: grid;
+  gap: 8px;
+}
+.my-tasks-filter-checks .my-tasks-done {
+  display: flex;
+  margin: 0;
+}
+.my-tasks-filter-body .record-filters {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.my-tasks-filter-body .my-tasks-page-link {
+  justify-self: start;
+  margin: 0;
+}
+/* The filters set, as chips below the row; each removes its filter. */
+.my-tasks-active-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 16px;
-  margin-bottom: 4px;
+  gap: 6px;
+  margin-top: 10px;
 }
-.my-tasks-bar .my-tasks-done {
+.my-tasks-active-filter {
   display: inline-flex;
-  margin: 0;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+}
+.my-tasks-active-filter .toolbar-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-tasks-active-filter svg {
+  flex: none;
+  color: var(--muted);
+}
+.my-tasks-active-filter:hover svg {
+  color: var(--text);
+}
+.my-tasks-reset {
+  font-size: 12.5px;
 }
 .my-tasks-filter label {
   padding: 4px 11px;
@@ -19393,12 +19463,6 @@ label.task-due {
 .my-tasks-page-link {
   margin-left: auto;
   font-size: 12.5px;
-}
-/* The date range (#314): a chip with its choices in a small panel, each
-   with a line on what it includes. */
-.my-tasks-range-panel {
-  min-width: 260px;
-  padding: 6px;
 }
 /* A list of choices in a chip's panel (the date range of "Meine Aufgaben",
    "Gruppieren" of a database): full-width rows, the radio at the left, the
@@ -19497,12 +19561,9 @@ label.task-due {
   background: var(--blue);
   color: #fff;
 }
-/* Phones: Quelle and Person each take a row of their own, the date chip and
-   "Erledigte zeigen" share the next (touch sizes in app/mobile-ux.css). */
+/* Phones: the choices in the sheet "Filter" (touch sizes in
+   app/mobile-ux.css). */
 @media (max-width: 600px) {
-  .my-tasks-bar {
-    gap: 8px 14px;
-  }
   /* The full row (.segmented alone is only as wide as its labels), shared
      by the labels' lengths: "Mir zugewiesen" keeps one line (#346). A label
      still too wide wraps inside its segment instead of pushing the filter
@@ -19518,9 +19579,6 @@ label.task-due {
     line-height: 1.25;
     text-align: center;
     text-wrap: balance;
-  }
-  .my-tasks-page-link {
-    margin-left: 0;
   }
 }
 .my-tasks-group :is(h2, h3) {
@@ -42868,17 +42926,28 @@ td > span > .required-missing:only-child {
 }
 
 /* ---------- My tasks: all workspaces and the board (#564) ----------
-   "Dieser Arbeitsbereich / Alle Arbeitsbereiche" and "Liste / Board" in one
-   row above the filters; the workspace chips below them; a small workspace
+   "Filter (n)" and "Liste / Board" in one row (#612), the chips of the
+   filters set and the workspace chips below them; a small workspace
    label after the text of every task (components/my-tasks.tsx). The board
    (components/my-tasks-board.tsx): one column per due group, side by side;
    on phones the columns scroll sideways, one and a bit in view. */
 .my-tasks-modes {
+  margin-bottom: 12px;
+}
+.my-tasks-modes-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  margin-bottom: 12px;
+}
+.my-tasks-modes-row .my-tasks-layout {
+  margin-left: auto;
+}
+/* "Filter" as tall as "Liste / Board" next to it. */
+.my-tasks-modes-row .my-tasks-more .toolbar-chip {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
 }
 .my-tasks-workspaces {
   display: flex;
@@ -43091,9 +43160,6 @@ td > span > .required-missing:only-child {
 @media (max-width: 600px) {
   .my-tasks-modes .segmented.my-tasks-filter.my-tasks-layout {
     width: auto;
-  }
-  .my-tasks-modes .my-tasks-workspace-scope {
-    flex: 1 1 auto;
   }
   /* The chips in one row that scrolls, not five rows of them. */
   .my-tasks-workspaces {

@@ -803,15 +803,17 @@ label.hit-check {
   }
 }
 
-/* ===== My tasks (components/my-tasks.tsx, #314): on phones and touch
-   screens the filters – Quelle, Person, the date chip, "Erledigte zeigen"
-   and the tools for records – are at least 40 px high to hit. ===== */
+/* ===== My tasks (components/my-tasks.tsx, #314, #612): on phones and
+   touch screens "Filter", its choices, the chips of the filters set and
+   the tools for records are at least 40 px high to hit. ===== */
 @media (max-width: 600px), (pointer: coarse) {
   .my-tasks-filter label,
-  .my-tasks-bar .my-tasks-done {
+  .my-tasks-filter-checks .my-tasks-done {
     min-height: 40px;
   }
-  .my-tasks-range .toolbar-chip {
+  .my-tasks-modes-row .my-tasks-more .toolbar-chip,
+  .toolbar-chip.my-tasks-more,
+  .my-tasks-active-filter {
     height: 40px;
   }
   /* Choices in a chip's panel (date range, grouping): rows to hit. */
@@ -835,55 +837,17 @@ label.hit-check {
   }
 }
 
-/* My tasks on phones (design review): Quelle, the date chip and "Filter
-   (n)" in one row, the rest in a bottom sheet (components/my-tasks.tsx). */
-.my-tasks-bar.compact {
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-.my-tasks-bar.compact .my-tasks-scope {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 40px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-.my-tasks-bar.compact .my-tasks-range {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-.my-tasks-bar.compact .toolbar-chip {
-  height: 40px;
-  max-width: 100%;
+/* My tasks on phones (design review, #612): "Filter (n)" next to "Liste /
+   Board", its choices in a bottom sheet (components/my-tasks.tsx). */
+.toolbar-chip.my-tasks-more {
+  display: inline-flex;
+  align-items: center;
   padding: 0 12px;
   font-size: 13px;
 }
-.my-tasks-bar.compact .my-tasks-more {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-}
-.my-tasks-sheet-body {
-  display: grid;
-  gap: 14px;
-}
-.my-tasks-sheet-body .my-tasks-done {
-  display: flex;
+.my-tasks-sheet .my-tasks-filter-checks .my-tasks-done {
   min-height: 44px;
-  margin: 0;
 }
-.my-tasks-sheet-body .record-filters {
-  margin: 0;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-}
-.my-tasks-sheet-body .my-tasks-page-link {
-  justify-self: start;
+.my-tasks-sheet .my-tasks-page-link {
   min-height: 44px;
-  margin: 0;
-}
-.my-tasks-sheet .my-tasks-ranges {
-  margin: 0;
-  padding: 0;
-  border: 0;
 }

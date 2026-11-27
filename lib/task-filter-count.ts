@@ -1,14 +1,32 @@
-// "Filter (n)" of My tasks on phones (components/my-tasks.tsx): how many of
-// the filters in its sheet differ from the default. The source and the date
-// range have controls of their own in the row and do not count; the
-// database and the search only while records take part.
-export function sheetFilterCount(f: {
+// The filters of My tasks (components/my-tasks.tsx) that differ from the
+// default, in the order of their chips below the bar (#612): "Filter (n)"
+// shows how many, each chip removes one. The workspaces count while "Alle
+// Arbeitsbereiche" is in effect; the database and the search only while
+// records take part (not in "Alle Arbeitsbereiche", where their tools are
+// not offered).
+export type TaskFilterKey = "scope" | "source" | "person" | "range" | "done" | "unassigned" | "database" | "query";
+
+export function activeTaskFilters(f: {
+  everywhere: boolean;
+  source: "all" | "documents" | "databases";
   person: "mine" | "all" | "own";
+  range: string;
   done: boolean;
   unassigned: boolean;
   database: string;
   query: string;
   records: boolean;
-}): number {
-  return [f.person !== "mine", f.done, f.unassigned, f.records && !!f.database, f.records && !!f.query.trim()].filter(Boolean).length;
+}): TaskFilterKey[] {
+  const tools = f.records && !f.everywhere;
+  const set: [TaskFilterKey, boolean][] = [
+    ["scope", f.everywhere],
+    ["source", f.source !== "all"],
+    ["person", f.person !== "mine"],
+    ["range", f.range !== "any"],
+    ["done", f.done],
+    ["unassigned", f.unassigned],
+    ["database", tools && !!f.database],
+    ["query", tools && !!f.query.trim()],
+  ];
+  return set.filter(([, on]) => on).map(([key]) => key);
 }

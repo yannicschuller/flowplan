@@ -322,15 +322,36 @@ const pages: Scene[] = [
     },
   },
   { id: "tasks", group: "Pages", title: "My tasks", path: "#tasks" },
+  // "Filters" (#612): a panel below the chip on larger screens, the bottom
+  // sheet on phones – the same choices.
   {
-    id: "tasks-range",
+    id: "tasks-filters",
     group: "Pages",
-    title: "My tasks – date range",
-    covers: ["components/chip-popover.tsx"],
+    title: "My tasks – filters",
+    covers: ["components/my-tasks.tsx", "components/chip-popover.tsx"],
     path: "#tasks",
     steps: async (page) => {
-      await page.getByRole("button", { name: /^Due: / }).click();
-      await page.getByRole("dialog", { name: "Due" }).waitFor();
+      await page.getByRole("button", { name: /^Filters/ }).click();
+      await page.getByRole("dialog", { name: "Filters" }).waitFor();
+    },
+  },
+  // The filters set as chips below the row, each removing its filter, and
+  // "Reset" (#612).
+  {
+    id: "tasks-active-filters",
+    group: "Pages",
+    title: "My tasks – filters set",
+    path: "#tasks",
+    steps: async (page) => {
+      await page.getByRole("button", { name: /^Filters/ }).click();
+      const filters = page.getByRole("dialog", { name: "Filters" });
+      await filters.locator(".my-tasks-source label", { hasText: "Documents" }).click();
+      await filters.locator(".my-tasks-range label", { hasText: "Next 7 days" }).click();
+      await page.keyboard.press("Escape");
+      await filters.waitFor({ state: "detached" });
+      // Without the focus ring Escape leaves on "Filters".
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.getByRole("group", { name: "Filters set" }).waitFor();
     },
   },
   // Where "Add a task" writes (#457): the own page or a task database.
@@ -349,32 +370,13 @@ const pages: Scene[] = [
     group: "Pages",
     title: "My tasks – all records from databases",
     path: "#tasks",
-    steps: async (page, ctx) => {
-      // Phones: Quelle is a select, Person in the "Filters" sheet.
-      if (ctx.phone) {
-        await page.getByLabel("Source", { exact: true }).selectOption("databases");
-        await page.getByRole("button", { name: /^Filters/ }).click();
-        const sheet = page.getByRole("dialog", { name: "Filters" });
-        await sheet.locator(".my-tasks-person label", { hasText: "All" }).click();
-        await sheet.getByRole("group", { name: "Only for records from databases" }).waitFor();
-        return;
-      }
-      await page.locator(".my-tasks-source label", { hasText: "Databases" }).click();
-      await page.locator(".my-tasks-person label", { hasText: "All" }).click();
-      await page.getByRole("group", { name: "Only for records from databases" }).waitFor();
-    },
-  },
-  // Phones: the filters other than the source and the date in a sheet.
-  {
-    id: "tasks-filters",
-    group: "Pages",
-    title: "My tasks – filters on phones",
-    covers: ["components/my-tasks.tsx"],
-    path: "#tasks",
-    devices: ["phone"],
     steps: async (page) => {
+      // In "Filters" (#612): a panel on larger screens, a sheet on phones.
       await page.getByRole("button", { name: /^Filters/ }).click();
-      await page.getByRole("dialog", { name: "Filters" }).waitFor();
+      const filters = page.getByRole("dialog", { name: "Filters" });
+      await filters.locator(".my-tasks-source label", { hasText: "Databases" }).click();
+      await filters.locator(".my-tasks-person label", { hasText: "All" }).click();
+      await filters.getByRole("group", { name: "Only for records from databases" }).waitFor();
     },
   },
   { id: "graph", group: "Pages", title: "Graph", path: "#graph" },
