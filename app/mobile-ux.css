@@ -301,8 +301,16 @@ label.hit-check {
   .collection-nav-empty {
     min-height: 44px;
   }
-  /* Saved collections in the drawer: the row and its menu. */
-  .collection-nav > .favorite-nav {
+  /* Saved collections in the drawer: the row and its menu; a space shown
+     as a library ("Bibliothek öffnen") likewise. */
+  .collection-nav > .favorite-nav,
+  .favorite-nav.library-nav {
+    min-height: 44px;
+  }
+  /* A table's "Neue Zeile" and its calculations below the columns: only as
+     wide as their label (#606), but 44 px tall for a finger. */
+  .data-table .new-record,
+  .column-calculation {
     min-height: 44px;
   }
   .collection-nav-menu {
