@@ -11812,6 +11812,25 @@ tr.order-drop-after > td {
 .block-editor-surface.with-block-handles {
   padding-left: var(--block-editor-inset, 26px);
 }
+/* The page around it (#603): its head – cover, icon, title, properties,
+   the formatting toolbar – and what follows the text start where the text
+   starts, not 26 px left of it. The whole column moves in by the editor's
+   inset and only the editor (with the handles' room) reaches back into the
+   page's margin, as in Notion. Only on a page whose editor shows handles
+   (.with-block-room, set by the page while it is editable,
+   components/workspace-app.tsx and split-pane.tsx): a page without them
+   (read-only, reading mode) has its text at the column's edge already.
+   Records and guests' editors are framed boxes (above) and keep their
+   gutter inside. A class, not :has(): the page's children change while a
+   page opens, and a :has() over them restyled and laid out the whole text
+   again each time (#604); nor a custom property on the page, which every
+   element of the text would inherit. */
+.page-content.with-block-room > * {
+  margin-left: var(--block-editor-inset, 26px);
+}
+.page-content.with-block-room > .editor-wrapper > .document-writing-surface > .editor-content-holder {
+  margin-left: calc(-1 * var(--block-editor-inset, 26px));
+}
 .block-handle-layer {
   position: absolute;
   inset: 0;

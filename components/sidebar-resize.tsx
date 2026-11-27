@@ -5,7 +5,7 @@
 // shell (components/workspace-app.tsx, kept per device). The "KI fragen"
 // panel on the right (components/ai-ask.tsx) uses the same handle on its
 // left edge (`edge="start"`, --ask-width).
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SIDEBAR_MIN, SIDEBAR_MAX } from "@/lib/layout-cookie";
 export { SIDEBAR_WIDTH_KEY, SIDEBAR_MIN, SIDEBAR_MAX, clampSidebar } from "@/lib/layout-cookie";
@@ -33,10 +33,25 @@ export function SidebarResize({
 }) {
   const handle = useRef<HTMLDivElement>(null);
   const clamp = (value: number) => Math.round(Math.min(max, Math.max(min, value)));
-  // The width the panel has right now (the default when none is set).
-  const current = () =>
+  // The panel's width as laid out, for aria-valuenow: from a ResizeObserver,
+  // not read while rendering – that forced a layout of the whole page on
+  // every render of the app shell, several times per page switch (#604).
+  const [measured, setMeasured] = useState<number | null>(null);
+  useEffect(() => {
+    const panel = handle.current?.parentElement;
+    if (width !== null || !panel || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry.borderBoxSize?.[0];
+      setMeasured(Math.round(box ? box.inlineSize : entry.contentRect.width));
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [width]);
+  // The width the panel has right now (the default when none is set); a
+  // key press reads it from the page.
+  const current = (live = false) =>
     width ??
-    handle.current?.parentElement?.getBoundingClientRect().width ??
+    (live ? handle.current?.parentElement?.getBoundingClientRect().width : measured) ??
     fallback;
   // Arrow keys move the edge the way they point.
   const grow = edge === "end" ? "ArrowRight" : "ArrowLeft";
@@ -75,8 +90,8 @@ export function SidebarResize({
       onDoubleClick={() => onWidth(null)}
       onKeyDown={(e) => {
         const step = e.shiftKey ? 48 : 16;
-        if (e.key === shrink) onWidth(clamp(current() - step));
-        else if (e.key === grow) onWidth(clamp(current() + step));
+        if (e.key === shrink) onWidth(clamp(current(true) - step));
+        else if (e.key === grow) onWidth(clamp(current(true) + step));
         else if (e.key === "Home") onWidth(null);
         else return;
         e.preventDefault();

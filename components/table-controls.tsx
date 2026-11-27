@@ -256,10 +256,13 @@ export function TableControls({
   const focused = editor.isFocused || !!menu;
   const target: Target | null =
     drag ? { tablePos: drag.tablePos, row: drag.kind === "row" ? drag.from : 0, column: drag.kind === "column" ? drag.from : 0 } : menu && menu.kind !== "cells" ? { tablePos: menu.tablePos, row: menu.kind === "row" ? menu.index : 0, column: menu.kind === "column" ? menu.index : 0 } : hovered || (coarse || focused ? selectionCell() : null);
-  const origin = layer.current?.getBoundingClientRect();
-  const grid = target && origin ? measure(editor, target.tablePos, origin) : null;
   // The selection's outline: whole rows or columns, or a block of cells.
   const selection = editor.state.selection;
+  // Measured only when there is something to place: read while rendering,
+  // the layer's box forces the style and layout of the whole document –
+  // on every transaction, and while a page opens (#604).
+  const origin = target || selection instanceof CellSelection ? layer.current?.getBoundingClientRect() : undefined;
+  const grid = target && origin ? measure(editor, target.tablePos, origin) : null;
   let outline: (Box & { cells?: Rect; tablePos: number }) | null = null;
   if (selection instanceof CellSelection && origin) {
     const table = tableAround(editor.state.doc, selection.$anchorCell.pos);

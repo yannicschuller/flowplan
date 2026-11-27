@@ -156,7 +156,7 @@ import { EmojiSuggest, useEmojiSuggest } from "./emoji-suggest";
 import { AlignMenu, HeadingMenu, ToolbarGroupMenu, type ToolbarGroupEntry } from "./format-menus";
 import { readSlashRecents, rememberSlashCommand, slashSections, SUB_PAGE_KEYWORDS, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
-import { Fragment, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import {
@@ -1323,6 +1323,27 @@ export default function DocumentEditor({
     },
     [doc],
   );
+  // Leaving the page (#604): Tiptap's <EditorContent> resets the view's
+  // node views as it unmounts, while the editor is still alive (it is
+  // destroyed a tick later) – ProseMirror then draws the whole old document
+  // anew, in the page, and the next read forced a style and layout pass
+  // over it in the middle of the switch. The text leaves the page first
+  // (this cleanup runs before the children's), so that redraw touches
+  // nothing on screen. Mounted again (React's development double run), it
+  // goes back to its place.
+  const detached = useRef<{ dom: HTMLElement; parent: Node; next: Node | null } | null>(null);
+  useLayoutEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const dom = editor.view.dom;
+    const away = detached.current;
+    if (away?.dom === dom && !dom.isConnected && away.parent.isConnected) away.parent.insertBefore(dom, away.next);
+    detached.current = null;
+    return () => {
+      if (editor.isDestroyed || !dom.parentNode) return;
+      detached.current = { dom, parent: dom.parentNode, next: dom.nextSibling };
+      dom.remove();
+    };
+  }, [editor]);
   useEffect(() => {
     if (editor && !editor.isDestroyed) refreshCaptions(editor.view);
   }, [editor, numberCaptions]);

@@ -2697,6 +2697,23 @@ export default function WorkspaceApp({
     }, [boot.recordParents, treeIndex]),
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
+    // The page's text is the document editor, with block handles while
+    // editable: its head starts where the text starts, the handles' room
+    // left of it (#603, .with-block-room in app/globals.css). The same
+    // cases as the views below.
+    blockRoom =
+      !!data &&
+      editable &&
+      !data.locked &&
+      !data.encrypted &&
+      !(
+        data.page.kind === "database" ||
+        (data.page.kind === "journal" && !!data.journal) ||
+        (data.page.kind === "notebook" && !!data.notebook) ||
+        (data.page.kind === "dashboard" && !!data.dashboard) ||
+        (data.page.kind === "workflow" && !!data.workflow) ||
+        (data.page.kind === "whiteboard" && !!data.whiteboard)
+      ),
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id)),
     // Journals whose "Heute" link is a favourite (#537), at the journal's
@@ -6056,7 +6073,7 @@ export default function WorkspaceApp({
               <div className={`page-layout ${comments && !recordFull ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""}${data.journalDay ? " journal-day-page" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""}${data.journalDay ? " journal-day-page" : ""}${blockRoom ? " with-block-room" : ""} font-${data.page.font}`}
                 >
                   {/* A record as a page of its own (#231): only the record. */}
                   {!recordFull && (<>

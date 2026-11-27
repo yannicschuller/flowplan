@@ -270,7 +270,8 @@ export function SplitPane({
       {tabBar}
       <div className="split-pane-scroll" id="frame-panel-1" role="tabpanel">
         <article
-          className={`page-content split-page-content ${data?.page.kind === "database" ? "database-page" : ""} ${data?.page.kind === "whiteboard" ? "whiteboard-page" : ""} font-${data?.page.font || "sans"}`}
+          // with-block-room (#603): the title starts where the text starts.
+          className={`page-content split-page-content ${data?.page.kind === "database" ? "database-page" : ""} ${data?.page.kind === "whiteboard" ? "whiteboard-page" : ""}${editable && data?.page.kind === "document" && !data.locked && !data.journal ? " with-block-room" : ""} font-${data?.page.font || "sans"}`}
         >
           {data && data.page.kind !== "whiteboard" && (
             <h1 className="split-page-title">

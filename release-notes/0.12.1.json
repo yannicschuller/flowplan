@@ -233,6 +233,20 @@
       "issues": [
         618
       ]
+    },
+    {
+      "de": "Dokumentseiten haben eine Kante: Seitensymbol, Titel, Eigenschaften und Formatierungsleiste beginnen dort, wo der Text beginnt – nicht mehr 26 Pixel weiter links. Die Blockgriffe stehen links davon im Rand, in normaler und voller Breite und auf dem Telefon.",
+      "en": "Document pages have one edge: the page icon, title, properties and formatting toolbar start where the text starts – no longer 26 pixels further left. The block handles sit left of it in the margin, at normal and full width and on a phone.",
+      "issues": [
+        603
+      ]
+    },
+    {
+      "de": "Seitenwechsel bei langen Seiten sind schneller: Der Text der verlassenen Seite wird nicht mehr neu aufgebaut, und die neue Seite wird beim Aufbauen nicht mehr mehrfach vermessen.",
+      "en": "Switching between long pages is quicker: the text of the page you leave is no longer rebuilt, and the new page is no longer measured several times while it is being built.",
+      "issues": [
+        604
+      ]
     }
   ]
 }
