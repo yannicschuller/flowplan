@@ -32,7 +32,7 @@ const json = (state: Uint8Array) => {
   return value;
 };
 
-test("a job's step travels with its progress; a new phase is reported at once, nothing from inside a SQLite transaction", async () => {
+test("a job's step travels with its progress; a new phase is reported at once, from inside a transaction only on PostgreSQL", async () => {
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => (release = resolve));
   let reported!: () => void;
@@ -51,7 +51,16 @@ test("a job's step travels with its progress; a new phase is reported at once, n
     return { pages: 1 };
   });
   await done;
-  assert.deepEqual(await jobOutcome(owner, job), { status: "running", progress: 0.8, step: { phase: "create", done: 0, total: 2046 } });
+  // On PostgreSQL the progress goes over a connection of its own, without
+  // waiting for it; on SQLite the transaction holds the one connection.
+  if (process.env.DATABASE_URL)
+    for (let i = 0; i < 100 && ((await jobOutcome(owner, job)) as { progress?: number } | null)?.progress !== 0.9; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(
+    await jobOutcome(owner, job),
+    process.env.DATABASE_URL
+      ? { status: "running", progress: 0.9, step: { phase: "write", done: 100, total: 2046 } }
+      : { status: "running", progress: 0.8, step: { phase: "create", done: 0, total: 2046 } },
+  );
   release();
   for (let i = 0; i < 50 && (await jobOutcome(owner, job))?.status === "running"; i++) await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(await jobOutcome(owner, job), { status: "done", value: { pages: 1 } });
