@@ -1557,6 +1557,9 @@ const exact: Record<string, string> = {
   "Keine Google-Docs-Dokumente (.html oder .docx) gefunden.": "No Google Docs documents (.html or .docx) found.",
   "Eingebettete Notizen werden als Link übernommen.": "Embedded notes are imported as links.",
   "Bild ohne Datei im Tresor übersprungen.": "Image without a file in the vault skipped.",
+  // Obsidian daily notes (#668) and embedded notes as content (#672).
+  "Das Datumsformat der Daily Notes wird nicht unterstützt; sie werden als Seiten übernommen.": "The date format of the daily notes is not supported; they are imported as pages.",
+  "Einige eingebettete Notizen bleiben Links (Schleife, mehr als drei Ebenen oder zu viel Inhalt).": "Some embedded notes stay links (a loop, more than three levels or too much content).",
   // Microsoft Word and what Flowplan cannot read (lib/importers/word.ts, #122).
   "Keine Word-Dokumente (.docx) gefunden.": "No Word documents (.docx) found.",
   "Bitte eine Word-Datei (.docx) oder ein ZIP mit Word-Dateien hochladen.": "Please upload a Word file (.docx) or a ZIP with Word files.",

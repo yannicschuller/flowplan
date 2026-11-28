@@ -56,6 +56,20 @@
       "issues": [
         654
       ]
+    },
+    {
+      "de": "Obsidian-Import: Daily Notes, deren Name zum Datumsformat des Tresors passt, kommen als Tage ins Journal; der Vorlagen-Ordner wird zu gespeicherten Vorlagen, {{title}}, {{date}} und {{time}} zu {{Titel}}, {{Heute}} und {{Jetzt}}. Beides schaltest du in der Vorschau ab.",
+      "en": "Obsidian import: daily notes whose name matches the vault’s date format go into the journal as days; the templates folder becomes saved templates, with {{title}}, {{date}} and {{time}} turned into {{Title}}, {{Today}} and {{Now}}. Both can be switched off in the preview.",
+      "issues": [
+        668
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Auf Wunsch fügt „Eingebettete Notizen als Inhalt einfügen“ in der Vorschau ![[Notiz]], ![[Notiz#Überschrift]] und ![[Notiz#^block]] als Kopie mit Link zur Quelle ein – höchstens drei Ebenen tief, Schleifen und zu viel Inhalt bleiben Links.",
+      "en": "Obsidian import: on request, “Insert embedded notes as content” in the preview inserts ![[Note]], ![[Note#Heading]] and ![[Note#^block]] as a copy with a link to the source – at most three levels deep; loops and too much content stay links.",
+      "issues": [
+        672
+      ]
     }
   ],
   "improvements": [
