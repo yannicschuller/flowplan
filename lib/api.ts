@@ -275,7 +275,8 @@ import { recordShareCommand, recordShares } from "./record-share";
 import { relatedForView, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
-import { duplicatePageTree } from "./page-tree";
+import { duplicatePageTree, withDeferredCopyPlacement } from "./page-tree";
+import { PAGES_BULK_MAX } from "./bulk-limits";
 import { applyStarterTemplate, starterTemplates } from "./starter-templates";
 import { catalogFor } from "./template-catalogs";
 import { templateKeys } from "./template-catalog";
@@ -1923,8 +1924,12 @@ async function runCommand(
         const operation = z
           .enum(["delete", "duplicate", "move", "lock", "unlock", "favorite", "unfavorite"])
           .parse(b.operation);
+        // Up to PAGES_BULK_MAX pages in one go (#675); more is refused with
+        // a message that says so (the browser disables the actions first).
+        if (Array.isArray(b.pageIds) && b.pageIds.length > PAGES_BULK_MAX)
+          throw new HttpError(400, "Höchstens 1000 Seiten auf einmal.");
         const ids = [
-          ...new Set(z.array(uuid).min(1).max(100).parse(b.pageIds)),
+          ...new Set(z.array(uuid).min(1).max(PAGES_BULK_MAX).parse(b.pageIds)),
         ];
         if (operation === "lock" || operation === "unlock" || operation === "favorite" || operation === "unfavorite") {
           // Locking and favourites of a selection (#275): page by page with
@@ -1977,45 +1982,50 @@ async function runCommand(
         const roots = pages.filter((p) => !covered.has(p.id));
         const created: string[] = [];
         let previous: string | undefined;
-        for (const p of roots) {
-          if (operation === "delete")
-            await command(user, { action: "page.delete", pageId: p.id }, true);
-          else if (operation === "duplicate")
-            created.push(
-              (
-                (await command(
-                  user,
-                  { action: "page.duplicate", pageId: p.id },
-                  true,
-                )) as { id: string }
-              ).id,
-            );
-          else {
-            // Keep the selection order: the first root goes to the target,
-            // every further root directly after the previous one.
-            await command(
-              user,
-              previous
-                ? {
-                    action: "page.move",
-                    pageId: p.id,
-                    targetId: previous,
-                    placement: "after",
-                    ...(b.meta !== undefined ? { meta: b.meta } : {}),
-                  }
-                : {
-                    action: "page.move",
-                    pageId: p.id,
-                    ...(b.parentId
-                      ? { targetId: b.parentId, placement: "inside", ...(b.parentRowId ? { parentRowId: b.parentRowId } : {}) }
-                      : { spaceId: b.spaceId, parentId: null }),
-                    ...(b.meta !== undefined ? { meta: b.meta } : {}),
-                  },
-              true,
-            );
-            previous = p.id;
+        const each = async () => {
+          for (const p of roots) {
+            if (operation === "delete")
+              await command(user, { action: "page.delete", pageId: p.id }, true);
+            else if (operation === "duplicate")
+              created.push(
+                (
+                  (await command(
+                    user,
+                    { action: "page.duplicate", pageId: p.id },
+                    true,
+                  )) as { id: string }
+                ).id,
+              );
+            else {
+              // Keep the selection order: the first root goes to the target,
+              // every further root directly after the previous one.
+              await command(
+                user,
+                previous
+                  ? {
+                      action: "page.move",
+                      pageId: p.id,
+                      targetId: previous,
+                      placement: "after",
+                      ...(b.meta !== undefined ? { meta: b.meta } : {}),
+                    }
+                  : {
+                      action: "page.move",
+                      pageId: p.id,
+                      ...(b.parentId
+                        ? { targetId: b.parentId, placement: "inside", ...(b.parentRowId ? { parentRowId: b.parentRowId } : {}) }
+                        : { spaceId: b.spaceId, parentId: null }),
+                      ...(b.meta !== undefined ? { meta: b.meta } : {}),
+                    },
+                true,
+              );
+              previous = p.id;
+            }
           }
-        }
+        };
+        // Copies are put after their sources once at the end (#675).
+        if (operation === "duplicate") await withDeferredCopyPlacement(each);
+        else await each();
         result = { ok: true, count: roots.length, created };
         break;
       }
@@ -2079,21 +2089,26 @@ async function runCommand(
           parent, parentRow, nowText(),
           p.id,
         );
-        const siblings = (await all<{ id: string }>(
-          "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND parent_row_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
+        const siblingRows = await all<{ id: string; position: number }>(
+          "SELECT id,position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND parent_row_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
           sid,
           parent,
           parentRow,
           p.id,
-        )).map((x) => x.id);
+        );
+        const siblings = siblingRows.map((x) => x.id);
+        const positionOf = new Map(siblingRows.map((x) => [x.id, x.position]));
         const index =
           target && placement !== "inside"
             ? siblings.indexOf(target.id) + (placement === "after" ? 1 : 0)
             : siblings.length;
         siblings.splice(Math.max(0, index), 0, p.id);
-        await forEachAsync(siblings, async (sibling, i) =>
-          await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
-        );
+        // Only the positions that change are written: moving many pages
+        // one after the other to the end of a list (pages.bulk, #675)
+        // stays linear instead of renumbering every sibling each time.
+        await forEachAsync(siblings, async (sibling, i) => {
+          if (positionOf.get(sibling) !== i) await run("UPDATE pages SET position=? WHERE id=?", i, sibling);
+        });
         for (const task of afterMove.splice(0)) await task();
         break;
       }

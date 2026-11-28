@@ -1,6 +1,7 @@
 "use client";
 import { useFullWidthPages } from "@/lib/page-width-pref-client";
 import { rowChanges } from "@/lib/row-queue";
+import { ROWS_BULK_MAX } from "@/lib/bulk-limits";
 import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
@@ -848,6 +849,9 @@ function DatabaseViewBody({
   useEffect(() => rememberViewShape(page.id, view.type), [page.id, view.type]);
   const activeFilterCount = filterCount(effectiveFilterGroup(view));
   const selectionRows = data.rows.filter((r) => selection.has(r.id));
+  // Bulk actions run all or nothing on the server, up to ROWS_BULK_MAX
+  // records (#675): above it they are disabled instead of failing.
+  const tooManyRows = selectionRows.length > ROWS_BULK_MAX;
   function selectRow(row: Row, enabled: boolean) {
     setSelection((previous) => {
       const next = new Map(previous);
@@ -871,6 +875,8 @@ function DatabaseViewBody({
   // Duplicate or delete the records of the right-click menu.
   async function recordsAction(rowIds: string[], operation: "duplicate" | "delete") {
     const list = data.rows.filter((r) => rowIds.includes(r.id));
+    // All or nothing on the server, up to ROWS_BULK_MAX records (#675).
+    if (list.length > ROWS_BULK_MAX) return onError(t(`Höchstens ${ROWS_BULK_MAX} Einträge auf einmal.`, `At most ${ROWS_BULK_MAX} records at a time.`));
     if (operation === "delete" && list.length > 1 && !window.confirm(t(`${list.length} Einträge löschen?`, `Delete ${list.length} records?`))) return;
     const since = toastSerial();
     if (operation === "delete") setSelection(new Map());
@@ -890,6 +896,7 @@ function DatabaseViewBody({
     }
   }
   async function bulkAction(operation: "update" | "duplicate" | "delete") {
+    if (tooManyRows) return onError(t(`Höchstens ${ROWS_BULK_MAX} Einträge auf einmal.`, `At most ${ROWS_BULK_MAX} records at a time.`));
     setBulkBusy(true);
     const since = toastSerial();
     const result = await act({
@@ -3952,9 +3959,14 @@ function DatabaseViewBody({
           aria-label={t("Ausgewählte Einträge", "Selected records")}
         >
           <strong>{selectionRows.length} {t("ausgewählt", "selected")}</strong>
+          {tooManyRows && (
+            <span className="bulk-toolbar-limit" role="status">
+              {t(`Höchstens ${ROWS_BULK_MAX} Einträge auf einmal.`, `At most ${ROWS_BULK_MAX} records at a time.`)}
+            </span>
+          )}
           <button
             className="button compact"
-            disabled={bulkBusy}
+            disabled={bulkBusy || tooManyRows}
             onClick={() => {
               setBulkField(
                 fields.find((f) => !computedTypes.includes(f.type))?.id || "",
@@ -3967,7 +3979,7 @@ function DatabaseViewBody({
           </button>
           <button
             className="button compact"
-            disabled={bulkBusy}
+            disabled={bulkBusy || tooManyRows}
             onClick={() => bulkAction("duplicate")}
           >
             {t("Duplizieren", "Duplicate")}
@@ -3984,7 +3996,7 @@ function DatabaseViewBody({
               <Sparkle size={14} /> {t("Mit KI ausfüllen", "Fill in with AI")}
             </button>
           )}
-          <button className="button compact" disabled={bulkBusy} onClick={() => setTransfer({ rowIds: [...selection.keys()], mode: "move" })}>
+          <button className="button compact" disabled={bulkBusy || tooManyRows} onClick={() => setTransfer({ rowIds: [...selection.keys()], mode: "move" })}>
             {t("Verschieben / kopieren nach …", "Move / copy to …")}
           </button>
           <button className="button compact" onClick={() => setQrLabels({ rowIds: [...selection.keys()] })}>
@@ -3992,7 +4004,7 @@ function DatabaseViewBody({
           </button>
           <button
             className="button compact danger"
-            disabled={bulkBusy}
+            disabled={bulkBusy || tooManyRows}
             onClick={() => setBulk("delete")}
           >
             {t("Löschen", "Delete")}
