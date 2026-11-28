@@ -8,6 +8,8 @@ import { SquaresFour } from "@phosphor-icons/react";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { useT } from "./i18n";
 import { api, ApiError, Modal } from "./ui";
+import { PlaceholderMenu, editorIn } from "./placeholder-menu";
+import type { Field } from "@/lib/types";
 
 export type TemplateDraftInfo = { id: string; name: string; version: number; deleted: boolean; workspaceWide: boolean };
 
@@ -17,8 +19,12 @@ export function TemplateDraftBar({
   workspaceId,
   onDone,
   onError,
+  placeholders,
 }: {
   draft: TemplateDraftInfo;
+  // A document's draft: its page properties for "Platzhalter einfügen"
+  // (#653, filled when a page is created from the template).
+  placeholders?: Field[];
   pageId: string;
   workspaceId: string;
   // Saved into the template or discarded: the draft is gone (the page is
@@ -77,6 +83,19 @@ export function TemplateDraftBar({
                 `Draft of the template “${draft.name}” – only you see it. “Save template” replaces the template's content; pages already created are not changed.`,
               )}
         </span>
+        {placeholders && (
+          <PlaceholderMenu
+            fields={placeholders}
+            // {{Ich}} works too, but on a new page it is its creator.
+            builtins={["title", "today", "now", "creator", "space"]}
+            labels={{
+              title: t("Titel der neuen Seite", "Title of the new page"),
+              creator: t("Wer die Seite erstellt", "Who creates the page"),
+            }}
+            hint={t("Platzhalter einfügen – beim Erstellen einer Seite aus der Vorlage ausgefüllt", "Insert placeholder – filled in when a page is created from the template")}
+            onInsert={(text) => editorIn(document.querySelector<HTMLElement>(".page-content .editor-content-holder"))?.chain().focus().insertContent(text).run()}
+          />
+        )}
         <button type="button" className="button compact" disabled={busy} onClick={() => setDiscarding(true)}>
           {t("Verwerfen", "Discard")}
         </button>

@@ -1,6 +1,8 @@
 // Placeholders in record templates: "{{Firma}}" in the title, the headings
 // or the text of a template becomes the record's value of that property
 // when the template is applied; "{{Heute}}", "{{Titel}}" … are built in.
+// Page templates use the same placeholders with the page's properties
+// (#653, lib/page-placeholders.ts).
 // Names match without regard to case. A template stores the properties it
 // names by id ("{{field:abc}}"), so renaming a property keeps it working;
 // a template opened for editing shows the current names again.
@@ -18,7 +20,7 @@ import type { Field } from "./types";
 const PATTERN = /\{\{\s*([^{}<>\n]{1,120}?)\s*\}\}/g;
 export const FIELD_PREFIX = "field:";
 
-export type Builtin = "title" | "today" | "now" | "creator" | "me" | "database";
+export type Builtin = "title" | "today" | "now" | "creator" | "me" | "database" | "space";
 // Every name a built-in answers to (German, English, French, Russian).
 const BUILTIN_NAMES: Record<string, Builtin> = {
   title: "title",
@@ -43,6 +45,9 @@ const BUILTIN_NAMES: Record<string, Builtin> = {
   database: "database",
   datenbank: "database",
   "base de données": "database",
+  space: "space",
+  bereich: "space",
+  espace: "space",
   название: "title",
   дата: "today",
   сегодня: "today",
@@ -51,6 +56,7 @@ const BUILTIN_NAMES: Record<string, Builtin> = {
   создатель: "creator",
   я: "me",
   "база данных": "database",
+  раздел: "space",
 };
 // The built-ins as the template editor offers them, in each language.
 export const BUILTINS: { key: Builtin; token: { de: string; en: string; fr: string; ru: string } }[] = [
@@ -60,6 +66,7 @@ export const BUILTINS: { key: Builtin; token: { de: string; en: string; fr: stri
   { key: "creator", token: { de: "Ersteller", en: "Creator", fr: "Créateur", ru: "Автор" } },
   { key: "me", token: { de: "Ich", en: "Me", fr: "Moi", ru: "Я" } },
   { key: "database", token: { de: "Datenbank", en: "Database", fr: "Base de données", ru: "База данных" } },
+  { key: "space", token: { de: "Bereich", en: "Space", fr: "Espace", ru: "Раздел" } },
 ];
 
 const norm = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();

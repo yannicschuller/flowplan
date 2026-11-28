@@ -1333,7 +1333,8 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "parentId": str,  # Parent page in the same space
     "parentRowId": str,  # A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record
     "databaseKind": Literal["tasks", "documents", "contacts", "empty", "flashcards"],
-    "templateId": str,  # A saved page template of the workspace
+    "templateId": str,  # A saved page template of the workspace. A document template's placeholders (`{{Title}}`, `{{Today}}`, `{{Now}}`, `{{Creator}}`, `{{Me}}`, `{{Space}}` and `{{Property name}}`) in its title, text and text properties are filled once, from the new page
+    "timeZone": str,  # IANA time zone: a workflow's schedule, and the day of a template's `{{Today}}` and `{{Now}}` (default UTC)
     "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`
     "starterTemplate": str,  # A built-in starter template key
     "pageId": str,  # The new page's id, chosen by the client (pages made offline): a UUID nobody uses yet. Sent again by the same person for the same space, the existing page answers and nothing is created twice

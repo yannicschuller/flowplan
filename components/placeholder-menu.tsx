@@ -2,7 +2,8 @@
 // "Platzhalter einfügen" beside a record's content: the database's
 // properties and the built-ins as "{{Name}}" at the cursor. Saved as a
 // record template, they become the values of each record the template is
-// applied to (lib/record-placeholders.ts).
+// applied to (lib/record-placeholders.ts). The draft of a saved page
+// template offers the page's properties the same way (#653).
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { BracketsCurly } from "@phosphor-icons/react";
 import type { Editor } from "@tiptap/core";
@@ -18,7 +19,20 @@ export function editorIn(root: HTMLElement | null): Editor | null {
   return dom?.editor && !dom.editor.isDestroyed ? dom.editor : null;
 }
 
-export function PlaceholderMenu({ fields, onInsert }: { fields: Field[]; onInsert: (text: string) => void }) {
+export function PlaceholderMenu({
+  fields,
+  onInsert,
+  builtins,
+  labels: own,
+  hint,
+}: {
+  fields: Field[];
+  onInsert: (text: string) => void;
+  // The built-ins offered (default: all) and labels other than a record's.
+  builtins?: Builtin[];
+  labels?: Partial<Record<Builtin, string>>;
+  hint?: string;
+}) {
   const t = useT();
   const locale = useLocale();
   // Properties only some people may read stay empty in templates.
@@ -30,6 +44,8 @@ export function PlaceholderMenu({ fields, onInsert }: { fields: Field[]; onInser
     creator: t("Wer den Eintrag erstellt hat", "Who created the record"),
     me: t("Wer die Vorlage anwendet", "Who applies the template"),
     database: t("Name der Datenbank", "Name of the database"),
+    space: t("Name des Bereichs", "Name of the space"),
+    ...own,
   };
   const insert = (token: string) => () => {
     // After the menu has closed and given focus back.
@@ -42,7 +58,7 @@ export function PlaceholderMenu({ fields, onInsert }: { fields: Field[]; onInser
           type="button"
           className="icon-button placeholder-menu-button"
           aria-label={t("Platzhalter einfügen", "Insert placeholder")}
-          title={t("Platzhalter einfügen – für Datensatzvorlagen", "Insert placeholder – for record templates")}
+          title={hint ?? t("Platzhalter einfügen – für Datensatzvorlagen", "Insert placeholder – for record templates")}
         >
           <BracketsCurly size={18} />
         </button>
@@ -55,15 +71,19 @@ export function PlaceholderMenu({ fields, onInsert }: { fields: Field[]; onInser
           sideOffset={4}
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
-          <Dropdown.Label className="menu-label">{t("Eigenschaften", "Properties")}</Dropdown.Label>
-          {shown.map((f) => (
-            <Dropdown.Item key={f.id} className="dropdown-item" onSelect={insert(f.name)}>
-              <code>{`{{${f.name}}}`}</code>
-            </Dropdown.Item>
-          ))}
-          <Dropdown.Separator className="dropdown-separator" />
+          {shown.length > 0 && (
+            <>
+              <Dropdown.Label className="menu-label">{t("Eigenschaften", "Properties")}</Dropdown.Label>
+              {shown.map((f) => (
+                <Dropdown.Item key={f.id} className="dropdown-item" onSelect={insert(f.name)}>
+                  <code>{`{{${f.name}}}`}</code>
+                </Dropdown.Item>
+              ))}
+              <Dropdown.Separator className="dropdown-separator" />
+            </>
+          )}
           <Dropdown.Label className="menu-label">{t("Allgemein", "General")}</Dropdown.Label>
-          {BUILTINS.map((b) => {
+          {BUILTINS.filter((b) => !builtins || builtins.includes(b.key)).map((b) => {
             const token = b.token[locale as keyof typeof b.token] || b.token.en;
             return (
               <Dropdown.Item key={b.key} className="dropdown-item" onSelect={insert(token)}>

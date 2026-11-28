@@ -2178,8 +2178,10 @@ export type CommandPageCreate = {
   /** A record of the parent database (`parentId`): the page goes below that record and inherits its access. Needs edit rights on the record */
   parentRowId?: string;
   databaseKind?: "tasks" | "documents" | "contacts" | "empty" | "flashcards";
-  /** A saved page template of the workspace */
+  /** A saved page template of the workspace. A document template's placeholders (`{{Title}}`, `{{Today}}`, `{{Now}}`, `{{Creator}}`, `{{Me}}`, `{{Space}}` and `{{Property name}}`) in its title, text and text properties are filled once, from the new page */
   templateId?: string;
+  /** IANA time zone: a workflow's schedule, and the day of a template's `{{Today}}` and `{{Now}}` (default UTC) */
+  timeZone?: string;
   /** With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto` */
   meta?: "auto" | "copy" | "remove" | {
     tags?: Record<string, {

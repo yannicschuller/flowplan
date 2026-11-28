@@ -1,3 +1,4 @@
+import { fillPagePlaceholders } from "./page-placeholders";
 import { withReadMemo } from "./read-memo";
 import { duplicateNewOptions } from "./option-search";
 import { sidebarPages, withKeptParts, workspaceMembers } from "./bootstrap-pages";
@@ -1844,6 +1845,10 @@ async function runCommand(
             // Tags and definitions of the template's space (#136).
             parseMetaPlan(b.meta),
           );
+        // Placeholders of a document template, filled once from the new
+        // page's title and properties (#653), in the creator's time zone.
+        if (savedTemplate?.kind === "document")
+          await fillPagePlaceholders(user, created, typeof b.timeZone === "string" && b.timeZone.length <= 100 ? b.timeZone : undefined);
         // A database proposed by the AI and reviewed by the person: checked
         // again here like any input (lib/ai/database-fields.ts).
         if (b.aiDatabase !== undefined) {
