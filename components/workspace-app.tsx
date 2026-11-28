@@ -6082,6 +6082,11 @@ export default function WorkspaceApp({
                     <TemplateDraftBar
                       key={data.page.id}
                       draft={data.templateDraft}
+                      placeholders={
+                        data.page.kind === "document"
+                          ? contextOf(boot.taxonomy?.properties ?? [], data.page.space_id).map((p) => ({ id: p.id, name: p.name, type: p.type, options: p.options }))
+                          : undefined
+                      }
                       pageId={data.page.id}
                       workspaceId={boot.workspace.id}
                       onError={notifyError}
@@ -7118,8 +7123,9 @@ export default function WorkspaceApp({
             ...(parent && parentRow ? { parentRowId: parentRow } : {}),
             title: titleEncrypted ? ENCRYPTED_TITLE : newTitle.trim() || savedTemplate?.name || (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.name) || t("Ohne Titel", "Untitled"),
             kind: newKind,
-            // A workflow's schedule and "today" in the creator's time zone.
-            ...(newKind === "workflow" ? { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } : {}),
+            // A workflow's schedule and "today" in the creator's time zone,
+            // as the {{Heute}} of a page template (#653).
+            ...(newKind === "workflow" || savedTemplate ? { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } : {}),
             ...(savedTemplate
               ? {
                   templateId: savedTemplate.id,

@@ -14,6 +14,13 @@
     {
       "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
+    },
+    {
+      "de": "Platzhalter in Seitenvorlagen: {{Kunde}}, {{Titel}}, {{Heute}} oder {{Bereich}} in einer gespeicherten Vorlage werden beim Erstellen einer Seite einmal ausgefüllt – aus ihrem Titel und ihren Eigenschaften, wie bei Datensatzvorlagen.",
+      "en": "Placeholders in page templates: {{Customer}}, {{Title}}, {{Today}} or {{Space}} in a saved template are filled in once when a page is created from it – from its title and properties, as in record templates.",
+      "issues": [
+        653
+      ]
     }
   ],
   "improvements": [

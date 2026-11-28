@@ -47,6 +47,7 @@ export function RuleTextInput({
       creator: t("Wer den Eintrag erstellt hat", "Who created the record"),
       me: scheduled ? t("Wer die Regel speichert", "Whoever saves the rule") : t("Auslösende Person", "Person who triggered it"),
       database: t("Name der Datenbank", "Name of the database"),
+      space: t("Name des Bereichs", "Name of the space"),
     };
     return rulePlaceholders(fields, { scheduled, lang: builtinLang(locale) }).map(
       (p): PickerItem =>

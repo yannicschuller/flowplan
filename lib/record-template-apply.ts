@@ -27,6 +27,7 @@ import {
   placeholderValue,
   showKey,
   storeKey,
+  type Builtin,
   type PlaceholderFormat,
 } from "./record-placeholders";
 import type { Field, Identity, Page, Row } from "./types";
@@ -81,7 +82,8 @@ const names = async (ids: string[]) =>
       )
     : new Map<string, string>();
 
-function formatFor(actor: Identity | null, zone: string): Awaitable<PlaceholderFormat> {
+// How values become text for `actor` (lib/resolve-ahead.ts lookups).
+export function formatFor(actor: Identity | null, zone: string): Awaitable<PlaceholderFormat> {
   const people = new Map<string, string>();
   return {
     tag: localeTag(contentLocale()),
@@ -124,7 +126,7 @@ export type PlaceholderRecord = Pick<Row, "id" | "page_id" | "created_by" | "cre
 // who sees the record.
 // `render` gets the resolver; the names, titles and files it asks for are
 // read from the database ahead (lib/resolve-ahead.ts).
-export function withPlaceholders<T>(
+export async function withPlaceholders<T>(
   page: Page,
   fields: Field[],
   record: PlaceholderRecord,
@@ -135,14 +137,57 @@ export function withPlaceholders<T>(
   // the actor's (an automation's task: its rule's creator, #489).
   reader: Identity | null = actor,
 ): Promise<T> {
-  const tz = zone && validZone(zone) ? zone : browserZone();
-  return withLookups<PlaceholderFormat, T>(formatFor(reader, tz), (fmt) => render(placeholderResolver(page, fields, record, actor, tz, fmt)));
+  const tz = placeholderZone(zone);
+  const space = await spaceName(page.space_id);
+  return withLookups<PlaceholderFormat, T>(formatFor(reader, tz), (fmt) => render(placeholderResolver(page, fields, record, actor, tz, space, fmt)));
 }
-function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, tz: string, fmt: PlaceholderFormat) {
+export const placeholderZone = (zone: string | undefined) => (zone && validZone(zone) ? zone : browserZone());
+// The name of the space a page is in ({{Space}}).
+export const spaceName = async (spaceId: string | null | undefined) =>
+  spaceId ? ((await one<{ name: string }>("SELECT name FROM spaces WHERE id=?", spaceId))?.name ?? "") : "";
+
+// What a built-in placeholder becomes, for records and pages alike;
+// undefined keeps it as written.
+export type BuiltinValues = {
+  title: () => string | undefined;
+  creator: string | null | undefined;
+  actor: Identity | null;
+  database?: string;
+  space: string;
+  // The moment, in the reader's time zone.
+  now: Temporal.PlainDateTime;
+};
+export function builtinValue(builtin: Builtin, values: BuiltinValues, fmt: PlaceholderFormat): string | undefined {
+  switch (builtin) {
+    case "title":
+      return values.title();
+    case "today":
+      return placeholderDate(values.now.toPlainDate().toString(), fmt);
+    case "now":
+      return placeholderDate(values.now.toString({ smallestUnit: "minute" }), fmt);
+    case "creator":
+      return values.creator ? fmt.person!(values.creator) : "";
+    case "me":
+      return values.actor?.name || "";
+    case "database":
+      return values.database;
+    case "space":
+      return values.space;
+  }
+}
+
+function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, tz: string, space: string, fmt: PlaceholderFormat) {
   const row = { ...record, number: record.number ?? null } as Row;
   const values = computedCells(row, fields);
   const blank = publicHiddenFieldIds(fields);
-  const now = Temporal.Now.plainDateTimeISO(tz);
+  const builtins: BuiltinValues = {
+    title: () => (fields[0] ? placeholderValue(fields[0], values[fields[0].id], fmt) : ""),
+    creator: record.created_by,
+    actor,
+    database: page.title || "",
+    space,
+    now: Temporal.Now.plainDateTimeISO(tz),
+  };
   return (key: string): string | undefined => {
     const target = placeholderTarget(key, fields);
     if (!target) return undefined;
@@ -153,20 +198,7 @@ function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRec
       return blank.has(target.field.id)
         ? ""
         : placeholderValue(target.field, isFormattedText(target.field, fields) ? toPlain(values[target.field.id]) : values[target.field.id], fmt);
-    switch (target.builtin) {
-      case "title":
-        return fields[0] ? placeholderValue(fields[0], values[fields[0].id], fmt) : "";
-      case "today":
-        return placeholderDate(now.toPlainDate().toString(), fmt);
-      case "now":
-        return placeholderDate(now.toString({ smallestUnit: "minute" }), fmt);
-      case "creator":
-        return record.created_by ? fmt.person!(record.created_by) : "";
-      case "me":
-        return actor?.name || "";
-      case "database":
-        return page.title || "";
-    }
+    return builtinValue(target.builtin, builtins, fmt);
   };
 }
 
