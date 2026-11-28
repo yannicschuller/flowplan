@@ -9,17 +9,18 @@
 import { posix } from "node:path";
 import { ct } from "../content-locale";
 import type { ImportReport } from "./types";
+import { zipText, type ZipData } from "../zip-file";
 
 export type DailyConfig = { folder: string; format: string };
 export type VaultConfig = { daily: DailyConfig | null; templates: { folder: string } | null };
 
 export const DEFAULT_DAILY_FORMAT = "YYYY-MM-DD";
 
-function json(entries: Map<string, Buffer>, path: string): Record<string, unknown> | null {
+function json(entries: Map<string, ZipData>, path: string): Record<string, unknown> | null {
   const data = entries.get(path);
-  if (!data || data.length > 1024 * 1024) return null;
+  if (!data || (Buffer.isBuffer(data) ? data.length : data.size) > 1024 * 1024) return null;
   try {
-    const value = JSON.parse(data.toString("utf8").replace(/^﻿/, ""));
+    const value = JSON.parse(zipText(data).replace(/^﻿/, ""));
     return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   } catch {
     return null;
@@ -35,7 +36,7 @@ const folderOf = (value: unknown) =>
     .normalize("NFC");
 
 // The daily-notes and templates settings of the vault, when it has them.
-export function vaultConfig(entries: Map<string, Buffer>): VaultConfig {
+export function vaultConfig(entries: Map<string, ZipData>): VaultConfig {
   let daily: DailyConfig | null = null;
   const core = json(entries, ".obsidian/daily-notes.json");
   const periodic = json(entries, ".obsidian/plugins/periodic-notes/data.json");

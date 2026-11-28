@@ -549,13 +549,58 @@ test("large uploads: streamed to disk, the workspace file read in place, files r
   upload.discardImportUpload(owner.id, saved.id);
   assert.ok(!existsSync(saved.path));
 
-  // Other exports from disk stay within the ZIP limit (a sparse file).
+  // Other exports from disk stay within the ZIP limit: a ZIP of two PDFs
+  // of 55 MB (zeros, a sparse file) is a GoodNotes export, read into
+  // memory; only Obsidian and Confluence ZIPs are read from disk (#673).
   const zipDir = mkdtempSync(join(tmpdir(), "flowplan-bigzip-"));
   try {
     const zipPath = join(zipDir, "big.zip");
+    const { closeSync, openSync, writeSync } = await import("node:fs");
+    const { crc32 } = await import("node:zlib");
+    const size = 55 * 1024 * 1024,
+      mb = Buffer.alloc(1024 * 1024);
+    let crc = 0;
+    for (let i = 0; i < size / mb.length; i++) crc = crc32(mb, crc);
+    const fd = openSync(zipPath, "w");
+    const central: Buffer[] = [];
+    let at = 0;
+    for (const name of ["a.pdf", "b.pdf"]) {
+      const header = Buffer.alloc(30 + name.length);
+      header.writeUInt32LE(0x04034b50, 0);
+      header.writeUInt16LE(20, 4);
+      header.writeUInt32LE(crc >>> 0, 14);
+      header.writeUInt32LE(size, 18);
+      header.writeUInt32LE(size, 22);
+      header.writeUInt16LE(name.length, 26);
+      header.write(name, 30);
+      writeSync(fd, header, 0, header.length, at);
+      const entry = Buffer.alloc(46 + name.length);
+      entry.writeUInt32LE(0x02014b50, 0);
+      entry.writeUInt16LE(20, 4);
+      entry.writeUInt16LE(20, 6);
+      entry.writeUInt32LE(crc >>> 0, 16);
+      entry.writeUInt32LE(size, 20);
+      entry.writeUInt32LE(size, 24);
+      entry.writeUInt16LE(name.length, 28);
+      entry.writeUInt32LE(at, 42);
+      entry.write(name, 46);
+      central.push(entry);
+      at += header.length + size;
+    }
+    const directory = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(2, 8);
+    end.writeUInt16LE(2, 10);
+    end.writeUInt32LE(directory.length, 12);
+    end.writeUInt32LE(at, 16);
+    writeSync(fd, Buffer.concat([directory, end]), 0, directory.length + 22, at);
+    closeSync(fd);
+    await assert.rejects(parseImport("big.zip", { path: zipPath }), (e: Error & { status?: number }) => e.status === 413 && /höchstens 100 MB/.test(e.message));
+    // Not a ZIP at all (a sparse file that only starts like one).
     writeFileSync(zipPath, Buffer.from("PK\u0003\u0004"));
     truncateSync(zipPath, 101 * 1024 * 1024);
-    await assert.rejects(parseImport("big.zip", { path: zipPath }), /höchstens 100 MB/);
+    await assert.rejects(parseImport("big.zip", { path: zipPath }), /Ungültige ZIP-Datei/);
   } finally {
     rmSync(zipDir, { recursive: true, force: true });
   }

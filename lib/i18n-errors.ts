@@ -1584,7 +1584,7 @@ const exact: Record<string, string> = {
   "Die AFFiNE-Datei ist schon geschlossen.": "The AFFiNE file is already closed.",
   // Large imports (lib/importers/upload.ts).
   "Als Formular darf die Datei höchstens 100 MB groß sein; größere Dateien als Anfragekörper senden.": "As a form the file may be at most 100 MB; send larger files as the request body.",
-  "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.": "ZIP and other exports may be at most 100 MB; only the AFFiNE workspace file (.affine) may be larger.",
+  "Exporte dürfen höchstens 100 MB groß sein; größer dürfen die AFFiNE-Arbeitsbereichsdatei (.affine) und ZIPs von Obsidian und Confluence sein.": "Exports may be at most 100 MB; the AFFiNE workspace file (.affine) and Obsidian and Confluence ZIPs may be larger.",
   "Die Datei konnte nicht hochgeladen werden.": "The file could not be uploaded.",
   "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.": "The uploaded file is no longer there. Please choose it again.",
   // Cluster mode: files only count as stored once they are in the bucket (lib/storage.ts, lib/importers/upload.ts).

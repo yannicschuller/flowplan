@@ -25,7 +25,8 @@ import { inferPropertyTypes, obsidianTypes } from "../frontmatter-types";
 import { fileRef, isImage, mimeOf, pageRef } from "./html";
 import { nameKey } from "../zip-names";
 import { importIcon } from "./write";
-import { importReport, isoDate, warningList, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
+import { zipText, type ZipData } from "../zip-file";
+import { importReport, isoDate, warningList, zipImportFile, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
 import { CANVAS, canvasBoard, readCanvas, type CanvasJson } from "./obsidian-canvas";
 import { specialNotes, templateVariables, vaultConfig } from "./obsidian-daily";
 import { countNoteEmbeds, embedTranscluder } from "./obsidian-embeds";
@@ -33,14 +34,18 @@ import { countNoteEmbeds, embedTranscluder } from "./obsidian-embeds";
 // What the import preview switches (#668, #672): daily notes into the
 // journal and the templates folder as templates (on unless false), embedded
 // notes as content (off unless true).
+// A ZIP entry's bytes, read from disk when it is lazy (#673).
+const zipBytes = (data: ZipData) => (Buffer.isBuffer(data) ? data : data.read());
+const CANVAS_IMAGE_READ_MAX = 20 * 1024 * 1024;
+
 export type ObsidianOptions = { dailyNotes?: boolean; templates?: boolean; embeds?: boolean };
 
 const NOTE = /\.(md|markdown)$/i;
 const hidden = (path: string) => path.split("/").some((part) => part.startsWith("."));
 
-export function isObsidianVault(entries: Map<string, Buffer>) {
+export function isObsidianVault(entries: Map<string, ZipData>) {
   const names = [...entries.keys()];
-  return names.some((n) => n.startsWith(".obsidian/")) || (names.some((n) => NOTE.test(n)) && names.some((n) => NOTE.test(n) && /\[\[[^\]\n]+\]\]/.test(entries.get(n)!.toString("utf8"))));
+  return names.some((n) => n.startsWith(".obsidian/")) || (names.some((n) => NOTE.test(n)) && names.some((n) => NOTE.test(n) && /\[\[[^\]\n]+\]\]/.test(zipText(entries.get(n)!))));
 }
 
 // Code blocks and inline code stay as they are (or go through `code`).
@@ -252,7 +257,7 @@ export function closestPath(from: string, candidates: string[] | undefined) {
   return best;
 }
 
-export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", options: ObsidianOptions = {}): ImportTree {
+export function parseObsidian(entries: Map<string, ZipData>, name = "Obsidian", options: ObsidianOptions = {}): ImportTree {
   const warnings = warningList();
   const report = importReport();
   const paths = [...entries.keys()].filter((p) => !hidden(p)).sort((a, b) => a.localeCompare(b));
@@ -278,7 +283,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", o
   // one that is no JSON Canvas is left out and reported.
   const canvases = new Map<string, CanvasJson>();
   for (const p of paths.filter((p) => CANVAS.test(p))) {
-    const canvas = readCanvas(entries.get(p)!);
+    const canvas = readCanvas(zipBytes(entries.get(p)!));
     if ("error" in canvas) report.add("other", `${canvas.error}: ${p.slice(0, 200)}`);
     else canvases.set(p, canvas);
   }
@@ -286,7 +291,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", o
   const canvasesByName = byName([...canvases.keys()], (p) => posix.basename(p));
   const files = new Map<string, ImportFile>();
   const useFile = (path: string) => {
-    if (!files.has(path)) files.set(path, { key: path, name: posix.basename(path), mime: mimeOf(path), data: entries.get(path)! });
+    if (!files.has(path)) files.set(path, zipImportFile(path, posix.basename(path), mimeOf(path), entries.get(path)!));
     return fileRef(path);
   };
   // The note a link from `from` names: by path, relative path or the
@@ -337,8 +342,9 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", o
   };
   // A note's text as imported: no frontmatter, no heading repeating its title.
   const noteText = (path: string) => {
-    const source = entries.get(path)?.toString("utf8");
-    if (source === undefined) return null;
+    const entry = entries.get(path);
+    if (entry === undefined) return null;
+    const source = zipText(entry);
     const { data, body } = splitFrontmatter(source);
     const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
     return { data, body, title, text: body.normalize("NFC").replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "") };
@@ -451,7 +457,11 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", o
       file: (target) => {
         const clean = lower(target.replace(/\\/g, "/").replace(/^\.?\//, ""));
         const file = filesByPath.get(clean) || closestPath(path, filesByName.get(posix.basename(clean)));
-        return file ? { name: file, data: entries.get(file)! } : null;
+        const data = file ? entries.get(file) : undefined;
+        // Images on a board are read whole; a lazy entry larger than any
+        // board image could be is not read at all.
+        if (!file || !data || (!Buffer.isBuffer(data) && data.size > CANVAS_IMAGE_READ_MAX)) return null;
+        return { name: file, data: zipBytes(data) };
       },
     });
     for (const problem of problems) report.add(problem.kind, problem.detail, path);
@@ -464,7 +474,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", o
     warnings.add("Obsidian-Bases (.base) werden nicht übernommen.");
     report.add("other", ct(`Obsidian-Base „${path.slice(0, 200)}“ nicht übernommen`, `Obsidian Base “${path.slice(0, 200)}” not carried over`));
   }
-  const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.get(".obsidian/types.json")?.toString("utf8")));
+  const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.has(".obsidian/types.json") ? zipText(entries.get(".obsidian/types.json")!) : undefined));
   return {
     source: "obsidian",
     title: name,

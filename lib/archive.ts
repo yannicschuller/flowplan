@@ -73,6 +73,7 @@ import { fromBuffer, open as openZip, type Entry } from "yauzl";
 import { zipEntryName } from "./zip-names";
 import { ZipFile } from "yazl";
 import { Readable } from "node:stream";
+import { lazyZipEntry, readZipEntrySync, type ZipData, type ZipEntryRef } from "./zip-file";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -1085,6 +1086,81 @@ export async function readArchiveFile(
       },
     ),
   );
+}
+// ZIP imports from other tools read from disk (#673): an Obsidian vault
+// with its PDFs, pictures and videos is easily larger than readZip's
+// 100 MB. The central directory is read from the file; the entries that
+// `eager` names (notes and other text, small) are read at once within
+// `textBytes`, every other entry stays where it is and is inflated only
+// when its `read` is called (one entry in memory at a time). The checks
+// are readZip's: entry count, encrypted and duplicate entries, names
+// (lib/zip-names.ts), each entry's size, the compression ratio – plus a
+// total for everything unpacked: LAZY_ZIP_TOTAL, or twice the ZIP when
+// that is more (an instance that allows larger imports,
+// FLOWPLAN_IMPORT_MAX_MB, lib/importers/upload.ts). Lazy entries are read
+// through lib/zip-file.ts.
+export const LAZY_ZIP_TOTAL = 2 * 1024 * 1024 * 1024;
+export const LAZY_ZIP_TEXT = 512 * 1024 * 1024;
+const damagedZip = () => new HttpError(400, "Beschädigtes ZIP-Archiv.");
+export type ZipFileOptions = {
+  maxEntries: number;
+  // Entries read at once (text); all others stay lazy.
+  eager: (name: string) => boolean;
+  // As readZip's: entries that may be as large as a ZIP itself.
+  largeEntries?: RegExp;
+  textBytes?: number;
+  totalBytes?: number;
+};
+export async function readZipFile(path: string, options: ZipFileOptions): Promise<Map<string, ZipData>> {
+  const perFile = await archiveFileLimit();
+  const totalLimit = options.totalBytes ?? Math.max(LAZY_ZIP_TOTAL, 2 * statSync(path).size);
+  let textLeft = options.textBytes ?? LAZY_ZIP_TEXT;
+  const refs = await new Promise<Map<string, ZipEntryRef>>((finish, reject) =>
+    openZip(path, { lazyEntries: true, validateEntrySizes: true, strictFileNames: true, autoClose: true }, (error, zip) => {
+      if (error) return reject(new HttpError(400, "Ungültige ZIP-Datei."));
+      let total = 0,
+        count = 0,
+        failed = false;
+      const result = new Map<string, ZipEntryRef>();
+      const fail = (e: HttpError) => {
+        if (failed) return;
+        failed = true;
+        zip.close();
+        reject(e);
+      };
+      zip.on("error", () => fail(damagedZip()));
+      zip.on("end", () => {
+        if (!failed) finish(result);
+      });
+      zip.on("entry", (entry: Entry) => {
+        if (failed) return;
+        let name: string;
+        try {
+          name = zipEntryName(entry);
+        } catch {
+          return fail(damagedZip());
+        }
+        if (name.endsWith("/") || /(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(name)) return zip.readEntry();
+        count++;
+        if (count > options.maxEntries || entry.isEncrypted() || result.has(name))
+          return fail(new HttpError(400, "ZIP enthält unbekannte, doppelte oder verschlüsselte Einträge."));
+        if (entry.compressionMethod !== 0 && entry.compressionMethod !== 8) return fail(damagedZip());
+        if (entry.compressionMethod === 0 && entry.compressedSize !== entry.uncompressedSize) return fail(damagedZip());
+        const size = entry.uncompressedSize;
+        const max = /\.zip$/i.test(name) || options.largeEntries?.test(name) ? Math.max(ARCHIVE_LIMIT, perFile) : perFile;
+        total += size;
+        if (options.eager(name)) textLeft -= size;
+        if (size > max || total > totalLimit || textLeft < 0 || (size > 1024 * 1024 && size > entry.compressedSize * MAX_RATIO))
+          return fail(new HttpError(413, "Entpacktes Archiv überschreitet das Größenlimit."));
+        result.set(name, { path, offset: entry.relativeOffsetOfLocalHeader, compressedSize: entry.compressedSize, size, method: entry.compressionMethod, crc: entry.crc32 });
+        zip.readEntry();
+      });
+      zip.readEntry();
+    }),
+  );
+  const entries = new Map<string, ZipData>();
+  for (const [name, ref] of refs) entries.set(name, options.eager(name) ? readZipEntrySync(ref) : lazyZipEntry(ref));
+  return entries;
 }
 function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
   const data = archiveSchema.parse(input),

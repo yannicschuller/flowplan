@@ -7,6 +7,7 @@ import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
 import type { PropertyHints } from "../frontmatter-types";
+import type { ZipData, ZipEntryRef } from "../zip-file";
 
 // "notion": Notion's API (lib/importers/notion-api.ts) – not a file; its
 // export ZIP goes through lib/zip-import.ts. "bookstack": BookStack's API
@@ -134,11 +135,17 @@ export type ImportTemplate = {
   icon?: string;
   tags?: string[];
 };
-// A file: in memory, or (large AFFiNE workspaces) read from the source when
-// it is written, so only one is in memory at a time.
-export type ImportFile = { key: string; name: string; mime: string } & ({ data: Buffer } | { size: number; read: () => Buffer });
+// A file: in memory, or (large AFFiNE workspaces, ZIPs on disk, #673) read
+// from the source when it is written, so only one is in memory at a time.
+// `head`: its first bytes without reading all of it; `zip`: where it lies
+// in the uploaded ZIP (it crosses the worker thread so, not as bytes).
+export type ImportFile = { key: string; name: string; mime: string } & ({ data: Buffer } | { size: number; read: () => Buffer; head?: () => Buffer; zip?: ZipEntryRef });
 export const importFileSize = (file: ImportFile) => ("data" in file ? file.data.length : file.size);
 export const importFileData = (file: ImportFile) => ("data" in file ? file.data : file.read());
+export const importFileHead = (file: ImportFile) => ("data" in file ? file.data : file.head ? file.head() : file.read());
+// A file of the import from a ZIP entry, read or lazy (lib/archive.ts readZipFile).
+export const zipImportFile = (key: string, name: string, mime: string, data: ZipData): ImportFile =>
+  Buffer.isBuffer(data) ? { key, name, mime, data } : { key, name, mime, size: data.size, read: data.read, head: data.head, zip: data.zip };
 export type ImportTree = {
   source: ImportSource;
   title: string;

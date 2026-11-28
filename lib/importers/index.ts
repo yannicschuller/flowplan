@@ -9,11 +9,13 @@
 // read with the ZIP reader's limits, recognised (or taken as the source the
 // person chose), turned into an import tree and then previewed or written.
 // A large upload arrives as a file on disk (lib/importers/upload.ts): an
-// AFFiNE workspace file is opened there in place; everything else is read
-// into memory and therefore stays within the ZIP limit.
+// AFFiNE workspace file is opened there in place, Obsidian and Confluence
+// ZIPs are read there with their attachments left in the file until they
+// are written (#673); everything else is read into memory and therefore
+// stays within the ZIP limit.
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { posix } from "node:path";
-import { ARCHIVE_LIMIT, readZip } from "../archive";
+import { ARCHIVE_LIMIT, readZip, readZipFile } from "../archive";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
 import { parseConfluence, isConfluence } from "./confluence";
@@ -34,17 +36,31 @@ import type { PoolJobOptions } from "../worker-pool";
 const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine|pdf)$/i, "") || "Import";
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
-// The entries of a ZIP; a single folder around everything is dropped.
-export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 1024 }) {
-  // PDFs (GoodNotes, attachments) may be as large as the ZIP.
-  let entries = await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget, largeEntries: /\.(pdf|goodnotes)$/i });
+// A single folder around everything is dropped.
+function withoutTopFolder<T>(entries: Map<string, T>) {
   const names = [...entries.keys()];
   const tops = new Set(names.map((n) => n.split("/")[0]));
   if (tops.size === 1 && names.every((n) => n.includes("/"))) {
     const [top] = [...tops];
-    entries = new Map([...entries].map(([n, d]) => [n.slice(top.length + 1), d]));
+    return new Map([...entries].map(([n, d]) => [n.slice(top.length + 1), d]));
   }
   return entries;
+}
+// PDFs (GoodNotes, attachments) may be as large as the ZIP.
+const LARGE_ENTRIES = /\.(pdf|goodnotes)$/i;
+// The entries of a ZIP.
+export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 1024 }) {
+  return withoutTopFolder(await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget, largeEntries: LARGE_ENTRIES }));
+}
+// A ZIP on disk (#673): text (notes, pages, settings) is read at once,
+// within LAZY_ZIP_TEXT; pictures, PDFs and other attachments stay in the
+// file until they are written (lib/archive.ts readZipFile). Obsidian and
+// Confluence read their files so; the other sources need the bytes of
+// their documents (Word, PDFs, ENEX) and read the upload into memory.
+const TEXT_ENTRY = /\.(md|markdown|txt|json|canvas|base|html?|xml|enex|csv|css|ya?ml)$/i;
+const DISK_SOURCES: ImportSource[] = ["obsidian", "confluence"];
+export async function zipFileEntries(path: string) {
+  return withoutTopFolder(await readZipFile(path, { maxEntries: maxImportEntries(), eager: (name) => TEXT_ENTRY.test(name), largeEntries: LARGE_ENTRIES }));
 }
 
 export function detectSource(name: string, bytes: Buffer, entries?: Map<string, Buffer>): ImportSource | null {
@@ -74,7 +90,7 @@ function fileHead(path: string) {
     closeSync(fd);
   }
 }
-// Files other than the AFFiNE workspace file are read into memory.
+// Other files (and ZIPs of other sources) are read into memory.
 export const MEMORY_IMPORT_LIMIT = ARCHIVE_LIMIT;
 
 // What the import preview switches, by source.
@@ -95,8 +111,22 @@ export async function parseImport(name: string, input: Buffer | { path: string }
         throw error;
       }
     }
+    // Obsidian and Confluence ZIPs are read where they lie (#673).
+    if (isZip(head) && (!chosen || chosen === "auto" || DISK_SOURCES.includes(chosen))) {
+      const disk = await zipFileEntries(input.path);
+      // Up to Obsidian the sources are told by names and text; what an
+      // attachment holds only matters for later ones (Word), which are
+      // recognised again in memory.
+      const source =
+        chosen && chosen !== "auto" ? chosen : detectSource(name, head, new Map([...disk].map(([n, d]) => [n, Buffer.isBuffer(d) ? d : Buffer.alloc(0)])));
+      if (source === "obsidian") return parseObsidian(disk, importTitle(name));
+      if (source === "confluence") return parseConfluence(disk);
+    }
     if (statSync(input.path).size > MEMORY_IMPORT_LIMIT)
-      throw new HttpError(413, "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.");
+      throw new HttpError(
+        413,
+        "Exporte dürfen höchstens 100 MB groß sein; größer dürfen die AFFiNE-Arbeitsbereichsdatei (.affine) und ZIPs von Obsidian und Confluence sein.",
+      );
     input = readFileSync(input.path);
   }
   const bytes = input;
