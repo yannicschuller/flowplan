@@ -67,6 +67,13 @@
       "issues": [
         642
       ]
+    },
+    {
+      "de": "Im Suchfeld einer Datenbank stehen Text und Platzhalter jetzt in der Mitte des Felds statt darüber, auf dem iPhone, in der App und im Browser auf Handy und Tablet. Auf dem Handy ist die Schrift dort 16 px groß, damit iOS beim Tippen nicht hineinzoomt.",
+      "en": "In a database’s search field, the text and the placeholder now sit in the middle of the field instead of above it – on the iPhone, in the app and in the browser on phones and tablets. On phones the text there is 16 px, so iOS does not zoom in when you tap it.",
+      "issues": [
+        650
+      ]
     }
   ]
 }
