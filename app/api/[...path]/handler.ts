@@ -2072,6 +2072,11 @@ async function handlePOST(
             // AFFiNE (#167): "0" keeps documents linked from one other
             // document at the top.
             nestLinked: fields.get("nestLinked") !== "0",
+            // Obsidian: "0" keeps daily notes and the templates folder as
+            // pages (#668), "1" inserts embedded notes as content (#672).
+            dailyNotes: fields.get("dailyNotes") !== "0",
+            templates: fields.get("templates") !== "0",
+            embeds: fields.get("embeds") === "1",
             // Anki (lib/importers/anki.ts): the mapping of the wizard and the
             // person's time zone for the learning state.
             anki: fields.get("anki") || undefined,

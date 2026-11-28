@@ -157,6 +157,12 @@ export type ImportTree = {
   // Documents that go below the one document linking to them (AFFiNE,
   // #167) – counted also when that is switched off, for the preview.
   linkedBelow?: number;
+  // Obsidian (#668, #672): daily notes matching the vault's date format,
+  // notes of its templates folder and embeds of notes – counted whether or
+  // not the preview switches them on, so it can offer the switches.
+  dailyNotes?: number;
+  templateNotes?: number;
+  noteEmbeds?: number;
   // The page holding everything (AFFiNE: the workspace) when the import
   // has one; it is not counted as a folder in the preview.
   wrapper?: string;

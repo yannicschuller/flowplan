@@ -22,7 +22,7 @@ import { isSnapshotZip, isSqlite, readAffineFile, readSnapshotZip } from "./affi
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
 import { isPdf, isPdfArchive, parseGoodNotesUpload, refuseGoodNotes } from "./goodnotes";
-import { isObsidianVault, parseObsidian } from "./obsidian";
+import { isObsidianVault, parseObsidian, type ObsidianOptions } from "./obsidian";
 import { isAnkiPackage } from "./anki-read";
 import { isWordArchive, parseWord, refuseLegacyOffice } from "./word";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
@@ -77,7 +77,10 @@ function fileHead(path: string) {
 // Files other than the AFFiNE workspace file are read into memory.
 export const MEMORY_IMPORT_LIMIT = ARCHIVE_LIMIT;
 
-export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}): Promise<ImportTree> {
+// What the import preview switches, by source.
+export type ParseOptions = AffineOptions & ObsidianOptions;
+
+export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: ParseOptions = {}): Promise<ImportTree> {
   if (!Buffer.isBuffer(input)) {
     const head = fileHead(input.path);
     refuseLegacyOffice(name, head);
@@ -123,7 +126,7 @@ export async function parseImport(name: string, input: Buffer | { path: string }
       return parseConfluence(entries);
     case "obsidian":
       if (!entries) throw new HttpError(400, "Bitte den Obsidian-Tresor als ZIP hochladen.");
-      return parseObsidian(entries, title);
+      return parseObsidian(entries, title, { dailyNotes: affine.dailyNotes, templates: affine.templates, embeds: affine.embeds });
     case "gdocs": {
       // A single document (Word file or HTML) or a Takeout archive.
       const docEntries =
@@ -161,6 +164,12 @@ type ImportOptions = {
   // AFFiNE (#167): documents with exactly one document linking to them go
   // below it; on unless false (pages only – a database has no page tree).
   nestLinked?: boolean;
+  // Obsidian: daily notes into the journal and the templates folder as
+  // templates (#668; on unless false), embedded notes as content (#672; off
+  // unless true).
+  dailyNotes?: boolean;
+  templates?: boolean;
+  embeds?: boolean;
   // Anki (lib/importers/anki.ts): the mapping as JSON (lib/anki-mapping.ts)
   // and the time zone of the person for the learning state.
   anki?: unknown;
@@ -191,6 +200,9 @@ export async function importFromSource(
   // Read in a worker thread (lib/importers/parse-transfer.ts).
   const tree = await parseImportOffThread(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
     nestLinked: options.nestLinked !== false && options.mode !== "database",
+    dailyNotes: options.dailyNotes !== false && options.mode !== "database",
+    templates: options.templates !== false,
+    embeds: options.embeds === true,
   }, options.job);
   try {
     // Reading is about half of the work (Live Activity, lib/background-jobs.ts).

@@ -8,6 +8,9 @@
 // text (#tag) the page's tags. Frontmatter keys become page properties of
 // the type Obsidian registered (.obsidian/types.json) or the notes' values
 // show (selects, multi-selects; lib/frontmatter-types.ts, #598).
+// Daily notes go into the journal and the templates folder becomes saved
+// templates (#668, lib/importers/obsidian-daily.ts); embedded notes are
+// inserted as content when switched on (#672, lib/importers/obsidian-embeds.ts).
 import { ct } from "../content-locale";
 import { posix } from "node:path";
 import { markdownToRawHtml } from "../markdown-html";
@@ -17,7 +20,14 @@ import { frontmatterAliases } from "../aliases";
 import { inferPropertyTypes, obsidianTypes } from "../frontmatter-types";
 import { fileRef, mimeOf, pageRef } from "./html";
 import { nameKey } from "../zip-names";
-import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { importReport, warningList, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
+import { specialNotes, templateVariables, vaultConfig } from "./obsidian-daily";
+import { countNoteEmbeds, embedTranscluder } from "./obsidian-embeds";
+
+// What the import preview switches (#668, #672): daily notes into the
+// journal and the templates folder as templates (on unless false), embedded
+// notes as content (off unless true).
+export type ObsidianOptions = { dailyNotes?: boolean; templates?: boolean; embeds?: boolean };
 
 const NOTE = /\.(md|markdown)$/i;
 const hidden = (path: string) => path.split("/").some((part) => part.startsWith("."));
@@ -91,7 +101,7 @@ export function noteTags(data: Record<string, FrontmatterValue>, body: string) {
   return [...tags];
 }
 
-export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): ImportTree {
+export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian", options: ObsidianOptions = {}): ImportTree {
   const warnings = warningList();
   const report = importReport();
   const paths = [...entries.keys()].filter((p) => !hidden(p)).sort((a, b) => a.localeCompare(b));
@@ -111,11 +121,15 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     if (!files.has(path)) files.set(path, { key: path, name: posix.basename(path), mime: mimeOf(path), data: entries.get(path)! });
     return fileRef(path);
   };
+  const findNote = (from: string, target: string) => {
+    const clean = lower(target.replace(/\\/g, "/").replace(/^\.?\//, ""));
+    const relative = lower(posix.normalize(posix.join(posix.dirname(from), target)));
+    return notesByPath.get(clean.replace(NOTE, "")) || notesByPath.get(relative.replace(NOTE, "")) || notesByName.get(posix.basename(clean).replace(NOTE, "")) || null;
+  };
   const lookup = (from: string) => (target: string) => {
     const clean = lower(target.replace(/\\/g, "/").replace(/^\.?\//, ""));
     const relative = lower(posix.normalize(posix.join(posix.dirname(from), target)));
-    const note =
-      notesByPath.get(clean.replace(NOTE, "")) || notesByPath.get(relative.replace(NOTE, "")) || notesByName.get(posix.basename(clean).replace(NOTE, ""));
+    const note = findNote(from, target);
     if (note) return { href: pageRef(note), kind: "page" as const };
     const file = filesByPath.get(clean) || filesByPath.get(relative) || filesByName.get(posix.basename(clean));
     if (file) return { href: useFile(file), kind: "file" as const };
@@ -135,6 +149,20 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     const same = path.replace(NOTE, "");
     return dirs.has(same) && folderNote(same) === path ? same : null;
   };
+  // A note's text as imported: no frontmatter, no heading repeating its title.
+  const noteText = (path: string) => {
+    const source = entries.get(path)?.toString("utf8");
+    if (source === undefined) return null;
+    const { data, body } = splitFrontmatter(source);
+    const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
+    return { data, body, title, text: body.normalize("NFC").replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "") };
+  };
+  // Daily notes and templates (#668).
+  const special = specialNotes(notes, vaultConfig(entries), { dailyNotes: options.dailyNotes !== false, templates: options.templates !== false }, report, (w) => warnings.add(w));
+  const templates: ImportTemplate[] = [];
+  // Embedded notes as content (#672).
+  const embeds = options.embeds === true ? embedTranscluder({ body: (p) => (NOTE.test(p) ? (noteText(p)?.text ?? null) : null), resolve: findNote }, report) : null;
+  let noteEmbeds = 0;
   const pages: ImportPage[] = [];
   const frontmatters: Record<string, FrontmatterValue>[] = [];
   const folderPages = new Set<string>();
@@ -150,13 +178,16 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     return key;
   };
   for (const path of notes) {
-    const source = entries.get(path)!.toString("utf8");
-    const { data, body } = splitFrontmatter(source);
+    const { data, body, title, text: own } = noteText(path)!;
     frontmatters.push(data);
-    const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
     const folder = folderOfNote(path);
-    const parent = folderKey(posix.dirname(folder ?? path));
-    const text = body.normalize("NFC").replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "");
+    const asTemplate = special.templates.has(path);
+    const journalDate = folder || asTemplate ? undefined : special.journal.get(path);
+    // Journal days and templates live outside the page tree.
+    const parent = journalDate || asTemplate ? null : folderKey(posix.dirname(folder ?? path));
+    noteEmbeds += countNoteEmbeds(own, path, findNote);
+    let text = asTemplate ? templateVariables(own, path, report) : own;
+    if (embeds) text = embeds.transclude(text, path);
     const markdown = convertWikilinks(text, lookup(path), () => {
       warnings.add("Eingebettete Notizen werden als Link übernommen.");
       report.add("embed", ct("Eingebettete Notiz als Link übernommen", "Embedded note kept as a link"), path);
@@ -181,9 +212,26 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
       }
       return found ? found.href + (found.kind === "page" && anchor ? `#${anchor}` : "") : null;
     }));
-    pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
+    if (asTemplate) {
+      templates.push({ key: path, name: title, kind: "document", html, tags: noteTags(data, body) });
+      continue;
+    }
+    pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data, ...(journalDate ? { journalDate } : {}) });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
+  if (embeds?.fallbacks) warnings.add("Einige eingebettete Notizen bleiben Links (Schleife, mehr als drei Ebenen oder zu viel Inhalt).");
   const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.get(".obsidian/types.json")?.toString("utf8")));
-  return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report, propertyTypes };
+  return {
+    source: "obsidian",
+    title: name,
+    pages,
+    files,
+    warnings: warnings.list(),
+    report,
+    propertyTypes,
+    ...(templates.length ? { templates } : {}),
+    ...(special.dailyNotes ? { dailyNotes: special.dailyNotes } : {}),
+    ...(special.templateNotes ? { templateNotes: special.templateNotes } : {}),
+    ...(noteEmbeds ? { noteEmbeds } : {}),
+  };
 }

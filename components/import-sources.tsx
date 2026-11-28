@@ -49,6 +49,11 @@ type Preview = {
   // Documents with exactly one other document linking to them, placed
   // below it unless switched off (AFFiNE, #167).
   linkedBelow?: number;
+  // Obsidian (#668, #672): daily notes, notes of the templates folder and
+  // embedded notes, counted whether or not they are switched on.
+  dailyNotes?: number;
+  templateNotes?: number;
+  noteEmbeds?: number;
   // Templates saved as templates (AFFiNE).
   templates?: number;
   // More pages than one import may bring: importing is refused.
@@ -91,6 +96,12 @@ export function ImportSources({
   // AFFiNE (#167): documents with exactly one link to them go below the
   // document linking to them – on unless switched off in the preview.
   const [nestLinked, setNestLinked] = useState(true);
+  // Obsidian: daily notes into the journal and the templates folder as
+  // templates (#668) – on unless switched off; embedded notes as content
+  // (#672) – off unless switched on.
+  const [dailyNotes, setDailyNotes] = useState(true);
+  const [templateNotes, setTemplateNotes] = useState(true);
+  const [embedNotes, setEmbedNotes] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   // Uploading (share of the file sent) or the server's work (its share
@@ -124,7 +135,12 @@ export function ImportSources({
   const request = async (chosen: File, dryRun: boolean, upload?: string) => {
     const query = new URLSearchParams({ workspaceId, spaceId: space || spaces[0]?.id || "", source, mode, name: chosen.name });
     if (dryRun) query.set("dryRun", "1");
-    else if (!nestLinked) query.set("nestLinked", "0");
+    else {
+      if (!nestLinked) query.set("nestLinked", "0");
+      if (!dailyNotes) query.set("dailyNotes", "0");
+      if (!templateNotes) query.set("templates", "0");
+      if (embedNotes) query.set("embeds", "1");
+    }
     // The import uses the upload of the preview.
     if (upload) query.set("upload", upload);
     query.set("background", "1");
@@ -224,6 +240,12 @@ export function ImportSources({
     }
   };
   const busy = !!progress;
+  // Obsidian (#668): switched off, daily notes and the templates folder
+  // stay pages (the preview counted them with both switched on).
+  const dailyOff = !dailyNotes && !!preview?.dailyNotes;
+  const templatesOff = !templateNotes && !!preview?.templateNotes;
+  const shownPages = (preview?.pages || 0) + (dailyOff ? preview?.dailyNotes || 0 : 0) + (templatesOff ? preview?.templateNotes || 0 : 0);
+  const shownTemplates = Math.max(0, (preview?.templates || 0) - (templatesOff ? preview?.templateNotes || 0 : 0));
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
@@ -376,7 +398,7 @@ export function ImportSources({
               <li>{t(`Alles unter einer Seite „${preview.wrapper}“`, `Everything below a page “${preview.wrapper}”`)}</li>
             )}
             {!(preview.notebooks && !preview.pages) && (
-              <li>{mode === "database" ? t(`${preview.pages} Einträge`, `${preview.pages} records`) : t(`${preview.pages} Seiten`, `${preview.pages} pages`)}</li>
+              <li>{mode === "database" ? t(`${shownPages} Einträge`, `${shownPages} records`) : t(`${shownPages} Seiten`, `${shownPages} pages`)}</li>
             )}
             {preview.folders > 0 && mode === "pages" && <li>{t(`${preview.folders} Ordner als Seiten`, `${preview.folders} folders as pages`)}</li>}
             <li>{t(`${preview.files} Dateien (${(preview.bytes / 1048576).toFixed(1)} MB)`, `${preview.files} files (${(preview.bytes / 1048576).toFixed(1)} MB)`)}</li>
@@ -387,13 +409,13 @@ export function ImportSources({
               <li>{t(`${preview.notebooks} Notizbücher mit ${preview.sheets || 0} Blättern`, `${preview.notebooks} notebooks with ${preview.sheets || 0} sheets`)}</li>
             )}
             {!!preview.collections && <li>{t(`${preview.collections} Sammlungen als Seiten`, `${preview.collections} collections as pages`)}</li>}
-            {!!preview.journalDays && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
+            {!!preview.journalDays && !dailyOff && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
             {mode === "pages" && !!preview.properties && <li>{t(`${preview.properties} Eigenschaften`, `${preview.properties} properties`)}</li>}
             {mode === "pages" && !!preview.icons && <li>{t(`${preview.icons} Seitensymbole`, `${preview.icons} page icons`)}</li>}
             {mode === "pages" && !!preview.rowDocuments && (
               <li>{t(`${preview.rowDocuments} Dokumente als Inhalt von Datenbankeinträgen`, `${preview.rowDocuments} documents as content of database records`)}</li>
             )}
-            {!!preview.templates && <li>{t(`${preview.templates} Vorlagen`, `${preview.templates} templates`)}</li>}
+            {!!shownTemplates && <li>{t(`${shownTemplates} Vorlagen`, `${shownTemplates} templates`)}</li>}
           </ul>
           {mode === "pages" && !!preview.linkedBelow && (
             <div className="import-sources-option">
@@ -416,6 +438,51 @@ export function ImportSources({
                 onChange={setNestLinked}
                 label={t("Dokumente mit genau einem Verweis darunter einordnen", "Place documents with a single backlink below the linking document")}
               />
+            </div>
+          )}
+          {mode === "pages" && !!preview.dailyNotes && (
+            <div className="import-sources-option">
+              <span className="import-sources-option-text">
+                <span>{t("Daily Notes ins Journal", "Daily notes into the journal")}</span>
+                <small>
+                  {dailyNotes
+                    ? t(`${preview.dailyNotes} Daily Notes kommen als Tage ins Journal.`, `${preview.dailyNotes} daily notes go into the journal as days.`)
+                    : t(`${preview.dailyNotes} Daily Notes werden normale Seiten.`, `${preview.dailyNotes} daily notes become regular pages.`)}
+                </small>
+              </span>
+              <Switch checked={dailyNotes} onChange={setDailyNotes} label={t("Daily Notes ins Journal", "Daily notes into the journal")} />
+            </div>
+          )}
+          {!!preview.templateNotes && (
+            <div className="import-sources-option">
+              <span className="import-sources-option-text">
+                <span>{t("Vorlagen-Ordner als Vorlagen", "Templates folder as templates")}</span>
+                <small>
+                  {templateNotes
+                    ? t(
+                        `${preview.templateNotes} Notizen aus dem Vorlagen-Ordner werden gespeicherte Vorlagen; {{title}}, {{date}} und {{time}} werden zu {{Title}}, {{Today}} und {{Now}}.`,
+                        `${preview.templateNotes} notes of the templates folder become saved templates; {{title}}, {{date}} and {{time}} become {{Title}}, {{Today}} and {{Now}}.`,
+                      )
+                    : t(`${preview.templateNotes} Notizen aus dem Vorlagen-Ordner werden normale Seiten.`, `${preview.templateNotes} notes of the templates folder become regular pages.`)}
+                </small>
+              </span>
+              <Switch checked={templateNotes} onChange={setTemplateNotes} label={t("Vorlagen-Ordner als Vorlagen", "Templates folder as templates")} />
+            </div>
+          )}
+          {!!preview.noteEmbeds && (
+            <div className="import-sources-option">
+              <span className="import-sources-option-text">
+                <span>{t("Eingebettete Notizen als Inhalt einfügen", "Insert embedded notes as content")}</span>
+                <small>
+                  {embedNotes
+                    ? t(
+                        `${preview.noteEmbeds} eingebettete Notizen (![[…]]) werden als Kopie mit Link zur Quelle eingefügt – höchstens drei Ebenen tief.`,
+                        `${preview.noteEmbeds} embedded notes (![[…]]) are inserted as a copy with a link to the source – at most three levels deep.`,
+                      )
+                    : t(`${preview.noteEmbeds} eingebettete Notizen (![[…]]) werden Links.`, `${preview.noteEmbeds} embedded notes (![[…]]) become links.`)}
+                </small>
+              </span>
+              <Switch checked={embedNotes} onChange={setEmbedNotes} label={t("Eingebettete Notizen als Inhalt einfügen", "Insert embedded notes as content")} />
             </div>
           )}
           {preview.warnings.length > 0 && (

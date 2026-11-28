@@ -66,6 +66,11 @@ export type ImportPreview = {
   // Documents placed below the one document linking to them (AFFiNE, #167),
   // counted whether or not that is switched on.
   linkedBelow?: number;
+  // Obsidian (#668, #672): daily notes, notes of the templates folder and
+  // embedded notes, counted whether or not they are switched on.
+  dailyNotes?: number;
+  templateNotes?: number;
+  noteEmbeds?: number;
   // Templates of the source saved as templates (AFFiNE, #116), and for whom.
   templates?: number;
   templateVisibility?: "workspace" | "private";
@@ -210,6 +215,9 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
     ...(icons && mode === "pages" ? { icons } : {}),
     ...(rowDocuments ? { rowDocuments } : {}),
     ...(tree.linkedBelow && mode === "pages" ? { linkedBelow: tree.linkedBelow } : {}),
+    ...(tree.dailyNotes && mode === "pages" ? { dailyNotes: tree.dailyNotes } : {}),
+    ...(tree.templateNotes ? { templateNotes: tree.templateNotes } : {}),
+    ...(tree.noteEmbeds ? { noteEmbeds: tree.noteEmbeds } : {}),
     ...(templates ? { templates, templateVisibility } : {}),
     ...(tooMany ? { tooMany } : {}),
     ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)

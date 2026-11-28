@@ -7,10 +7,9 @@
 // A workspace file on disk (AFFiNE) is opened where it lies, on this thread.
 import { closeSync, openSync, readSync } from "node:fs";
 import { offThread, type PoolJobOptions } from "../worker-pool";
-import { parseImport } from "./index";
+import { parseImport, type ParseOptions } from "./index";
 import { isSqlite } from "./affine-read";
 import { importFileData, importReport, type ImportReport, type ImportSource, type ImportTree, type ReportEntry, type ReportKind } from "./types";
-import type { AffineOptions } from "./affine";
 
 type PortableFile = { key: string; name: string; mime: string; data: Buffer };
 export type PortableTree = Omit<ImportTree, "files" | "report" | "close"> & {
@@ -39,7 +38,7 @@ function revived(tree: PortableTree): ImportTree {
 }
 
 // The worker's job: the tree of an upload in memory or in a file.
-export async function parseImportData(name: string, input: Uint8Array | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}): Promise<PortableTree> {
+export async function parseImportData(name: string, input: Uint8Array | { path: string }, chosen?: ImportSource | "auto", affine: ParseOptions = {}): Promise<PortableTree> {
   const source = input instanceof Uint8Array && !Buffer.isBuffer(input) ? Buffer.from(input.buffer, input.byteOffset, input.byteLength) : (input as Buffer | { path: string });
   const tree = await parseImport(name, source, chosen, affine);
   try {
@@ -60,7 +59,7 @@ function fileHead(path: string) {
   }
 }
 
-export async function parseImportOffThread(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}, job: PoolJobOptions = {}): Promise<ImportTree> {
+export async function parseImportOffThread(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: ParseOptions = {}, job: PoolJobOptions = {}): Promise<ImportTree> {
   // An AFFiNE workspace file on disk is read page by page where it lies.
   if (!Buffer.isBuffer(input) && isSqlite(fileHead(input.path))) return await parseImport(name, input, chosen, affine);
   return revived(await offThread("import.parse", [name, input, chosen, affine], () => parseImportData(name, input, chosen, affine), job));
