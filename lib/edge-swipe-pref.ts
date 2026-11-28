@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_EDGE_SWIPE, parseEdgeSwipePref, type EdgeSwipePref } from "./edge-swipe";
+import { forwardSwipeSupported } from "./forward-swipe";
 import { nativeApp } from "./native-app";
 
 // "Wischen vom linken Rand" (Settings → Darstellung & Sprache, #285): in the
@@ -60,6 +61,20 @@ export function edgeSwipeChoosable(): boolean {
 const noop = () => () => {};
 export function useEdgeSwipeChoosable(): boolean {
   return useSyncExternalStore(noop, edgeSwipeChoosable, () => false);
+}
+
+// Whether the swipe from the right edge goes forward here once "Zurück" is
+// chosen (#647, lib/forward-swipe.ts).
+export function forwardSwipeHere(): boolean {
+  const app = nativeApp();
+  return forwardSwipeSupported({
+    platform: app?.platform === "ios" || app?.platform === "android" ? app.platform : null,
+    appTakesChoice: typeof app?.edgeSwipe === "function",
+    appForward: typeof app?.forwardState === "function",
+  });
+}
+export function useForwardSwipeHere(): boolean {
+  return useSyncExternalStore(noop, forwardSwipeHere, () => false);
 }
 
 // Tells the app which way the edge goes (now and on every change).

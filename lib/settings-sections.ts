@@ -256,7 +256,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       },
       {
         title: { de: "Wischen vom linken Rand", en: "Swipe from the left edge" },
-        keywords: { de: "wischen rand geste zurück seitenleiste navigation iphone ipad android app", en: "swipe edge gesture back sidebar navigation iphone ipad android app" },
+        keywords: { de: "wischen rand geste zurück vorwärts rechter rand seitenleiste navigation iphone ipad android app", en: "swipe edge gesture back forward right edge sidebar navigation iphone ipad android app" },
         anchor: "edge-swipe",
         level: "normal",
       },

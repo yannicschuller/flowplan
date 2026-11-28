@@ -65,14 +65,15 @@ test("the server's sign-out answers carry Clear-Site-Data: \"cache\", never \"st
   assert.match(block(api, 'path[0] === "sessions" && path[1] === "end"', 500), /NextResponse\.json\(result, result\.current \? \{ headers: SIGNED_OUT_HEADERS \} : undefined\)/);
 });
 
-test("clearAppCache drops the Ask-AI conversation, the history titles and the page cache, nothing else", async () => {
+test("clearAppCache drops the Ask-AI conversation, the history titles, the visited places and the page cache, nothing else", async () => {
   const storage = memoryStorage();
   (globalThis as { sessionStorage?: unknown }).sessionStorage = storage;
   try {
     const { clearAppCache } = await import("../lib/swr-cache");
-    const { ASK_STORAGE_PREFIX, HISTORY_TITLES_KEY, isAccountTabKey } = await import("../lib/tab-storage");
+    const { ASK_STORAGE_PREFIX, HISTORY_TITLES_KEY, RECENT_PLACES_KEY, isAccountTabKey } = await import("../lib/tab-storage");
     storage.setItem(`${ASK_STORAGE_PREFIX}ws-1`, JSON.stringify({ messages: [{ role: "user", text: "DUMMY-QUESTION" }] }));
     storage.setItem(HISTORY_TITLES_KEY, JSON.stringify({ a: { title: "DUMMY-TITLE" } }));
+    storage.setItem(RECENT_PLACES_KEY, JSON.stringify(["settings/account"]));
     storage.setItem("flowplan:swr:user-a:page:p1", "{}");
     storage.setItem("flowplan-frame-tabs", "[]");
     clearAppCache();

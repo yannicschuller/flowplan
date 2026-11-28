@@ -8,7 +8,9 @@ import { mkdirSync } from "node:fs";
 // back twice with the arrow, forward, the disabled ends, ⌘[ / Alt+← (not
 // while typing), the list of a right click, the browser's own back in step
 // with the arrows, a dialog adds no step, a record does and closing it
-// does not add another.
+// does not add another. The back arrow's list (#647): the places visited in
+// this tab, the current one first and marked, by right click and by the
+// keyboard (the context menu key, Shift+F10).
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const shots = process.env.HISTORY_SHOTS;
 
@@ -49,7 +51,7 @@ const open = async (page: Page, hash: string, expected: string) => {
 };
 
 test("back and forward: arrows, shortcuts, the list, the browser's back, dialogs and records", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "The arrows are for wider screens; phones have the swipe and the back button.");
+  test.skip(info.project.name !== "desktop", "Both arrows are for wider screens (phones: tests/browser/forward-swipe.spec.ts).");
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
   test.setTimeout(120_000);
   const errors: string[] = [];
@@ -107,10 +109,12 @@ test("back and forward: arrows, shortcuts, the list, the browser's back, dialogs
   const list = page.locator(".history-list");
   await expect(list).toBeVisible();
   await expect(list.getByRole("menuitem")).toHaveText(["Seite C"]);
-  // Back from B: A.
+  // Back from B: the places visited, B (here) first, then A and C.
   await page.keyboard.press("Escape");
   await back(page).click({ button: "right" });
-  await expect(list.getByRole("menuitem")).toHaveText(["Seite A"]);
+  await expect(list.getByRole("menuitem")).toHaveText(["Seite B", "Seite A", "Seite C"]);
+  await expect(list.getByRole("menuitem").first()).toHaveAttribute("aria-current", "page");
+  await expect(list.getByText("Zuletzt besucht", { exact: true })).toBeVisible();
   if (shots) {
     mkdirSync(shots, { recursive: true });
     await page.waitForTimeout(400);
@@ -147,7 +151,7 @@ test("back and forward: arrows, shortcuts, the list, the browser's back, dialogs
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await page.evaluate(() => history.length)).toBe(length);
   await back(page).click({ button: "right" });
-  await expect(list.getByRole("menuitem")).toHaveText(["Seite B", "Seite A"]);
+  await expect(list.getByRole("menuitem")).toHaveText(["Seite C", "Seite B", "Seite A"]);
   await page.keyboard.press("Escape");
 
   // A record has its address: a step. Closing it goes back to its database
@@ -167,12 +171,78 @@ test("back and forward: arrows, shortcuts, the list, the browser's back, dialogs
   await expect(list.getByRole("menuitem")).toHaveText(["Eintrag EinsListe"]);
   await page.keyboard.press("Escape");
   await back(page).click({ button: "right" });
-  await expect(list.getByRole("menuitem")).toHaveText(["Seite C", "Seite B", "Seite A"]);
+  await expect(list.getByRole("menuitem")).toHaveText(["Liste", "Eintrag EinsListe", "Seite C", "Seite B", "Seite A"]);
   if (shots) await page.waitForTimeout(400);
   if (shots) await page.screenshot({ path: join(shots, "history-list-after-record.png"), clip: { x: 0, y: 0, width: 760, height: 300 } });
   await page.keyboard.press("Escape");
   await back(page).click();
   await expect(title(page)).toHaveValue("Seite C");
   if (shots) await page.locator(".topbar").screenshot({ path: join(shots, "history-buttons.png") });
+  expect(errors).toEqual([]);
+});
+
+test("the back arrow's list by keyboard: the context menu key and Shift+F10; a place no longer in the history opens anew (#647)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard and mouse on the desktop.");
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { a, b, c } = await setup(page);
+  await page.goto(`/#page=${a}`);
+  await expect(title(page)).toHaveValue("Seite A");
+  // A → settings → B, back to the settings, then C: B leaves the history.
+  await page.evaluate(() => (location.hash = "settings/account"));
+  await expect(page).toHaveURL(/#settings\/account$/);
+  await open(page, `page=${b}`, "Seite B");
+  await back(page).click();
+  await expect(page).toHaveURL(/#settings\/account$/);
+  await open(page, `page=${c}`, "Seite C");
+  await expect(forward(page)).toBeDisabled();
+
+  // The context menu key on the focused arrow opens the list.
+  await back(page).focus();
+  await page.keyboard.press("ContextMenu");
+  const list = page.locator(".history-list");
+  await expect(list).toBeVisible();
+  await expect(list).toHaveAttribute("aria-label", "Zuletzt besucht");
+  const items = list.getByRole("menuitem");
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0)).toHaveText("Seite C");
+  await expect(items.nth(0)).toHaveAttribute("aria-current", "page");
+  // A settings screen with its name and the area as detail.
+  await expect(items.nth(1)).toContainText("Einstellungen");
+  await expect(items.nth(2)).toHaveText("Seite B");
+  await expect(items.nth(3)).toHaveText("Seite A");
+  if (shots) {
+    mkdirSync(shots, { recursive: true });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(shots, "history-list-desktop.png"), clip: { x: 0, y: 0, width: 760, height: 320 } });
+  }
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(back(page)).toBeFocused();
+
+  // Shift+F10, then the arrow keys and Enter: B, not in the history any
+  // more, opens as a new step.
+  const length = await page.evaluate(() => history.length);
+  await page.keyboard.press("Shift+F10");
+  await expect(list).toBeVisible();
+  await expect(items.nth(0)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(items.nth(2)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(title(page)).toHaveValue("Seite B");
+  expect(await page.evaluate(() => history.length)).toBe(length + 1);
+
+  // A by right click: in the history – back through it, forward follows.
+  await back(page).click({ button: "right" });
+  await list.getByRole("menuitem", { name: "Seite A" }).click();
+  await expect(title(page)).toHaveValue("Seite A");
+  expect(await page.evaluate(() => history.length)).toBe(length + 1);
+  await expect(forward(page)).toBeEnabled();
+  await forward(page).click({ button: "right" });
+  await expect(page.locator(".history-list").getByRole("menuitem")).toHaveText([/Einstellungen/, "Seite C", "Seite B"]);
+  await page.keyboard.press("Escape");
   expect(errors).toEqual([]);
 });

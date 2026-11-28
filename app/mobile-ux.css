@@ -297,6 +297,13 @@ label.hit-check {
     margin: -7px;
     padding: 11px;
   }
+  /* Back beside it (#647): 44 px to hit as well, a little narrower drawn. */
+  .topbar .history-button[data-direction="back"] {
+    width: 40px;
+    height: 44px;
+    margin: -8px -4px;
+    padding: 11px;
+  }
   /* "Suchen und Filter als Sammlung speichern" in an empty sidebar. */
   .collection-nav-empty {
     min-height: 44px;

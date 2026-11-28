@@ -22,6 +22,18 @@ export function canScrollBack(boxes: Iterable<SidewaysBox>): boolean {
   return false;
 }
 
+/** One of the boxes can still scroll to the right (#647: the swipe from the right edge leaves it alone). */
+export function canScrollForward(boxes: Iterable<SidewaysBox>): boolean {
+  for (const box of boxes)
+    if (
+      (box.overflowX === "auto" || box.overflowX === "scroll") &&
+      box.scrollWidth > box.clientWidth + 1 &&
+      box.scrollLeft + box.clientWidth < box.scrollWidth - 1
+    )
+      return true;
+  return false;
+}
+
 /** The target and its ancestors up to (not including) the body, as boxes. */
 export function* sidewaysBoxes(target: Element | null): Generator<SidewaysBox> {
   for (let el = target; el && el !== document.body; el = el.parentElement) {

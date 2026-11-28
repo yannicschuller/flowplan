@@ -7738,7 +7738,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   display: none;
 }
 /* Back and forward at the top left (#125, components/history-buttons.tsx):
-   on wider screens only – phones have the swipe and the back button. */
+   on phones only back, whose long press lists the places visited (#647) –
+   forward is the swipe from the right edge there. */
 .history-nav {
   display: inline-flex;
   align-items: center;
@@ -7759,7 +7760,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .history-button:focus-visible {
   outline-offset: -2px;
 }
-.history-button:disabled {
+.history-button:disabled,
+.history-button[aria-disabled="true"] {
   opacity: 0.35;
   cursor: default;
   background: none;
@@ -7783,6 +7785,27 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.history-list-label {
+  padding: 6px 10px 3px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* The current place (#647): bold, with a check at the end. */
+.history-item[data-current] .history-item-title {
+  font-weight: 600;
+}
+.history-item-current {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  padding-inline-start: 8px;
+  color: var(--blue);
+}
+.history-item-detail + .history-item-current {
+  margin-inline-start: 0;
+}
 .history-item-detail {
   margin-inline-start: auto;
   padding-inline-start: 10px;
@@ -7794,9 +7817,55 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   max-width: 45%;
 }
 @media (max-width: 767.98px) {
-  .history-nav {
+  .history-button[data-direction="forward"] {
     display: none;
   }
+}
+/* The swipe from the right edge (#647, components/forward-swipe.ts): a
+   round chevron comes in with the finger, like the app's back swipe on
+   iOS; --forward-swipe-x is how far, --forward-swipe-y where. */
+.forward-swipe-chevron {
+  position: fixed;
+  top: var(--forward-swipe-y, 50vh);
+  right: 0;
+  z-index: 10000;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 18%);
+  opacity: 0.85;
+  pointer-events: none;
+  transform: translateX(calc(32px - var(--forward-swipe-x, 0px)));
+  transition: opacity 0.12s ease, scale 0.12s ease;
+}
+.forward-swipe-chevron::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 12px;
+  width: 9px;
+  height: 9px;
+  border-top: 2.5px solid var(--text);
+  border-right: 2.5px solid var(--text);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.forward-swipe-chevron[data-armed] {
+  opacity: 1;
+  scale: 1.12;
+}
+.forward-swipe-chevron[data-leaving] {
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.forward-swipe-chevron[data-reduced],
+.forward-swipe-chevron[data-reduced][data-armed] {
+  scale: 1;
+  transform: translateX(-24px);
+}
+.forward-swipe-chevron[data-reduced][data-leaving] {
+  transition: opacity 0.12s ease;
 }
 .spin {
   animation: spin 1s linear infinite;

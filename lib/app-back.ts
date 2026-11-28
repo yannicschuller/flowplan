@@ -24,6 +24,7 @@
 import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
 import { createBackPreview, type BackEdge, type BackPhase, type BackTarget } from "./back-preview";
+import { browserGo, browserPlaceAt, goForward, historySteps, tabSteps } from "./history-nav";
 
 const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "study"];
 const MAX_STACK = 50;
@@ -52,6 +53,15 @@ export function remember(stack: string[], fragment: string) {
 }
 
 export type BackStep = { hash: string; pop: boolean } | null;
+
+// Whether a step back is the browser's entry before this one (its place,
+// lib/history-nav.ts browserPlaceAt): then back goes through the history
+// (history.back()) instead of replacing the address, so the step stays
+// ahead – the swipe from the right edge and the forward arrow go there
+// again (#647). Not while tabs (#279) keep histories of their own.
+export function backThroughHistory(step: BackStep, previousPlace: string | null, tabs = false): boolean {
+  return !!step && !tabs && previousPlace !== null && previousPlace === step.hash;
+}
 
 // Where back goes from a fragment (without "#"), given the places visited
 // (the current one last). pop: the current place leaves the list.
@@ -127,6 +137,10 @@ function backTarget(stack: readonly string[]): BackTarget {
 type Navigation = {
   back: () => boolean;
   canGoBack: () => boolean;
+  // Forward through the history (#647, lib/history-nav.ts): the swipe from
+  // the right edge.
+  forward: () => boolean;
+  canGoForward: () => boolean;
   // The back gesture's progress (Android 14+): "start", "progress" (0–1),
   // then "commit" (back() follows) or "cancel". True when something shows it.
   backProgress: (phase: BackPhase, progress?: number, edge?: BackEdge) => boolean;
@@ -144,6 +158,11 @@ export function installAppBack(): () => void {
     if (step.pop) {
       const key = locationKey(location.hash);
       while (stack.length && stack[stack.length - 1] === key) stack.pop();
+    }
+    // The entry before, when it is that place: forward stays possible.
+    if (backThroughHistory(step, browserPlaceAt(-1), tabSteps())) {
+      browserGo(-1);
+      return true;
     }
     // In place: the web view's history does not grow with every step back.
     location.replace(`#${step.hash}`);
@@ -205,7 +224,9 @@ export function installAppBack(): () => void {
       return false;
     }
   };
-  const navigation: Navigation = { back, canGoBack, backProgress };
+  const forward = () => goForward();
+  const canGoForward = () => historySteps().forward.length > 0;
+  const navigation: Navigation = { back, canGoBack, forward, canGoForward, backProgress };
   (window as unknown as { FlowplanNavigation?: Navigation }).FlowplanNavigation = navigation;
   changed();
   return () => {

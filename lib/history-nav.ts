@@ -23,10 +23,14 @@
 // the workspace.
 import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
-import { HISTORY_TITLES_KEY } from "./tab-storage";
+import { HISTORY_TITLES_KEY, RECENT_PLACES_KEY } from "./tab-storage";
 
 // At most this many places in the list of a long press or right click.
 export const LIST_SIZE = 10;
+// The places visited in this tab (#647): kept, and shown in the back
+// arrow's list (with the current one).
+export const RECENT_SIZE = 30;
+export const RECENT_SHOWN = 15;
 // The trail (without the Navigation API) keeps this many addresses.
 export const TRAIL_SIZE = 100;
 
@@ -135,6 +139,48 @@ export function follow(trail: Trail | null, url: string, size = TRAIL_SIZE): Tra
 export const trailEntries = (trail: Trail): EntryLike[] => trail.entries.map((url, index) => ({ key: `trail:${index}`, url, index }));
 
 // ---------------------------------------------------------------------------
+// Recently visited (#647): the places of this tab in the order they were
+// last seen, the most recent first – also those a new step after going back
+// dropped from the history. The back arrow's list (a long press, a right
+// click, the context menu key) shows them with the current one marked;
+// choosing one goes back or forward to it while it is in the history,
+// otherwise it opens as a new step. Per tab in sessionStorage, nothing on
+// the server (the quick search's "Zuletzt angesehen", #243, are the
+// person's visits of pages and records across devices).
+
+// The list after a visit of `place` (a step, stepOf): first, once.
+export function noteVisit(list: readonly string[], place: string | null, size = RECENT_SIZE): string[] {
+  if (!place) return list.slice(0, size);
+  if (list[0] === place) return list.slice(0, size);
+  return [place, ...list.filter((p) => p !== place)].slice(0, size);
+}
+
+// One row of the list: the place, whether it is the current one, and the
+// step that reaches it through the history (null: a new step).
+export type RecentPlace = { hash: string; current: boolean; step: Step | null };
+
+// The rows of the back arrow's list: the current place first, then the
+// places visited before it, the most recent first; a place of the history
+// that this tab's list misses (it began before) comes after them. A place
+// in the history is reached by its nearest step.
+export function recentList(recent: readonly string[], steps: Steps, size = RECENT_SHOWN): RecentPlace[] {
+  const nearest = new Map<string, Step>();
+  for (const step of [...steps.back, ...steps.forward]) {
+    const known = nearest.get(step.hash);
+    if (!known || Math.abs(step.delta) < Math.abs(known.delta)) nearest.set(step.hash, step);
+  }
+  const order: string[] = [];
+  const add = (hash: string | null) => {
+    if (hash && !order.includes(hash)) order.push(hash);
+  };
+  add(steps.current);
+  recent.forEach(add);
+  steps.back.forEach((step) => add(step.hash));
+  steps.forward.forEach((step) => add(step.hash));
+  return order.slice(0, size).map((hash) => ({ hash, current: hash === steps.current, step: hash === steps.current ? null : nearest.get(hash) || null }));
+}
+
+// ---------------------------------------------------------------------------
 // In the page.
 
 type NavigationEntry = { key: string; url: string | null; index: number };
@@ -167,6 +213,14 @@ function writeTrail(trail: Trail) {
 
 let trail: Trail | null = null;
 let steps: Steps = NO_STEPS;
+let recent: string[] = [];
+function readRecent(): string[] {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(RECENT_PLACES_KEY) || "[]");
+    if (Array.isArray(value)) return value.filter((p): p is string => typeof p === "string" && stepOf(p) === p).slice(0, RECENT_SIZE);
+  } catch {}
+  return [];
+}
 const listeners = new Set<() => void>();
 
 // Tabs (#279, components/frame-tabs.tsx): each tab has a history of its
@@ -223,6 +277,27 @@ export function historySteps(): Steps {
   return steps;
 }
 
+// The places visited in this tab, the most recent first (#647).
+export function recentPlaces(): readonly string[] {
+  return recent;
+}
+// Whether the tabs (#279) give the steps instead of the browser's history.
+export function tabSteps(): boolean {
+  return source !== null;
+}
+// Notes the current address as visited (on every change of it).
+function visitHere() {
+  if (location.pathname !== workspacePath) return;
+  const next = noteVisit(recent, stepOf(location.hash));
+  if (next.length === recent.length && next.every((p, i) => p === recent[i])) return;
+  recent = next;
+  try {
+    sessionStorage.setItem(RECENT_PLACES_KEY, JSON.stringify(recent));
+  } catch {}
+  listeners.forEach((listener) => listener());
+}
+let workspacePath = "/";
+
 // The current entry of the tab's history, the same on every return to it by
 // back and forward and new for every new step (the Navigation API's key;
 // null without it). components/workspace-app.tsx keeps the pane's scroll
@@ -262,6 +337,13 @@ export function goForward() {
   if (!step) return false;
   goToStep(step);
   return true;
+}
+// Goes to a row of the back arrow's list: through the history while the
+// place is in it, otherwise as a new step.
+export function goToRecent(place: RecentPlace) {
+  if (place.current) return;
+  if (place.step) return goToStep(place.step);
+  location.hash = `#${place.hash}`;
 }
 
 // Leaves a part of the page (a record, a comment thread) for `hash` (with
@@ -376,6 +458,8 @@ export function installMouseButtons(run: (command: "back" | "forward") => void) 
 // Follows the tab's history (once per page); returns the uninstall.
 export function installHistory(): () => void {
   if (typeof window === "undefined") return () => {};
+  workspacePath = location.pathname;
+  recent = readRecent();
   const nav = navigationApi();
   if (!nav) {
     const stored = readTrail();
@@ -387,11 +471,13 @@ export function installHistory(): () => void {
       trail = follow(trail, hereUrl());
       writeTrail(trail);
     }
+    visitHere();
     update();
   };
   window.addEventListener("hashchange", changed);
   window.addEventListener("popstate", changed);
   nav?.addEventListener("currententrychange", changed);
+  visitHere();
   update();
   return () => {
     window.removeEventListener("hashchange", changed);

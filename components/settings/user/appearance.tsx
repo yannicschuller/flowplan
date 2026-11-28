@@ -26,7 +26,7 @@ import { CONTROL, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSav
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
-import { setEdgeSwipePref, useEdgeSwipeChoosable, useEdgeSwipePref } from "@/lib/edge-swipe-pref";
+import { setEdgeSwipePref, useEdgeSwipeChoosable, useEdgeSwipePref, useForwardSwipeHere } from "@/lib/edge-swipe-pref";
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
@@ -72,6 +72,7 @@ export default function AppearanceSection() {
   const discoveryPanels = useDiscoveryPanelsShown();
   const edgeSwipe = useEdgeSwipePref();
   const edgeSwipeChoosable = useEdgeSwipeChoosable();
+  const forwardSwipe = useForwardSwipeHere();
   const drawio = useDrawioPrefs();
   const textMenu = useTextMenuPref();
   const [textMenuStatus, runTextMenu] = useSaveState();
@@ -408,10 +409,19 @@ export default function AppearanceSection() {
           <SettingRow
             anchor="edge-swipe"
             label={t("Wischen vom linken Rand", "Swipe from the left edge")}
-            description={t(
-              "Seitenleiste öffnen: Die Seitenleiste kommt über die Seite, nichts wird verlassen – zurück geht es mit den Pfeilen oben links. Zurück: Das Wischen ganz am Rand geht einen Schritt zurück, die Seitenleiste öffnet ein Wischen etwas weiter innen. Nur auf diesem Gerät.",
-              "Open sidebar: the sidebar comes in over the page and nothing is left – the arrows at the top left go back. Back: a swipe right at the edge goes one step back, a swipe a little further in opens the sidebar. On this device only.",
-            )}
+            description={
+              // With "Zurück" the right edge goes forward again (#647) –
+              // where the app lets the page have it (lib/forward-swipe.ts).
+              forwardSwipe
+                ? t(
+                    "Seitenleiste öffnen: Die Seitenleiste kommt über die Seite, nichts wird verlassen – zurück geht es mit den Pfeilen oben links. Zurück: Das Wischen ganz am Rand geht einen Schritt zurück, die Seitenleiste öffnet ein Wischen etwas weiter innen; vom rechten Rand gewischt geht es dann wieder vorwärts. Nur auf diesem Gerät.",
+                    "Open sidebar: the sidebar comes in over the page and nothing is left – the arrows at the top left go back. Back: a swipe right at the edge goes one step back, a swipe a little further in opens the sidebar, and a swipe from the right edge then goes forward again. On this device only.",
+                  )
+                : t(
+                    "Seitenleiste öffnen: Die Seitenleiste kommt über die Seite, nichts wird verlassen – zurück geht es mit den Pfeilen oben links. Zurück: Das Wischen ganz am Rand geht einen Schritt zurück, die Seitenleiste öffnet ein Wischen etwas weiter innen. Nur auf diesem Gerät.",
+                    "Open sidebar: the sidebar comes in over the page and nothing is left – the arrows at the top left go back. Back: a swipe right at the edge goes one step back, a swipe a little further in opens the sidebar. On this device only.",
+                  )
+            }
           >
             <div className="segmented" role="radiogroup" aria-label={t("Wischen vom linken Rand", "Swipe from the left edge")}>
               {(

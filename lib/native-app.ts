@@ -33,6 +33,11 @@ type FlowplanApp = {
   // the sidebar from the very edge), "back" keeps it (lib/edge-swipe.ts).
   // Apps without it keep their back swipe.
   edgeSwipe?: (mode: "drawer" | "back", options?: { android?: boolean }) => void;
+  // Whether the swipe from the right edge would go forward now (#647,
+  // lib/forward-swipe.ts; apps 1.1.11 and newer): on Android the app then
+  // keeps a strip of the right edge from the system's back gesture, so the
+  // swipe reaches the page. Its presence says the app does that.
+  forwardState?: (canGoForward: boolean) => void;
   // iPhone and iPad: the camera's document scanner. The app saves the scan
   // as a PDF with the text it recognised at the end of this page (or
   // record), through its own API (lib/mobile-capture.ts); the open editor

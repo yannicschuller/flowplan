@@ -57,6 +57,7 @@ import { openModeOf } from "@/lib/open-place";
 import { SIDEBAR_WIDTH_KEY, SidebarResize } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
+import { useForwardSwipe } from "./forward-swipe";
 import { OVERLAY_MAX, OVERLAY_MIN, readOverlayWidth, writeOverlayWidth } from "@/lib/edge-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, shortcutLetter, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
@@ -2631,6 +2632,8 @@ export default function WorkspaceApp({
   const keyboardOpen = useSoftKeyboard();
   // Phones: swipe from the left edge to pull the sidebar in, and back out.
   useDrawerSwipe(mobile, setMobile);
+  // In the app, with the left edge on "Zurück": the right edge goes forward (#647).
+  useForwardSwipe(mobile);
   // Only the panes scroll, never the document (no rubber band under the bars).
   useShellDocument();
   // Another page – or another place of the app – starts at its top (#224,

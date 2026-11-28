@@ -14,6 +14,13 @@
     {
       "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
+    },
+    {
+      "de": "Zurück und vorwärts auf dem Handy: Langes Drücken auf ← oben links (Rechtsklick, Kontextmenü-Taste) zeigt „Zuletzt besucht“ mit Seiten, Einträgen und Einstellungen. In der App geht mit „Wischen vom linken Rand: Zurück“ ein Wischen vom rechten Rand vorwärts (Android: App 1.1.11).",
+      "en": "Back and forward on phones: a long press on ← at the top left (right click, context menu key) shows “Recently visited” with pages, records and settings. In the app, with “Swipe from the left edge: Back”, a swipe from the right edge goes forward (Android: app 1.1.11).",
+      "issues": [
+        647
+      ]
     }
   ],
   "improvements": [
