@@ -4,9 +4,11 @@
 // the page with them and the first paint already has the right widths and
 // the sidebar hidden or shown (no jump or flash after hydration). Only these
 // four numbers; localStorage keeps them as before and fills the cookie on
-// the first load after the update.
+// the first load after the update. localStorage is the device's record: a
+// page rendered with an older cookie (offline, the stored copy of "/") takes
+// the device's layout once the app runs (#641).
 // Runs in the browser and on the server.
-import { ASK_MIN } from "./ask-panel";
+import { ASK_MIN, readAskPinned, readAskWidth } from "./ask-panel";
 
 export const LAYOUT_COOKIE = "flowplan-layout";
 
@@ -50,8 +52,12 @@ export function parseLayout(value: string | undefined | null): StoredLayout | nu
 
 /** For document.cookie: a year, the whole app, first-party only. */
 export function layoutCookie(layout: StoredLayout): string {
+  return `${LAYOUT_COOKIE}=${layoutValue(layout)}; path=/; max-age=31536000; samesite=lax`;
+}
+// "<sidebar>.<ask>.<pinned>.<collapsed>", the cookie's value.
+function layoutValue(layout: StoredLayout): string {
   const width = (v: number | null) => (v && v > 0 ? Math.min(9999, Math.round(v)) : 0);
-  return `${LAYOUT_COOKIE}=${width(layout.sidebar)}.${width(layout.ask)}.${layout.askPinned ? 1 : 0}.${layout.collapsed ? 1 : 0}; path=/; max-age=31536000; samesite=lax`;
+  return `${width(layout.sidebar)}.${width(layout.ask)}.${layout.askPinned ? 1 : 0}.${layout.collapsed ? 1 : 0}`;
 }
 
 // The hidden sidebar in localStorage too, like the widths: the cookie is
@@ -77,4 +83,56 @@ export function writeSidebarCollapsed(collapsed: boolean, store: Store | null = 
     if (collapsed) store?.setItem(SIDEBAR_COLLAPSED_KEY, "1");
     else store?.removeItem(SIDEBAR_COLLAPSED_KEY);
   } catch {}
+}
+
+// The whole layout in localStorage as well, in the cookie's format (#641):
+// the device's own record of it, written with every change. The cookie only
+// mirrors it for the server, and a page can be rendered with an older
+// cookie (the offline copy of "/", below) – or WebKit may not have kept the
+// latest cookie when the app was closed.
+export const LAYOUT_KEY = "flowplan-layout";
+export function writeStoredLayout(layout: StoredLayout, store: Store | null = storage()) {
+  try {
+    store?.setItem(LAYOUT_KEY, layoutValue(layout));
+  } catch {}
+}
+
+/** The layout as this device keeps it right now: from localStorage, else
+ *  the browser's cookie (`document.cookie`; storage blocked or cleared),
+ *  else the single values localStorage had before #641. */
+export function deviceLayout(cookies: string, store: Store | null = storage()): StoredLayout {
+  try {
+    const stored = parseLayout(store?.getItem(LAYOUT_KEY));
+    if (stored) return stored;
+  } catch {}
+  const own = cookies
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${LAYOUT_COOKIE}=`));
+  const fromCookie = parseLayout(own?.slice(LAYOUT_COOKIE.length + 1));
+  if (fromCookie) return fromCookie;
+  let sidebar: number | null = null;
+  try {
+    const stored = Number(store?.getItem(SIDEBAR_WIDTH_KEY));
+    if (stored) sidebar = clampSidebar(stored);
+  } catch {}
+  return { sidebar, ask: readAskWidth(store), askPinned: readAskPinned(store), collapsed: readSidebarCollapsed(store) };
+}
+
+/** What the app switches to once it runs (#641): the device's layout when
+ *  it differs from the one the page was rendered with, null when they agree
+ *  – the usual case, so nothing changes after hydration (no flash). The page
+ *  can be older than the device's choice: offline, the service worker
+ *  serves the copy of "/" it stored before the sidebar was hidden, and that
+ *  copy must not win over (and then overwrite) the choice. */
+export function layoutUpdate(rendered: StoredLayout | null | undefined, device: StoredLayout): StoredLayout | null {
+  if (
+    rendered &&
+    rendered.sidebar === device.sidebar &&
+    rendered.ask === device.ask &&
+    rendered.askPinned === device.askPinned &&
+    rendered.collapsed === device.collapsed
+  )
+    return null;
+  return device;
 }

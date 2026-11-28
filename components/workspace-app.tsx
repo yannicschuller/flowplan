@@ -54,7 +54,7 @@ import { TabBar, TabEdgeDrop, frameOfElement, pageOfPlace, useFrameTabs, validPl
 import { setSubPageCreator, type SubPageCreator } from "./sub-page-create";
 import { placeOf, tabOf } from "@/lib/frame-tabs";
 import { openModeOf } from "@/lib/open-place";
-import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
+import { SIDEBAR_WIDTH_KEY, SidebarResize } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
 import { OVERLAY_MAX, OVERLAY_MIN, readOverlayWidth, writeOverlayWidth } from "@/lib/edge-swipe";
@@ -81,7 +81,7 @@ import { PageTitleField } from "./page-title-field";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import type { AskRequest } from "./ai-ask";
 import { useMedia } from "./use-media";
-import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
+import { ASK_OVERLAY_MEDIA, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
 import { dockState, evictDock, serverDockState, subscribeDock } from "@/lib/side-dock";
 import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
@@ -145,7 +145,7 @@ import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { clearAccountData } from "./sign-out";
 import { workspaceCookie } from "@/lib/last-workspace";
-import { layoutCookie, readSidebarCollapsed, writeSidebarCollapsed, type StoredLayout } from "@/lib/layout-cookie";
+import { deviceLayout, layoutCookie, layoutUpdate, writeSidebarCollapsed, writeStoredLayout, type StoredLayout } from "@/lib/layout-cookie";
 import { configurePrefetch, installPrefetch, pendingPrefetch } from "./prefetch";
 import { ListSkeleton, SettingsSkeleton, ViewSkeleton, viewShapeOf } from "./skeleton";
 import { RoutePendingPlaceholder } from "./route-pending";
@@ -885,19 +885,20 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (!layoutRead.current) {
       layoutRead.current = true;
-      // The first load without the cookie (e.g. right after the update):
-      // the values from localStorage, after the first render as before;
-      // the next run writes the cookie.
-      if (!layout) {
-        try {
-          const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-          if (stored) setSidebarWidth(clampSidebar(stored));
-        } catch {}
-        setAskWidth(readAskWidth());
-        setAskPinned(readAskPinned());
-        const collapsed = readSidebarCollapsed();
-        setCollapsedChoice(collapsed);
-        setDesktopCollapsed(collapsed);
+      // The page was rendered with a layout other than the device's own:
+      // the first load without the cookie (e.g. right after the update), or
+      // – offline – an older copy of the page (the service worker's, or the
+      // iOS app's stored copy), rendered before the sidebar was hidden or
+      // resized (#641). The device's values (localStorage, else its cookie)
+      // after the first render; the next run writes them back. Online the
+      // two agree: nothing changes, no flash.
+      const update = layoutUpdate(layout, deviceLayout(document.cookie));
+      if (update) {
+        setSidebarWidth(update.sidebar);
+        setAskWidth(update.ask);
+        setAskPinned(update.askPinned);
+        setCollapsedChoice(update.collapsed);
+        setDesktopCollapsed(update.collapsed);
         return;
       }
     }
@@ -908,7 +909,9 @@ export default function WorkspaceApp({
     writeAskWidth(askWidth);
     writeAskPinned(askPinned);
     writeSidebarCollapsed(collapsedChoice);
-    document.cookie = layoutCookie({ sidebar: sidebarWidth, ask: askWidth, askPinned, collapsed: collapsedChoice });
+    const current = { sidebar: sidebarWidth, ask: askWidth, askPinned, collapsed: collapsedChoice };
+    writeStoredLayout(current);
+    document.cookie = layoutCookie(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarWidth, askWidth, askPinned, collapsedChoice]);
   // The sidebar's width while it lies over the page (phones, and tablets
