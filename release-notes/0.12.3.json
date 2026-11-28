@@ -16,7 +16,15 @@
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
     }
   ],
-  "improvements": [],
+  "improvements": [
+    {
+      "de": "Karteikarten planen jetzt mit ts-fsrs 6, weiterhin nach dem Modell FSRS-6. Gespeicherte Termine bleiben; ab der nächsten Wiederholung einer Karte streuen längere Intervalle etwas anders. Wer Flowplan ohne Docker installiert, braucht jetzt Node.js 24 oder neuer.",
+      "en": "Flashcards are now scheduled with ts-fsrs 6, still on the FSRS-6 model. Stored due dates stay; from a card’s next review on, longer intervals are spread slightly differently. Installing Flowplan without Docker now needs Node.js 24 or newer.",
+      "issues": [
+        636
+      ]
+    }
+  ],
   "fixes": [
     {
       "de": "Auf dem Handy und Tablet folgt eine Seite, die du am Griff in der Seitenleiste ziehst, jetzt ruckelfrei deinem Finger. Eine schlichte Linie zeigt, wo sie landet, eine leichte Tönung, wenn sie zur Unterseite wird; zum Umsortieren reicht der obere oder untere Teil einer Zeile.",

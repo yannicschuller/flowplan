@@ -24,7 +24,8 @@
 //   the same log gives the same weights). The initial stabilities w0–w3 are
 //   optimised in log space (a step changes them by a few per cent, so they
 //   travel from 0.2 to 20 in reach). After every step the weights are
-//   clamped to ts-fsrs's bounds (CLAMP_PARAMETERS, the same as fsrs-rs).
+//   clamped to ts-fsrs's FSRS-6 bounds (clipFSRS6Parameters with the
+//   w17/w18 ceiling of 2, the same as fsrs-rs).
 // - Evaluation: log loss and RMSE (bins): predictions in 20 bins of R, the
 //   root of the count-weighted mean squared difference between mean
 //   prediction and mean outcome per bin.
@@ -37,7 +38,7 @@
 // - The workload (#344): a year of the deck's own cards at each desired
 //   retention within its daily limits and a time budget (simulateDeck,
 //   workload) – cards and minutes per day, and the recommended retention.
-import { CLAMP_PARAMETERS, S_MIN, W17_W18_Ceiling, default_w } from "ts-fsrs";
+import { FSRS6_DEFAULT_WEIGHTS, FSRS6_MODEL_BOUNDS, clipFSRS6Parameters } from "ts-fsrs/models/fsrs-6";
 
 export const WEIGHT_COUNT = 21;
 // Phase 8 asks for this many ratings before optimising (§16).
@@ -45,9 +46,15 @@ export const MIN_REVIEWS = 1000;
 // Fewer reviews a day or more apart than this: only w0–w3 are initialised
 // (fsrs-rs MIN_ITEMS_TO_TRAIN).
 export const MIN_ITEMS = 64;
-export const DEFAULT_WEIGHTS: readonly number[] = default_w;
-export const WEIGHT_BOUNDS = CLAMP_PARAMETERS(W17_W18_Ceiling, true) as unknown as readonly (readonly [number, number])[];
-const S_MAX = 36500;
+export const DEFAULT_WEIGHTS: readonly number[] = FSRS6_DEFAULT_WEIGHTS;
+// [lowest, highest] of each weight: ts-fsrs 6 exports the clipping only,
+// so the bounds are where it clips ±∞ to (no relearning steps: the w17/w18
+// ceiling of 2; short-term stability on).
+const clipAll = (x: number) => clipFSRS6Parameters(Array.from({ length: WEIGHT_COUNT }, () => x), 0, true);
+const highest = clipAll(Infinity);
+export const WEIGHT_BOUNDS: readonly (readonly [number, number])[] = clipAll(-Infinity).map((lo, i) => [lo, highest[i]] as const);
+const S_MIN = FSRS6_MODEL_BOUNDS.sMin;
+const S_MAX = FSRS6_MODEL_BOUNDS.sMax;
 const LN09 = Math.log(0.9);
 
 // One card's log in order: the rating of each review and the study days
@@ -86,7 +93,7 @@ function comb(...terms: [number, G][]): G {
 }
 const clamp = (x: Dual, lo: number, hi: number) => (x.v < lo ? c(lo) : x.v > hi ? c(hi) : x);
 
-// ---- FSRS-6 (ts-fsrs 5.4.2 FSRSAlgorithm, without rounding) ----
+// ---- FSRS-6 (ts-fsrs 6 FSRS6Algorithm, as 5.4.2's, without rounding) ----
 
 type Memory = { s: Dual; d: Dual };
 type Model = {
@@ -190,7 +197,8 @@ function shortTermStability(m: Model, s: Dual, g: number) {
 }
 function first(m: Model, g: number): Memory {
   const s0 = m.w[g - 1];
-  return { s: s0.v < 0.1 ? c(0.1) : s0, d: clamp(initDifficulty(m.w, g), 1, 10) };
+  // ts-fsrs 6 clamps S0 to [S_MIN, S_MAX] (ts-fsrs 5 raised it to at least 0.1).
+  return { s: clamp(s0, S_MIN, S_MAX), d: clamp(initDifficulty(m.w, g), 1, 10) };
 }
 function next(m: Model, mem: Memory, t: number, g: number, r?: Dual): Memory {
   let s: Dual;

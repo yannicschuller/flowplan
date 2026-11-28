@@ -28,7 +28,7 @@ const { localQueue, reviewBatches } = await import("../lib/study-offline");
 const { needsServer, needsServerRequest } = await import("../lib/offline-actions");
 const { notificationUrl } = await import("../lib/page-location");
 const { englishMessage } = await import("../lib/i18n-errors");
-const { replay } = await import("../lib/fsrs");
+const { fsrsCardId, replay } = await import("../lib/fsrs");
 
 async function user(name: string): Promise<Identity> {
   const uid = id();
@@ -273,7 +273,7 @@ test("study.reviews: idempotent, the log wins, the clock, orphaned cards", async
   assert.equal(Number(state?.reps), 2);
   // The state is the fold of the log, in the order of time.
   const params = { retention: 0.9, learningSteps: [1, 10], relearningSteps: [10], maxInterval: 36500 };
-  const folded = replay(log.map((l) => ({ id: l.id, rating: Number(l.rating) as 1 | 2 | 3 | 4, reviewedAt: Number(l.reviewed_at), zone: l.zone })), params);
+  const folded = replay(fsrsCardId(row, ""), log.map((l) => ({ id: l.id, rating: Number(l.rating) as 1 | 2 | 3 | 4, reviewedAt: Number(l.reviewed_at), zone: l.zone })), params);
   assert.equal(Number(state?.stability), folded?.stability);
   assert.equal(Number(state?.last_review), now - 3_600_000);
   // Sent again (no answer reached the device): skipped, as often as it comes.

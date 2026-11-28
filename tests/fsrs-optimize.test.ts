@@ -5,7 +5,8 @@
 // and the recommended retention.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FSRSAlgorithm, generatorParameters, type Grade } from "ts-fsrs";
+import type { Grade } from "ts-fsrs";
+import { FSRS6Algorithm, FSRS6_MODEL_BOUNDS, clipFSRS6Parameters } from "ts-fsrs/models/fsrs-6";
 import {
   DEFAULT_WEIGHTS,
   MIN_ITEMS,
@@ -33,7 +34,7 @@ import {
   trainingItems,
   type TrainingCard,
 } from "../lib/fsrs/optimize";
-import { defaultParams, replay, type LoggedReview, type StudyRating } from "../lib/fsrs";
+import { defaultParams, fsrsCardId, replay, type LoggedReview, type StudyRating } from "../lib/fsrs";
 import { daysBetween, studyDay } from "../lib/study-day";
 import { TRUE_WEIGHTS, syntheticLog } from "./helpers/fsrs-synthetic";
 
@@ -76,10 +77,12 @@ function randomLogs(seed: number, cards: number) {
 }
 
 test("the model folds a log to the same stability and difficulty as ts-fsrs's scheduler (lib/fsrs replay)", () => {
-  for (const weights of [DEFAULT_WEIGHTS, TRUE_WEIGHTS]) {
+  // Initial stabilities below 0.1 too: ts-fsrs 6 keeps them (down to S_MIN).
+  const lowStart = [0.05, 0.08, ...TRUE_WEIGHTS.slice(2)];
+  for (const [i, weights] of [DEFAULT_WEIGHTS, TRUE_WEIGHTS, lowStart].entries()) {
     const params = { ...defaultParams, weights: [...weights] };
-    for (const { reviews, card } of randomLogs(weights === DEFAULT_WEIGHTS ? 1 : 2, 150)) {
-      const expected = replay(reviews, params)!;
+    for (const { reviews, card } of randomLogs(i + 1, 150)) {
+      const expected = replay(fsrsCardId("card", ""), reviews, params)!;
       const got = memoryOf(card, weights)!;
       near(got.stability, expected.stability, 1e-5, "stability");
       near(got.difficulty, expected.difficulty, 1e-5, "difficulty");
@@ -88,7 +91,7 @@ test("the model folds a log to the same stability and difficulty as ts-fsrs's sc
 });
 
 test("the predicted retrievability is ts-fsrs's forgetting curve before each review a day or more later", () => {
-  const alg = new FSRSAlgorithm(generatorParameters({ w: [...TRUE_WEIGHTS], enable_short_term: true }));
+  const alg = new FSRS6Algorithm(clipFSRS6Parameters([...TRUE_WEIGHTS], 1, true), true, FSRS6_MODEL_BOUNDS);
   const card: TrainingCard = { t: [0, 0, 3, 0, 9, 20], r: [1, 3, 3, 1, 3, 4] };
   // Log loss by hand from ts-fsrs's next_state and forgetting_curve.
   let state = alg.next_state(null, 0, card.r[0] as Grade),

@@ -17,7 +17,7 @@
 //   late (lib/study.ts studyReviews).
 // Client-safe: the IndexedDB part runs in the browser only; the rest is
 // pure and tested (tests/study-offline.test.ts).
-import { schedule, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
+import { fsrsCardId, schedule, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
 import { buildQueue, sessionOrder, type QueueCard } from "./study-queue";
 import { studyClock, studyDay } from "./study-day";
 import type { StudyViewConfig } from "./study-schema";
@@ -87,7 +87,7 @@ export function localQueue<Card extends { rowId: string; sub: string; memory: Me
     if (!memories.has(k)) continue;
     const before = memories.get(k) ?? null;
     const weights = weightsOf.get(k);
-    memories.set(k, schedule(before, p.rating, p.reviewedAt, weights ? { ...deck.params, weights } : deck.params, { zone: p.zone, dayStart }, p.id).memory);
+    memories.set(k, schedule(before, p.rating, p.reviewedAt, weights ? { ...deck.params, weights } : deck.params, { zone: p.zone, dayStart }, fsrsCardId(p.rowId, p.sub)).memory);
     if (studyDay(p.reviewedAt, options.zone, dayStart) !== today.day) continue;
     done.all++;
     if (!before) done.new++;

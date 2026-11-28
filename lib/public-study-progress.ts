@@ -11,7 +11,7 @@
 // localQueue: lib/study-queue.ts and lib/fsrs), as offline in the app.
 // Client-safe and pure apart from the storage; tested in
 // tests/public-study.test.ts.
-import { schedule, type FsrsParams, type Memory } from "./fsrs";
+import { fsrsCardId, schedule, type FsrsParams, type Memory } from "./fsrs";
 import { localQueue, type OfflineDeck, type PendingReview } from "./study-offline";
 import { DEFAULT_DAY_START, studyClock, studyDay } from "./study-day";
 import type { StudySettings } from "./study-schema";
@@ -71,7 +71,7 @@ export function currentDeck(progress: DeckProgress | undefined, params: FsrsPara
       continue;
     }
     const key = cardKey(r.rowId, r.sub);
-    deck.base[key] = schedule(deck.base[key] ?? null, r.rating, r.reviewedAt, params, { zone: r.zone, dayStart: DEFAULT_DAY_START }, r.id).memory;
+    deck.base[key] = schedule(deck.base[key] ?? null, r.rating, r.reviewedAt, params, { zone: r.zone, dayStart: DEFAULT_DAY_START }, fsrsCardId(r.rowId, r.sub)).memory;
   }
   deck.reviews = kept;
   deck.day = today;
