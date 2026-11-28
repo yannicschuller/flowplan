@@ -7,6 +7,7 @@ import "./whiteboard-facilitation.css";
 import "./whiteboard-racks.css";
 import "./whiteboard-draw.css";
 import "./contacts.css";
+import "./issue-links.css";
 import "./page-properties.css";
 import "./option-colors.css";
 import "./timeline.css";

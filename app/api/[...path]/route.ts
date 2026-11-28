@@ -60,6 +60,7 @@ import * as healthReady from "../health/ready/handler";
 import * as health from "../health/handler";
 import * as inboundMailToken from "../inbound-mail/[token]/handler";
 import * as issueSyncHookToken from "../issue-sync/hook/[token]/handler";
+import * as issueSyncPreview from "../issue-sync/preview/handler";
 import * as issueSync from "../issue-sync/handler";
 import * as maintenance from "../maintenance/handler";
 import * as markdownExport from "../markdown-export/handler";
@@ -150,6 +151,7 @@ const routes = apiRoutes([
   ["health", health],
   ["inbound-mail/[token]", inboundMailToken],
   ["issue-sync/hook/[token]", issueSyncHookToken],
+  ["issue-sync/preview", issueSyncPreview],
   ["issue-sync", issueSync],
   ["maintenance", maintenance],
   ["markdown-export", markdownExport],

@@ -203,7 +203,16 @@ export function checkedRepo(provider: IssueProvider, raw: unknown) {
 
 /* ---------- HTTP ---------- */
 
-export type IssueHttpRequest = { method: string; url: string; headers: Record<string, string>; body?: string; allowPrivate: boolean };
+// `timeout` and `maxBytes`: shorter for the link previews (lib/issue-preview.ts).
+export type IssueHttpRequest = {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+  allowPrivate: boolean;
+  timeout?: number;
+  maxBytes?: number;
+};
 export type IssueHttpResponse = { status: number; headers: Record<string, string>; body: string };
 export type IssueHttp = (request: IssueHttpRequest) => Promise<IssueHttpResponse>;
 const safeTransport: IssueHttp = async (request) => {
@@ -213,8 +222,8 @@ const safeTransport: IssueHttp = async (request) => {
     body: request.body,
     allowPrivate: request.allowPrivate,
     accept: "application/json",
-    timeout: 15_000,
-    maxBytes: 5_000_000,
+    timeout: request.timeout ?? 15_000,
+    maxBytes: request.maxBytes ?? 5_000_000,
   });
   return { status: response.status, headers: response.headers, body: response.body };
 };
@@ -229,6 +238,8 @@ export function setIssueSyncTransport(http?: IssueHttp) {
   runtime.flowplanIssueHttp = http;
 }
 const transport = () => runtime.flowplanIssueHttp || safeTransport;
+// The same transport for the link previews (lib/issue-preview.ts).
+export const issueTransport = () => transport();
 
 export class IssueRateLimit extends HttpError {
   constructor(public until: number) {
@@ -713,6 +724,55 @@ export async function testIssueConnection(user: Identity, raw: unknown) {
     });
   return { ok: true, repo: result.name };
 }
+
+/* ---------- Link previews (#654) ---------- */
+
+// The issue sync connections in the person's workspaces – full members
+// only, never guests.
+async function memberConnections(user: Identity) {
+  const rows = await all<ConnectionRow>(
+    "SELECT c.* FROM issue_connections c JOIN members m ON m.workspace_id=c.workspace_id AND m.user_id=? ORDER BY c.created_at",
+    user.id,
+  );
+  const kept: ConnectionRow[] = [];
+  for (const row of rows) if (!(await isGuest(user, row.workspace_id))) kept.push(row);
+  return kept;
+}
+const connectionWeb = (row: Pick<ConnectionRow, "provider" | "base_url">) => row.base_url || `https://${PUBLIC_HOST[row.provider] || ""}`;
+// Self-hosted servers connected there: their provider and web address, to
+// read links to them (lib/issue-link-url.ts). Still only listed hosts.
+export async function issueServersOf(user: Identity) {
+  return (await memberConnections(user)).filter((row) => row.base_url).map((row) => ({ provider: row.provider, web: row.base_url }));
+}
+// What a link preview may read a private repository with: the tokens of
+// those connections to exactly this server (provider and web address) –
+// the token goes only to the API of the server it was entered for – while
+// the person who connected it may still act for it. Connections that name
+// the repository (as their default or in a database's mapping) come first.
+// Only the request headers leave this module, never to the browser.
+export type IssueReadCredential = { connectionId: string; endpoint: Endpoint; headers: Record<string, string> };
+export async function issueReadCredentials(user: Identity, provider: IssueProvider, web: string, repo: string): Promise<IssueReadCredential[]> {
+  const found: { credential: IssueReadCredential; named: boolean }[] = [];
+  for (const row of await memberConnections(user)) {
+    if (row.provider !== provider || connectionWeb(row).toLowerCase() !== web.toLowerCase() || !row.token) continue;
+    if (!(await connector(row))) continue;
+    let client: Client;
+    try {
+      client = clientFor(row, repo);
+    } catch {
+      // The server is no longer allowed, or the key of the token is missing.
+      continue;
+    }
+    const repos = [row.repo, ...(await all<{ repo: string }>("SELECT repo FROM issue_sync_maps WHERE connection_id=?", row.id)).map((m) => m.repo)];
+    found.push({
+      credential: { connectionId: row.id, endpoint: client.endpoint, headers: authHeaders(client) },
+      named: repos.some((r) => !!r && r.toLowerCase() === repo.toLowerCase()),
+    });
+  }
+  return [...found.filter((f) => f.named), ...found.filter((f) => !f.named)].map((f) => f.credential);
+}
+// A refusal for too many requests (403 with an exhausted limit, 429).
+export const issueRateLimited = limited;
 
 /* ---------- Mapping ---------- */
 

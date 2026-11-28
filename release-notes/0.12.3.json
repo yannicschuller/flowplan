@@ -14,6 +14,13 @@
     {
       "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
+    },
+    {
+      "de": "Links auf Issues, Pull- und Merge-Requests von GitHub, GitLab und Codeberg zeigen in Dokumenten ihren Status: ein kleines Symbol am Link und beim Darüberfahren eine Karte mit Titel, Nummer, Autor, Textanfang und Labels. Private Repositories über eine Verbindung der Issue-Synchronisierung.",
+      "en": "Links to issues, pull and merge requests on GitHub, GitLab and Codeberg show their status in documents: a small icon at the link and, on hover, a card with title, number, author, the start of the text and labels. Private repositories through an issue sync connection.",
+      "issues": [
+        654
+      ]
     }
   ],
   "improvements": [

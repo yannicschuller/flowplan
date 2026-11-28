@@ -15,6 +15,7 @@ import { finishDocumentHtml, wrapTables } from "@/lib/document-html";
 import { mountPluginBlock } from "./plugin-block";
 import { mountWorkflowButton } from "./workflow-button";
 import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons-store";
+import { decorateIssueStates, issueStateLabel } from "./issue-links-store";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,
@@ -49,6 +50,8 @@ export function ReadOnlyDocument({
     // Page links: the target's own icon in front (#96).
     if (linkPages) setLinkTargetPages(linkPages, "share");
     const undecorate = decorateLinkIcons(root);
+    // Issue links (#654): their state once the app knows it (never on share links).
+    const undecorateIssues = shareToken ? () => {} : decorateIssueStates(root, (state) => issueStateLabel(state, t));
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
@@ -221,6 +224,7 @@ export function ReadOnlyDocument({
     );
     return () => {
       undecorate();
+      undecorateIssues();
       pluginHandles.forEach((handle) => handle.destroy());
       workflowHandles.forEach((handle) => handle.destroy());
       codeHandles.forEach((stop) => stop());
