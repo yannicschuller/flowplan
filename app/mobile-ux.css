@@ -741,16 +741,6 @@ label.hit-check {
   }
 }
 
-/* ===== A page's title wraps on phones instead of being cut off: a journal
-   day's "Dienstag, 10. November 2026" is wider than the screen
-   (components/page-title-field.tsx grows the field with its lines). ===== */
-@media (max-width: 767.98px) {
-  .page-title {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-}
-
 /* ===== A database calendar's month on phones: a day is about 90 px wide.
    The entry's time and title take the chip's first line, the drag handle
    and the date button a line below it – beside them only "09:…" was left. ===== */
@@ -951,4 +941,30 @@ label.hit-check {
 }
 .my-tasks-sheet .my-tasks-page-link {
   min-height: 44px;
+}
+
+/* ===== A page on a phone (and in a narrow column on a touch tablet): the
+   same margin left and right (#645). The page's column moves in by the
+   editor's gutter so its head starts where the text starts (#603,
+   app/globals.css) – 21 px of padding and 26 px of gutter on the left, 21
+   px on the right. A touch screen has no "+" and shows only the caret
+   block's handle (24 px, 25 px left of the text): it fits into the page's
+   own padding, so the column keeps no gutter and the padding is 25 px on
+   both sides. Fold arrows sit at the end of a heading here, and a block in
+   right-to-left text has its handle in the right padding. ===== */
+@media (pointer: coarse) {
+  @container main (max-width: 767.98px) {
+    .page-content.with-block-room {
+      padding-left: 25px;
+      padding-right: 25px;
+    }
+    .page-content.with-block-room > *,
+    .page-content.with-block-room > .editor-wrapper > .document-writing-surface > .editor-content-holder {
+      margin-left: 0;
+    }
+    .page-content.with-block-room > .editor-wrapper > .document-writing-surface > .editor-content-holder > .block-editor-surface.with-block-handles {
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
 }
