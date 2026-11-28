@@ -109,6 +109,13 @@
       "issues": [
         652
       ]
+    },
+    {
+      "de": "Unter „Offline & Geräte“ steht, wie weit der Abgleich der Offline-Kopie ist, jetzt oben bei „Offline-Kopie“ und bleibt beim Scrollen sichtbar. Was erst danach geht, etwa „Offline behalten“, ist solange ausgegraut und sagt, warum.",
+      "en": "In “Offline & devices”, how far the offline copy’s sync has got now shows at the top under “Offline copy” and stays visible while you scroll. What only works afterwards, such as “Keep offline”, is greyed out until then and says why.",
+      "issues": [
+        644
+      ]
     }
   ]
 }

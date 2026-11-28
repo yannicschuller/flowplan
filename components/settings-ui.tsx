@@ -108,9 +108,10 @@ export function SettingRow({
 export const CONTROL = { sm: "control-sm", md: "control-md", lg: "control-lg" } as const;
 
 // A switch for one setting; the row's label names it.
-export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean }) {
+// `describedBy`: the id of a note about it, e.g. why it is disabled.
+export function Switch({ checked, onChange, label, disabled, describedBy }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; describedBy?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled} onClick={() => onChange(!checked)}>
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} aria-describedby={describedBy} className="switch" disabled={disabled} onClick={() => onChange(!checked)}>
       <span aria-hidden />
     </button>
   );
@@ -123,6 +124,7 @@ export function SwitchRow({
   checked,
   onChange,
   disabled,
+  describedBy,
   anchor,
   level,
 }: {
@@ -131,12 +133,13 @@ export function SwitchRow({
   checked: boolean;
   onChange: (on: boolean) => void;
   disabled?: boolean;
+  describedBy?: string;
   anchor?: string;
   level?: SettingsLevel;
 }) {
   return (
     <SettingRow label={label} description={description} anchor={anchor} level={level}>
-      <Switch checked={checked} onChange={onChange} label={label} disabled={disabled} />
+      <Switch checked={checked} onChange={onChange} label={label} disabled={disabled} describedBy={describedBy} />
     </SettingRow>
   );
 }

@@ -2,7 +2,8 @@
 import { useLocale, useT } from "./i18n";
 import { ANDROID_APK_URL, APP_STORE_URL, DOWNLOAD_URL } from "@/lib/app-links";
 import { friendlyError } from "./ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { CircleNotch } from "@phosphor-icons/react";
 import { ago } from "./page-activity";
 import {
   CONTROL,
@@ -18,11 +19,13 @@ import { bytes } from "./admin-storage";
 import { Select } from "./select";
 import {
   OFFLINE_CHANGED,
+  OFFLINE_SYNC,
   budgetOf,
   disableOffline,
   enableOffline,
   offlineMarker,
   offlinePlatform,
+  offlineRefreshing,
   offlineSupported,
   persistOffline,
   refreshOffline,
@@ -61,7 +64,15 @@ export function OfflineSettings({
     // The iPhone and iPad app keeps the copy (lib/offline-store.ts).
     [inApp, setInApp] = useState(false),
     // Persistent storage (#417): asked for when offline use is on.
-    [persisted, setPersisted] = useState<OfflinePersistence>("unknown");
+    [persisted, setPersisted] = useState<OfflinePersistence>("unknown"),
+    // A refresh this tab runs that the settings did not start (#644), e.g.
+    // the one on opening the app.
+    [refreshing, setRefreshing] = useState(false);
+  const waitId = useId();
+  // The status line in "Offline copy" scrolled out of view (#644): a copy of
+  // it stays at the top of the pane while a sync runs.
+  const statusLine = useRef<HTMLSpanElement>(null),
+    [statusHidden, setStatusHidden] = useState(false);
   const load = useCallback(
     () =>
       void offlineMarker().then((m) =>
@@ -76,8 +87,14 @@ export function OfflineSettings({
     }
     setInApp(!!appOfflineBridge());
     load();
+    const sync = () => setRefreshing(offlineRefreshing());
+    sync();
     window.addEventListener(OFFLINE_CHANGED, load);
-    return () => window.removeEventListener(OFFLINE_CHANGED, load);
+    window.addEventListener(OFFLINE_SYNC, sync);
+    return () => {
+      window.removeEventListener(OFFLINE_CHANGED, load);
+      window.removeEventListener(OFFLINE_SYNC, sync);
+    };
   }, [load]);
   const enabled = !!marker;
   useEffect(() => {
@@ -125,12 +142,13 @@ export function OfflineSettings({
       load();
     }
   }
-  async function update() {
+  async function update(again = false) {
     setBusy(true);
     setMessage("");
     try {
       const result = await refreshOffline({
         full: true,
+        again,
         onProgress: (done, total) => setProgress([done, total]),
       });
       setMessage(
@@ -184,8 +202,9 @@ export function OfflineSettings({
     try {
       await setOfflineRecords(on);
       load();
-      // Fetches the records and files right away.
-      if (on) await update();
+      // Fetches the records and files right away – after a refresh that
+      // already runs (it read the setting before).
+      if (on) await update(true);
     } catch (error) {
       unsaved(error);
     } finally {
@@ -258,6 +277,53 @@ export function OfflineSettings({
     }
   }
   const updated = marker?.lastRefresh;
+  // The sync status (#644), in one place: the first line of "Offline copy"
+  // – while a sync runs, what it does and how far it is instead of when the
+  // copy was updated, afterwards the result of the run.
+  const syncing = busy || refreshing;
+  const syncText = (
+    <>
+      <CircleNotch size={14} aria-hidden className="spin" />
+      <span>
+        {!updated
+          ? t("Offline-Kopie wird erstellt …", "Creating the offline copy …")
+          : t("Offline-Kopie wird aktualisiert …", "Updating the offline copy …")}
+        {progress && ` ${progress[0]} ${t("von", "of")} ${progress[1]}`}
+      </span>
+    </>
+  );
+  const syncStatus = (
+    <span ref={statusLine} className={`offline-sync${syncing ? " syncing" : ""}`} role="status" data-testid="offline-sync">
+      {syncing ? syncText : message}
+    </span>
+  );
+  // Below the sticky "back" bar on phones (53 px), at the top elsewhere.
+  useEffect(() => {
+    const line = statusLine.current;
+    if (!syncing || !line || typeof IntersectionObserver === "undefined") return setStatusHidden(false);
+    const observer = new IntersectionObserver(([entry]) => setStatusHidden(!entry.isIntersecting && entry.boundingClientRect.top < (entry.rootBounds?.top ?? 53)), {
+      rootMargin: "-53px 0px 0px 0px",
+    });
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [syncing, enabled]);
+  // What waits for a sync these settings run (one at a time): the budget,
+  // "Also store …", "Keep offline", "Update now" and removing the copy. It
+  // is disabled until then, and says why. The first note (the budget's)
+  // has the id the disabled controls point to.
+  const withWait = (text: string, first = false) =>
+    busy ? (
+      <>
+        {text}
+        <span className="offline-wait" id={first ? waitId : undefined} data-testid="offline-wait">
+          {updated
+            ? t("Wieder verfügbar, sobald die Aktualisierung fertig ist.", "Available again once the update is done.")
+            : t("Wird verfügbar, sobald die Offline-Kopie fertig ist.", "Available once the offline copy is ready.")}
+        </span>
+      </>
+    ) : (
+      text
+    );
   // #417: the budget, the kept pages and the storage per space.
   const platform = offlinePlatform();
   const limit = budgetOf(marker);
@@ -334,34 +400,35 @@ export function OfflineSettings({
               label={t("Offline-Kopie", "Offline copy")}
               description={
                 <span className="offline-state" data-testid="offline-state">
-                  {updated
-                    ? t("Offline-Kopie aktualisiert", "Offline copy updated") +
-                      " " +
-                      ago(updated, Date.now(), locale)
-                    : t(
-                        "Offline-Kopie noch nicht vollständig",
-                        "Offline copy not complete yet",
-                      )}
-                  {marker.pages !== undefined &&
-                    ` · ${pagesText(marker.pages)}`}
-                  {marker.bytes !== undefined && ` · ${bytes(marker.bytes)}`}
-                  <br />
+                  {!syncing && (
+                    <span className="offline-updated" data-testid="offline-updated">
+                      {updated
+                        ? t("Offline-Kopie aktualisiert", "Offline copy updated") +
+                          " " +
+                          ago(updated, Date.now(), locale)
+                        : t(
+                            "Offline-Kopie noch nicht vollständig",
+                            "Offline copy not complete yet",
+                          )}
+                      {marker.pages !== undefined &&
+                        ` · ${pagesText(marker.pages)}`}
+                      {marker.bytes !== undefined && ` · ${bytes(marker.bytes)}`}
+                    </span>
+                  )}
+                  {syncStatus}
                   <span className="offline-app" data-testid="offline-app">
                     {appState(marker)}
                   </span>
                   {inApp && (
-                    <>
-                      <br />
-                      <span
-                        className="offline-in-app"
-                        data-testid="offline-in-app"
-                      >
-                        {t(
-                          "In der Flowplan-App gespeichert: Ohne Verbindung öffnet die App diese Kopie, Änderungen werden danach abgeglichen.",
-                          "Stored in the Flowplan app: without a connection the app opens this copy, changes are synced afterwards.",
-                        )}
-                      </span>
-                    </>
+                    <span
+                      className="offline-in-app"
+                      data-testid="offline-in-app"
+                    >
+                      {t(
+                        "In der Flowplan-App gespeichert: Ohne Verbindung öffnet die App diese Kopie, Änderungen werden danach abgeglichen.",
+                        "Stored in the Flowplan app: without a connection the app opens this copy, changes are synced afterwards.",
+                      )}
+                    </span>
                   )}
                 </span>
               }
@@ -369,10 +436,15 @@ export function OfflineSettings({
               <StatusBadge tone={updated ? "ok" : "warn"}>
                 {t("An", "On")}
               </StatusBadge>
-              <button className="button" disabled={busy} onClick={update}>
+              <button className="button" disabled={busy} aria-describedby={busy ? waitId : undefined} onClick={() => void update()}>
                 {t("Jetzt aktualisieren", "Update now")}
               </button>
             </SettingRow>
+            {syncing && (
+              <div className="offline-sync-float" aria-hidden="true">
+                {statusHidden && <span data-testid="offline-sync-float">{syncText}</span>}
+              </div>
+            )}
             {persisted !== "unknown" && (
               <SettingRow
                 label={t("Speicher auf diesem Gerät", "Storage on this device")}
@@ -391,14 +463,18 @@ export function OfflineSettings({
             )}
             <SettingRow
               label={t("Speicherbudget", "Storage budget")}
-              description={t(
-                `Für Eintragsinhalte und Dateien auf diesem Gerät – zuerst für das, was du offline behältst. Standard hier: ${bytes(defaultBudget(platform))}. Der freie Platz des Geräts begrenzt es zusätzlich.`,
-                `For record contents and files on this device – first for what you keep offline. Default here: ${bytes(defaultBudget(platform))}. The device's free space limits it as well.`,
+              description={withWait(
+                t(
+                  `Für Eintragsinhalte und Dateien auf diesem Gerät – zuerst für das, was du offline behältst. Standard hier: ${bytes(defaultBudget(platform))}. Der freie Platz des Geräts begrenzt es zusätzlich.`,
+                  `For record contents and files on this device – first for what you keep offline. Default here: ${bytes(defaultBudget(platform))}. The device's free space limits it as well.`,
+                ),
+                true,
               )}
             >
               <Select
                 className={CONTROL.sm}
                 aria-label={t("Speicherbudget", "Storage budget")}
+                aria-describedby={busy ? waitId : undefined}
                 value={limit}
                 disabled={busy}
                 onChange={(e) => void budget(Number(e.currentTarget.value))}
@@ -418,19 +494,24 @@ export function OfflineSettings({
                 "Auch Eintragsinhalte und Dateien speichern",
                 "Also store record contents and files",
               )}
-              description={t(
-                `Alle, bis zum Speicherbudget (${bytes(limit)}); sonst nur, was du schon geöffnet hast oder offline behältst.`,
-                `All of them, up to the storage budget (${bytes(limit)}); otherwise only what you have opened or keep offline.`,
+              description={withWait(
+                t(
+                  `Alle, bis zum Speicherbudget (${bytes(limit)}); sonst nur, was du schon geöffnet hast oder offline behältst.`,
+                  `All of them, up to the storage budget (${bytes(limit)}); otherwise only what you have opened or keep offline.`,
+                ),
               )}
               checked={!!marker.includeRecords}
               disabled={busy}
+              describedBy={busy ? waitId : undefined}
               onChange={(on) => void records(on)}
             />
             <SettingRow
               label={t("Offline behalten", "Keep offline")}
-              description={t(
-                "Bereiche, Seiten mit ihren Unterseiten und Datenbanken, deren Eintragsinhalte und Dateien dieses Gerät immer speichert – auch nie geöffnete. Wähle sie unten oder im Menü „⋯“ eines Bereichs oder einer Seite.",
-                "Spaces, pages with their sub-pages and databases whose record contents and files this device always stores – even ones never opened. Choose them below or in the “⋯” menu of a space or page.",
+              description={withWait(
+                t(
+                  "Bereiche, Seiten mit ihren Unterseiten und Datenbanken, deren Eintragsinhalte und Dateien dieses Gerät immer speichert – auch nie geöffnete. Wähle sie unten oder im Menü „⋯“ eines Bereichs oder einer Seite.",
+                  "Spaces, pages with their sub-pages and databases whose record contents and files this device always stores – even ones never opened. Choose them below or in the “⋯” menu of a space or page.",
+                ),
               )}
             >
               {null}
@@ -447,7 +528,7 @@ export function OfflineSettings({
                       : t("Seite mit ihren Unterseiten", "Page with its sub-pages")
                   }
                 >
-                  <button className="button" disabled={busy} onClick={() => void keep(item, false)}>
+                  <button className="button" disabled={busy} aria-describedby={busy ? waitId : undefined} onClick={() => void keep(item, false)}>
                     {t("Nicht mehr offline behalten", "Stop keeping offline")}
                   </button>
                 </SettingRow>
@@ -475,6 +556,7 @@ export function OfflineSettings({
                         <Switch
                           checked={isKept(marker.keep, { kind: "space", id: row.id })}
                           disabled={busy}
+                          describedBy={busy ? waitId : undefined}
                           label={t(`${row.name} offline behalten`, `Keep ${row.name} offline`)}
                           onChange={(on) => void keep({ kind: "space", id: row.id }, on)}
                         />
@@ -499,6 +581,7 @@ export function OfflineSettings({
               <button
                 className="button danger"
                 disabled={busy}
+                aria-describedby={busy ? waitId : undefined}
                 onClick={disable}
               >
                 {t("Offline-Kopien entfernen", "Remove offline copies")}
@@ -522,13 +605,7 @@ export function OfflineSettings({
             </button>
           </SettingRow>
         )}
-        {(progress || message) && (
-          <p className="setting-note" role="status">
-            {progress
-              ? `${t("Wird gespeichert …", "Saving …")} ${progress[0]} ${t("von", "of")} ${progress[1]}`
-              : message}
-          </p>
-        )}
+        {supported && !enabled && (syncing || message) && <p className="setting-note">{syncStatus}</p>}
         <SettingRow
           label={t("Synchronisierung", "Sync")}
           description={t(
