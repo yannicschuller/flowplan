@@ -109,6 +109,7 @@ import { togglesAround, withTitleFocus } from "@/lib/toggle-view";
 import { toggleDocumentKey } from "@/lib/toggle-memory";
 import { Tab, Tabs } from "@/lib/tabs-block";
 import { newTabs } from "@/lib/tabs-commands";
+import { ColumnKeys, insideColumn } from "@/lib/columns-block";
 import { ShortcutBlockquote } from "@/lib/quote-shortcut";
 import { quoteShortcut } from "@/lib/quote-shortcut-pref-client";
 import { useFormattingToolbar } from "@/lib/toolbar-pref-client";
@@ -225,6 +226,8 @@ import {
   CaretDown,
   TextIndent,
   TextOutdent,
+  Columns as ColumnsIcon,
+  Kanban,
 } from "@phosphor-icons/react";
 import { Cloze } from "@/lib/cloze-mark";
 import { canShiftText, pressTab } from "@/lib/block-indent";
@@ -1028,6 +1031,8 @@ export default function DocumentEditor({
         PageLinkIcons,
         Columns,
         Column,
+        // Backspace or Delete in an empty column removes it.
+        ColumnKeys,
         // Tabs (#272): the tab shown is remembered per person and device,
         // like closed toggles; a deleted tab can be taken back.
         Tabs.configure({
@@ -2081,6 +2086,27 @@ export default function DocumentEditor({
     const note = await recordInApp({ summarize: !embedded && aiSummarize === "ok", serverTranscription: transcription }, onError);
     if (note) await insertVoice(note.file, !!note.transcript || (note.text && transcription), note.summarize && aiSummarize === "ok", false, note.transcript);
   };
+  // A columns block (lib/columns-block.ts) with an empty paragraph in each
+  // column; writing starts in the first. Not inside another one.
+  const insertColumns = (count: number) => {
+    if (!editor) return;
+    if (insideColumn(editor.state.doc, editor.state.selection.from))
+      return onError(t("Spalten lassen sich nicht verschachteln.", "Columns cannot be nested."));
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "columns",
+        content: Array.from({ length: count }, () => ({ type: "column", content: [{ type: "paragraph" }] })),
+      })
+      .run();
+    const { $from } = editor.state.selection;
+    for (let depth = $from.depth; depth > 0; depth--)
+      if ($from.node(depth).type.name === "columns") {
+        editor.commands.setTextSelection($from.before(depth) + 3);
+        break;
+      }
+  };
   // Every block of the "/" menu, with a stable id (remembered as recently
   // used) and its section. Second levels (the callout kinds) are reached
   // by choosing the entry or found directly when typing. Entries of a
@@ -2573,34 +2599,24 @@ export default function DocumentEditor({
         setLinkedPicker(true);
       },
     },
+    // Columns (2 or 3) side by side; the toolbar's button inserts two.
     {
       id: "columns",
       group: "blocks",
-      name: t("Zwei Spalten", "Two columns"),
-      keywords: ["spalten", "columns", "cols"],
-      description: t("Inhalte nebeneinander", "Content side by side"),
-      icon: TableIcon,
-      run: () => {
-        if (!editor) return;
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: "columns",
-            content: [
-              { type: "column", content: [{ type: "paragraph" }] },
-              { type: "column", content: [{ type: "paragraph" }] },
-            ],
-          })
-          .run();
-        // Writing starts in the left column, not where the insertion ended.
-        const { $from } = editor.state.selection;
-        for (let depth = $from.depth; depth > 0; depth--)
-          if ($from.node(depth).type.name === "columns") {
-            editor.commands.setTextSelection($from.before(depth) + 3);
-            break;
-          }
-      },
+      name: t("Spalten", "Columns"),
+      keywords: ["spalten", "columns", "cols", "nebeneinander", "side by side"],
+      description: t("Inhalte nebeneinander, auf dem Handy untereinander", "Content side by side, stacked on phones"),
+      icon: ColumnsIcon,
+      run: () => insertColumns(2),
+      children: [2, 3].map((count) => ({
+        id: `columns-${count}`,
+        group: "blocks" as const,
+        name: count === 2 ? t("2 Spalten", "2 columns") : t("3 Spalten", "3 columns"),
+        keywords: ["spalten", "columns", "cols", String(count)],
+        description: count === 2 ? t("Zwei Spalten nebeneinander", "Two columns side by side") : t("Drei Spalten nebeneinander", "Three columns side by side"),
+        icon: count === 2 ? ColumnsIcon : Kanban,
+        run: () => insertColumns(count),
+      })),
     },
     {
       id: "tabs",

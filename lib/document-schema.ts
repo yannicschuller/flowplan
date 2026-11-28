@@ -61,6 +61,7 @@ import { ListTidy, TabStaysInText } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
 import { Tab, Tabs } from "./tabs-block";
+import { Column, Columns } from "./columns-block";
 export const IMAGE_ALIGNS = ["center", "right"] as const;
 export const imageAlign = (value: unknown): (typeof IMAGE_ALIGNS)[number] | null =>
   IMAGE_ALIGNS.includes(value as (typeof IMAGE_ALIGNS)[number]) ? (value as (typeof IMAGE_ALIGNS)[number]) : null;
@@ -1094,29 +1095,8 @@ function directionAt(view: EditorView, pos: number) {
     return "ltr";
   }
 }
-export const Columns = Node.create({
-  name: "columns",
-  group: "block",
-  content: "column{2,3}",
-  defining: true,
-  parseHTML: () => [{ tag: "div[data-columns]" }],
-  renderHTML: () => [
-    "div",
-    { "data-columns": "true", class: "editor-columns" },
-    0,
-  ],
-});
-export const Column = Node.create({
-  name: "column",
-  content: "block+",
-  isolating: true,
-  parseHTML: () => [{ tag: "div[data-column]" }],
-  renderHTML: () => [
-    "div",
-    { "data-column": "true", class: "editor-column" },
-    0,
-  ],
-});
+// The columns block (lib/columns-block.ts).
+export { Column, Columns } from "./columns-block";
 export const MEDIA_WIDTHS = [25, 50, 75, 100] as const;
 function mediaWidth(style: string | null) {
   const value = Number(/(?:^|;)\s*width\s*:\s*(\d+)%/i.exec(style || "")?.[1]);

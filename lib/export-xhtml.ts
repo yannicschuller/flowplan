@@ -3,6 +3,7 @@
 // (lib/export-content.ts), so every block gets a plain, self-contained form:
 // no scripts, no app classes, pictures where the context allows them.
 import { tabTitle } from "./tabs-commands";
+import { columnShares, columnWidth } from "./columns-block";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
 import { STATUS_BOX, continuedSuffix, shownStatusOf, taskSymbolOf } from "./task-status";
@@ -308,7 +309,15 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       }
       case "columns": {
         let result = "";
-        node.forEach((column) => (result += `<div class="column">${children(column)}</div>`));
+        // Resized columns keep their shares (the print view's flex weights,
+        // lib/export-pdf.ts); the e-book shows them one below the other.
+        let resized = false;
+        node.forEach((column) => (resized ||= columnWidth(column.attrs.width) !== null));
+        const shares = columnShares(node);
+        node.forEach(
+          (column, _offset, index) =>
+            (result += `<div class="column"${resized ? ` data-width="${Math.round(shares[index])}"` : ""}>${children(column)}</div>`),
+        );
         return `<div class="columns">${result}</div>`;
       }
       // Tabs (#272): every tab one after another, its title as a heading.

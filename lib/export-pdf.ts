@@ -21,6 +21,8 @@ import { listLevelCss } from "./list-levels";
 import type { Identity } from "./types";
 
 export const PDF_MAX_PAGES = 200;
+// Resized columns (lib/export-xhtml.ts): their share of the row as flex weight.
+const COLUMN_SHARE_STYLE = Array.from({ length: 99 }, (_, i) => `.print-book .column[data-width="${i + 1}"] { flex-grow: ${i + 1}; }`).join(" ");
 // Paper, page numbers, link addresses, title size and typefaces come from
 // the print options (#215, lib/print-options.ts printOptionsCss).
 export const PRINT_STYLE = `html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -79,7 +81,8 @@ ${listLevelCss(".print-book")}
 .print-book hr { border: 0; border-top: 1px solid #ccc; margin: 1.5em 0; }
 .print-book .page-break { break-after: page; page-break-after: always; height: 0; margin: 0; border: 0; }
 .print-book .columns { display: flex; gap: 1.5em; }
-.print-book .columns .column { flex: 1; min-width: 0; }
+.print-book .columns .column { flex: 1 1 0; min-width: 0; }
+${COLUMN_SHARE_STYLE}
 .print-book .tabs .tab { margin: 1em 0; padding-left: 1em; border-left: 2px solid #ccc; }
 .print-book .tab-title { margin: 0 0 0.4em; font-size: 11pt; font-family: Helvetica, Arial, sans-serif; break-after: avoid; page-break-after: avoid; }
 .print-book .placeholder, .print-book .media, .print-book .linked-database, .print-book .whiteboard { color: #555; font-style: italic; }

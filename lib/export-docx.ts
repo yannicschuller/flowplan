@@ -5,6 +5,7 @@
 // a monospace style and footnotes as real footnotes – packed as a ZIP
 // (lib/archive.ts).
 import { tabTitle } from "./tabs-commands";
+import { columnShares } from "./columns-block";
 import type { Node } from "@tiptap/pm/model";
 import { STATUS_BOX, continuedSuffix, shownStatusOf } from "./task-status";
 import { audit } from "./db";
@@ -455,6 +456,29 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     // caption or an empty one.
     if (!captionParagraph(node, block)) body.push("<w:p/>");
   }
+  // Columns (lib/columns-block.ts) side by side as a table without borders,
+  // one row with a cell per column at its share of the text width. Inside
+  // a table they follow one another.
+  function columns(node: Node, block: Block) {
+    if (block.inTable) return node.forEach((column) => children(column, block));
+    const shares = columnShares(node);
+    const widths = shares.map((share) => Math.floor((TABLE_WIDTH_TWIPS * share) / 100));
+    let cells = "";
+    node.forEach((column, _offset, index) => {
+      const start = body.length;
+      children(column, { ...block, indent: 0, numPr: undefined, border: undefined, shading: undefined, inTable: true });
+      const content = body.splice(start).join("") || "<w:p/>";
+      // A cell ends with a paragraph (after a table there is one already).
+      cells += `<w:tc><w:tcPr><w:tcW w:w="${widths[index]}" w:type="dxa"/></w:tcPr>${content.endsWith("</w:tbl>") ? `${content}<w:p/>` : content}</w:tc>`;
+    });
+    const none = ["top", "left", "bottom", "right", "insideH", "insideV"].map((side) => `<w:${side} w:val="nil"/>`).join("");
+    body.push(
+      `<w:tbl><w:tblPr><w:tblW w:w="${TABLE_WIDTH_TWIPS}" w:type="dxa"/>${block.indent ? `<w:tblInd w:w="${block.indent}" w:type="dxa"/>` : ""}<w:tblBorders>${none}</w:tblBorders><w:tblLayout w:type="fixed"/>` +
+        `<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="227" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/></w:tblPr>` +
+        `<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid><w:tr>${cells}</w:tr></w:tbl>`,
+    );
+    body.push("<w:p/>");
+  }
   function blockNode(node: Node, block: Block): ReturnType<typeof blockOf> {
     return node.type.name === "meeting" ? cites.within(node, () => blockOf(node, block)) : blockOf(node, block);
   }
@@ -549,7 +573,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         paragraph(run({ text: String(node.attrs.title || "Details"), props: { b: true } }), paragraphProps(null, block));
         return children(node, block);
       case "columns":
-        return node.forEach((column) => children(column, block));
+        return columns(node, block);
       // Tabs (#272): each tab's title as a heading, its content below.
       case "tabs":
         return node.forEach((tab) => {

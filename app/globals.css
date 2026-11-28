@@ -8953,18 +8953,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .editor-wrapper .ProseMirror :is(h1, h2, h3, h4) {
   scroll-margin-top: 80px;
 }
-.editor-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
-  margin: 18px 0;
-}
-.editor-column {
-  min-width: 0;
-  padding: 4px;
-  border: 1px dashed var(--border);
-  border-radius: 4px;
-}
+/* The columns block: app/columns-block.css. */
 .reference-list h3 {
   font-size: 13px;
   color: var(--muted);
@@ -8999,19 +8988,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   margin: 0;
 }
 @media (max-width: 767.98px) {
-  .editor-columns {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
   .search-results small {
     max-width: 230px;
   }
 }
 @container main (max-width: 767.98px) {
-  .editor-columns {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
   .search-results small {
     max-width: 230px;
   }
