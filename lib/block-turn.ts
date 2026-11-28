@@ -11,6 +11,7 @@ import { titleText, turnIntoToggle } from "./toggle-commands";
 import { toggleHeading } from "./document-schema";
 import { BLOCK_COLOR_TYPES, blockColor } from "./block-colors";
 import { MAX_COLUMNS } from "./document-blocks";
+import { containsColumns } from "./columns-block";
 import { beginUndoStep } from "./node-target";
 
 const LIST_ITEMS = ["listItem", "taskItem"];
@@ -234,7 +235,8 @@ export function blocksToColumns(trn: Transaction, from: number, to: number, coun
   if (!columns || !column || count < 2 || count > MAX_COLUMNS) return false;
   const blocks: PMNode[] = [];
   trn.doc.slice(from, to).content.forEach((node) => blocks.push(node));
-  if (!blocks.length || blocks.some((b) => b.type === column || LIST_ITEMS.includes(b.type.name))) return false;
+  // No columns inside columns (lib/columns-block.ts).
+  if (!blocks.length || blocks.some((b) => b.type === column || LIST_ITEMS.includes(b.type.name) || containsColumns(b))) return false;
   const per = Math.ceil(blocks.length / count);
   const parts: PMNode[] = [];
   for (let i = 0; i < count; i++) {

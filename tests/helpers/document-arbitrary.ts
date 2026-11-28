@@ -1,5 +1,5 @@
 // Random editor documents for property-based tests (fast-check): headings,
-// paragraphs, lists, task lists, tables, code and quotes, with links and
+// paragraphs, lists, task lists, tables, code, quotes and columns, with links and
 // marks over nasty text (tests/helpers/properties.ts), as HTML.
 import fc from "fast-check";
 import { nastyText } from "./properties";
@@ -46,9 +46,11 @@ const blocks = (options: Options) => {
   const markdown = !!options.markdown;
   const runs = fc.array(inline(options), { minLength: 1, maxLength: 4 });
   const paragraph = runs.map((r) => `<p>${inlineHtml(r)}</p>`);
+  const heading = fc.tuple(fc.integer({ min: 1, max: 3 }), runs).map(([level, r]) => `<h${level}>${inlineHtml(r)}</h${level}>`);
+  const quote = paragraph.map((p) => `<blockquote>${p}</blockquote>`);
   return fc.oneof(
     { weight: 4, arbitrary: paragraph },
-    { weight: 2, arbitrary: fc.tuple(fc.integer({ min: 1, max: 3 }), runs).map(([level, r]) => `<h${level}>${inlineHtml(r)}</h${level}>`) },
+    { weight: 2, arbitrary: heading },
     {
       weight: 2,
       arbitrary: fc
@@ -99,7 +101,30 @@ const blocks = (options: Options) => {
             `<pre><code${language ? ` class="language-${language}"` : ""}>${escaped(markdown ? code.replace(/\n?$/, "\n") : code)}</code></pre>`,
         ),
     },
-    { weight: 1, arbitrary: paragraph.map((p) => `<blockquote>${p}</blockquote>`) },
+    { weight: 1, arbitrary: quote },
+    // Columns (lib/columns-block.ts), some resized; not in Markdown, which
+    // shows them one after another.
+    ...(markdown
+      ? []
+      : [
+          {
+            weight: 1,
+            arbitrary: fc
+              .array(
+                fc.tuple(
+                  fc.array(fc.oneof(paragraph, heading, quote), { minLength: 1, maxLength: 2 }),
+                  fc.option(fc.integer({ min: 20, max: 80 }), { nil: undefined }),
+                ),
+                { minLength: 2, maxLength: 3 },
+              )
+              .map(
+                (columns) =>
+                  `<div data-columns="true">${columns
+                    .map(([inner, width]) => `<div data-column="true"${width ? ` data-width="${width}"` : ""}>${inner.join("")}</div>`)
+                    .join("")}</div>`,
+              ),
+          },
+        ]),
   );
 };
 // Random documents. `markdown`: only what Markdown can hold (see above);

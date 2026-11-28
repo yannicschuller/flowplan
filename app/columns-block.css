@@ -1,0 +1,287 @@
+/* ---------- The columns block (lib/columns-block.ts, lib/columns-view.ts) ----------
+   Two or three columns side by side. Stored and published HTML has the
+   columns right inside .editor-columns; the editor puts them in a row of
+   their own (.editor-columns-row) next to the resize handles. A column's
+   data-width (20–80, its share of the row after a resize) is its flex
+   weight; without one the columns share the row equally. */
+.editor-columns {
+  --columns-count: 2;
+  --column-share: 50;
+  --columns-gap: 22px;
+  /* Side by side only while every column gets at least this much. */
+  --column-min: 320px;
+  position: relative;
+  margin: 18px 0;
+}
+.editor-columns:has(> .editor-column ~ .editor-column ~ .editor-column),
+.editor-columns:has(> .editor-columns-row > .editor-column ~ .editor-column ~ .editor-column) {
+  --columns-count: 3;
+  --column-share: 33.333;
+}
+.editor-columns:not(:has(> .editor-columns-row)),
+.editor-columns-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px var(--columns-gap);
+}
+/* Each column grows by its weight from nothing while the row has room for
+   all of them at --column-min. Below that the basis is wider than the row
+   and every column takes a line of its own: stacked, on phones and in
+   narrow panes alike, without a media query. */
+.editor-column {
+  flex: var(--column-width, var(--column-share)) 1
+    calc((var(--columns-count) * var(--column-min) + (var(--columns-count) - 1) * var(--columns-gap) - 100%) * 999);
+  min-width: 0;
+  padding: 4px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+.editor-column[data-width="20"] {
+  --column-width: 20;
+}
+.editor-column[data-width="21"] {
+  --column-width: 21;
+}
+.editor-column[data-width="22"] {
+  --column-width: 22;
+}
+.editor-column[data-width="23"] {
+  --column-width: 23;
+}
+.editor-column[data-width="24"] {
+  --column-width: 24;
+}
+.editor-column[data-width="25"] {
+  --column-width: 25;
+}
+.editor-column[data-width="26"] {
+  --column-width: 26;
+}
+.editor-column[data-width="27"] {
+  --column-width: 27;
+}
+.editor-column[data-width="28"] {
+  --column-width: 28;
+}
+.editor-column[data-width="29"] {
+  --column-width: 29;
+}
+.editor-column[data-width="30"] {
+  --column-width: 30;
+}
+.editor-column[data-width="31"] {
+  --column-width: 31;
+}
+.editor-column[data-width="32"] {
+  --column-width: 32;
+}
+.editor-column[data-width="33"] {
+  --column-width: 33;
+}
+.editor-column[data-width="34"] {
+  --column-width: 34;
+}
+.editor-column[data-width="35"] {
+  --column-width: 35;
+}
+.editor-column[data-width="36"] {
+  --column-width: 36;
+}
+.editor-column[data-width="37"] {
+  --column-width: 37;
+}
+.editor-column[data-width="38"] {
+  --column-width: 38;
+}
+.editor-column[data-width="39"] {
+  --column-width: 39;
+}
+.editor-column[data-width="40"] {
+  --column-width: 40;
+}
+.editor-column[data-width="41"] {
+  --column-width: 41;
+}
+.editor-column[data-width="42"] {
+  --column-width: 42;
+}
+.editor-column[data-width="43"] {
+  --column-width: 43;
+}
+.editor-column[data-width="44"] {
+  --column-width: 44;
+}
+.editor-column[data-width="45"] {
+  --column-width: 45;
+}
+.editor-column[data-width="46"] {
+  --column-width: 46;
+}
+.editor-column[data-width="47"] {
+  --column-width: 47;
+}
+.editor-column[data-width="48"] {
+  --column-width: 48;
+}
+.editor-column[data-width="49"] {
+  --column-width: 49;
+}
+.editor-column[data-width="50"] {
+  --column-width: 50;
+}
+.editor-column[data-width="51"] {
+  --column-width: 51;
+}
+.editor-column[data-width="52"] {
+  --column-width: 52;
+}
+.editor-column[data-width="53"] {
+  --column-width: 53;
+}
+.editor-column[data-width="54"] {
+  --column-width: 54;
+}
+.editor-column[data-width="55"] {
+  --column-width: 55;
+}
+.editor-column[data-width="56"] {
+  --column-width: 56;
+}
+.editor-column[data-width="57"] {
+  --column-width: 57;
+}
+.editor-column[data-width="58"] {
+  --column-width: 58;
+}
+.editor-column[data-width="59"] {
+  --column-width: 59;
+}
+.editor-column[data-width="60"] {
+  --column-width: 60;
+}
+.editor-column[data-width="61"] {
+  --column-width: 61;
+}
+.editor-column[data-width="62"] {
+  --column-width: 62;
+}
+.editor-column[data-width="63"] {
+  --column-width: 63;
+}
+.editor-column[data-width="64"] {
+  --column-width: 64;
+}
+.editor-column[data-width="65"] {
+  --column-width: 65;
+}
+.editor-column[data-width="66"] {
+  --column-width: 66;
+}
+.editor-column[data-width="67"] {
+  --column-width: 67;
+}
+.editor-column[data-width="68"] {
+  --column-width: 68;
+}
+.editor-column[data-width="69"] {
+  --column-width: 69;
+}
+.editor-column[data-width="70"] {
+  --column-width: 70;
+}
+.editor-column[data-width="71"] {
+  --column-width: 71;
+}
+.editor-column[data-width="72"] {
+  --column-width: 72;
+}
+.editor-column[data-width="73"] {
+  --column-width: 73;
+}
+.editor-column[data-width="74"] {
+  --column-width: 74;
+}
+.editor-column[data-width="75"] {
+  --column-width: 75;
+}
+.editor-column[data-width="76"] {
+  --column-width: 76;
+}
+.editor-column[data-width="77"] {
+  --column-width: 77;
+}
+.editor-column[data-width="78"] {
+  --column-width: 78;
+}
+.editor-column[data-width="79"] {
+  --column-width: 79;
+}
+.editor-column[data-width="80"] {
+  --column-width: 80;
+}
+/* Files, PDFs and pictures shrink to the column. */
+.editor-column :is(.pdf-card, .pdf-card-name, .model-card, .model-card-name, img, video, iframe) {
+  max-width: 100%;
+}
+/* The handles in the gaps (editor only). */
+.editor-columns-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.editor-columns-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--handle-left, 0);
+  width: 16px;
+  margin-left: -8px;
+  border-radius: 4px;
+  pointer-events: auto;
+  cursor: col-resize;
+  touch-action: none;
+}
+.editor-columns-resize::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--blue);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.editor-columns-resize:is(:hover, :focus-visible, :active)::after {
+  opacity: 1;
+}
+.editor-columns-resize:focus-visible {
+  outline: none;
+}
+.editor-columns.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.editor-columns[data-stacked] > .editor-columns-handles,
+.ProseMirror[contenteditable="false"] .editor-columns-handles {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-columns-resize::after {
+    transition: none;
+  }
+}
+/* Paper is narrower than a screen: side by side down to smaller columns. */
+@media print {
+  .editor-columns {
+    --column-min: 200px;
+  }
+  .editor-column {
+    padding: 0;
+    border: 0;
+  }
+  .editor-columns-handles {
+    display: none;
+  }
+}

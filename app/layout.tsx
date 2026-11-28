@@ -26,6 +26,7 @@ import "./link-rules.css";
 import "./print-options.css";
 import "./page-icon-inline.css";
 import "./tabs-block.css";
+import "./columns-block.css";
 import "./whats-new.css";
 import "./emergency-access.css";
 import "./dead-man-switch.css";

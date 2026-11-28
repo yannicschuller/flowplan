@@ -15,12 +15,15 @@ import { cleanFlowSource, cleanFlowUnit } from "./flow-diagram";
 import { isPageBreakStyle } from "./page-break-node";
 import { occlusionAttribute } from "./study-occlusion";
 import { MEETING_LANGUAGES } from "./meeting-core";
+import { COLUMN_WIDTH_VALUES } from "./columns-block";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 // Block and cell colours (#238, #240, lib/block-colors.ts) and toggle headings: only their names.
 const blockColorAttr = { name: "data-block-color", multiple: false, values: BLOCK_COLOR_VALUES };
 const toggleHeadingAttr = { name: "data-heading", multiple: false, values: ["1", "2", "3", "4"] };
 // A meeting's language (lib/meeting-schema.ts): only the languages it offers.
 const meetingLanguageAttr = { name: "data-meeting-language", multiple: false, values: [...MEETING_LANGUAGES] };
+// A column's width in percent (lib/columns-block.ts): only the whole numbers it may have.
+const columnWidthAttr = { name: "data-width", multiple: false, values: COLUMN_WIDTH_VALUES };
 // cleanHtml with a transform that awaits (database lookups, #127): the
 // tags are collected in a first pass, transformed one after the other, and
 // the results applied in a second pass over the same HTML – sanitize-html
@@ -192,8 +195,9 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       td: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
       th: ["colspan", "rowspan", "colwidth", dir, blockColorAttr],
       details: ["open", dir, blockColorAttr, toggleHeadingAttr],
-      // The meeting block's language (on its <div data-meeting>).
-      div: [meetingLanguageAttr],
+      // The meeting block's language (on its <div data-meeting>), a
+      // column's width.
+      div: [meetingLanguageAttr, columnWidthAttr],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],
       iframe: ["src", "title", "allowfullscreen", "sandbox", "loading"],

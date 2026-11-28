@@ -9,6 +9,7 @@ import {
 import { freshLinkedIds } from "./linked-paste";
 import { withoutBlockIds } from "./block-ids";
 import type { BlockMove } from "./comment-positions";
+import { NESTED_COLUMNS, hasNestedColumns, setColumnWidths } from "./columns-block";
 export type DocumentBlock = {
   pos: number;
   end: number;
@@ -533,6 +534,8 @@ export function columnBlocks(
           : $target.after($target.depth);
     start = tr.mapping.map(anchor, side === "left" ? -1 : 1);
     tr.insert(start, created);
+    // Another column: equal widths again.
+    setColumnWidths(tr, tr.mapping.map(layout.pos), null);
   } else {
     const from = tr.mapping.map(target.pos),
       to = tr.mapping.map(target.end);
@@ -558,6 +561,7 @@ export function columnBlocks(
     tr.replaceWith(single.pos, single.pos + single.size, single.content);
     start = tr.mapping.slice(tr.mapping.maps.length - 1).map(start);
   }
+  if (hasNestedColumns(tr.doc)) throw new Error(NESTED_COLUMNS);
   try {
     tr.doc.check();
   } catch {

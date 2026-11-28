@@ -1834,6 +1834,21 @@ export function DocumentBlockControls({
       items.push({ icon: <ArrowsClockwise />, label: t("Umwandeln in …", "Turn into …"), keywords: "turn into convert umwandeln", view: "turn" });
       views.turn = { title: t("Umwandeln in …", "Turn into …"), items: turns };
     }
+    // Two or three chosen blocks side by side: each in a column of its own.
+    const besides = many && editor.isEditable && rangeValid ? blockRange(editor.state.doc, selected.current) : null;
+    if (besides && besides.blocks.length <= MAX_COLUMNS && blocksToColumns(editor.state.tr, besides.from, besides.to, besides.blocks.length))
+      items.push({
+        icon: <Columns />,
+        label: t("Nebeneinander", "Side by side"),
+        keywords: "side by side nebeneinander columns spalten",
+        run: () => {
+          const tr = editor.state.tr;
+          if (!blocksToColumns(tr, besides.from, besides.to, besides.blocks.length))
+            return setError(t("Diese Blöcke lassen sich nicht in Spalten setzen.", "These blocks cannot be put into columns."));
+          applyBlockChange(editor, tr.scrollIntoView());
+          focusEditor();
+        },
+      });
     // All tasks at once (#309): the checklist of a task, or the tasks in
     // the chosen blocks – back to open (a packing list used again) or done.
     const taskPositions = editor.isEditable ? blockMenuTasks(editor.state.doc, selected.current) : [];
