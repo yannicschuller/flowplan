@@ -80,13 +80,25 @@
   padding: 6px 0;
   font-size: var(--text-base);
 }
+/* The groups stand apart (#656): a line above each one and a heading in
+   the text colour, so Persönlich, Verbindungen, Arbeitsbereich … read as
+   blocks rather than one long list. The instance's first group has the
+   "Instanz – nur für Admins" line above it already. */
+.sv-side-group {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.sv-side-group:has(> .sv-side-scope) {
+  margin-top: 0;
+  border-top: 0;
+}
 .sv-side-group h3 {
-  margin: 14px 8px 4px;
+  margin: 12px 8px 4px;
   font-size: var(--text-xs-plus);
-  font-weight: 600;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text);
 }
 .sv-side-scope {
   display: flex;
@@ -1244,6 +1256,11 @@
     min-height: 44px;
     margin-bottom: 8px;
     border-radius: 12px;
+  }
+  /* Phones: each group is a card of its own already, no line between. */
+  .sv-side-group {
+    margin-top: 0;
+    border-top: 0;
   }
   .sv-side-group h3 {
     margin: 18px 4px 6px;

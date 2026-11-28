@@ -30,6 +30,20 @@
       "issues": [
         636
       ]
+    },
+    {
+      "de": "Exportieren eines Bereichs steht jetzt im Menü „…“ neben seinem Namen in der Seitenleiste statt als eigenes Symbol. So passen die übrigen Symbole auch bei schmaler Seitenleiste neben den Namen und rutschen seltener in eine zweite Zeile.",
+      "en": "Exporting a space is now in the “…” menu next to its name in the sidebar instead of an icon of its own. The remaining icons fit next to the name even in a narrow sidebar and wrap to a second row less often.",
+      "issues": [
+        674
+      ]
+    },
+    {
+      "de": "Die Gruppen in der Seitenleiste der Einstellungen sind jetzt klar getrennt: eine Linie über jeder Gruppe und eine deutlichere Überschrift. Auf dem Handy bleibt jede Gruppe ein eigener Block.",
+      "en": "The groups in the settings sidebar are now clearly separated: a line above each group and a more prominent heading. On phones each group stays a block of its own.",
+      "issues": [
+        656
+      ]
     }
   ],
   "fixes": [

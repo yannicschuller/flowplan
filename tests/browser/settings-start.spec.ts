@@ -219,6 +219,41 @@ const LINKS: Record<string, string> = {
 const centre = async (l: ReturnType<Page["locator"]>) => await l.evaluate((e) => e.scrollIntoView({ block: "center" }));
 const ids = (page: Page) => page.locator(".sv-glance-panel").evaluateAll((els) => els.map((e) => e.getAttribute("data-panel")));
 
+// #656: the sidebar's groups stand apart – a line above each group and a
+// heading in the text colour, not the faint muted one; the instance's first
+// group has only the "Instanz" line. Phones show each group as a card
+// without the line. Nothing folds.
+test("the sidebar's groups: a divider above each, a heading in the text colour", async ({ page }, info) => {
+  const phone = info.project.name === "mobile";
+  await signIn(page, true);
+  await open(page, phone ? "#settings" : "#settings/account");
+  const list = nav(page);
+  await expect(list.getByRole("heading", { name: "Persönlich", exact: true })).toBeAttached({ timeout: 30_000 });
+  // By the headings' ids: the workspace group carries the workspace's name.
+  const style = (group: string) =>
+    list.locator(`h3#settings-nav-${group}`).evaluate((h) => {
+      const group = h.closest(".sv-side-group")!;
+      const css = getComputedStyle(group);
+      const probe = document.createElement("span");
+      probe.style.color = "var(--text)";
+      group.append(probe);
+      const text = getComputedStyle(probe).color;
+      probe.remove();
+      return { border: css.borderTopStyle === "solid" ? parseFloat(css.borderTopWidth) : 0, color: getComputedStyle(h).color, text, weight: Number(getComputedStyle(h).fontWeight) };
+    });
+  for (const group of ["settings-personal", "settings-workspace", "settings-help", "admin-data"]) {
+    const s = await style(group);
+    expect(s.color, group).toBe(s.text);
+    expect(s.weight, group).toBeGreaterThanOrEqual(600);
+    expect(s.border, group).toBe(phone ? 0 : 1);
+  }
+  // The instance's first group: its own line, not a second one.
+  expect((await style("admin-people")).border).toBe(0);
+  await expect(list.getByRole("heading", { name: /^Instanz/ })).toHaveCSS("border-top-style", "solid");
+  // Every group stays open: no disclosure buttons in the headings.
+  await expect(list.locator(".sv-side-group h3 button")).toHaveCount(0);
+});
+
 test("an admin: live panels on top of the tiles, only what is on, each linked", async ({ page }, info) => {
   test.setTimeout(150_000);
   const mobile = info.project.name === "mobile";
