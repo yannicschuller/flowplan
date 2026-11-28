@@ -14,8 +14,9 @@
 //   sidebar) and leaves the card alone. The buttons are always there. On an
 //   image occlusion card two fingers zoom the picture, and zoomed in one
 //   finger pans it (./occlusion-zoom.ts claims those gestures).
-// - The intervals under the buttons come from lib/fsrs with the review's
-//   id as seed – the same the backend computes for the rating.
+// - The intervals under the buttons come from lib/fsrs, its fuzz seeded with
+//   the card and its count of reviews – the same the backend computes for
+//   the rating.
 // - The answer time is measured while the tab is visible, capped at 60 s.
 // - A dialog (aria-modal): the app's back gesture ends the session
 //   (lib/app-back.ts); motion follows the person's setting.
@@ -37,7 +38,7 @@ import { CHOICE_KEYS, ChoiceOptions, Side, TypedVerdict, choiceOrder, type Study
 import { OcclusionImage } from "./occlusion-image";
 import type { OcclusionCard } from "@/lib/study-content";
 import { compareTyped, type TypedResult } from "@/lib/study-compare";
-import { intervalOf, preview, type FsrsParams, type Memory, type StudyRating } from "@/lib/fsrs";
+import { fsrsCardId, intervalOf, preview, type FsrsParams, type Memory, type StudyRating } from "@/lib/fsrs";
 import { intervalText, minutesText } from "@/lib/study-interval";
 import type { TypedCompare } from "@/lib/study-schema";
 
@@ -295,7 +296,7 @@ export function FocusSession({
   const clock = deck ? { zone: deck.zone, dayStart: deck.dayStart } : { zone, dayStart: 4 };
   const outcomes = useMemo(
     // A card of a part of the deck with weights of its own (#344): its intervals.
-    () => (deck && shown ? preview(shown.card.memory, Date.now(), shown.card.weights ? { ...deck.params, weights: shown.card.weights } : deck.params, clock, shown.reviewId) : null),
+    () => (deck && shown ? preview(shown.card.memory, Date.now(), shown.card.weights ? { ...deck.params, weights: shown.card.weights } : deck.params, clock, fsrsCardId(shown.card.rowId, shown.card.sub)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [deck?.params, deck?.zone, deck?.dayStart, shown?.reviewId, shown?.revealed],
   );

@@ -23,6 +23,13 @@
       "issues": [
         639
       ]
+    },
+    {
+      "de": "Karteikarten planen jetzt mit ts-fsrs 6, weiterhin nach dem Modell FSRS-6. Gespeicherte Termine bleiben; ab der nächsten Wiederholung einer Karte streuen längere Intervalle etwas anders. Wer Flowplan ohne Docker installiert, braucht jetzt Node.js 24 oder neuer.",
+      "en": "Flashcards are now scheduled with ts-fsrs 6, still on the FSRS-6 model. Stored due dates stay; from a card’s next review on, longer intervals are spread slightly differently. Installing Flowplan without Docker now needs Node.js 24 or newer.",
+      "issues": [
+        636
+      ]
     }
   ],
   "fixes": [

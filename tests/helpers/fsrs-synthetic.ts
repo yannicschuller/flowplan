@@ -5,13 +5,14 @@
 // reviews at intervals of 0.3–3 times the stability (so retrievability
 // varies), recalled with probability R; a lapse is followed by a same-day
 // relearning step. Seeded: the same seed gives the same log.
-import { FSRSAlgorithm, generatorParameters, type Grade } from "ts-fsrs";
+import type { Grade } from "ts-fsrs";
+import { FSRS6Algorithm, FSRS6_MODEL_BOUNDS, clipFSRS6Parameters } from "ts-fsrs/models/fsrs-6";
 import { seeded, type TrainingCard } from "../../lib/fsrs/optimize";
 
 export const TRUE_WEIGHTS = [0.5, 2.0, 4.5, 20, 5.8, 1.2, 2.2, 0.02, 1.4, 0.25, 1.1, 1.8, 0.1, 0.35, 1.9, 0.4, 2.4, 0.6, 0.2, 0.1, 0.3];
 
 export function syntheticLog(weights: readonly number[], cards: number, seed: number, reviews = 8): TrainingCard[] {
-  const alg = new FSRSAlgorithm(generatorParameters({ w: [...weights], enable_short_term: true }));
+  const alg = new FSRS6Algorithm(clipFSRS6Parameters([...weights], 1, true), true, FSRS6_MODEL_BOUNDS);
   const random = seeded(seed);
   const pick = (shares: number[]) => {
     const x = random();

@@ -17,7 +17,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Node.js 22.13 or newer. Without OIDC settings the development server offers a local example account.
+Node.js 24 or newer. Without OIDC settings the development server offers a local example account.
 
 ## Pull requests
 

@@ -10,7 +10,9 @@ Schemanummer bleibt – nur neue Tabellen, und ältere Versionen behandeln den
 Ansichtstyp `study` wie zuvor `sprint` und `feed`; (3) Gäste einer
 freigegebenen Seite stehen in `members` (`lib/page-share.ts`), daher der
 Fremdschlüssel von `card_states` auf `members`; (4) `ts-fsrs` 5.4.2 (MIT,
-ohne Abhängigkeiten), Fuzz gesät mit der ID der Wertung.
+ohne Abhängigkeiten), Fuzz gesät mit der ID der Wertung – seit #636
+`ts-fsrs` 6 mit dem Modell FSRS-6, Fuzz gesät mit Karte und Zahl ihrer
+Wiederholungen (§4.4).
 Stand des Codes: `main` bei Schema 104 (`lib/db.ts:42`, `SCHEMA_VERSION = 104`),
 Next.js 16, Paketversion 0.9.8. Alle zitierten Dateien sind relativ zum
 jeweiligen Repository (`flowplan`, sofern nicht anders angegeben).
@@ -593,11 +595,16 @@ Wie Anki: Intervall < 2,5 Tage ohne Fuzz; 2,5–7 Tage ±15 %, 7–20 ±10 %,
 > 20 ±5 %, mindestens ±1 Tag; nie über `maxInterval`, nie kürzer als das
 vorige Intervall bei „Gut“ (Rangfolge Schwer < Gut < Leicht bleibt erhalten).
 
-**Wichtig für Offline und Vorschau:** der Zufall ist **deterministisch**,
-gesät aus `hash(review_id)`. Dann rechnet der Client (Vorschau auf den
-Knöpfen, Offline) dasselbe wie der Server, und eine wiederholte Übertragung
-derselben Wertung ergibt denselben Termin. `ts-fsrs` erlaubt einen eigenen
-Seed (zu prüfen).
+**Wichtig für Offline und Vorschau:** der Zufall ist **deterministisch**.
+Seit `ts-fsrs` 6 (#636) sät `ts-fsrs` ihn selbst (FNV-1a + Mulberry32) mit
+der ID der Karte (`fsrsCardId(rowId, sub)`) und der Zahl ihrer
+Wiederholungen nach dieser; vorher (`ts-fsrs` 5) mit der ID der Wertung.
+Dann rechnet der Client (Vorschau auf den Knöpfen, Offline) dasselbe wie
+der Server, und eine wiederholte Übertragung derselben Wertung ergibt
+denselben Termin. Gespeicherte Termine bleiben beim Wechsel, wie sie sind;
+der neue Fuzz gilt ab der nächsten Wiederholung einer Karte. Ohne Fuzz
+plant `lib/fsrs` genau wie `ts-fsrs` 5.4.2 (Lernschritte, Reihenfolge der
+Intervalle, Höchstintervall vor dem Fuzz; `tests/fsrs.test.ts`).
 
 ### 4.5 Tageswechsel um 04:00 (Zeitzonen)
 
@@ -1244,7 +1251,7 @@ gesendet, Feld-für-Feld-Zusammenführung, Konflikte); Idempotenz-Schlüssel
    die **Faltung ihres Protokolls**: `state = fold(FSRS, sorted(review_log
    where not undone))`. Kommt eine Wertung, die älter ist als die letzte
    bekannte (zwei Geräte, eines offline), wird sie eingefügt und der Stand
-   **neu nachgespielt** – deterministisch (Fuzz-Seed = review_id). Kein
+   **neu nachgespielt** – deterministisch (Fuzz-Seed = Karte + Wiederholungen). Kein
    Konfliktdialog nötig.
    - Zwei Wertungen derselben Karte am selben Lerntag von zwei Geräten
      (dieselbe Karte zweimal gelernt): beide zählen, wie in Anki nach einem
@@ -2011,7 +2018,7 @@ weil sie erst mit Zuordnung sichtbar wird.
   `reviewedAt`. **Protokoll gewinnt:** neuer als die letzte Wertung der
   Karte → Planung vom Stand wie online; älter → Einfügen, Stand vor ihr
   aus dem Protokoll gefaltet und danach die ganze Kette nachgespielt
-  (`replayed`; Fuzz-Seed = Review-ID). Die Nach-Werte späterer
+  (`replayed`; Fuzz-Seed = Karte + Wiederholungen). Die Nach-Werte späterer
   Protokollzeilen bleiben unverändert (Protokoll ist unveränderlich).
 - Uhr: §10.4 Punkt 6 und 7 widersprachen sich (Untergrenze „letzte
   Wertung“ vs. Einordnen älterer Wertungen). Entschieden: bei
@@ -2335,11 +2342,13 @@ Navigationsgruppe „Lernkarten“ (Datenbanken hätte 9 Seiten gehabt).
   oder als WebAssembly-Build, den wir selbst bauen und pflegen müssten;
   beides für ~300 Zeilen Rechnung. Die Ergebnisse prüfen Tests gegen
   Referenzwerte (unten).
-- Modell: FSRS-6 genau wie das gepinnte `ts-fsrs` 5.4.2 rechnet
-  (`next_state`, `forgetting_curve`, Kurzzeitstabilität am selben Tag,
-  Untergrenze nach dem Vergessen `S/e^(w17·w18)`), ohne dessen Runden auf 8
-  Stellen. Grenzen der Gewichte: `CLAMP_PARAMETERS` aus `ts-fsrs` (dieselben
-  wie fsrs-rs), Startwerte `default_w` – nichts abgetippt.
+- Modell: FSRS-6 genau wie das gepinnte `ts-fsrs` rechnet (seit #636
+  `ts-fsrs` 6, `FSRS6Algorithm`; `next_state`, `forgetting_curve`,
+  Kurzzeitstabilität am selben Tag, Untergrenze nach dem Vergessen
+  `S/e^(w17·w18)`, Start-S auf `[S_MIN, S_MAX]` begrenzt), ohne dessen Runden
+  auf 8 Stellen. Grenzen der Gewichte: die von `clipFSRS6Parameters` aus
+  `ts-fsrs/models/fsrs-6` (dieselben wie fsrs-rs), Startwerte
+  `FSRS6_DEFAULT_WEIGHTS` – nichts abgetippt.
 - Ziel wie fsrs-rs: Log-Loss (binäre Kreuzentropie) zwischen vorhergesagter
   Abrufwahrscheinlichkeit R und Ergebnis (Wertung > 1) jeder Wiederholung,
   die mindestens einen Lerntag nach der vorigen kommt; Wiederholungen am

@@ -25,7 +25,7 @@ import { hiddenFileIds } from "./row-files";
 import { cleanHtml, escaped } from "./document-server";
 import { effectiveFilterGroup, filterCount, matchesFilterGroup } from "./database-filters";
 import { allow } from "./action-limits";
-import { schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
+import { clipWeights, fsrsCardId, schedule, replay, type FsrsParams, type Memory, type StudyRating } from "./fsrs";
 import { DEFAULT_DAY_START, REMIND_AT, daysBetween, reminderMoment, studyClock, studyDay, studyZone } from "./study-day";
 import { buildQueue, seededRank, sessionOrder, type QueueCard } from "./study-queue";
 import { MAX_CHOICES, deriveCards, foldChoice, needsDocument, sideIsEmpty, sidePlain, studyFieldIds, typedAnswer, type CardSide, type DerivedCard, type OcclusionCard } from "./study-content";
@@ -33,7 +33,6 @@ import { clozeHtml } from "./study-cloze";
 import { STUDY_DEFAULTS, STUDY_FIELD_TYPES, studyPrefsInput, studySettingsSchema, type StudySettings } from "./study-schema";
 import { GROUP_KEY, MAX_GROUPS, decksWithWeights, groupOf, groupParams, parseGroups, personalWeights, storedWeights, subdeckValue, type ParamsScope } from "./study-params";
 import { DEFAULT_WEIGHTS, MIN_REVIEWS, DEFAULT_COSTS, OptimizeTimeout, clampWeights, evaluate, memoryOf as foldMemory, optimizeAsync, pause, workload, type ReviewCosts, type TrainingCard } from "./fsrs/optimize";
-import { clipParameters } from "ts-fsrs";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
 import { inlineToHtml, toPlain } from "./inline-markdown";
 import { readUpload } from "./storage";
@@ -613,8 +612,9 @@ const reviewInput = z.object({
   rowId: uuid,
   sub: z.string().max(40),
   rating: z.number().int().min(1).max(4),
-  // Made by the client when the card is shown: idempotent, and the seed of
-  // the interval's fuzz (the same the buttons showed).
+  // Made by the client when the card is shown: idempotent. (The interval's
+  // fuzz is seeded with the card and its count of reviews, lib/fsrs – the
+  // same the buttons showed.)
   id: uuid,
   zone: zoneInput,
   viewId: z.string().max(100).optional(),
@@ -690,7 +690,7 @@ export async function importStudyHistory(user: Identity, pageId: string, cards: 
     for (const review of reviews) {
       const reviewId = randomUUID();
       const reviewedAt = Math.max(review.at, memory?.lastReview ?? 0);
-      const next = schedule(memory, review.rating, reviewedAt, params, clock, reviewId);
+      const next = schedule(memory, review.rating, reviewedAt, params, clock, fsrsCardId(card.rowId, card.sub));
       await run(
         `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -772,7 +772,7 @@ export async function studyReview(user: Identity, raw: unknown) {
   const reviewedAt = Math.min(Math.max(input.reviewedAt ?? now, before?.lastReview ?? 0), now + 5 * 60_000);
   const day = studyDay(reviewedAt, clock.zone, clock.dayStart);
   const mine = await effective(user, deck.page.id, settings, day);
-  const next = schedule(before, input.rating as StudyRating, reviewedAt, await cardParams(deck.page.id, settings, mine, input.rowId, input.sub), clock, input.id);
+  const next = schedule(before, input.rating as StudyRating, reviewedAt, await cardParams(deck.page.id, settings, mine, input.rowId, input.sub), clock, fsrsCardId(input.rowId, input.sub));
   await run(
     `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -809,8 +809,8 @@ export async function studyReview(user: Identity, raw: unknown) {
 //   than the card's last one is scheduled from its state as online; an
 //   older one (two devices, one of them offline) is put in its place and
 //   the card's log replayed (lib/fsrs replay) – deterministic, as the fuzz
-//   is seeded with each review's id. Two ratings of the same card on the
-//   same day both count, as in Anki after a sync.
+//   is seeded with the card and its count of reviews. Two ratings of the
+//   same card on the same day both count, as in Anki after a sync.
 // - The device's clock: never later than five minutes from now (no lower
 //   bound – an older rating is ordered, not moved); a rating older than 30
 //   days is accepted but marked source "offline".
@@ -899,8 +899,8 @@ export async function studyReviews(user: Identity, raw: unknown) {
     const replayed = usable && history.some(later);
     // The state before this rating: the card's now, or the fold of the
     // ratings before it.
-    const before = replayed ? replay(history.filter((h) => !later(h)), params, dayStart) : state ? memoryOf(state) : null;
-    const next = schedule(before, r.rating as StudyRating, reviewedAt, params, clock, r.id);
+    const before = replayed ? replay(fsrsCardId(r.rowId, r.sub), history.filter((h) => !later(h)), params, dayStart) : state ? memoryOf(state) : null;
+    const next = schedule(before, r.rating as StudyRating, reviewedAt, params, clock, fsrsCardId(r.rowId, r.sub));
     await run(
       `INSERT INTO review_log(id,user_id,workspace_id,page_id,row_id,sub,rating,state_before,reviewed_at,day,zone,elapsed_days,scheduled_days,duration_ms,stability,difficulty,due,source,received_at)
        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -928,7 +928,7 @@ export async function studyReviews(user: Identity, raw: unknown) {
       results.push({ id: r.id, status: "orphaned" });
       continue;
     }
-    await storeState(user, page, r.rowId, r.sub, replayed ? replay([...history, { id: r.id, rating: r.rating as StudyRating, reviewedAt, zone }], params, dayStart) : next.memory);
+    await storeState(user, page, r.rowId, r.sub, replayed ? replay(fsrsCardId(r.rowId, r.sub), [...history, { id: r.id, rating: r.rating as StudyRating, reviewedAt, zone }], params, dayStart) : next.memory);
     touched.add(page.id);
     results.push({ id: r.id, status: replayed ? "replayed" : "ok" });
   }
@@ -959,6 +959,7 @@ export async function studyUndo(user: Identity, raw: unknown) {
   const clock = await zoneFor(user, input.zone);
   const mine = await effective(user, deck.page.id, settings, studyDay(Date.now(), clock.zone, clock.dayStart));
   const memory = replay(
+    fsrsCardId(log.row_id, log.sub),
     history.filter((h) => h.id !== log.id),
     await cardParams(deck.page.id, settings, mine, log.row_id, log.sub),
     clock.dayStart,
@@ -1344,7 +1345,7 @@ async function recomputeMemory(user: Identity, scope: ParamsScope, pageId: strin
     )
   ).filter((r) => byCard.has(`${r.row_id}\u0000${r.sub}`));
   // Weights per deck and part, clipped like the scheduler clips them
-  // (ts-fsrs, by the deck's relearning steps).
+  // (lib/fsrs clipWeights, by the deck's relearning steps).
   const decks = new Map<string, { clip: (w: number[]) => number[]; base: number[]; groups: Map<string, number[]>; parts: Map<string, string | null> }>();
   const deckOfCard = async (deckId: string) => {
     if (!decks.has(deckId)) {
@@ -1353,7 +1354,7 @@ async function recomputeMemory(user: Identity, scope: ParamsScope, pageId: strin
       const groups = new Map([...(await groupParams(user.id, deckId))].map(([k, g]) => [k, g.w]));
       const ids = affected.filter((s) => s.page_id === deckId).map((s) => s.row_id);
       decks.set(deckId, {
-        clip: (w) => clipParameters(w, steps, true),
+        clip: (w) => clipWeights(w, steps),
         base: (await personalWeights(user.id, deckId)).weights ?? [...DEFAULT_WEIGHTS],
         groups,
         parts: settings ? await cardGroups(deckId, settings, groups, ids) : new Map(),

@@ -20,7 +20,7 @@ const { createWorkspace } = await import("../lib/seed");
 const { studyOffline, trainingCards, reviewCosts } = await import("../lib/study");
 const { addDays } = await import("../lib/study-day");
 const { DEFAULT_WEIGHTS, DEFAULT_COSTS, MIN_REVIEWS, memoryOf, optimize, clampWeights } = await import("../lib/fsrs/optimize");
-const { replay, schedule } = await import("../lib/fsrs");
+const { fsrsCardId, replay, schedule } = await import("../lib/fsrs");
 const { syntheticLog, TRUE_WEIGHTS } = await import("./helpers/fsrs-synthetic");
 
 async function user(name: string): Promise<Identity> {
@@ -190,6 +190,7 @@ test("study.params: weights for a deck schedule its cards, offline too; reset go
   // The card's stability and difficulty: its log under the new weights.
   const state = await one<{ stability: number; difficulty: number }>("SELECT stability,difficulty FROM card_states WHERE user_id=? AND row_id=?", owner.id, rowId);
   const expected = replay(
+    fsrsCardId(rowId, ""),
     [
       { id: first, rating: 3, reviewedAt: t0, zone },
       { id: second, rating: 3, reviewedAt: t0 + 4 * 86_400_000, zone },
@@ -230,6 +231,7 @@ test("study.params: weights for a deck schedule its cards, offline too; reset go
   assert.equal((await one<{ params: string | null }>("SELECT params FROM study_prefs WHERE user_id=? AND page_id=?", owner.id, pageId))?.params, null);
   const back = await one<{ stability: number }>("SELECT stability FROM card_states WHERE user_id=? AND row_id=?", owner.id, rowId);
   const defaults = replay(
+    fsrsCardId(rowId, ""),
     (await all<{ id: string; rating: number; reviewed_at: number; zone: string }>("SELECT id,rating,reviewed_at,zone FROM review_log WHERE user_id=? AND row_id=? AND undone_at IS NULL", owner.id, rowId)).map((r) => ({
       id: r.id,
       rating: Number(r.rating) as 3,

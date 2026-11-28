@@ -440,7 +440,7 @@ Dashed lines are optional. Everything Flowplan stores lives in one data director
 | **People** | One container with SQLite carries about 20 people working at the same time, about 30 with PostgreSQL; beyond that, add instances in cluster mode ([Sizing](https://docs.flowplan.org/en/sizing)) |
 | **Network** | A domain with HTTPS through a reverse proxy; `http://` works for a test in your own network ([without HTTPS](https://docs.flowplan.org/en/installation#without-https)) |
 | **Browsers** | Current Chrome, Edge and Firefox (111 or newer) and Safari 16.4 or newer |
-| **Without Docker** | Node.js 22.13 or newer (the image uses Node 26) |
+| **Without Docker** | Node.js 24 or newer (the image uses Node 26) |
 
 With SQLite, run **exactly one** container per data directory – SQLite is not shared between replicas. Several instances need [cluster mode](https://docs.flowplan.org/en/cluster) with PostgreSQL, Redis and S3.
 
@@ -539,7 +539,7 @@ Yes: OpenID Connect (Keycloak, Authentik, Zitadel, Entra ID …) with groups map
 
 ## Development
 
-Node.js 22.13 or newer (the Docker image and CI use Node 26).
+Node.js 24 or newer (the Docker image and CI use Node 26).
 
 ```sh
 npm ci
