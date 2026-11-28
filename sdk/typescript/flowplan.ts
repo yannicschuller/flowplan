@@ -1154,7 +1154,7 @@ export type Diagnostics = {
   installMethod?: string;
   /** Administrators only */
   installMethodSource?: "setting" | "detected";
-  /** One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser. */
+  /** One line for a bug report, e.g. `Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser. */
   text: string;
 };
 

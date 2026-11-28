@@ -669,7 +669,7 @@ Diagnostics = TypedDict("Diagnostics", {
     "mode": Literal["single", "cluster"],  # Administrators only
     "installMethod": str,  # Administrators only: as set by the operator (e.g. `docker-compose`, `helm`), otherwise detected (`kubernetes`, `docker`, `podman`, `no container`)
     "installMethodSource": Literal["setting", "detected"],  # Administrators only
-    "text": Required[str],  # One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser.
+    "text": Required[str],  # One line for a bug report, e.g. `Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser.
 }, total=False)
 
 SiteInfo = TypedDict("SiteInfo", {
