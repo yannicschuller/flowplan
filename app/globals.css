@@ -6184,7 +6184,15 @@ mark[data-color],
   opacity: 0;
   transition: opacity 0.15s;
 }
-.document-editor [data-resize-container]:hover [data-resize-handle],
+/* The handles show on the image pointed at, being resized or selected.
+   Touch screens (#642): only on the selected image (a tap selects it) –
+   neither on every image of the document nor, after a tap, on the image
+   the finger left (a touch's :hover stays where it ended). */
+@media (hover: hover) {
+  .document-editor [data-resize-container]:hover [data-resize-handle] {
+    opacity: 1;
+  }
+}
 .document-editor
   [data-resize-container][data-resize-state="true"]
   [data-resize-handle],
@@ -6222,11 +6230,6 @@ mark[data-color],
 }
 .document-editor [data-resize-handle="bottom-right"] {
   cursor: nwse-resize;
-}
-@media (pointer: coarse) {
-  .document-editor [data-resize-handle] {
-    opacity: 1;
-  }
 }
 .unread-dot {
   display: inline-block;
