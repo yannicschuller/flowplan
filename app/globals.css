@@ -7480,6 +7480,27 @@ button.record-value:focus-visible {
   min-height: min(320px, 50dvh);
   align-content: start;
 }
+/* The on-screen keyboard is open over a sheet whose options stand below
+   their search (#625, components/option-picker.tsx): the sheet ends right
+   at the keyboard, at most up to just below the status bar, so the search
+   and its list lie in the visible area – from the bottom edge iOS left the
+   sheet behind the keyboard, with the search near its upper edge. Placed
+   from the top like the new-page dialog (app/new-page-dialog.css), since
+   iOS resolves bottom: against the height from before the keyboard (#120);
+   the frame runs from --keyboard-visible-top to --keyboard-visible-end
+   (components/mobile-tab-bar.tsx). The list inside needs no fixed
+   positioning, so the translate does no harm (#75); `translate`, not
+   `transform`, which dragging the sheet down sets (components/sheet-
+   gesture.ts). */
+@media (max-width: 600px) {
+  html.keyboard-docked .modal.modal-sheet.meeting-popover-sheet:has(.option-picker-list.inline) {
+    --sheet-top-min: calc(var(--keyboard-visible-top, 0px) + var(--safe-top, 0px) + 12px);
+    top: var(--keyboard-visible-end);
+    bottom: auto;
+    translate: 0 -100%;
+    max-height: max(160px, calc(var(--keyboard-visible-end) - var(--sheet-top-min)));
+  }
+}
 @media (max-width: 600px) {
   .row-property:has(> .row-property-name) {
     grid-template-columns: 35% minmax(0, 1fr);

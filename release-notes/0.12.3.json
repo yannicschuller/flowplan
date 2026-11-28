@@ -39,6 +39,13 @@
       "issues": [
         637
       ]
+    },
+    {
+      "de": "Auf dem iPhone bleibt die Liste einer Auswahl („Status ändern“) bei offener Tastatur unter dem Suchfeld und ganz sichtbar, statt nach oben aus dem Bildschirm zu springen. Ein Tippen auf ✕ bei offener Liste schließt nur noch das Fenster und öffnet kein anderes Feld mehr.",
+      "en": "On the iPhone, a select’s list (“Change Status”) now stays below the search field and fully visible while the keyboard is open, instead of jumping up off the screen. Tapping ✕ with the list open now only closes the sheet and no longer opens another field.",
+      "issues": [
+        625
+      ]
     }
   ]
 }

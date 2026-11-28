@@ -51,7 +51,24 @@ export type ListPlacement = {
   width: number;
   up: boolean;
   fixed: boolean;
+  // The room on that side, to the edge of what is visible.
+  room: number;
 };
+// What of the window is visible, top to end, in client coordinates. On a
+// touch screen the on-screen keyboard counts: iOS (Safari and the app's
+// WKWebView) keeps the layout at full height and only shortens the visual
+// viewport, which it may move down the page – and iOS 26 shortens
+// innerHeight by that move as well (lib/keyboard-caret.ts, measured for
+// #120), so innerHeight says neither where the visible area ends nor how
+// much lies below a field (#625: a record's options opened above the
+// search, out of the screen, with the room below left empty). With a mouse
+// (or zoomed in) the window as before.
+export function visibleArea(): { top: number; end: number } {
+  const vv = window.visualViewport;
+  if (vv && vv.scale < 1.01 && window.matchMedia("(pointer: coarse)").matches)
+    return { top: Math.max(0, vv.offsetTop), end: vv.offsetTop + vv.height };
+  return { top: 0, end: window.innerHeight };
+}
 export function listPlacement(el: HTMLElement): ListPlacement {
   const rect = el.getBoundingClientRect();
   // Inside dialogs the list stays in the dialog's DOM, so it remains
@@ -78,8 +95,10 @@ export function listPlacement(el: HTMLElement): ListPlacement {
         })();
   // The room above and below, without the status bar and home indicator.
   const safe = safeInsets();
-  const below = window.innerHeight - safe.bottom - rect.bottom;
-  const up = below < 240 && rect.top - safe.top > below;
+  const view = visibleArea();
+  const below = view.end - safe.bottom - rect.bottom;
+  const above = rect.top - view.top - safe.top;
+  const up = below < 240 && above > below;
   return {
     host,
     top: (up ? rect.top - 4 : rect.bottom + 4) - base.top,
@@ -87,6 +106,7 @@ export function listPlacement(el: HTMLElement): ListPlacement {
     width: rect.width,
     up,
     fixed,
+    room: Math.max(0, (up ? above : below) - 8),
   };
 }
 // Drop-in replacement for <select> with a styled list. The native element

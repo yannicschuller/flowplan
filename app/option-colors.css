@@ -226,6 +226,19 @@
   left: var(--option-list-left, 0);
   min-width: max(var(--option-list-width, 0px), 220px);
   max-width: min(360px, calc(100vw - 24px));
+  /* On a touch screen no taller than the room to the visible edge, the
+     on-screen keyboard's included (components/option-picker.tsx, #625). */
+  max-height: min(320px, 50vh, var(--option-list-max, 100vh));
+}
+/* In a sheet on a touch screen: below the search in the sheet itself, as
+   wide as the search (#625). */
+.fp-select-list.option-picker-list.inline {
+  position: static;
+  min-width: 0;
+  max-width: none;
+  max-height: min(320px, 50dvh, var(--option-list-max, 100dvh));
+  overscroll-behavior: contain;
+  box-shadow: none;
 }
 .option-picker-list .fp-select-option {
   min-height: 34px;

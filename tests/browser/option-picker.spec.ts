@@ -317,6 +317,165 @@ test("a phone: the record's select opens without the keyboard and stays open whe
   expect(errors).toEqual([]);
 });
 
+// #625, the iOS keyboard: it does not resize the layout, it only shortens
+// the visual viewport and may move it down the page – and iOS 26 shortens
+// innerHeight by that move as well (components/mobile-tab-bar.tsx). The
+// list measured its room below against innerHeight, so it opened above the
+// search, out of the top of the screen. Two stand-ins for the keyboard
+// (Chromium has no on-screen keyboard): "ios" keeps the layout and shrinks
+// a stand-in visualViewport (as tests/browser/hide-keyboard.spec.ts does),
+// moved down far enough to show the search, with innerHeight short by that
+// move; "resize" shortens the viewport itself (a web view the app resizes,
+// Android), with innerHeight short by iOS 26's measured 186 px on top. The
+// list stays below the search, every option inside the visible area.
+for (const mode of ["ios", "resize"] as const)
+  test(`a phone (${mode}): with the keyboard up, the record's select list stays below the search and in view`, async ({ page }, info) => {
+    test.skip(info.project.name !== "mobile", "Touch screens only.");
+    test.setTimeout(120_000);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const KEYBOARD = 336;
+    if (mode === "ios")
+      await page.addInitScript(() => {
+        const real = window.visualViewport;
+        if (!real) return;
+        const target = new EventTarget();
+        const state: { height: number | null; offsetTop: number } = { height: null, offsetTop: 0 };
+        const fake = new Proxy(target, {
+          get(obj, key) {
+            if (key === "height") return state.height ?? real.height;
+            if (key === "offsetTop") return state.offsetTop;
+            if (key in obj) {
+              const value = Reflect.get(obj, key, obj);
+              return typeof value === "function" ? value.bind(obj) : value;
+            }
+            const value = Reflect.get(real, key, real);
+            return typeof value === "function" ? value.bind(real) : value;
+          },
+        });
+        Object.defineProperty(window, "visualViewport", { configurable: true, get: () => fake });
+        const inner = Object.getOwnPropertyDescriptor(window, "innerHeight")!.get!;
+        (window as unknown as { __keyboard: (height: number, offsetTop: number) => void }).__keyboard = (height, offsetTop) => {
+          const full = inner.call(window);
+          state.height = full - height;
+          state.offsetTop = offsetTop;
+          Object.defineProperty(window, "innerHeight", { configurable: true, get: () => full - offsetTop });
+          target.dispatchEvent(new Event("resize"));
+          target.dispatchEvent(new Event("scroll"));
+        };
+      });
+    const { db, row, cells } = await setup(page, `Tastatur ${mode} ${Date.now()}`, { status: "In Arbeit" });
+    await page.goto(`/#page=${db.id}&row=${row.id}`);
+    const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+    await entry.getByRole("button", { name: "Status: In Arbeit, ändern" }).tap({ timeout: 30_000 });
+    const sheet = page.getByRole("dialog", { name: "Status ändern" });
+    const search = page.getByRole("combobox", { name: "Status: Option suchen oder anlegen" });
+    const list = page.getByRole("listbox", { name: "Optionen von Status" });
+    await expect(sheet).toBeVisible();
+    await expect(list.getByRole("option")).toHaveText(["Offen", "In Arbeit", "Erledigt", "Café"]);
+    await page.waitForTimeout(500);
+    await search.tap();
+    await expect(search).toBeFocused();
+    const { width, height } = page.viewportSize()!;
+    if (mode === "ios") {
+      // iOS moves the visible area down until the search shows above the
+      // keyboard with some room (here at most 186 px, iOS 26's figure).
+      const box = (await search.boundingBox())!;
+      const move = Math.max(0, Math.min(186, Math.ceil(box.y + box.height + 120 - (height - KEYBOARD))));
+      await page.evaluate(([h, o]) => (window as unknown as { __keyboard: (h: number, o: number) => void }).__keyboard(h, o), [KEYBOARD, move]);
+    } else {
+      await page.setViewportSize({ width, height: height - KEYBOARD });
+      await page.evaluate((short) => {
+        const real = Object.getOwnPropertyDescriptor(window, "innerHeight")!.get!;
+        Object.defineProperty(window, "innerHeight", { configurable: true, get: () => real.call(window) - short });
+        window.dispatchEvent(new Event("resize"));
+      }, 186);
+    }
+    await page.waitForTimeout(1200);
+    await expect(search).toBeFocused();
+    const field = (await search.boundingBox())!;
+    // The box around the listbox, which scrolls.
+    const shown = (await list.locator("xpath=..").boundingBox())!;
+    const view = await page.evaluate(() => ({ top: visualViewport!.offsetTop, bottom: visualViewport!.offsetTop + visualViewport!.height }));
+    // Below the search, the search in view.
+    expect(shown.y).toBeGreaterThanOrEqual(field.y + field.height - 1);
+    expect(field.y).toBeGreaterThanOrEqual(view.top);
+    expect(field.y + field.height).toBeLessThanOrEqual(view.bottom);
+    // The list ends in the visible area, and all four options show in it.
+    expect(shown.y + shown.height).toBeLessThanOrEqual(view.bottom);
+    for (const option of await list.getByRole("option").all()) {
+      const box = (await option.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(shown.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(shown.y + shown.height);
+    }
+    // Typing filters as before; a tap on an option sets it.
+    await page.keyboard.type("erl");
+    await expect(list.getByRole("option")).toHaveText(["Erledigt", "„erl“ anlegen"]);
+    await list.getByRole("option", { name: "Erledigt" }).tap();
+    await expect.poll(async () => (await cells()).status).toBe("Erledigt");
+    await expect(sheet).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
+// #625: a tap outside the open list closed it as the finger came down;
+// with it went the record's sheet, and the click that follows a tap landed
+// on what lay under the finger by then – the ✕ opened the property behind
+// it (or the same one again). Now the tap closes once it is over and
+// reaches only what it was on: the ✕ closes the sheet, nothing else opens.
+test("a phone: tapping ✕ with the record's select list open only closes the sheet", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "Touch screens only.");
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { db, row, cells, command } = await setup(page, `Schließen ${info.project.name} ${Date.now()}`, { status: "Offen" });
+  // More properties, so values of the record lie under the sheet's ✕.
+  const version = (await (await page.request.get(`/api/pages/${db.id}`)).json()).database.version;
+  await command({
+    action: "database.update",
+    pageId: db.id,
+    version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      ...["a", "b", "c", "d", "e", "f"].map((id) => ({ id, name: `Notiz ${id.toUpperCase()}`, type: "text" })),
+      { id: "status", name: "Status", type: "select", options: ["Offen", "In Arbeit", "Erledigt", "Café"] },
+      { id: "labels", name: "Labels", type: "multiselect", options: ["Rot", "Blau"] },
+      ...["g", "h", "i", "j"].map((id) => ({ id, name: `Notiz ${id.toUpperCase()}`, type: "text" })),
+    ],
+    views: [{ id: "table", name: "Tabelle", type: "table", filters: [], sorts: [] }],
+  });
+  await page.goto(`/#page=${db.id}&row=${row.id}`);
+  const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  const value = entry.getByRole("button", { name: "Status: Offen, ändern" });
+  // Many properties start folded up.
+  await entry.getByText(/\+\d+ Eigenschaften/).tap({ timeout: 30_000 });
+  await expect(value).toBeVisible();
+  const sheets =page.getByRole("dialog", { name: /ändern$/ });
+  const sheet = page.getByRole("dialog", { name: "Status ändern" });
+  const list = page.getByRole("listbox", { name: "Optionen von Status" });
+  for (const scroll of [0, 120, 240]) {
+    // Each round with the record scrolled a little: other values under the ✕.
+    await entry.evaluate((el, top) => {
+      for (const node of [el, ...el.querySelectorAll("*")])
+        if (node.scrollHeight > node.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(node).overflowY)) node.scrollTop = top;
+    }, scroll);
+    await value.scrollIntoViewIfNeeded();
+    const at = (await value.boundingBox())!;
+    await page.touchscreen.tap(at.x + at.width / 2, at.y + at.height / 2);
+    await expect(list).toBeVisible();
+    await page.waitForTimeout(500);
+    const close = (await sheet.getByRole("button", { name: "Schließen", exact: true }).boundingBox())!;
+    await page.touchscreen.tap(close.x + close.width / 2, close.y + close.height / 2);
+    await expect(sheet).toBeHidden();
+    await expect(list).toBeHidden();
+    // Nothing opened in its place – not another property, not this one.
+    await page.waitForTimeout(600);
+    await expect(sheets).toHaveCount(0);
+    await expect(entry).toBeVisible();
+  }
+  expect((await cells()).status).toBe("Offen");
+  expect(errors).toEqual([]);
+});
+
 test("readers see the values but cannot change them or create options", async ({ page, browser }, info) => {
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
   test.setTimeout(120_000);

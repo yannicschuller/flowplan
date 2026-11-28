@@ -19,7 +19,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { createPortal } from "react-dom";
 import { CaretDown, Check, Plus, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { listPlacement, type ListPlacement } from "./select";
+import { listPlacement, visibleArea, type ListPlacement } from "./select";
+import { onKeyboardMove, scrollPane } from "./mobile-tab-bar";
+import { safeInsets } from "./safe-area";
 import { choiceChipClass } from "@/lib/option-colors";
 import { MAX_OPTION_LENGTH, searchOptions } from "@/lib/option-search";
 import { isMultiPerson } from "@/lib/person-values";
@@ -65,6 +67,19 @@ function useLook(field: Field, people: readonly PickerPerson[] | undefined): Loo
 
 // A finger is the main input (lib/keyboard-hints.ts uses the same query).
 const TOUCH_INPUT = "(hover: none) and (pointer: coarse)";
+// A list in a sheet on a touch screen (#625): at least two rows of 44 px
+// show, and below three the sheet scrolls the search up where it can.
+const MIN_LIST = 2 * 44 + 10;
+const FEW_ROWS = 3 * 44 + 10;
+// Where a list below a field has to end: at the end of the visible area,
+// less the home indicator – or, with the keyboard up, above "Hide keyboard"
+// (components/hide-keyboard-button.tsx), which sits right above it.
+function visibleEnd() {
+  const end = visibleArea().end;
+  const fab = document.querySelector(".hide-keyboard-fab")?.getBoundingClientRect();
+  if (fab && fab.height && fab.top < end) return fab.top - 8;
+  return end - safeInsets().bottom - 8;
+}
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && !!v) : typeof value === "string" && value ? [value] : [];
@@ -225,7 +240,10 @@ function OptionSearch({
     list = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState(""),
     [busy, setBusy] = useState(false),
-    [place, setPlace] = useState<ListPlacement | null>(null);
+    [place, setPlace] = useState<ListPlacement | null>(null),
+    // In a sheet on a touch screen the list stands below the search in the
+    // sheet itself (#625), instead of floating over the window.
+    [inline, setInline] = useState(false);
   const found = searchOptions(look.options, query, { exclude: multi ? chosen : [], canCreate: !!create && !look.person, labelOf: look.nameOf });
   const entries: Entry[] = [
     ...found.matches.map((value) => ({ kind: "option" as const, value })),
@@ -250,23 +268,74 @@ function OptionSearch({
     if (!touch.current) input.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
-    if (!touch.current) input.current?.focus({ preventScroll: true });
-    const outside = (e: PointerEvent) => {
+    if (!touch.current) {
+      input.current?.focus({ preventScroll: true });
+      return () => clearTimeout(blurTimer.current);
+    }
+    // The tap outside closes once it is over – after its click – not as the
+    // finger comes down (#625): closing then took the record's sheet away
+    // with the list, and the click that follows a tap landed on what lay
+    // under the finger by then (the sheet's ✕ opened the property behind
+    // it). So the click reaches what was tapped (the ✕ closes the sheet),
+    // never what only shows once the list is gone. A tap that turns into a
+    // scroll (pointercancel) or a drag closes nothing.
+    let tap: { id: number; x: number; y: number } | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const close = () => {
+      tap = null;
+      clearTimeout(timer);
+      // After the click has gone everywhere it goes.
+      timer = setTimeout(() => onCloseRef.current(false), 0);
+    };
+    const down = (e: PointerEvent) => {
       const target = e.target as Node | null;
       if (box.current?.contains(target) || list.current?.contains(target)) return;
       // The floating "hide keyboard" button (components/hide-keyboard-button.tsx).
       if (target instanceof Element && target.closest(".hide-keyboard-fab")) return;
-      onCloseRef.current(false);
+      tap = { id: e.pointerId, x: e.clientX, y: e.clientY };
     };
-    if (touch.current) document.addEventListener("pointerdown", outside, true);
+    const cancel = (e: PointerEvent) => {
+      if (tap?.id === e.pointerId) tap = null;
+    };
+    // No click follows a tap whose touchend something cancelled (or one on
+    // a disabled control): a tap that stayed in place closes all the same,
+    // a moment later.
+    const up = (e: PointerEvent) => {
+      if (!tap || tap.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) {
+        tap = null;
+        return;
+      }
+      clearTimeout(timer);
+      timer = setTimeout(() => tap && close(), 600);
+    };
+    const click = () => {
+      if (tap) close();
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("click", click, true);
     return () => {
       clearTimeout(blurTimer.current);
-      document.removeEventListener("pointerdown", outside, true);
+      clearTimeout(timer);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointercancel", cancel, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("click", click, true);
     };
   }, []);
   // The list goes to the window (or the dialog), so a table's scroll area
   // does not cut it off; it follows the field when the page scrolls.
   useLayoutEffect(() => {
+    // In a sheet on a touch screen: in the sheet, below the search (#625).
+    // Placed against the window, the list had to follow the field through
+    // the keyboard's coming and going, and the iOS keyboard moves the
+    // visible area without a resize or scroll of the window.
+    if (touch.current && box.current?.closest(".modal-sheet")) {
+      setInline(true);
+      return;
+    }
     const at = () => box.current && setPlace(listPlacement(box.current));
     at();
     const scrolled = (e: Event) => {
@@ -274,11 +343,18 @@ function OptionSearch({
     };
     window.addEventListener("resize", at);
     window.addEventListener("scroll", scrolled, true);
+    // The keyboard comes and goes (and iOS moves the visible area) without
+    // a resize of the window.
+    const vv = touch.current ? window.visualViewport : null;
+    vv?.addEventListener("resize", at);
+    vv?.addEventListener("scroll", at);
     // A sheet or panel that slides in (a record's property on a phone,
     // #519) moves the field once its animation ends.
     window.addEventListener("animationend", scrolled, true);
     window.addEventListener("transitionend", scrolled, true);
     return () => {
+      vv?.removeEventListener("resize", at);
+      vv?.removeEventListener("scroll", at);
       window.removeEventListener("resize", at);
       window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("animationend", scrolled, true);
@@ -292,11 +368,80 @@ function OptionSearch({
     el.style.setProperty("--option-list-top", `${place.top}px`);
     el.style.setProperty("--option-list-left", `${place.left}px`);
     el.style.setProperty("--option-list-width", `${place.width}px`);
+    // On a touch screen no taller than the room to the visible edge, the
+    // keyboard's included; it scrolls inside.
+    if (touch.current) el.style.setProperty("--option-list-max", `${Math.max(MIN_LIST, Math.floor(place.room))}px`);
     // Not past the window's right edge (a cell at the right of a phone).
     const rect = el.getBoundingClientRect();
     const over = Math.min(rect.right - (window.innerWidth - 8), rect.left - 8);
     if (over > 0) el.style.setProperty("--option-list-left", `${place.left - over}px`);
   });
+  // In the sheet (#625): the list ends where the visible area does – above
+  // the keyboard and "Hide keyboard" – and scrolls inside. When the keyboard
+  // comes up and leaves less than three rows below the search, the sheet
+  // scrolls the search up as far as it can.
+  useEffect(() => {
+    if (!inline) return;
+    const vv = window.visualViewport;
+    let frame = 0;
+    const fit = (reveal: boolean) => {
+      const el = list.current,
+        field = input.current;
+      if (!el || !field) return;
+      let room = visibleEnd() - el.getBoundingClientRect().top;
+      if (reveal && room < FEW_ROWS && document.activeElement === field) {
+        const pane = scrollPane(box.current);
+        const above = field.getBoundingClientRect().top - (visibleArea().top + safeInsets().top + 8);
+        if (pane && above > 0) {
+          const before = pane.scrollTop;
+          pane.scrollTop += Math.min(FEW_ROWS - room, above);
+          room += pane.scrollTop - before;
+        }
+      }
+      el.style.setProperty("--option-list-max", `${Math.max(MIN_LIST, Math.floor(room))}px`);
+    };
+    const later = (reveal: boolean) => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => fit(reveal));
+    };
+    const keyboard = () => later(true);
+    const moved = () => later(false);
+    // A tap on the search brings the keyboard up; iOS reports its size late
+    // (and "Hide keyboard" shows a moment later).
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    const focused = () => {
+      keyboard();
+      for (const timer of timers) clearTimeout(timer);
+      timers = [150, 450, 900].map((ms) => setTimeout(keyboard, ms));
+    };
+    fit(false);
+    vv?.addEventListener("resize", keyboard);
+    vv?.addEventListener("scroll", moved);
+    window.addEventListener("resize", keyboard);
+    // The keyboard watcher's late measurements (iOS reports the keyboard
+    // late, sometimes without an event).
+    const stop = onKeyboardMove(keyboard);
+    const field = input.current;
+    field?.addEventListener("focus", focused);
+    // The sheet sliding in, growing or scrolling.
+    const sheet = box.current?.closest<HTMLElement>(".modal-sheet");
+    const ro = sheet && typeof ResizeObserver !== "undefined" ? new ResizeObserver(moved) : null;
+    if (sheet) ro?.observe(sheet);
+    sheet?.addEventListener("animationend", moved);
+    sheet?.addEventListener("scroll", moved);
+    return () => {
+      cancelAnimationFrame(frame);
+      for (const timer of timers) clearTimeout(timer);
+      stop();
+      ro?.disconnect();
+      vv?.removeEventListener("resize", keyboard);
+      vv?.removeEventListener("scroll", moved);
+      window.removeEventListener("resize", keyboard);
+      field?.removeEventListener("focus", focused);
+      sheet?.removeEventListener("animationend", moved);
+      sheet?.removeEventListener("scroll", moved);
+    };
+  }, [inline]);
   useEffect(() => {
     if (current >= 0) document.getElementById(`${listId}-${current}`)?.scrollIntoView?.({ block: "nearest" });
   }, [current, listId]);
@@ -383,6 +528,8 @@ function OptionSearch({
       <span className={look.chip(entry.value)}>{look.content(entry.value)}</span>
     );
   const expanded = entries.length > 0;
+  // The list: in the sheet below the search, or over the window (or dialog).
+  const portal = (el: ReactNode) => (inline ? el : place ? createPortal(el, place.host) : null);
   return (
     // data-layer: Escape closes the search, not the record's dialog
     // (components/layer-host.ts).
@@ -436,55 +583,53 @@ function OptionSearch({
         }}
         onKeyDown={keyDown}
       />
-      {place &&
-        createPortal(
+      {portal(
+        <div
+          ref={list}
+          className={`fp-select-list option-picker-list${inline ? " inline" : `${place?.up ? " up" : ""}${place?.fixed ? " fixed" : ""}`}`}
+          // The focus stays in the field; a press or tap only picks.
+          onPointerDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <div
-            ref={list}
-            className={`fp-select-list option-picker-list${place.up ? " up" : ""}${place.fixed ? " fixed" : ""}`}
-            // The focus stays in the field; a press or tap only picks.
-            onPointerDown={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
+            id={listId}
+            role="listbox"
+            aria-label={look.person ? t(`Mitglieder für ${field.name}`, `Members for ${field.name}`) : t(`Optionen von ${field.name}`, `Options of ${field.name}`)}
+            aria-multiselectable={multi || undefined}
           >
-            <div
-              id={listId}
-              role="listbox"
-              aria-label={look.person ? t(`Mitglieder für ${field.name}`, `Members for ${field.name}`) : t(`Optionen von ${field.name}`, `Options of ${field.name}`)}
-              aria-multiselectable={multi || undefined}
-            >
-              {entries.map((entry, i) => (
-                <div
-                  key={`${entry.kind}:${entry.value}`}
-                  id={`${listId}-${i}`}
-                  role="option"
-                  aria-selected={i === current}
-                  aria-disabled={busy || undefined}
-                  className={`fp-select-option${i === current ? " active" : ""}${!multi && entry.kind === "option" && chosen[0] === entry.value ? " selected" : ""}`}
-                  onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
-                  onClick={() => void pick(entry)}
-                >
-                  {label(entry)}
-                  {!multi && entry.kind === "option" && chosen[0] === entry.value && <Check size={14} aria-hidden />}
-                </div>
-              ))}
-            </div>
-            {!expanded && (
-              <p className="option-picker-empty muted">
-                {look.person
-                  ? query.trim()
-                    ? t("Keine passende Person.", "No matching person.")
-                    : look.options.length
-                      ? t("Alle Mitglieder sind gewählt.", "Every member is chosen.")
-                      : t("Keine Mitglieder.", "No members.")
-                  : query.trim()
-                    ? t("Keine passende Option.", "No matching option.")
-                    : multi && (field.options || []).length
-                      ? t("Alle Optionen sind gewählt.", "Every option is chosen.")
-                      : t("Noch keine Optionen.", "No options yet.")}
-              </p>
-            )}
-          </div>,
-          place.host,
-        )}
+            {entries.map((entry, i) => (
+              <div
+                key={`${entry.kind}:${entry.value}`}
+                id={`${listId}-${i}`}
+                role="option"
+                aria-selected={i === current}
+                aria-disabled={busy || undefined}
+                className={`fp-select-option${i === current ? " active" : ""}${!multi && entry.kind === "option" && chosen[0] === entry.value ? " selected" : ""}`}
+                onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
+                onClick={() => void pick(entry)}
+              >
+                {label(entry)}
+                {!multi && entry.kind === "option" && chosen[0] === entry.value && <Check size={14} aria-hidden />}
+              </div>
+            ))}
+          </div>
+          {!expanded && (
+            <p className="option-picker-empty muted">
+              {look.person
+                ? query.trim()
+                  ? t("Keine passende Person.", "No matching person.")
+                  : look.options.length
+                    ? t("Alle Mitglieder sind gewählt.", "Every member is chosen.")
+                    : t("Keine Mitglieder.", "No members.")
+                : query.trim()
+                  ? t("Keine passende Option.", "No matching option.")
+                  : multi && (field.options || []).length
+                    ? t("Alle Optionen sind gewählt.", "Every option is chosen.")
+                    : t("Noch keine Optionen.", "No options yet.")}
+            </p>
+          )}
+        </div>,
+      )}
       <span className="sr-only" role="status" aria-live="polite">
         {!query.trim()
           ? ""
