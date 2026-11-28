@@ -24694,8 +24694,17 @@ h3 .block-reactions {
 .plot-options label,
 .plot-bounds {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 5px;
+  margin: 0;
+  font-weight: 400;
+}
+.plot-options label {
+  cursor: pointer;
+}
+.plot-options .plot-bound {
+  width: 64px;
 }
 .plot-bound {
   width: 64px;

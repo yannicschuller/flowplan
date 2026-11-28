@@ -102,11 +102,9 @@ test("derivative, extreme points and integral of a written function, and its gra
   await plot.getByLabel("Untere Grenze").fill("0");
   await plot.getByLabel("Obere Grenze").fill("9");
   await expect(plot.locator(".plot-legend")).toContainText(["f(t) = ½·t³·e^(−t/3 − 3/5)", "f′(t) = (3/2·t² − 1/6·t³)·e^(−1/3·t − 3/5)"]);
+  // The view follows the marked points: the maximum at t = 9 is in it.
   await expect(plot.locator(".plot-max title")).toHaveText("Hochpunkt H(9 | 729/2·e^(−18/5) ≈ 9,9595)");
-  if (shots) {
-    // Zoomed out so the maximum at t = 9 and the inflection points are in view.
-    for (let i = 0; i < 2; i++) await plot.getByRole("button", { name: "Verkleinern" }).click();
-    await plot.screenshot({ path: `${shots}/graph-sheet.png` });
-  }
+  await expect(plot.locator(".plot-legend-area")).toHaveText("∫ f(t) dt von 0 bis 9 ≈ 47,0456, Mittelwert ≈ 5,2273");
+  if (shots) await plot.screenshot({ path: `${shots}/graph-sheet.png` });
   expect(errors).toEqual([]);
 });

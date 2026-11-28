@@ -118,7 +118,8 @@ function entryNames(config: PlotConfig) {
 
 // A view that shows the interesting part: x from −6 to 6 (zeros, vertex,
 // a period of sin), y from what the functions do there, outliers cut off.
-function autoView(fns: Compiled[], vectors: [number, number][] = []): PlotView {
+// `focus`: the x range to show (the marked points and areas), else −6 to 6.
+function autoView(fns: Compiled[], vectors: [number, number][] = [], focus: { x: [number, number]; y: number[] } = { x: [-6, 6], y: [] }): PlotView {
   if (vectors.length) {
     // Vectors need the same scale on both axes, so angles look right.
     const xs = [0, ...vectors.map((v) => v[0])],
@@ -138,20 +139,22 @@ function autoView(fns: Compiled[], vectors: [number, number][] = []): PlotView {
   for (const f of fns)
     if (f)
       for (let i = 0; i <= 240; i++) {
-        const y = f(-6 + i / 20);
+        const y = f(focus.x[0] + ((focus.x[1] - focus.x[0]) * i) / 240);
         if (Number.isFinite(y)) ys.push(y);
       }
-  if (!ys.length) return { xMin: -6, xMax: 6, yMin: -4, yMax: 4 };
+  if (!ys.length) return { xMin: focus.x[0], xMax: focus.x[1], yMin: -4, yMax: 4 };
   ys.sort((a, b) => a - b);
-  let lo = Math.min(ys[Math.floor(ys.length * 0.02)], 0),
-    hi = Math.max(ys[Math.floor(ys.length * 0.98)], 0);
+  // Around marked points: they and the middle of the curve, not its far ends.
+  const cut = focus.y.length ? 0.2 : 0.02;
+  let lo = Math.min(ys[Math.floor(ys.length * cut)], 0, ...focus.y),
+    hi = Math.max(ys[Math.floor(ys.length * (1 - cut))], 0, ...focus.y);
   if (hi - lo < 4) {
     const mid = (hi + lo) / 2;
     lo = Math.min(lo, mid - 2);
     hi = Math.max(hi, mid + 2);
   }
   const margin = (hi - lo) * 0.1;
-  return { xMin: -6, xMax: 6, yMin: lo - margin, yMax: hi + margin };
+  return { xMin: focus.x[0], xMax: focus.x[1], yMin: lo - margin, yMax: hi + margin };
 }
 // 1, 2 or 5 times a power of ten: about `count` lines across the range.
 function step(range: number, count: number) {
@@ -349,9 +352,35 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
 }
 
 let plotCount = 0;
+// With points marked or an area hatched, the view shows them (with room
+// around), not just −6 to 6.
+function focusRange(config: PlotConfig): { x: [number, number]; y: number[] } | undefined {
+  const xs: number[] = [],
+    ys: number[] = [];
+  for (const f of config.functions) {
+    const analysed = f.points || f.area ? analysisOf(f.expr) : null;
+    if (!analysed) continue;
+    if (f.points)
+      for (const p of analysed.points())
+        if (Math.abs(p.x) < 1e6 && Math.abs(p.y) < 1e6) {
+          xs.push(p.x);
+          ys.push(p.y);
+        }
+    const area = f.area ? analysed.integral(f.area.from, f.area.to) : null;
+    if (area) xs.push(area.from, area.to);
+  }
+  if (!xs.length) return undefined;
+  const lo = Math.min(...xs),
+    hi = Math.max(...xs);
+  const pad = Math.max(1, (hi - lo) * 0.35);
+  return { x: [lo - pad, hi + pad], y: ys };
+}
 // "∫ von 0 bis 2: 8/3, Mittelwert 4/3"
 function integralText(r: { fromText: string; toText: string; value: string; mean: string }, entry: PlotFunction, name: string) {
-  const eq = (s: string) => (s.startsWith("≈") ? s : `= ${s}`);
+  // Long exact values only rounded in the legend.
+  const short = (s: string) => (s.length > 24 && s.includes(" ≈ ") ? `≈ ${s.split(" ≈ ").pop()}` : s);
+  const eq = (s: string) => (short(s).startsWith("≈") ? short(s) : `= ${s}`);
+  r = { ...r, mean: short(r.mean) };
   const v = variableOf(entry.expr);
   return tr(
     `∫ ${name}(${v}) d${v} von ${r.fromText} bis ${r.toText} ${eq(r.value)}, Mittelwert ${r.mean}`,
@@ -472,6 +501,7 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     autoView(
       config.functions.map((f) => compileFunction(f.expr)),
       config.functions.map((f) => planeVector(f.expr)).filter((v): v is [number, number] => !!v),
+      focusRange(config),
     );
   const label = () =>
     (config.functions.every((f) => spaceVector(f.expr)) ? tr("Vektoren: ", "Vectors: ") : tr("Funktionsgraph: ", "Function graph: ")) +
