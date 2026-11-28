@@ -252,8 +252,30 @@ const blockLabels: Record<string, () => string> = {
   table: () => tr("Tabelle", "Table"),
   image: () => tr("Bild", "Image"),
 };
+// A cell's task list Markdown holds (#658): "- [x] Text<br>- [ ] …", read
+// back by lib/markdown-html.ts – one line of text per task, nothing the
+// pipe table cannot write (subtasks, colours, carried-over journal tasks).
+const CELL_TASK_ATTRS = new Set(["checked", "status", "symbol", "due", "blockId"]);
+function plainTaskList(list: Node) {
+  if (list.type.name !== "taskList" || !list.childCount) return false;
+  let plain = true;
+  list.forEach((item) => {
+    const text = item.firstChild;
+    if (
+      item.childCount !== 1 ||
+      text?.type.name !== "paragraph" ||
+      Object.entries(item.attrs).some(([name, value]) => !CELL_TASK_ATTRS.has(name) && value !== (item.type.spec.attrs?.[name]?.default ?? null)) ||
+      Object.entries(text.attrs).some(([name, value]) => name !== "blockId" && value !== (text.type.spec.attrs?.[name]?.default ?? null))
+    )
+      plain = false;
+    text?.forEach((child) => {
+      if (child.type.name === "hardBreak") plain = false;
+    });
+  });
+  return plain;
+}
 // Tables Markdown holds: no merged cells, widths, or more than one
-// paragraph per cell.
+// paragraph (or task list) per cell.
 function plainTable(node: Node) {
   let plain = true;
   node.descendants((child) => {
@@ -264,7 +286,7 @@ function plainTable(node: Node) {
         (Number(child.attrs.rowspan) || 1) > 1 ||
         child.attrs.colwidth ||
         child.childCount > 1 ||
-        child.firstChild?.type.name !== "paragraph"
+        (child.firstChild?.type.name !== "paragraph" && !(child.type.name === "tableCell" && child.firstChild && plainTaskList(child.firstChild)))
       )
         plain = false;
       return false;

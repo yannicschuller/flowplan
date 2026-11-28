@@ -12,6 +12,7 @@ import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
 import { flowFenceUnit, isFlowSource } from "./flow-diagram";
 import { taskList } from "./task-list-html";
+import { attrsOfSymbol, statusHtml } from "./task-status";
 import { splitTabs } from "./tabs-markdown";
 import { PAGE_BREAK_HTML } from "./page-break-node";
 import { BLOCK_COLOR_COMMENT, CELL_COLORS_COMMENT, blockColor, parseCellColors } from "./block-colors";
@@ -35,8 +36,26 @@ const ALERTS: Record<string, CalloutType> = {
 // A callout's own colour, written by lib/markdown.ts as
 // <!-- flowplan:callout color=green --> at its end (see the html renderer).
 const CALLOUT_MARK = /\s*<!--flowplan-callout:([a-z]+)-->\s*$/;
+// Inline tags that may open and close within a callout's title line.
+const TITLE_TAG = /<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi;
+const VOID_TAGS = new Set(["img", "br", "input", "wbr"]);
+function balanced(html: string) {
+  const open: string[] = [];
+  for (const [, closing, name] of html.matchAll(TITLE_TAG)) {
+    const tag = name.toLowerCase();
+    if (VOID_TAGS.has(tag)) continue;
+    if (!closing) open.push(tag);
+    else if (open.pop() !== tag) return false;
+  }
+  return !open.length;
+}
 function alert(body: string) {
-  const match = /^<p>\[!([A-Za-z]+)\][+-]?[ \t]*([^\n<]*)(?:\n|<br>)?/.exec(body);
+  // The title is the rest of the first line with its inline formatting and
+  // links (#666) – up to the line's end, a line break or the paragraph's
+  // end. Formatting that runs on into the next line leaves the title at
+  // its plain text before the first tag, as before.
+  let match = /^<p>\[!([A-Za-z]+)\][+-]?[ \t]*((?:(?!\n|<br\s*\/?>|<\/p>)[^])*)(?:\n|<br\s*\/?>)?/.exec(body);
+  if (match && !balanced(match[2])) match = /^<p>\[!([A-Za-z]+)\][+-]?[ \t]*([^\n<]*)(?:\n|<br>)?/.exec(body);
   if (!match) return null;
   const type = ALERTS[match[1].toLowerCase()] ?? "note";
   const title = match[2].trim();
@@ -167,6 +186,57 @@ function attachCaptions(tokens: Token[]) {
     tokens.splice(next, 1);
   }
   return tokens;
+}
+
+// "📅 2026-05-04" (Obsidian Tasks) at the end of a task's rendered text
+// becomes its due date (a block marker " ^id" may follow, #88).
+function dueDate(html: string) {
+  let attrs = "";
+  html = html.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=(?:\s+\^[A-Za-z0-9-]{1,64})?\s*$)/, (_d: string, date: string) => {
+    attrs = ` data-due="${date}"`;
+    return "";
+  });
+  return { html, attrs };
+}
+// A table cell's lines (split at <br>) in runs of tasks and text, or null
+// when no line is a task (#658). A task line starts with plain text "[c]"
+// – optionally after a list marker – where c is a task state
+// (lib/task-status.ts); inline code, escaped brackets ("\[ \]") and links
+// are no checkbox.
+const CELL_TASK = /^[ \t]*(?:[-*+][ \t]+)?\[([^\]\s]| )\](?=[ \t]|$)[ \t]*/;
+type CellRun = { task: boolean; lines: Token[][]; attrs: NonNullable<ReturnType<typeof attrsOfSymbol>>[] };
+function cellTasks(tokens: Token[]): CellRun[] | null {
+  const lines: Token[][] = [[]];
+  for (const token of tokens)
+    if (token.type === "html" && /^<br\s*\/?>$/i.test(token.raw)) lines.push([]);
+    else lines[lines.length - 1].push(token);
+  const runs: CellRun[] = [];
+  let tasks = 0,
+    gap = false;
+  for (const line of lines) {
+    // An empty line ends a paragraph ("a<br><br>b" is how lib/markdown.ts
+    // writes two blocks of a cell).
+    if (line.every((token) => token.type === "text" && !token.raw.trim())) {
+      gap = true;
+      continue;
+    }
+    const first = line[0];
+    const marker = first?.type === "text" ? CELL_TASK.exec(first.raw) : null;
+    const attrs = marker ? attrsOfSymbol(marker[1]) : null;
+    let tokens = line;
+    if (attrs) {
+      const rest = first.raw.slice(marker![0].length);
+      tokens = rest ? [{ type: "text", raw: rest, text: rest }, ...line.slice(1)] : line.slice(1);
+      tasks++;
+    }
+    const run = runs[runs.length - 1];
+    if (run && run.task === !!attrs && !(gap && !attrs)) {
+      run.lines.push(tokens);
+      if (attrs) run.attrs.push(attrs);
+    } else runs.push({ task: !!attrs, lines: [tokens], attrs: attrs ? [attrs] : [] });
+    gap = false;
+  }
+  return tasks ? runs : null;
 }
 
 const footnote = (note: string) => `<sup data-footnote="${escaped(footnoteText(note))}"></sup>`;
@@ -329,20 +399,29 @@ export function markdownToRawHtml(
         const caption = (token as Captioned).flowplanCaption;
         return caption ? html.replace(/^<table>/, `<table><caption>${escaped(caption)}</caption>`) : html;
       },
+      // Checkboxes in a table cell (#658): "[ ] …", "- [x] …" or an
+      // Obsidian state ("[/] …") at the start of the cell or of a line
+      // after <br> become the cell's task list; other lines stay text.
+      tablecell(token: Tokens.TableCell) {
+        const cell = !token.header && cellTasks(token.tokens);
+        if (!cell) return Renderer.prototype.tablecell.call(this, token);
+        const parts = cell.map((part) => {
+          if (!part.task) return `<p>${part.lines.map((line) => this.parser.parseInline(line)).join("<br>")}</p>`;
+          const items = part.lines.map((line, i) => {
+            const attrs = part.attrs[i];
+            const done = dueDate(this.parser.parseInline(line));
+            return `<li data-type="taskItem" data-checked="${attrs.checked}"${statusHtml(attrs)}${done.attrs}><p>${done.html}</p></li>`;
+          });
+          return `<ul data-type="taskList">${items.join("")}</ul>`;
+        });
+        const tag = token.align ? `<td align="${token.align}">` : "<td>";
+        return `${tag}${parts.join("")}</td>\n`;
+      },
       // Task list items become editor task items; "📅 2026-05-04" (Obsidian
       // Tasks) at the end of the text becomes the due date (a block marker
       // " ^id" may follow, #88).
       list(token: Tokens.List) {
-        return taskList.call(this, token, {
-          head: (html) => {
-            let attrs = "";
-            html = html.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=(?:\s+\^[A-Za-z0-9-]{1,64})?\s*$)/, (_d: string, date: string) => {
-              attrs = ` data-due="${date}"`;
-              return "";
-            });
-            return { html, attrs };
-          },
-        });
+        return taskList.call(this, token, { head: dueDate });
       },
       blockquote({ tokens }: Tokens.Blockquote) {
         const body = this.parser.parse(tokens);
