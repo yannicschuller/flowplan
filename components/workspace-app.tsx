@@ -17,7 +17,6 @@ import { useLocale, useT, writeLocaleCookie } from "./i18n";
 import { OfflineStatus } from "./offline-status";
 import { SaveStatusBadge, useSaveStatusStore } from "./save-status-badge";
 import { BrandMark } from "./brand-mark";
-import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
 import { holdViewTransitions, transitionView, withoutViewTransition } from "@/lib/view-transition";
 import { Select } from "./select";
@@ -61,8 +60,7 @@ import { useForwardSwipe } from "./forward-swipe";
 import { OVERLAY_MAX, OVERLAY_MIN, readOverlayWidth, writeOverlayWidth } from "@/lib/edge-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, shortcutLetter, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
-import { PageReview, openPageReview } from "./page-review";
-import { PagePropertyBar } from "./page-properties";
+import { openPageReview } from "./page-review";
 import { TagView } from "./tag-view";
 import { CollectionView } from "./collection-view";
 import { BookNav, BookNext } from "./book-nav";
@@ -78,7 +76,6 @@ import { DatabaseLabelsContext } from "./database-picker";
 import { contextOf } from "@/lib/page-properties";
 import { Tag as TagIcon, type Icon } from "@phosphor-icons/react";
 import { SidebarMore, SidebarToolRow, type SidebarTool } from "./sidebar-tools";
-import { PageTitleField } from "./page-title-field";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import type { AskRequest } from "./ai-ask";
 import { useMedia } from "./use-media";
@@ -89,13 +86,9 @@ import { AiProvider, useAiRoute } from "./ai-context";
 import type { AiSummaryTarget } from "./ai-summary";
 import { aiUsable } from "@/lib/ai/client";
 import type { AiCardsStart } from "./study/ai-cards";
-import {
-  imageFileId,
-} from "@/lib/page-appearance";
 import { CommandPalette, type CommandAction, type CommandPaletteProps, type PaletteDeck, type PaletteHandle, type PaletteOpenOptions } from "./command-palette";
 import { IconImagePicker } from "./icon-image-picker";
 import { IconLibraryPicker } from "./icon-library-picker";
-import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { Inbox } from "./inbox";
@@ -215,7 +208,6 @@ import {
   Link as LinkIcon,
   SquaresFour,
   Flag,
-  ArrowUpRight,
   ImageSquare,
   TextAa,
   ArrowsInLineVertical,
@@ -314,9 +306,7 @@ import {
   rememberedDatabaseKind,
   type DatabaseChoice,
 } from "./database-kind-picker";
-import { UnlinkedMentions } from "./unlinked-mentions";
-import { RelatedPages } from "./related-pages";
-import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
+import { PageCover, PageDiscovery, PageHeader, PageMetaBar, SubPages, pageContentClass } from "./page-chrome";
 import { NewPageDialog } from "./new-page-dialog";
 import { FilePageUploadDialog, useFilePageUploads } from "./file-page-uploads";
 import { carriesFiles } from "@/lib/file-page-uploads";
@@ -348,7 +338,7 @@ import { WorkspaceThemeStyle } from "./workspace-theme-style";
 import { WorkspaceFavicon } from "./workspace-favicon";
 import { setAutoLinkRules } from "@/lib/auto-link-active";
 import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
-import { setPageIconPrefLocal, usePageIconPref } from "@/lib/page-icon-pref-client";
+import { setPageIconPrefLocal } from "@/lib/page-icon-pref-client";
 import { setExternalLinkIconLocal, useExternalLinkIcon } from "@/lib/external-link-icon-pref-client";
 import { setQuoteShortcutLocal } from "@/lib/quote-shortcut-pref-client";
 import { setFormattingToolbarLocal } from "@/lib/toolbar-pref-client";
@@ -590,8 +580,6 @@ export default function WorkspaceApp({
   // Up to 600 px the page's ⋯ menu is a bottom sheet (components/page-menu.tsx).
   const sheetMenus = useMedia(SHEET_MEDIA);
   const locale = useLocale();
-  // Related pages, backlinks and unlinked mentions below pages (#191).
-  const discoveryPanels = useDiscoveryPanelsShown();
   // A language fixed in the profile: the server already renders it; the
   // cookie follows for the pages before signing in. No reload – a cookie the
   // browser keeps elsewhere must not lead to a loop.
@@ -751,7 +739,6 @@ export default function WorkspaceApp({
   useEffect(() => setPageIconPrefLocal(boot.pageIcon), [boot.pageIcon]);
   // "Neuigkeiten nach Updates" (#223): the settings read it.
   useEffect(() => setUpdateNotesLevelLocal(boot.updateNotes?.level), [boot.updateNotes?.level]);
-  const pageIconPlace = usePageIconPref();
   // "Symbol bei externen Links" (#217, lib/external-link-icon-pref.ts): off
   // puts a class on <html> that hides the arrow everywhere in the app;
   // gone again when the app is left (published pages keep the arrow).
@@ -1006,6 +993,8 @@ export default function WorkspaceApp({
   const keyHints = useKeyboardHints(),
     mac = keyHints.mac;
   const splitRow = useRef<HTMLDivElement>(null),
+    // The split frame's reload while it shows a page (components/split-pane.tsx).
+    splitReload = useRef<(() => Promise<void>) | null>(null),
     wideRef = useRef(false),
     presentingRef = useRef(false);
   wideRef.current = wide;
@@ -1556,6 +1545,8 @@ export default function WorkspaceApp({
         // lib/undo.ts loads with the first change (not with the app).
         const plan = undoing.has(b) || !UNDOABLE.has(String(b.action)) ? null : (await import("@/lib/undo")).undoFor(b, before, openBefore, result);
         if (plan) showUndo(plan.message, () => undoRef.current(plan));
+        // The page beside it may show the same page or database (#652).
+        void splitReload.current?.().catch(() => {});
         await refresh();
         return result;
       } finally {
@@ -6076,7 +6067,7 @@ export default function WorkspaceApp({
               <div className={`page-layout ${comments && !recordFull ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${showsFullWidth(data.page.full_width, allPagesWide) ? "full-width" : ""}${recordFull ? " record-full-page" : ""}${data.journalDay ? " journal-day-page" : ""}${blockRoom ? " with-block-room" : ""} font-${data.page.font}`}
+                  className={pageContentClass(data.page, { fullWidth: showsFullWidth(data.page.full_width, allPagesWide), blockRoom, extra: `${recordFull ? "record-full-page" : ""} ${data.journalDay ? "journal-day-page" : ""}`.trim() })}
                 >
                   {/* A record as a page of its own (#231): only the record. */}
                   {!recordFull && (<>
@@ -6099,24 +6090,7 @@ export default function WorkspaceApp({
                       }}
                     />
                   )}
-                  {data.page.cover && (
-                    <CoverFrame
-                      className="page-cover"
-                      cover={data.page.cover}
-                      image={!!imageFileId(data.page.cover)}
-                      alt={t("Seiten-Cover", "Page cover")}
-                      position={`50% ${data.page.cover_position ?? 50}%`}
-                    >
-                      {editable && (
-                        <button
-                          className="button cover-change"
-                          onClick={() => setCoverPicker(true)}
-                        >
-                          {t("Cover ändern", "Change cover")}
-                        </button>
-                      )}
-                    </CoverFrame>
-                  )}
+                  <PageCover page={data.page} onChange={editable ? () => setCoverPicker(true) : undefined} />
                   {/* A page of a library (#329): its book and the next page to read. */}
                   {pageLibrary && <BookNav space={pageLibrary} pages={activePages} pageId={data.page.id} />}
                   {data.journalDay && !data.locked && (
@@ -6132,66 +6106,25 @@ export default function WorkspaceApp({
                   )}
                   {/* "Seitensymbol" (#214, app/page-icon-inline.css): the large
                       icon above the title, or small on the title's first line. */}
-                  <div className={`document-header${pageIconPlace === "inline" ? " icon-inline" : ""}`}>
-                    <button
-                      className="large-page-icon"
-                      title={t("Seiten-Icon ändern", "Change page icon")}
-                      onClick={() => editable && !data.draft && setIconPicker(true)}
-                    >
-                      <PageIcon
-                        name={shownPageIcon(data.page.icon, data.page.kind)}
-                        size={iconPixels[data.page.icon_size || ""]}
-                      />
-                    </button>
-                    {editable && !data.page.cover && !data.encrypted && !data.draft && !data.offlineNew && (
-                      <button
-                        className="add-cover text-button"
-                        onClick={() => setCoverPicker(true)}
-                      >
-                        {t("Cover hinzufügen", "Add cover")}
-                      </button>
-                    )}
-                    {data.encrypted?.encryptTitles ? (
-                      <EncryptedTitleInput
-                        page={data.page}
-                        title={titledPages.find((p) => p.id === data.page.id)?.title ?? ""}
-                        editable={editable}
-                        onSave={(cipher) => act({ action: "e2ee.title", pageId: data.page.id, cipher })}
-                        onError={(message) => notifyError(new Error(message))}
-                      />
-                    ) : (
-                    <PageTitleField
-                      key={`${data.page.id}-title`}
-                      className="page-title"
-                      aria-label={t("Seitentitel", "Page title")}
-                      defaultValue={data.page.title}
-                      readOnly={!editable || !!data.draft}
-                      onBlur={(e) => {
-                        if (
-                          e.target.value.trim() &&
-                          e.target.value !== data.page.title
-                        )
-                          void act({
-                            action: "page.update",
-                            pageId,
-                            patch: { title: e.target.value },
-                          });
-                      }}
-                    />
-                    )}
-                    {data.page.locked === 1 && (
-                      <div className="locked-notice">
-                        <Lock size={14} />
-                        {t("Diese Seite ist gesperrt.", "This page is locked.")}
-                      </div>
-                    )}
-                    {kindOff && (
-                      <div className="locked-notice" role="note">
-                        <Lock size={14} />
-                        {t("Auf dieser Instanz ausgeschaltet – die Seite bleibt erhalten und lässt sich nur lesen.", "Switched off on this instance – the page is kept and can only be read.")}
-                      </div>
-                    )}
-                  </div>
+                  <PageHeader
+                    page={data.page}
+                    readOnly={!editable || !!data.draft}
+                    kindOff={kindOff}
+                    onIcon={editable && !data.draft ? () => setIconPicker(true) : undefined}
+                    onAddCover={editable && !data.encrypted && !data.draft && !data.offlineNew ? () => setCoverPicker(true) : undefined}
+                    onTitle={(title) => void act({ action: "page.update", pageId, patch: { title } })}
+                    title={
+                      data.encrypted?.encryptTitles ? (
+                        <EncryptedTitleInput
+                          page={data.page}
+                          title={titledPages.find((p) => p.id === data.page.id)?.title ?? ""}
+                          editable={editable}
+                          onSave={(cipher) => act({ action: "e2ee.title", pageId: data.page.id, cipher })}
+                          onError={(message) => notifyError(new Error(message))}
+                        />
+                      ) : undefined
+                    }
+                  />
                   {data.offlineNew ? (
                     localOpen && (
                       <OfflinePageNotice
@@ -6223,9 +6156,8 @@ export default function WorkspaceApp({
                     </p>
                   ) : (
                     <>
-                      <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
-                      {/* Tags and properties (#70). */}
-                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} collapsedChoice={data.propertiesCollapsed} members={boot.members} editable={editable} act={act} spaces={boot.spaces} />
+                      {/* Review, tags and properties (#70). */}
+                      <PageMetaBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} collapsedChoice={data.propertiesCollapsed} members={boot.members} editable={editable} act={act} spaces={boot.spaces} />
                     </>
                   )}
                   {since?.pageId === data.page.id && since.value && (
@@ -6454,82 +6386,41 @@ export default function WorkspaceApp({
                   {pageLibrary && !data.draft && !recordFull && <BookNext space={pageLibrary} pages={activePages} pageId={data.page.id} />}
                   {!data.draft && !recordFull && (<>
                   {/* While a record of this database is open its own panels show; the page's wait until it closes (no requests for what the dialog covers). */}
-                  {discoveryPanels && !recordView && !data.offlineNew && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
-                  <div className="backlinks">
-                    {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
-                    {!data.locked && !data.encrypted && (
-                      <UnlinkedMentions
-                        key={data.page.id}
-                        pageId={data.page.id}
-                        editable={editable}
-                        onOpen={(id, rowId) => {
-                          // Where the title is mentioned flashes on arrival.
-                          jumpTo({ pageId: id, rowId }, byText(data.page.title));
-                          if (rowId) location.hash = pageLocationHash({ pageId: id, rowId });
-                          else void openPage(id);
-                        }}
-                        onLinked={() => void refresh()}
-                        onError={notifyError}
-                      />
-                    )}
-                    {data.backlinks?.length > 0 && (
-                      <>
-                        <h3>{t("Verlinkt von", "Linked from")}</h3>
-                        {data.backlinks.map((p) => (
-                          <button
-                            key={`${p.id}-${p.rowId || ""}`}
-                            onClick={() => {
-                              // The block linking here flashes on arrival.
-                              jumpTo(
-                                { pageId: p.id, rowId: p.rowId },
-                                anyOf(
-                                  bySelector(`a[href*="page=${CSS.escape(data.page.id)}"]`),
-                                  bySelector(`[data-link-card*="page=${CSS.escape(data.page.id)}"]`),
-                                ),
-                              );
-                              if (p.rowId) location.hash = pageLocationHash({ pageId: p.id, rowId: p.rowId });
-                              else void openPage(p.id);
-                            }}
-                          >
-                            <PageIcon name={shownPageIcon(p.icon, p.kind || (p.rowId ? "record" : "document"))} />
-                            {p.title}
-                            {p.pageTitle && <small className="muted">{p.pageTitle}</small>}
-                          </button>
-                        ))}
-                      </>
-                    )}
-                  </div>
+                  {!recordView && !data.offlineNew && !(data.page.kind === "database" && typeof location !== "undefined" && parsePageLocation(location.hash)?.rowId) && (
+                    <PageDiscovery
+                      page={data.page}
+                      closed={!!data.locked || !!data.encrypted}
+                      editable={editable}
+                      backlinks={data.backlinks}
+                      onOpenMention={(id, rowId) => {
+                        // Where the title is mentioned flashes on arrival.
+                        jumpTo({ pageId: id, rowId }, byText(data.page.title));
+                        if (rowId) location.hash = pageLocationHash({ pageId: id, rowId });
+                        else void openPage(id);
+                      }}
+                      onOpenBacklink={(p) => {
+                        // The block linking here flashes on arrival.
+                        jumpTo(
+                          { pageId: p.id, rowId: p.rowId },
+                          anyOf(
+                            bySelector(`a[href*="page=${CSS.escape(data.page.id)}"]`),
+                            bySelector(`[data-link-card*="page=${CSS.escape(data.page.id)}"]`),
+                          ),
+                        );
+                        if (p.rowId) location.hash = pageLocationHash({ pageId: p.id, rowId: p.rowId });
+                        else void openPage(p.id);
+                      }}
+                      onLinked={() => void refresh()}
+                      onError={notifyError}
+                    />
                   )}
-                  <div className="subpages">
-                    {activePages
-                      // Journal days are listed by the journal itself.
-                      // Pages below a record show with the record (#231).
-                      .filter(
-                        (p) =>
-                          p.parent_id === data.page.id &&
-                          !p.journal_date &&
-                          !(p.parent_row_id && boot.recordParents?.some((r) => r.pageId === data.page.id && r.rowId === p.parent_row_id)),
-                      )
-                      .map((p) => (
-                        <button key={p.id} onClick={() => openPage(p.id)}>
-                          <PageIcon name={p.icon} />
-                          {p.title}
-                          {p.offline && <OfflineMark state={p.offline} />}
-                          <ArrowUpRight />
-                        </button>
-                      ))}
-                    {editable && (
-                      <button
-                        className="text-button"
-                        onClick={() =>
-                          addPage("document", data.page.id, data.page.space_id)
-                        }
-                      >
-                        <Plus size={16} />
-                        {t("Unterseite hinzufügen", "Add sub-page")}
-                      </button>
-                    )}
-                  </div>
+                  <SubPages
+                    page={data.page}
+                    pages={activePages}
+                    recordParents={boot.recordParents}
+                    onOpen={(id) => void openPage(id)}
+                    onAdd={editable ? () => addPage("document", data.page.id, data.page.space_id) : undefined}
+                  />
                   </>)}
                 </article>
                 {aiSummary?.pageId === data.page.id && !comments && (
@@ -6737,6 +6628,13 @@ export default function WorkspaceApp({
                     transcription={!!boot.instance?.transcription}
                     onOpenMain={() => tabs.move(1, tabs.side!.active, 0, Number.MAX_SAFE_INTEGER)}
                     onOpenPage={(id) => tabs.openPlace(`page=${id}`, "here", 1) || void openPage(id)}
+                    taxonomy={boot.taxonomy}
+                    spaces={boot.spaces}
+                    recordParents={boot.recordParents}
+                    allPagesWide={allPagesWide}
+                    onAddSubPage={(parentId, spaceId) => addPage("document", parentId, spaceId)}
+                    onChanged={() => void refresh().catch(() => {})}
+                    reloadRef={splitReload}
                   />
                 );
               })()}

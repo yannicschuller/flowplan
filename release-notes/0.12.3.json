@@ -95,6 +95,13 @@
       "issues": [
         645
       ]
+    },
+    {
+      "de": "In der geteilten Ansicht sieht eine Seite rechts jetzt genauso aus wie links: gleich großer Titel, Tags und Eigenschaften, verwandte Seiten, Unterseiten mit „Unterseite hinzufügen“ und dieselben Abstände – auch wenn dieselbe Datenbank in beiden Hälften offen ist.",
+      "en": "In split view, a page on the right now looks just like it does on the left: the same title size, tags and properties, related pages, sub-pages with “Add sub-page” and the same spacing – also when the same database is open in both halves.",
+      "issues": [
+        652
+      ]
     }
   ]
 }
