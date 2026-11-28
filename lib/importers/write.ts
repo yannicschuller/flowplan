@@ -327,6 +327,26 @@ export async function writeImport(
       .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
         pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
       )
+      // Embedded files that are no pictures (#664, Obsidian's ![[file.pdf]],
+      // a Markdown ![…](clip.mp4)): PDFs, audio and video become the block
+      // an upload creates (attachmentHtml), other files links. An embed
+      // alone in its paragraph replaces the paragraph; inside text it
+      // splits the paragraph around the block.
+      .replace(
+        /(<p>\s*)?<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>(\s*<\/p>)?/g,
+        (whole: string, open: string | undefined, key: string, close: string | undefined, offset: number, html: string) => {
+          const file = files.get(decodeKey(key));
+          if (!file || isImage(file.mime) || !embeddedBlock(file.mime)) return whole;
+          const alt = /\balt="([^"<>]*)"/.exec(whole)?.[1]?.trim();
+          const block = attachmentHtml(file, alt || esc(file.name));
+          if (open && close) return block;
+          if (open) return `${block}<p>`;
+          // Inside a paragraph: closed before the block, opened again after it.
+          const before = html.slice(Math.max(0, offset - 100_000), offset);
+          const inParagraph = Math.max(before.lastIndexOf("<p>"), before.lastIndexOf("<p ")) > before.lastIndexOf("</p>");
+          return inParagraph ? `</p>${block}${close ? "" : "<p>"}` : `${block}${close || ""}`;
+        },
+      )
       // Images of files that are no pictures become links.
       .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
         const file = files.get(decodeKey(key));
@@ -765,6 +785,9 @@ async function writeTemplates(
 // An attachment of an import as the editor inserts an upload
 // (components/editor.tsx upload): a PDF with its preview, audio and video
 // with a player, anything else as a link. The title arrives escaped.
+// The types attachmentHtml shows as a block of their own (a PDF preview,
+// an audio or video player) rather than a link.
+const embeddedBlock = (mime: string) => mime === "application/pdf" || /^(?:audio|video)\//.test(mime);
 export function attachmentHtml(file: { url: string; mime: string } | undefined, title: string) {
   if (!file) return `<p>${title}</p>`;
   const url = esc(file.url);

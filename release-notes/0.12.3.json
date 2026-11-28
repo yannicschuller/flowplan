@@ -72,6 +72,27 @@
       "issues": [
         636
       ]
+    },
+    {
+      "de": "Markdown-Import: „[ ]“, „[x]“ und die Obsidian-Zustände wie „[/]“ in einer Tabellenzelle werden echte Aufgaben in der Zelle, auch mehrere untereinander in einer Zelle. Der Markdown-Export und der Git-Abgleich schreiben sie als „- [x] …“ in die Zelle, sodass sie beim erneuten Import erhalten bleiben.",
+      "en": "Markdown import: “[ ]”, “[x]” and Obsidian states such as “[/]” in a table cell become real tasks in the cell, several lines of them in one cell too. Markdown export and Git sync write them into the cell as “- [x] …”, so they survive the next import.",
+      "issues": [
+        658
+      ]
+    },
+    {
+      "de": "Beim Import werden eingebettete PDFs, Audio- und Videodateien, etwa Obsidians „![[datei.pdf]]“, zur PDF-Vorschau und zum Player statt zu einem Link. Andere Dateien bleiben Download-Links; ihre Größe zählt wie bei jedem Anhang.",
+      "en": "When importing, embedded PDFs, audio and video files, such as Obsidian’s “![[file.pdf]]”, become the PDF preview and the player instead of a link. Other files stay download links; their size counts as for any attachment.",
+      "issues": [
+        664
+      ]
+    },
+    {
+      "de": "Markdown-Import: Der Titel eines Hinweises („> [!tip] Titel“, auch einklappbar mit + oder -) behält Fettdruck, Kursiv, Code und Links, statt am ersten Format abzubrechen und den Rest in den Text zu schieben.",
+      "en": "Markdown import: a callout’s title (“> [!tip] Title”, also foldable with + or -) keeps bold, italics, code and links instead of stopping at the first formatting and pushing the rest into the text.",
+      "issues": [
+        666
+      ]
     }
   ],
   "fixes": [
