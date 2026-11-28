@@ -16,7 +16,15 @@
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
     }
   ],
-  "improvements": [],
+  "improvements": [
+    {
+      "de": "Auf dem Handy ist Text jetzt mindestens 14 px groß, die Abstufung bleibt erhalten; die Einträge der Navigation sind 16 px groß. Desktop und Tablet bleiben unverändert.",
+      "en": "On phones, text is now at least 14 px with its hierarchy kept, and the navigation rows are 16 px. Desktop and tablet stay unchanged.",
+      "issues": [
+        639
+      ]
+    }
+  ],
   "fixes": [
     {
       "de": "Auf dem Handy und Tablet folgt eine Seite, die du am Griff in der Seitenleiste ziehst, jetzt ruckelfrei deinem Finger. Eine schlichte Linie zeigt, wo sie landet, eine leichte Tönung, wenn sie zur Unterseite wird; zum Umsortieren reicht der obere oder untere Teil einer Zeile.",
