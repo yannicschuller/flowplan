@@ -747,14 +747,19 @@ export async function issueServersOf(user: Identity) {
 // What a link preview may read a private repository with: the tokens of
 // those connections to exactly this server (provider and web address) –
 // the token goes only to the API of the server it was entered for – while
-// the person who connected it may still act for it. Connections that name
-// the repository (as their default or in a database's mapping) come first.
+// the person who connected it may still act for it – and only for a
+// repository the connection is configured for: its default repository or
+// one mapped to a database. A token never reveals other private
+// repositories it happens to read; those stay "private".
 // Only the request headers leave this module, never to the browser.
 export type IssueReadCredential = { connectionId: string; endpoint: Endpoint; headers: Record<string, string> };
 export async function issueReadCredentials(user: Identity, provider: IssueProvider, web: string, repo: string): Promise<IssueReadCredential[]> {
-  const found: { credential: IssueReadCredential; named: boolean }[] = [];
+  const found: IssueReadCredential[] = [];
+  const wanted = repo.toLowerCase();
   for (const row of await memberConnections(user)) {
     if (row.provider !== provider || connectionWeb(row).toLowerCase() !== web.toLowerCase() || !row.token) continue;
+    const repos = [row.repo, ...(await all<{ repo: string }>("SELECT repo FROM issue_sync_maps WHERE connection_id=?", row.id)).map((m) => m.repo)];
+    if (!repos.some((r) => !!r && r.toLowerCase() === wanted)) continue;
     if (!(await connector(row))) continue;
     let client: Client;
     try {
@@ -763,13 +768,9 @@ export async function issueReadCredentials(user: Identity, provider: IssueProvid
       // The server is no longer allowed, or the key of the token is missing.
       continue;
     }
-    const repos = [row.repo, ...(await all<{ repo: string }>("SELECT repo FROM issue_sync_maps WHERE connection_id=?", row.id)).map((m) => m.repo)];
-    found.push({
-      credential: { connectionId: row.id, endpoint: client.endpoint, headers: authHeaders(client) },
-      named: repos.some((r) => !!r && r.toLowerCase() === repo.toLowerCase()),
-    });
+    found.push({ connectionId: row.id, endpoint: client.endpoint, headers: authHeaders(client) });
   }
-  return [...found.filter((f) => f.named), ...found.filter((f) => !f.named)].map((f) => f.credential);
+  return found;
 }
 // A refusal for too many requests (403 with an exhausted limit, 429).
 export const issueRateLimited = limited;

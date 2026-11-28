@@ -267,6 +267,33 @@ test("a private repository: the workspace's connection token for members, never 
   assert.ok(fake.requests.every((r) => !r.headers.authorization), "guests get no token");
 });
 
+test("a token is only used for the repositories its connection is configured for", async () => {
+  clearIssuePreviewCache();
+  // The token could read this private repository – but no connection names it.
+  fake.answers.set("https://api.github.com/repos/acme/other/issues/9", {
+    status: 200,
+    private: true,
+    body: { number: 9, title: "Unconfigured private", state: "open" },
+  });
+  fake.requests = [];
+  const url = "https://github.com/acme/other/issues/9";
+  assert.deepEqual((await issuePreviews(member.user, [url]))[url], { url, error: "private" });
+  assert.equal(fake.requests.length, 1);
+  assert.ok(fake.requests.every((r) => !r.headers.authorization), "no token for an unconfigured repository on the same host");
+  // A database mapped to it makes it a configured repository.
+  const { id: cid } = (await (await import("../lib/db")).one<{ id: string }>("SELECT id FROM issue_connections WHERE workspace_id=? AND provider='github'", wid))!;
+  const { one } = await import("../lib/db");
+  const sid = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+  const mapPage = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, kind: "database", title: "Other issues" })) as { id: string }).id;
+  await run("INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,state,created_by,created_at) VALUES(?,?,?,?,?,?,?)", mapPage, cid, "acme/other", "{}", "{}", owner.user.id, Date.now());
+  clearIssuePreviewCache();
+  fake.requests = [];
+  const mapped = (await issuePreviews(member.user, [url]))[url];
+  assert.ok("state" in mapped && mapped.title === "Unconfigured private");
+  assert.equal(fake.requests[0].headers.authorization, `Bearer ${token}`);
+  await run("DELETE FROM issue_sync_maps WHERE page_id=?", mapPage);
+});
+
 test("GitLab merge requests and Forgejo drafts; refusals and limits answer gracefully", async () => {
   clearIssuePreviewCache();
   const mr = "https://gitlab.com/group/app/-/merge_requests/3";

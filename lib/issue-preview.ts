@@ -11,8 +11,10 @@
 //
 // Public repositories are read without a token. A private one only with the
 // token of an issue sync connection to that very server in one of the
-// person's workspaces (full members; lib/issue-sync.ts issueReadCredentials):
-// those tokens are tried first, then none. The token never leaves the
+// person's workspaces (full members) that is configured for exactly that
+// repository – its default or a database's mapping (lib/issue-sync.ts
+// issueReadCredentials): those tokens are tried first, then none. Other
+// private repositories the token could read stay "private". The token never leaves the
 // server and never goes to another host. Nothing of the Flowplan user goes
 // to the provider: no name, no address, no cookie – a fixed user agent.
 //
