@@ -7,11 +7,18 @@
 // from the origin. With a vector in space – "(1 | 2 | 3)" – the graph turns
 // 3D: axes x, y, z as drawn in school, the floor grid, dashed guides to the
 // floor; dragging turns the view.
+// A function can also show its derivatives f′ and f″ (dashed), mark its
+// zeros, extreme and inflection points (and where it meets other marked
+// functions), and hatch the area under it between two bounds with the
+// integral and the mean value (lib/math-analysis.ts). Any variable name:
+// "f(t) = t·e^(−t)" is drawn over t.
 import { compile } from "mathjs";
 import { functionExpression, vectorValue } from "./math-solve";
+import { plotFunction, plotIntersections } from "./math-analysis";
 import { LOCALE_TAG, PAGE_LOCALE, tr } from "./locale-tag";
 
-export type PlotFunction = { expr: string; color: string };
+export type PlotArea = { from: string; to: string };
+export type PlotFunction = { expr: string; color: string; d1?: boolean; d2?: boolean; points?: boolean; area?: PlotArea | null };
 export type PlotView = { xMin: number; xMax: number; yMin: number; yMax: number };
 // How a 3D graph is looked at: turned around z (yaw) and tilted (pitch), in degrees.
 export type PlotCamera = { yaw: number; pitch: number; zoom: number };
@@ -31,10 +38,19 @@ export function parsePlot(value: string | null | undefined): PlotConfig {
       ? data.functions
           .filter((f: unknown) => f && typeof (f as PlotFunction).expr === "string")
           .slice(0, MAX_FUNCTIONS)
-          .map((f: PlotFunction, i: number) => ({
-            expr: f.expr.slice(0, 200),
-            color: /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : PLOT_COLORS[i % PLOT_COLORS.length],
-          }))
+          .map((f: PlotFunction, i: number) => {
+            const out: PlotFunction = {
+              expr: f.expr.slice(0, 200),
+              color: /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : PLOT_COLORS[i % PLOT_COLORS.length],
+            };
+            // The analysis shown: only what is switched on is stored.
+            if (f.d1 === true) out.d1 = true;
+            if (f.d2 === true) out.d2 = true;
+            if (f.points === true) out.points = true;
+            const a = f.area;
+            if (a && typeof a.from === "string" && typeof a.to === "string") out.area = { from: a.from.slice(0, 40), to: a.to.slice(0, 40) };
+            return out;
+          })
       : [];
     const v = data.view;
     const view =
@@ -55,7 +71,18 @@ export const plotJson = (config: PlotConfig) => JSON.stringify(config);
 
 const locale = () => PAGE_LOCALE;
 type Compiled = ((x: number) => number) | null;
+// The analysis of an entry (cached: the graph is redrawn while dragging).
+const analyses = new Map<string, ReturnType<typeof plotFunction>>();
+function analysisOf(expr: string) {
+  if (!analyses.has(expr)) {
+    if (analyses.size > 100) analyses.delete(analyses.keys().next().value!);
+    analyses.set(expr, vectorValue(expr, locale()) ? null : plotFunction(expr, locale()));
+  }
+  return analyses.get(expr)!;
+}
 function compileFunction(expr: string): Compiled {
+  const analysed = analysisOf(expr);
+  if (analysed) return analysed.f;
   const written = functionExpression(expr, locale());
   if (!written) return null;
   try {
@@ -80,6 +107,8 @@ function spaceVector(expr: string): [number, number, number] | null {
 }
 const isSpace = (config: PlotConfig) => config.functions.some((f) => vectorValue(f.expr, locale())?.length === 3);
 export const isValidFunction = (expr: string) => !!compileFunction(expr) || !!spaceVector(expr);
+// The variable of a function entry ("t" for "t·e^(−t)"), x otherwise.
+const variableOf = (expr: string) => analysisOf(expr)?.variable || "x";
 // Names in the legend: f, g, h … for functions, a⃗, b⃗, c⃗ … for vectors.
 function entryNames(config: PlotConfig) {
   let functions = 0,
@@ -166,14 +195,39 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
   }
   parts.push(`<line class="plot-axis" x1="${PAD}" y1="${axisY}" x2="${W - PAD}" y2="${axisY}"/>`);
   parts.push(`<line class="plot-axis" x1="${axisX}" y1="${PAD}" x2="${axisX}" y2="${H - PAD}"/>`);
+  // Hatched areas first, under the curves: ∫ from a to b.
+  const hatch = `plot-hatch-${++plotCount}`;
+  const integrals: (ReturnType<NonNullable<ReturnType<typeof plotFunction>>["integral"]> | null)[] = config.functions.map(() => null);
+  config.functions.forEach((entry, i) => {
+    const f = fns[i];
+    const analysed = analysisOf(entry.expr);
+    if (!f || !analysed || !entry.area) return;
+    const result = analysed.integral(entry.area.from, entry.area.to);
+    integrals[i] = result;
+    if (!result) return;
+    const [a, b] = [Math.min(result.from, result.to), Math.max(result.from, result.to)];
+    const lo = Math.max(a, view.xMin - (view.xMax - view.xMin)),
+      hi = Math.min(b, view.xMax + (view.xMax - view.xMin));
+    if (hi <= lo) return;
+    const clamp = (y: number) => Math.max(-H, Math.min(2 * H, y));
+    let d = `M${sx(lo).toFixed(1)},${clamp(sy(0)).toFixed(1)}`;
+    for (let k = 0; k <= 240; k++) {
+      const x = lo + ((hi - lo) * k) / 240;
+      const y = f(x);
+      d += `L${sx(x).toFixed(1)},${clamp(sy(Number.isFinite(y) ? y : 0)).toFixed(1)}`;
+    }
+    d += `L${sx(hi).toFixed(1)},${clamp(sy(0)).toFixed(1)}Z`;
+    parts.push(
+      `<defs><pattern id="${hatch}-${i}" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="${entry.color}" stroke-width="2"/></pattern></defs>`,
+      `<path class="plot-area" d="${d}" fill="url(#${hatch}-${i})" stroke="${entry.color}"><title>${escape(integralText(result, entry, names[i]))}</title></path>`,
+    );
+  });
   // Curves: sampled, broken where the function jumps or is undefined.
   const samples = 800;
-  fns.forEach((f, i) => {
-    if (!f) return;
-    const color = config.functions[i].color;
+  const curve = (f: (x: number) => number, color: string, className: string, zeros: boolean) => {
     let d = "";
     let previous: number | null = null;
-    const zeros: number[] = [];
+    const found: number[] = [];
     let prevX = 0,
       prevY = NaN;
     for (let k = 0; k <= samples; k++) {
@@ -188,7 +242,7 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
       const jump = previous !== null && Math.abs(py - previous) > H * 1.5;
       d += `${previous === null || jump ? "M" : "L"}${sx(x).toFixed(1)},${Math.max(-H, Math.min(2 * H, py)).toFixed(1)}`;
       // A zero between two samples: refine by bisection.
-      if (Number.isFinite(prevY) && !jump && (y === 0 || prevY * y < 0)) {
+      if (zeros && Number.isFinite(prevY) && !jump && (y === 0 || prevY * y < 0)) {
         let a = prevX,
           b = x;
         for (let n = 0; n < 50; n++) {
@@ -196,18 +250,54 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
           if (f(a) * f(m) <= 0) b = m;
           else a = m;
         }
-        if (!zeros.some((z) => Math.abs(z - a) < 1e-6)) zeros.push(y === 0 ? x : a);
+        if (!found.some((z) => Math.abs(z - a) < 1e-6)) found.push(y === 0 ? x : a);
       }
       previous = py;
       prevX = x;
       prevY = y;
     }
-    parts.push(`<path class="plot-curve" d="${d}" stroke="${color}"/>`);
+    parts.push(`<path class="${className}" d="${d}" stroke="${color}"/>`);
+    return found;
+  };
+  fns.forEach((f, i) => {
+    if (!f) return;
+    const entry = config.functions[i];
+    const color = entry.color;
+    const analysed = analysisOf(entry.expr);
+    for (const n of [1, 2] as const) {
+      const g = (n === 1 ? entry.d1 : entry.d2) && analysed?.derivative(n);
+      if (g) curve(g, color, `plot-curve plot-derivative plot-derivative-${n}`, false);
+    }
+    const zeros = curve(f, color, "plot-curve", true);
     for (const z of zeros.slice(0, 20))
       parts.push(
-        `<circle class="plot-zero" cx="${sx(z)}" cy="${sy(0)}" r="3.5" stroke="${color}"><title>${tr("Nullstelle", "Zero")} x ≈ ${number(z)}</title></circle>`,
+        `<circle class="plot-zero" cx="${sx(z)}" cy="${sy(0)}" r="3.5" stroke="${color}"><title>${tr("Nullstelle", "Zero")} ${variableOf(entry.expr)} ≈ ${number(z)}</title></circle>`,
       );
+    // Extreme and inflection points, labelled H, T, W, S.
+    if (entry.points && analysed)
+      for (const p of analysed.points()) {
+        if (p.kind === "zero" || p.x < view.xMin || p.x > view.xMax || p.y < view.yMin || p.y > view.yMax) continue;
+        const [cx, cy] = [sx(p.x), sy(p.y)];
+        const letter = { max: tr("H", "max"), min: tr("T", "min"), inflection: tr("W", "IP"), saddle: tr("S", "S") }[p.kind];
+        const shape =
+          p.kind === "max" || p.kind === "min"
+            ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4.5" fill="${color}"/>`
+            : `<rect x="${(cx - 4).toFixed(1)}" y="${(cy - 4).toFixed(1)}" width="8" height="8" transform="rotate(45 ${cx.toFixed(1)} ${cy.toFixed(1)})" class="plot-mark-hollow" stroke="${color}"/>`;
+        parts.push(
+          `<g class="plot-mark plot-${p.kind}"><title>${escape(p.title)}</title>${shape}<text x="${(cx + 7).toFixed(1)}" y="${(cy + (p.kind === "min" ? 15 : -8)).toFixed(1)}" fill="${color}">${escape(letter)}</text></g>`,
+        );
+      }
   });
+  // Where marked functions meet.
+  const marked = config.functions.map((entry, i) => (entry.points && fns[i] ? i : -1)).filter((i) => i >= 0);
+  for (let a = 0; a < marked.length; a++)
+    for (let b = a + 1; b < marked.length; b++)
+      for (const p of plotIntersections(fns[marked[a]]!, fns[marked[b]]!, view.xMin, view.xMax).slice(0, 12)) {
+        if (p.y < view.yMin || p.y > view.yMax) continue;
+        parts.push(
+          `<g class="plot-mark plot-intersection"><title>${escape(`${tr("Schnittpunkt", "Intersection")} ${names[marked[a]]}, ${names[marked[b]]}: (${number(p.x)} | ${number(p.y)})`)}</title><path d="M${(sx(p.x) - 4).toFixed(1)},${(sy(p.y) - 4).toFixed(1)}l8,8m0,-8l-8,8"/></g>`,
+        );
+      }
   // Vectors: arrows from the origin, named at the tip.
   vectors.forEach((v, i) => {
     if (!v) return;
@@ -231,16 +321,42 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
       `<g class="plot-vector"><title>${escape(`${tr("Vektor", "Vector")} ${names[i]} = (${number(v[0])} | ${number(v[1])})`)}</title><line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${color}"/><polygon points="${tip}" fill="${color}"/><text x="${(x1 + ux * 10 + uy * 8).toFixed(1)}" y="${(y1 + uy * 10 - ux * 8 + 4).toFixed(1)}" fill="${color}" text-anchor="middle">${escape(names[i])}</text>${nameArrow(x1 + ux * 10 + uy * 8, y1 + uy * 10 - ux * 8 - 8, color)}</g>`,
     );
   });
-  // Legend.
+  // Legend: each entry, then its derivatives and integral.
+  let row = 0;
+  const legend = (text: string, color: string, className = "", extra = "", sample = `<rect x="0" y="-9" width="14" height="4" rx="2" fill="${color}"/>`) =>
+    parts.push(`<g class="plot-legend${className}" transform="translate(${PAD + 10},${PAD + 16 + row++ * 20})">${sample}<text x="20" y="-3"${extra}>${escape(text)}</text></g>`);
   config.functions.forEach((f, i) => {
     const vector = vectors[i];
     const valid = !!fns[i] || !!vector;
-    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(x) = ${f.expr}`;
+    const v = variableOf(f.expr);
+    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(${v}) = ${f.expr.replace(/^\s*(?:y|[a-zA-Z]\s*\(\s*[a-zA-Z]\s*\))\s*[=:]\s*/, "")}`;
     parts.push(
-      `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + i * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${valid ? "" : ' class="plot-invalid"'}>${escape(text)}</text>${vector ? nameArrow(24, -14, "currentColor") : ""}</g>`,
+      `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + row++ * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${valid ? "" : ' class="plot-invalid"'}>${escape(text)}</text>${vector ? nameArrow(24, -14, "currentColor") : ""}</g>`,
     );
+    const analysed = !vector && fns[i] ? analysisOf(f.expr) : null;
+    if (!analysed) return;
+    for (const n of [1, 2] as const) {
+      if (!(n === 1 ? f.d1 : f.d2)) continue;
+      const written = analysed.derivativeText(n);
+      legend(`${names[i]}${n === 1 ? "′" : "″"}(${v}) = ${written.length > 70 ? `${written.slice(0, 68)}…` : written}`, f.color, ` plot-legend-derivative`, "", `<line x1="0" y1="-7" x2="14" y2="-7" class="plot-derivative plot-derivative-${n}" stroke="${f.color}"/>`);
+    }
+    if (f.area) {
+      const result = integrals[i];
+      legend(result ? integralText(result, f, names[i]) : tr("∫: Grenzen prüfen", "∫: check the bounds"), f.color, " plot-legend-area", result ? "" : ' class="plot-invalid"', `<rect x="0" y="-12" width="14" height="10" rx="2" fill="url(#${hatch}-${i})" stroke="${f.color}"/>`);
+    }
   });
   return `<svg class="plot-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escape(label)}">${parts.join("")}</svg>`;
+}
+
+let plotCount = 0;
+// "∫ von 0 bis 2: 8/3, Mittelwert 4/3"
+function integralText(r: { fromText: string; toText: string; value: string; mean: string }, entry: PlotFunction, name: string) {
+  const eq = (s: string) => (s.startsWith("≈") ? s : `= ${s}`);
+  const v = variableOf(entry.expr);
+  return tr(
+    `∫ ${name}(${v}) d${v} von ${r.fromText} bis ${r.toText} ${eq(r.value)}, Mittelwert ${r.mean}`,
+    `∫ ${name}(${v}) d${v} from ${r.fromText} to ${r.toText} ${eq(r.value)}, mean ${r.mean}`,
+  );
 }
 
 // The SVG of a 3D graph: vectors from the origin in space, seen through `camera`.
@@ -324,7 +440,7 @@ export function plotSvg3d(config: PlotConfig, camera: PlotCamera, label: string)
   // Legend; functions of x are not drawn in space.
   config.functions.forEach((f, i) => {
     const vector = vectors[i];
-    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(x) = ${f.expr}`;
+    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(${variableOf(f.expr)}) = ${f.expr}`;
     parts.push(
       `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + i * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${vector ? "" : ' class="plot-invalid"'}>${escape(text)}${vector ? "" : `<title>${escape(tr("Funktionen werden nur im 2D-Graphen gezeichnet", "Functions are only drawn in a 2D graph"))}</title>`}</text>${vector ? nameArrow(24, -14, "currentColor") : ""}</g>`,
     );
@@ -462,7 +578,59 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     { passive: false },
   );
 
-  // The functions, edited below the graph.
+  // The functions, edited below the graph; per function the analysis to
+  // show (f′, f″, points, area), behind its "ƒ′" button.
+  const open = new Set<number>();
+  const update = (i: number, change: Partial<PlotFunction>) => {
+    config = { ...config, functions: config.functions.map((g, j) => (j === i ? { ...g, ...change } : g)) };
+    draw();
+    changed();
+  };
+  const optionsRow = (f: PlotFunction, i: number, name: string) => {
+    const row = document.createElement("div");
+    row.className = "plot-options";
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", tr(`Analyse von ${name}`, `Analysis of ${name}`));
+    const v = variableOf(f.expr);
+    const toggle = (label: string, title: string, checked: boolean, onChange: (on: boolean) => void) => {
+      const wrap = document.createElement("label");
+      wrap.title = title;
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = checked;
+      box.addEventListener("change", () => onChange(box.checked));
+      wrap.append(box, document.createTextNode(label));
+      row.append(wrap);
+      return box;
+    };
+    toggle(`${name}′`, tr(`1. Ableitung ${name}′(${v}) zeichnen`, `Draw the first derivative ${name}′(${v})`), !!f.d1, (on) => update(i, { d1: on || undefined }));
+    toggle(`${name}″`, tr(`2. Ableitung ${name}″(${v}) zeichnen`, `Draw the second derivative ${name}″(${v})`), !!f.d2, (on) => update(i, { d2: on || undefined }));
+    toggle(tr("Punkte", "Points"), tr("Nullstellen, Extrem- und Wendepunkte markieren", "Mark zeros, extreme and inflection points"), !!f.points, (on) => update(i, { points: on || undefined }));
+    const bound = (value: string, label: string, onInput: (text: string) => void) => {
+      const input = document.createElement("input");
+      input.className = "plot-bound";
+      input.value = value;
+      input.maxLength = 40;
+      input.spellcheck = false;
+      input.setAttribute("aria-label", label);
+      input.addEventListener("input", () => onInput(input.value));
+      return input;
+    };
+    const area = f.area || null;
+    const areaBox = toggle(tr("Fläche", "Area"), tr("Fläche unter dem Graphen schraffieren, mit Integral und Mittelwert", "Hatch the area under the graph, with the integral and the mean value"), !!area, (on) => {
+      update(i, { area: on ? { from: "0", to: "1" } : null });
+      renderInputs();
+    });
+    if (area) {
+      const from = bound(area.from, tr("Untere Grenze", "Lower bound"), (text) => update(i, { area: { from: text, to: config.functions[i].area?.to ?? "1" } }));
+      const to = bound(area.to, tr("Obere Grenze", "Upper bound"), (text) => update(i, { area: { from: config.functions[i].area?.from ?? "0", to: text } }));
+      const span = document.createElement("span");
+      span.className = "plot-bounds";
+      span.append(document.createTextNode(tr("von", "from")), from, document.createTextNode(tr("bis", "to")), to);
+      areaBox.parentElement!.after(span);
+    }
+    return row;
+  };
   const renderInputs = () => {
     controls.innerHTML = "";
     if (!options.editable) return;
@@ -475,8 +643,8 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
       const name = document.createElement("span");
       name.className = "plot-name";
       const named = entryNames(config)[i];
-      const setName = (vector: boolean, n: string) => {
-        name.textContent = vector ? `${n} =` : `${n}(x) =`;
+      const setName = (vector: boolean, n: string, expr = f.expr) => {
+        name.textContent = vector ? `${n} =` : `${n}(${variableOf(expr)}) =`;
         name.classList.toggle("vector", vector);
       };
       setName(!!spaceVector(f.expr), named);
@@ -490,18 +658,30 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
       input.addEventListener("input", () => {
         config = { ...config, functions: config.functions.map((g, j) => (j === i ? { ...g, expr: input.value } : g)) };
         input.classList.toggle("invalid", !!input.value.trim() && !isValidFunction(input.value));
-        setName(!!spaceVector(input.value), entryNames(config)[i]);
+        setName(!!spaceVector(input.value), entryNames(config)[i], input.value);
         draw();
         changed();
       });
       const remove = button("×", tr("Funktion entfernen", "Remove function"), () => {
         config = { ...config, functions: config.functions.filter((_, j) => j !== i) };
+        open.clear();
         renderInputs();
         draw();
         changed();
       });
-      row.append(swatch, name, input, remove);
+      // The analysis options; open while something is shown.
+      const shown = !!(f.d1 || f.d2 || f.points || f.area);
+      const more = button("ƒ′", tr(`Ableitungen, Punkte und Fläche von ${named}`, `Derivatives, points and area of ${named}`), () => {
+        if (open.has(i)) open.delete(i);
+        else open.add(i);
+        renderInputs();
+      });
+      more.className = "plot-more";
+      more.setAttribute("aria-expanded", String(open.has(i) || shown));
+      more.hidden = !!spaceVector(f.expr);
+      row.append(swatch, name, input, more, remove);
       controls.append(row);
+      if ((open.has(i) || shown) && !spaceVector(f.expr)) controls.append(optionsRow(f, i, named));
     });
     if (config.functions.length < MAX_FUNCTIONS)
       controls.append(

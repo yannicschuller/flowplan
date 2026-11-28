@@ -178,6 +178,11 @@ export function TextMenu({
   const [graph, setGraph] = useState<string | null>(null);
   // Vectors in the plane to draw ("(1; 2) + (3; 1)" → a⃗, b⃗ and the sum).
   const [arrows, setArrows] = useState<string[] | null>(null);
+  // A selected function, limit or integral (lib/math-analysis.ts): f′, f″,
+  // the curve analysis, integrals, tangents, limits – grouped under
+  // "Analysis", open once asked for.
+  const [analysis, setAnalysis] = useState<MathAction[]>([]);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   // Formulas written as text in the selection (\[ … \], \( … \)).
   const [latex, setLatex] = useState(false);
   const [spelling, setSpelling] = useState<Spelling | null>(null);
@@ -348,6 +353,7 @@ export function TextMenu({
   }, [place, close, editor]);
   useEffect(() => {
     setCalc([]);
+    setAnalysis([]);
     setGraph(null);
     setArrows(null);
     setLatex(false);
@@ -358,11 +364,20 @@ export function TextMenu({
     if (hasLatexText(text)) setLatex(true);
     if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√|[([][^()[\]]*[;|,][^()[\]]*[)\]]/.test(text)) return;
     let current = true;
-    void import("@/lib/math-solve").then(({ mathActions, functionExpression, plotVectors }) => {
+    void Promise.all([import("@/lib/math-solve"), import("@/lib/math-analysis")]).then(([{ mathActions, functionExpression, plotVectors }, { functionActions, readFunction }]) => {
       if (!current) return;
       setArrows(plotVectors(text, locale));
       setCalc(mathActions(text, locale).slice(0, 4));
-      setGraph(/x/.test(text) && functionExpression(text, locale) ? text.trim().replace(/^(?:y|[a-zA-Z]\s*\(\s*x\s*\))\s*[=:]\s*/, "").replace(/=\s*$/, "") : null);
+      setAnalysis(functionActions(text, locale));
+      // "f(t) = …" in any variable, a term only in x.
+      const written = readFunction(text, locale);
+      setGraph(
+        written
+          ? written.body
+          : /x/.test(text) && functionExpression(text, locale)
+            ? text.trim().replace(/^(?:y|[a-zA-Z]\s*\(\s*x\s*\))\s*[=:]\s*/, "").replace(/=\s*$/, "")
+            : null,
+      );
     });
     return () => {
       current = false;
@@ -553,6 +568,39 @@ export function TextMenu({
       <span>{label}</span>
       {active && <Check size={14} className="text-menu-sub-check" aria-hidden />}
     </Dropdown.Item>
+  );
+  // A result's row: inserting it after the selection; the button at its
+  // end copies it (a sibling, so Tab reaches it and Enter on either does
+  // only its own thing).
+  const calcRow = (action: MathAction) => (
+    <div key={action.kind + action.text} className="text-menu-calc-row">
+      <button
+        type="button"
+        role="menuitem"
+        title={t("Hinter der Auswahl einfügen", "Insert after the selection")}
+        onClick={run(() => editor.view.dispatch(editor.state.tr.insertText(` ${action.text}`, to)))}
+      >
+        <Equals size={15} />
+        <span>{action.label}</span>
+        <strong>{mathActionResult(action)}</strong>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="text-menu-calc-copy"
+        aria-label={t("Ergebnis kopieren", "Copy result")}
+        title={t("Ergebnis kopieren", "Copy result")}
+        onClick={() => {
+          const text = mathActionResult(action);
+          void navigator.clipboard
+            ?.writeText(text)
+            .then(() => showToast({ text: t("Kopiert", "Copied") }))
+            .catch(() => showToast({ text: t("Kopieren nicht möglich.", "Copying failed."), tone: "error" }));
+        }}
+      >
+        <Copy size={15} />
+      </button>
+    </div>
   );
   return (
     <div
@@ -846,7 +894,7 @@ export function TextMenu({
           </button>
         </div>
       )}
-      {(calc.length > 0 || graph || arrows) && (
+      {(calc.length > 0 || analysis.length > 0 || graph || arrows) && (
         <div className="text-menu-calc" role="group" aria-label={t("Rechnen", "Calculate")}>
           {graph && (
             <button
@@ -887,39 +935,22 @@ export function TextMenu({
               <strong>{arrows.length === 1 ? arrows[0] : t(`${arrows.length} Pfeile`, `${arrows.length} arrows`)}</strong>
             </button>
           )}
-          {calc.map((action) => (
-            // The row inserts the result after the selection; the button at
-            // its end copies it (a sibling, so Tab reaches it and Enter on
-            // either does only its own thing).
-            <div key={action.kind + action.text} className="text-menu-calc-row">
-              <button
-                type="button"
-                role="menuitem"
-                title={t("Hinter der Auswahl einfügen", "Insert after the selection")}
-                onClick={run(() => editor.view.dispatch(editor.state.tr.insertText(` ${action.text}`, to)))}
-              >
-                <Equals size={15} />
-                <span>{action.label}</span>
-                <strong>{mathActionResult(action)}</strong>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="text-menu-calc-copy"
-                aria-label={t("Ergebnis kopieren", "Copy result")}
-                title={t("Ergebnis kopieren", "Copy result")}
-                onClick={() => {
-                  const text = mathActionResult(action);
-                  void navigator.clipboard
-                    ?.writeText(text)
-                    .then(() => showToast({ text: t("Kopiert", "Copied") }))
-                    .catch(() => showToast({ text: t("Kopieren nicht möglich.", "Copying failed."), tone: "error" }));
-                }}
-              >
-                <Copy size={15} />
-              </button>
-            </div>
-          ))}
+          {calc.map(calcRow)}
+          {analysis.length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              className="text-menu-calc-group"
+              aria-expanded={analysisOpen}
+              title={t("Ableitungen, Kurvendiskussion, Integrale, Grenzwerte", "Derivatives, curve analysis, integrals, limits")}
+              onClick={() => setAnalysisOpen((open) => !open)}
+            >
+              {analysisOpen ? <CaretDown size={15} /> : <CaretRight size={15} />}
+              <span>{t("Analysis", "Calculus")}</span>
+              <strong>{analysis.length}</strong>
+            </button>
+          )}
+          {analysisOpen && analysis.map(calcRow)}
         </div>
       )}
       <div className="text-menu-actions" role="group">
