@@ -65,12 +65,14 @@ test("the page's head starts where its text starts", async ({ page }, info) => {
   await expect(page.locator(".split-primary .block-editor-surface.with-block-handles")).toBeVisible();
   const usual = await edges(page);
   expectAligned(usual, "usual width");
-  // The handles keep their room: the text is not at the column's edge.
+  // The handles keep their room: the text is not at the column's edge. On a
+  // phone the column's own padding is that room, the same on both sides (#645).
   const column = await page.locator(".split-primary .page-content").evaluate((el) => {
     const r = el.getBoundingClientRect();
-    return Math.round(r.left + parseFloat(getComputedStyle(el).paddingLeft));
+    return { edge: Math.round(r.left), inner: Math.round(r.left + parseFloat(getComputedStyle(el).paddingLeft)) };
   });
-  expect(usual.text! - column).toBeGreaterThanOrEqual(20);
+  if (info.project.name === "desktop") expect(usual.text! - column.inner).toBeGreaterThanOrEqual(20);
+  else expect(usual.text! - column.edge).toBeGreaterThanOrEqual(24);
 
   if (info.project.name === "desktop") {
     // Full width.

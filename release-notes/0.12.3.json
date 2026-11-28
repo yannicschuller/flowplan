@@ -81,6 +81,20 @@
       "issues": [
         648
       ]
+    },
+    {
+      "de": "In der iPad-App bleibt der Seitentitel jetzt gleich groß, ob die Seitenleiste ein- oder ausgeblendet ist – bisher schrumpfte er ohne Seitenleiste auf Textgröße. Ein langer Titel bricht jetzt um, statt rechts abgeschnitten zu werden.",
+      "en": "In the iPad app, a page’s title now keeps its size whether the sidebar is shown or hidden – it used to shrink to body text size without the sidebar. A long title now wraps instead of being cut off at the right.",
+      "issues": [
+        643
+      ]
+    },
+    {
+      "de": "Auf dem Handy hat eine Seite links und rechts jetzt den gleichen Rand, statt links einen breiten Streifen freizulassen. Der Griff des Blocks mit dem Cursor passt in den linken Rand.",
+      "en": "On a phone, a page now has the same margin on the left and right instead of a wide strip on the left. The handle of the block with the cursor fits into the left margin.",
+      "issues": [
+        645
+      ]
     }
   ]
 }

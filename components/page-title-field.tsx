@@ -1,9 +1,9 @@
 "use client";
 // The title field above a page: one line of text, typed like an <input>,
-// that wraps onto further lines where the screen is too narrow for it
+// that wraps onto further lines where the column is too narrow for it
 // instead of being cut off – a journal day's "Dienstag, 10. November 2026"
-// is wider than a phone. Wider windows keep it on one line
-// (app/globals.css, `.page-title`). Enter adds no line break and a pasted
+// is wider than a phone, a long title wider than a tablet's column (#643;
+// app/globals.css, `.page-title`). Enter adds no line break and a pasted
 // one becomes a space.
 import { useLayoutEffect, useRef, type TextareaHTMLAttributes } from "react";
 
