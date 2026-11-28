@@ -25,6 +25,30 @@ const loadSolver = () =>
     throw error;
   }));
 
+// Questions about a function written before (lib/math-analysis.ts):
+// "f′(x) =", "F(x) =", "f(2) =", "lim x→∞ f(x) =", "∫₀² f(x) dx =".
+type Analysis = typeof import("./math-analysis");
+let analysis: Promise<Analysis> | null = null;
+const loadAnalysis = () =>
+  (analysis ??= import("./math-analysis").catch((error) => {
+    analysis = null;
+    throw error;
+  }));
+const FUNCTION_QUESTION = /(?:[a-zA-Z]\s*(?:['′″‴]{1,3})?\s*\([^()=]{1,40}\)|\blim\b[^=]*|∫[^=]*)\s*=\s?$/;
+// The paragraphs before the cursor's that may define a function, nearest last.
+function definitionsBefore(state: EditorState): string[] {
+  const $from = state.selection.$from;
+  if ($from.depth < 1) return [];
+  const out: string[] = [];
+  state.doc.nodesBetween(0, $from.before(), (node) => {
+    if (!node.isTextblock) return true;
+    const text = node.textContent;
+    if (text.includes("=") && text.includes("(")) out.push(text);
+    return false;
+  });
+  return out.slice(-200);
+}
+
 // Whether a hint is shown right now (other key handlers let it go first).
 export function calcHintShown(state: EditorState) {
   const hint = key.getState(state)?.hint;
@@ -173,7 +197,13 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
               const written = lineWithFormulas(view.state);
               const pos = view.state.selection.from;
               const id = ++request;
-              void loadSolver().then(({ mathActions, trailingExpression, latexToExpression }) => {
+              const current = () => id === request && !view.isDestroyed && view.state.selection.from === pos;
+              const show = (hint: NonNullable<Hint>) => view.dispatch(view.state.tr.setMeta(key, { hint } satisfies Meta));
+              // A question about a function first; else a calculation.
+              const asks = !written.formulas.length && FUNCTION_QUESTION.test(line);
+              const before = asks ? definitionsBefore(view.state) : [];
+              const answer = asks ? loadAnalysis().then(({ analysisHint }) => analysisHint(line, before, locale)) : Promise.resolve(null);
+              const calculate = () => loadSolver().then(({ mathActions, trailingExpression, latexToExpression }) => {
                 if (
                   id !== request ||
                   view.isDestroyed ||
@@ -206,6 +236,14 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
                   } satisfies Meta),
                 );
               }, () => {});
+              void answer.catch(() => null).then((found) => {
+                if (!current()) return;
+                if (found) {
+                  show({ pos, text: (line.endsWith(" ") ? "" : " ") + found.text });
+                  return;
+                }
+                return calculate();
+              });
             },
           };
         },

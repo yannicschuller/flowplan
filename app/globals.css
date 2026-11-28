@@ -24645,6 +24645,92 @@ h3 .block-reactions {
   background: var(--hover);
   color: var(--text);
 }
+/* The analysis of a function (lib/math-analysis.ts): f′ dashed, f″
+   dotted, marked points, the hatched area; the options below its input. */
+.plot-derivative {
+  stroke-width: 2;
+  stroke-dasharray: 7 5;
+}
+.plot-derivative-2 {
+  stroke-dasharray: 2 4;
+}
+.plot-area {
+  stroke-width: 1;
+  stroke-opacity: 0.7;
+  fill-opacity: 0.6;
+}
+.plot-mark text {
+  font: 600 12px var(--font-ui);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+.plot-mark-hollow {
+  fill: var(--bg);
+  stroke-width: 2;
+}
+.plot-intersection path {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.plot-function .plot-more {
+  width: auto;
+  min-width: 26px;
+  padding: 0 6px;
+  font: italic 600 13px var(--font-ui);
+}
+.plot-function .plot-more[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.plot-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  flex-basis: 100%;
+  margin-top: -2px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.plot-options label,
+.plot-bounds {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-weight: 400;
+}
+.plot-options label {
+  cursor: pointer;
+}
+.plot-options .plot-bound {
+  width: 64px;
+}
+.plot-bound {
+  width: 64px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font: 13px var(--font-mono);
+}
+@media (pointer: coarse) {
+  .plot-options label,
+  .plot-bounds {
+    min-height: 44px;
+  }
+}
+.text-menu-calc-group strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+.text-menu-calc .text-menu-calc-group[aria-expanded="true"] {
+  color: var(--text);
+}
 
 /* ---------- Flow diagrams (lib/flow-diagram.ts, #427) ---------- */
 .flow-diagram {

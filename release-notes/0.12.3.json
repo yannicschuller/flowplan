@@ -10,6 +10,10 @@
     {
       "de": "Spalten: /Spalten stellt zwei oder drei Spalten mit beliebigen Blöcken nebeneinander, etwa zwei PDFs. Die Lücke dazwischen ändert die Breite. Auch ein an den Rand eines Blocks gezogener Block und „Nebeneinander“ im Blockmenü machen Spalten. Auf dem Handy stehen sie untereinander.",
       "en": "Columns: /columns puts two or three columns with any blocks side by side – two PDFs, say. Drag the gap between them to change their width. Dropping a block at another block’s edge and “Side by side” in the block menu make columns too. On a phone they are stacked."
+    },
+    {
+      "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
+      "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
     }
   ],
   "improvements": [],

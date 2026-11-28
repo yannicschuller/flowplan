@@ -8,7 +8,7 @@
 import { evaluate, fraction, parse, type Fraction, type MathNode } from "mathjs";
 import { decimalComma, localeTag, translate, type Locale } from "./i18n";
 
-export type MathActionKind = "result" | "decimal" | "reduce" | "expand" | "factor" | "solve" | "vector";
+export type MathActionKind = "result" | "decimal" | "reduce" | "expand" | "factor" | "solve" | "vector" | "derivative" | "analysis" | "integral" | "limit";
 export type MathAction = {
   kind: MathActionKind;
   label: string;
@@ -161,9 +161,9 @@ function toPoly(node: MathNode): Poly {
 /* ---------- Writing results ---------- */
 
 const SUPER: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
-const superscript = (n: number) => String(n).replace(/\d/g, (d) => SUPER[d]);
+export const superscript = (n: number) => String(n).replace(/\d/g, (d) => SUPER[d]);
 
-function decimal(value: number, locale: Locale) {
+export function decimal(value: number, locale: Locale) {
   return value
     .toLocaleString(localeTag(locale), { maximumFractionDigits: 6, useGrouping: true })
     .replace(/^-/, "−");
@@ -179,14 +179,14 @@ const sameWriting = (a: string, b: string) => {
   return plain(a) === plain(b);
 };
 // A fraction as text: "11/12", "−3", "2.400" (whole numbers with grouping).
-function fracText(f: Fraction, locale: Locale) {
+export function fracText(f: Fraction, locale: Locale) {
   const sign = f.s < 0 ? "−" : "";
   const n = f.n.toString(),
     d = f.d.toString();
   const whole = (x: string) => decimal(Number(x), locale);
   return d === "1" ? `${sign}${whole(n)}` : `${sign}${n}/${d}`;
 }
-function fracLatex(f: Fraction) {
+export function fracLatex(f: Fraction) {
   const sign = f.s < 0 ? "-" : "";
   return f.d === 1n ? `${sign}${f.n}` : `${sign}\\frac{${f.n}}{${f.d}}`;
 }
@@ -266,7 +266,7 @@ function divideByRoot(c: Fraction[], r: Fraction): Fraction[] {
   return out;
 }
 // Rational roots of a polynomial (rational root theorem), with multiplicity.
-function rationalRoots(c: Fraction[]): { roots: Fraction[]; rest: Fraction[] } {
+export function rationalRoots(c: Fraction[]): { roots: Fraction[]; rest: Fraction[] } {
   let coef = c.slice();
   const roots: Fraction[] = [];
   while (coef.length > 1 && coef[0].equals(0)) {
@@ -666,7 +666,7 @@ function rationalWriting(r: Rational, locale: Locale): Factored {
 // Real roots of a polynomial (coefficients lowest degree first), found
 // numerically: all complex roots at once (Durand–Kerner), the real ones
 // polished with Newton's method.
-function realRoots(coef: number[]): number[] {
+export function realRoots(coef: number[]): number[] {
   const c = coef.slice();
   while (c.length > 1 && c[c.length - 1] === 0) c.pop();
   const n = c.length - 1;
@@ -720,7 +720,7 @@ const approxText = (v: string, x: number, locale: Locale) => `${v} ≈ ${decimal
 const approxLatex = (v: string, x: number, locale: Locale) => `${v} \\approx ${decimal(Math.abs(x) < 1e-12 ? 0 : x, locale).replace(",", "{,}").replace("−", "-")}`;
 
 // √(n/d) as p·√r with whole numbers: √(8/9) = 2/3·√2.
-function surd(value: Fraction): { outside: Fraction; inside: bigint } {
+export function surd(value: Fraction): { outside: Fraction; inside: bigint } {
   let k = value.n * value.d;
   let outside = 1n;
   for (let i = 2n; i * i <= k && i < 100_000n; i++)
@@ -733,13 +733,13 @@ function surd(value: Fraction): { outside: Fraction; inside: bigint } {
 // Solves p = 0 for v. Values that make `den` zero (a denominator in the
 // equation) are no solutions and are named as excluded.
 // q·√k as text: "√5", "3√2", "√6/2"; empty q·√1 is just q.
-function surdText(q: Fraction, k: bigint, locale: Locale) {
+export function surdText(q: Fraction, k: bigint, locale: Locale) {
   if (k === 1n) return fracText(q, locale);
   const n = q.abs().n,
     d = q.d;
   return `${q.s < 0 ? "−" : ""}${n === 1n ? "" : decimal(Number(n), locale)}√${k}${d === 1n ? "" : `/${d}`}`;
 }
-function surdLatex(q: Fraction, k: bigint) {
+export function surdLatex(q: Fraction, k: bigint) {
   if (k === 1n) return fracLatex(q);
   const n = q.abs().n,
     d = q.d;
