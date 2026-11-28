@@ -9,7 +9,7 @@ import { remapLink } from "./whiteboard-diagram-model";
 
 export type BoardDraft = Omit<WhiteboardItem, "z"> & { z?: number };
 export type ImportedImage = { id: string; mime: string; data: Uint8Array };
-export type BoardFormat = "excalidraw" | "drawio" | "affine";
+export type BoardFormat = "excalidraw" | "drawio" | "affine" | "canvas";
 export type ImportedBoard = {
   format: BoardFormat;
   items: BoardDraft[];

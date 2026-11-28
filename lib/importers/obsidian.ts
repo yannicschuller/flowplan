@@ -18,6 +18,7 @@ import { inferPropertyTypes, obsidianTypes } from "../frontmatter-types";
 import { fileRef, mimeOf, pageRef } from "./html";
 import { nameKey } from "../zip-names";
 import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { CANVAS, canvasBoard, readCanvas, type CanvasJson } from "./obsidian-canvas";
 
 const NOTE = /\.(md|markdown)$/i;
 const hidden = (path: string) => path.split("/").some((part) => part.startsWith("."));
@@ -106,6 +107,17 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
   const filesByPath = new Map(attachments.map((p) => [lower(p), p]));
   const filesByName = new Map<string, string>();
   for (const p of attachments) if (!filesByName.has(lower(posix.basename(p)))) filesByName.set(lower(posix.basename(p)), p);
+  // Canvases (#667) become whiteboards, found by path or name like notes;
+  // one that is no JSON Canvas is left out and reported.
+  const canvases = new Map<string, CanvasJson>();
+  for (const p of paths.filter((p) => CANVAS.test(p))) {
+    const canvas = readCanvas(entries.get(p)!);
+    if ("error" in canvas) report.add("other", `${canvas.error}: ${p.slice(0, 200)}`);
+    else canvases.set(p, canvas);
+  }
+  const canvasesByPath = new Map([...canvases.keys()].map((p) => [lower(p), p]));
+  const canvasesByName = new Map<string, string>();
+  for (const p of canvases.keys()) if (!canvasesByName.has(lower(posix.basename(p)))) canvasesByName.set(lower(posix.basename(p)), p);
   const files = new Map<string, ImportFile>();
   const useFile = (path: string) => {
     if (!files.has(path)) files.set(path, { key: path, name: posix.basename(path), mime: mimeOf(path), data: entries.get(path)! });
@@ -117,6 +129,8 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     const note =
       notesByPath.get(clean.replace(NOTE, "")) || notesByPath.get(relative.replace(NOTE, "")) || notesByName.get(posix.basename(clean).replace(NOTE, ""));
     if (note) return { href: pageRef(note), kind: "page" as const };
+    const canvas = canvasesByPath.get(clean) || canvasesByPath.get(relative) || canvasesByName.get(posix.basename(clean));
+    if (canvas) return { href: pageRef(canvas), kind: "page" as const };
     const file = filesByPath.get(clean) || filesByPath.get(relative) || filesByName.get(posix.basename(clean));
     if (file) return { href: useFile(file), kind: "file" as const };
     return null;
@@ -183,7 +197,20 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     }));
     pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
-  if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
+  for (const [path, canvas] of canvases) {
+    const { board, problems } = canvasBoard(canvas, {
+      // Notes and canvases only: lookup() takes other files along.
+      page: (target) => ((NOTE.test(target) || CANVAS.test(target)) && lookup(path)(target)?.href) || null,
+      file: (target) => {
+        const clean = lower(target.replace(/\\/g, "/").replace(/^\.?\//, ""));
+        const file = filesByPath.get(clean) || filesByName.get(posix.basename(clean));
+        return file ? { name: file, data: entries.get(file)! } : null;
+      },
+    });
+    for (const problem of problems) report.add(problem.kind, problem.detail, path);
+    pages.push({ key: path, parent: folderKey(posix.dirname(path)), title: posix.basename(path).replace(CANVAS, "").normalize("NFC"), html: "", kind: "whiteboard", board });
+  }
+  if (!notes.length && !canvases.size) warnings.add("Keine Notizen (.md) gefunden.");
   const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.get(".obsidian/types.json")?.toString("utf8")));
   return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report, propertyTypes };
 }

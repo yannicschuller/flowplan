@@ -42,6 +42,13 @@
       "issues": [
         646
       ]
+    },
+    {
+      "de": "Der Obsidian-Import übernimmt Canvas-Dateien (.canvas) als Whiteboards in ihrem Ordner: Texte werden Notizen, Notizen des Tresors Karten, dazu Bilder, Links, Gruppen als Rahmen und Verbindungen mit Beschriftung und Farbe. [[Karte.canvas]] führt zum Whiteboard.",
+      "en": "The Obsidian import brings canvas files (.canvas) along as whiteboards in their folder: texts become sticky notes, notes of the vault cards, plus images, links, groups as frames and connections with label and colour. [[Map.canvas]] leads to the whiteboard.",
+      "issues": [
+        667
+      ]
     }
   ],
   "improvements": [

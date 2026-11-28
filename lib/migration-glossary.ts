@@ -106,7 +106,7 @@ export const MIGRATION_GLOSSARY: Record<GlossaryTool, GlossaryEntry[]> = {
     { theirs: "Backlinks", ours: T.linkedFrom, match: "same" },
     { theirs: "Graph view", ours: T.graph, match: "same" },
     { theirs: "Daily notes", ours: T.journal, match: "same" },
-    { theirs: "Canvas", ours: T.whiteboard, match: "similar", note: { de: "Canvas-Dateien werden nicht übernommen; ein Whiteboard ist eine eigene Seite.", en: "Canvas files are not imported; a whiteboard is a page of its own." } },
+    { theirs: "Canvas", ours: T.whiteboard, match: "similar", note: { de: "Canvas-Dateien werden beim Import Whiteboards; Texte, Notizen als Karten, Bilder, Links, Gruppen und Verbindungen bleiben.", en: "Canvas files become whiteboards on import; texts, notes as cards, images, links, groups and connections stay." } },
     { theirs: "Callouts (> [!note])", ours: T.callout, match: "same" },
     { theirs: "Properties (frontmatter)", ours: T.properties, match: "same" },
     { theirs: "#tags", ours: T.tags, match: "same" },
