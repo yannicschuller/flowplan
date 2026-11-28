@@ -93,6 +93,29 @@
       "issues": [
         666
       ]
+    },
+    {
+      "de": "Obsidian-Import: Hervorhebungen (==Text==) werden übernommen, Kommentare (%%…%%) weggelassen und im Importbericht gezählt. Farbcodes wie #ff00aa im Text werden keine Tags mehr.",
+      "en": "Obsidian import: highlights (==text==) are carried over, comments (%%…%%) are left out and counted in the import report. Colour codes such as #ff00aa in the text no longer become tags.",
+      "issues": [
+        661,
+        665
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Erstellt- und Änderungsdatum, Symbol (ein Emoji) und Titelbild aus dem Frontmatter werden die der Seite. Beim Import als Datenbank werden die übrigen Eigenschaften Spalten mit dem Typ, den der ganze Tresor zeigt.",
+      "en": "Obsidian import: created and modified dates, icon (an emoji) and cover image from the frontmatter become the page’s. When importing as a database, the other properties become columns of the type the whole vault shows.",
+      "issues": [
+        669,
+        670
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Der Importbericht nennt jetzt Dataview-Abfragen (als Code übernommen, nicht ausgeführt) sowie Obsidian-Bases (.base), die nicht übernommen werden.",
+      "en": "Obsidian import: the import report now lists Dataview queries (kept as code, not run) and Obsidian Bases (.base) that are not carried over.",
+      "issues": [
+        671
+      ]
     }
   ],
   "fixes": [
@@ -171,6 +194,29 @@
       "en": "In a database’s search field, the text and the placeholder now sit in the middle of the field instead of above it – on the iPhone, in the app and in the browser on phones and tablets. On phones the text there is 16 px, so iOS does not zoom in when you tap it.",
       "issues": [
         650
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Ein Link wie [[Notiz.md]] zeigt jetzt den Titel der Seite ohne .md, und Links mit Alias in Tabellen ([[Seite\\|Text]]) werden zu Links statt zu Text.",
+      "en": "Obsidian import: a link such as [[Note.md]] now shows the page’s title without .md, and aliased links in tables ([[Page\\|text]]) become links instead of text.",
+      "issues": [
+        657,
+        659
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Eingebettete Dateien, die im Tresor fehlen (![[bild.png]]), stehen jetzt in den Hinweisen und im Importbericht, wie fehlende Bilder.",
+      "en": "Obsidian import: embedded files missing from the vault (![[image.png]]) are now listed in the warnings and the import report, like missing images.",
+      "issues": [
+        660
+      ]
+    },
+    {
+      "de": "Obsidian-Import: Ordnernotizen werden auch mit anderer Groß- und Kleinschreibung und als .markdown erkannt. Gibt es mehrere Notizen gleichen Namens, führt ein Link zur nächstgelegenen, zuerst im selben Ordner.",
+      "en": "Obsidian import: folder notes are now recognised in any letter case and as .markdown. When several notes share a name, a link leads to the closest one, the same folder first.",
+      "issues": [
+        662,
+        663
       ]
     }
   ]

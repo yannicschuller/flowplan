@@ -961,7 +961,7 @@ export async function metaFrontmatter(pageId: string, people: (id: string) => st
 
 // Keys a Markdown import never turns into properties: the page's own
 // (aliases, tags, Flowplan's) and what publishing tools keep there.
-const NOT_PROPERTIES = new Set([
+export const NOT_PROPERTIES = new Set([
   "aliases",
   "alias",
   "tags",

@@ -37,6 +37,7 @@ import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anc
 import type { Field, Identity, Page, Space } from "../types";
 import { filterAsync, forEachAsync, forEachLimited } from "../each-async";
 import { sourceName, writeImportReport, type ReportSummary } from "./report";
+import { propertyColumns } from "./property-columns";
 import { publishUpload } from "../storage";
 import { jobProgress } from "../background-jobs";
 
@@ -530,6 +531,9 @@ export async function writeImport(
         ...(folders.length ? [{ id: "imp_folder", name: ct("Ordner", "Folder"), type: "select", options: folders } as Field] : []),
         ...(notes.some(({ page }) => page.url) ? [{ id: "imp_url", name: ct("Quelle", "Source"), type: "url" } as Field] : []),
       ];
+      // Frontmatter properties as further columns (#670).
+      const columns = propertyColumns(notes.map(({ page }) => page), tree.propertyTypes, fields, tree.report);
+      fields.push(...columns.fields);
       // Tags keep the colours of the source, the rest get them in turn (#242).
       const tagColors = Object.fromEntries(tags.flatMap((name) => (tree.tagColors?.[name] ? [[name, tagColorFrom(tree.tagColors[name])]] : [])));
       if (Object.keys(tagColors).length) fields[1].optionColors = tagColors;
@@ -545,6 +549,7 @@ export async function writeImport(
         const html = page.html ? resolveHtml(prepared(page.key).html) : "";
         const folder = folderOf(page);
         const cells = {
+          ...columns.cells(page),
           title: page.title.slice(0, 1000),
           imp_tags: (page.tags || []).filter((t) => tags.includes(t)),
           ...(day(page.created) ? { imp_created: day(page.created) } : {}),
@@ -661,6 +666,7 @@ export async function writeImport(
         const set = [
           ...(page.aliases?.length ? [["aliases", storedAliases(page.aliases.slice(0, 10))] as const] : []),
           ...(page.updated ? [["updated_at", sqlTime(page.updated)] as const] : []),
+          ...(page.created ? [["created_at", sqlTime(page.created)] as const] : []),
         ];
         if (set.length) await run(`UPDATE pages SET ${set.map(([column]) => `${column}=?`).join(",")} WHERE id=?`, ...set.map(([, value]) => value), pid);
       }
