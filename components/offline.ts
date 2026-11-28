@@ -445,6 +445,13 @@ export type RefreshResult = {
   dropped: number;
 };
 let running: Promise<RefreshResult> | null = null;
+// A refresh of this tab started or ended (#644): Settings → Offline &
+// devices shows a run it did not start itself, e.g. the one on opening.
+export const OFFLINE_SYNC = "flowplan-offline-sync";
+export const offlineRefreshing = () => !!running;
+const syncChanged = () => {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(OFFLINE_SYNC));
+};
 // Brings the device copy up to date. Without full only what changed since
 // the last refresh is fetched (GET /api/offline/changes); full fetches every
 // readable page again (first copy, "Update now").
@@ -466,7 +473,9 @@ export function refreshOffline(
   };
   running = run().finally(() => {
     running = null;
+    syncChanged();
   });
+  syncChanged();
   return running;
 }
 

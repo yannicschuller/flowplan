@@ -27954,6 +27954,58 @@ h3 .block-reactions {
   color: var(--secondary);
   font-size: 13px;
 }
+/* "Offline copy" (#644): its lines one below the other; the first says
+   while a sync runs what it does and how far it is, afterwards the result.
+   Scrolled past, a copy of that line stays at the top of the pane – on
+   phones below the sticky "back" bar. It takes no room of its own (a
+   sticky box without height), so nothing moves when it appears. */
+.offline-state > span {
+  display: block;
+}
+.offline-state > .offline-sync:empty {
+  display: none;
+}
+:is(.offline-sync, .offline-sync-float > span) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.offline-sync.syncing {
+  color: var(--text);
+}
+:is(.offline-sync, .offline-sync-float) svg {
+  flex: none;
+  color: var(--blue);
+}
+.setting-rows > .offline-sync-float {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 0;
+}
+.offline-sync-float > span {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  padding: 10px 22px;
+  border-block: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: 0 6px 12px -10px #1d1a1440;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+@container main (max-width: 767.98px) {
+  .setting-rows > .offline-sync-float {
+    top: 53px;
+  }
+}
+.offline-wait {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-style: italic;
+}
 .offline-online-only {
   color: var(--muted);
   font-size: 12.5px;
