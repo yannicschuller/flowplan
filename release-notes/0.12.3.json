@@ -30,6 +30,13 @@
       "issues": [
         636
       ]
+    },
+    {
+      "de": "Obsidian- und Confluence-ZIPs dürfen jetzt größer als 100 MB sein, bis zur Import-Grenze. Flowplan liest sie von der Platte: Notizen sofort, Bilder, PDFs und andere Anhänge erst beim Speichern – der Arbeitsspeicher bleibt klein. Entpackt höchstens 2 GB oder das Doppelte der ZIP-Datei.",
+      "en": "Obsidian and Confluence ZIPs may now be larger than 100 MB, up to the import limit. Flowplan reads them from disk: notes at once, pictures, PDFs and other attachments only when they are saved, so memory stays low. Unpacked at most 2 GB or twice the ZIP file.",
+      "issues": [
+        673
+      ]
     }
   ],
   "fixes": [

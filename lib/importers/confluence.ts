@@ -9,7 +9,8 @@ import {
   attr, byTag, children, codeBlockHtml, esc, fileRef, find, findOne, hasClass, isElement, mergeLists, mimeOf, pageRef,
   parseHtml, parseXml, renderNodes, taskItem, text, type ChildNode, type Element, type Rule,
 } from "./html";
-import { isoDate, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { isoDate, warningList, zipImportFile, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { zipText, type ZipData } from "../zip-file";
 import { decodeName } from "../zip-names";
 
 const CALLOUTS: Record<string, string> = { info: "note", information: "note", tip: "tip", note: "warning", warning: "caution", panel: "note" };
@@ -21,21 +22,21 @@ const decodePath = (href: string) => {
   }
 };
 
-export function isConfluence(entries: Map<string, Buffer>) {
+export function isConfluence(entries: Map<string, ZipData>) {
   const names = [...entries.keys()];
   if (names.includes("entities.xml")) return true;
   if (!names.includes("index.html")) return false;
-  const index = entries.get("index.html")!.toString("utf8");
+  const index = zipText(entries.get("index.html")!);
   return /confluence|Available Pages|pageSection/i.test(index) || names.some((n) => /^attachments\/\d+\//.test(n));
 }
 
-export function parseConfluence(entries: Map<string, Buffer>): ImportTree {
+export function parseConfluence(entries: Map<string, ZipData>): ImportTree {
   return entries.has("entities.xml") ? parseConfluenceXml(entries) : parseConfluenceHtml(entries);
 }
 
 // ---- HTML export ----
 
-function parseConfluenceHtml(entries: Map<string, Buffer>): ImportTree {
+function parseConfluenceHtml(entries: Map<string, ZipData>): ImportTree {
   const warnings = warningList();
   const files = new Map<string, ImportFile>();
   const pagePaths = [...entries.keys()].filter(
@@ -46,7 +47,7 @@ function parseConfluenceHtml(entries: Map<string, Buffer>): ImportTree {
   let spaceName = "Confluence";
   // The page tree of index.html: nested lists of links.
   if (entries.has("index.html")) {
-    const index = parseHtml(entries.get("index.html")!.toString("utf8"));
+    const index = parseHtml(zipText(entries.get("index.html")!));
     spaceName = text(findOne(index.children, byTag("title")) || []).replace(/^\s*Space\s*:?\s*/i, "").trim() || spaceName;
     const walk = (ul: Element, parent: string | null) => {
       for (const li of children(ul).filter((c) => c.name === "li")) {
@@ -69,7 +70,7 @@ function parseConfluenceHtml(entries: Map<string, Buffer>): ImportTree {
   const pages: ImportPage[] = [];
   const known = new Set(pagePaths);
   for (const path of pagePaths.sort((a, b) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9) || a.localeCompare(b))) {
-    const doc = parseHtml(entries.get(path)!.toString("utf8"));
+    const doc = parseHtml(zipText(entries.get(path)!));
     const titleEl = findOne(doc.children, (el) => attr(el, "id") === "title-text") || findOne(doc.children, byTag("title"));
     const title = (titleEl ? text(titleEl) : posix.basename(path, ".html")).replace(/^[^:]{1,100}\s:\s/, "").trim() || "Ohne Titel";
     // Pages missing from the tree: the breadcrumbs name the parent.
@@ -89,7 +90,7 @@ function parseConfluenceHtml(entries: Map<string, Buffer>): ImportTree {
       const resolved = posix.normalize(posix.join(dir, decodePath(href)));
       if (known.has(resolved)) return pageRef(resolved, anchor);
       if (entries.has(resolved) && !resolved.startsWith("images/")) {
-        if (!files.has(resolved)) files.set(resolved, { key: resolved, name: posix.basename(resolved), mime: mimeOf(resolved), data: entries.get(resolved)! });
+        if (!files.has(resolved)) files.set(resolved, zipImportFile(resolved, posix.basename(resolved), mimeOf(resolved), entries.get(resolved)!));
         return fileRef(resolved);
       }
       return null;
@@ -172,9 +173,9 @@ const objectId = (el: Element) => {
 };
 const current = (el: Element) => (!propText(el, "contentStatus") || propText(el, "contentStatus") === "current") && !refId(el, "originalVersion");
 
-function parseConfluenceXml(entries: Map<string, Buffer>): ImportTree {
+function parseConfluenceXml(entries: Map<string, ZipData>): ImportTree {
   const warnings = warningList();
-  const doc = parseXml(entries.get("entities.xml")!.toString("utf8"));
+  const doc = parseXml(zipText(entries.get("entities.xml")!));
   const objects: XmlObject[] = find(doc.children, byTag("object")).map((el) => ({ cls: attr(el, "class"), id: objectId(el), el }));
   const pagesById = new Map(objects.filter((o) => o.cls === "Page" && current(o.el)).map((o) => [o.id, o.el]));
   const blogPosts = objects.filter((o) => o.cls === "BlogPost" && current(o.el)).length;
@@ -204,7 +205,7 @@ function parseConfluenceXml(entries: Map<string, Buffer>): ImportTree {
       warnings.add("Anhang fehlt im Export.");
       continue;
     }
-    files.set(path, { key: path, name, mime: mimeOf(name), data: entries.get(path)! });
+    files.set(path, zipImportFile(path, name, mimeOf(name), entries.get(path)!));
     if (!attachments.has(page)) attachments.set(page, new Map());
     attachments.get(page)!.set(name.toLowerCase(), path);
   }

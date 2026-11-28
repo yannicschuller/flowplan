@@ -17,14 +17,15 @@ import { frontmatterAliases } from "../aliases";
 import { inferPropertyTypes, obsidianTypes } from "../frontmatter-types";
 import { fileRef, mimeOf, pageRef } from "./html";
 import { nameKey } from "../zip-names";
-import { importReport, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { importReport, warningList, zipImportFile, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { zipText, type ZipData } from "../zip-file";
 
 const NOTE = /\.(md|markdown)$/i;
 const hidden = (path: string) => path.split("/").some((part) => part.startsWith("."));
 
-export function isObsidianVault(entries: Map<string, Buffer>) {
+export function isObsidianVault(entries: Map<string, ZipData>) {
   const names = [...entries.keys()];
-  return names.some((n) => n.startsWith(".obsidian/")) || (names.some((n) => NOTE.test(n)) && names.some((n) => NOTE.test(n) && /\[\[[^\]\n]+\]\]/.test(entries.get(n)!.toString("utf8"))));
+  return names.some((n) => n.startsWith(".obsidian/")) || (names.some((n) => NOTE.test(n)) && names.some((n) => NOTE.test(n) && /\[\[[^\]\n]+\]\]/.test(zipText(entries.get(n)!))));
 }
 
 // Code blocks and inline code stay as they are.
@@ -91,7 +92,7 @@ export function noteTags(data: Record<string, FrontmatterValue>, body: string) {
   return [...tags];
 }
 
-export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): ImportTree {
+export function parseObsidian(entries: Map<string, ZipData>, name = "Obsidian"): ImportTree {
   const warnings = warningList();
   const report = importReport();
   const paths = [...entries.keys()].filter((p) => !hidden(p)).sort((a, b) => a.localeCompare(b));
@@ -108,7 +109,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
   for (const p of attachments) if (!filesByName.has(lower(posix.basename(p)))) filesByName.set(lower(posix.basename(p)), p);
   const files = new Map<string, ImportFile>();
   const useFile = (path: string) => {
-    if (!files.has(path)) files.set(path, { key: path, name: posix.basename(path), mime: mimeOf(path), data: entries.get(path)! });
+    if (!files.has(path)) files.set(path, zipImportFile(path, posix.basename(path), mimeOf(path), entries.get(path)!));
     return fileRef(path);
   };
   const lookup = (from: string) => (target: string) => {
@@ -150,7 +151,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     return key;
   };
   for (const path of notes) {
-    const source = entries.get(path)!.toString("utf8");
+    const source = zipText(entries.get(path)!);
     const { data, body } = splitFrontmatter(source);
     frontmatters.push(data);
     const title = posix.basename(path).replace(NOTE, "").normalize("NFC");
@@ -184,6 +185,6 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
-  const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.get(".obsidian/types.json")?.toString("utf8")));
+  const propertyTypes = inferPropertyTypes(frontmatters, obsidianTypes(entries.has(".obsidian/types.json") ? zipText(entries.get(".obsidian/types.json")!) : undefined));
   return { source: "obsidian", title: name, pages, files, warnings: warnings.list(), report, propertyTypes };
 }

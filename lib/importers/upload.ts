@@ -4,8 +4,9 @@
 // - The limit follows the largest upload of the person (Administration →
 //   Grenzen & Aufbewahrung → "Größte Datei beim Hochladen", or their own
 //   limit under Benutzer), but is never below 100 MB; FLOWPLAN_IMPORT_MAX_MB
-//   replaces it for the whole instance. Only the AFFiNE workspace file is
-//   read from disk; ZIP-based exports stay within the ZIP reader's 100 MB.
+//   replaces it for the whole instance. The AFFiNE workspace file and
+//   Obsidian and Confluence ZIPs (#673) are read from disk; other
+//   ZIP-based exports stay within the ZIP reader's 100 MB.
 // - The upload is streamed (never buffered) into data/tmp/imports, one
 //   folder per upload, named after the person, and kept after a preview so
 //   the import does not upload it again. It is deleted after the import, on

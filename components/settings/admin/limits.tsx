@@ -85,8 +85,8 @@ export default function LimitsSection() {
           field="maxUploadMb"
           label={t("Größte Datei beim Hochladen", "Largest upload")}
           description={t(
-            "Für jede einzelne Datei, bis 10240 MB (10 GB); je Person änderbar. Gilt auch für Importe aus AFFiNE (mindestens 100 MB, höchstens 1024 MB). Für große Dateien muss auch der Reverse Proxy so große Anfragen durchlassen.",
-            "For each single file, up to 10240 MB (10 GB); can differ per person. Also applies to imports from AFFiNE (at least 100 MB, at most 1024 MB). For large files the reverse proxy must let requests that large through too.",
+            "Für jede einzelne Datei, bis 10240 MB (10 GB); je Person änderbar. Gilt auch für Importe aus AFFiNE, Obsidian und Confluence (mindestens 100 MB, höchstens 1024 MB). Für große Dateien muss auch der Reverse Proxy so große Anfragen durchlassen.",
+            "For each single file, up to 10240 MB (10 GB); can differ per person. Also applies to imports from AFFiNE, Obsidian and Confluence (at least 100 MB, at most 1024 MB). For large files the reverse proxy must let requests that large through too.",
           )}
           unit="MB"
           min={1}

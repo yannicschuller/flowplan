@@ -29,7 +29,7 @@ import type { PropertyHints } from "../frontmatter-types";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
-import { MAX_IMPORT_ROWS, importFileData, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
+import { MAX_IMPORT_ROWS, importFileData, importFileHead, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
 import { savedDatabaseTemplateSchema } from "../page-templates";
 import { quotaCheckpoint } from "../instance-ops";
 import { pageIconSchema } from "../page-appearance";
@@ -365,7 +365,9 @@ export async function writeImport(
     recordIds();
     for (const key of used.keys()) {
       const file = tree.files.get(key)!;
-      fileUrls.set(key, { url: `/api/files/${id()}`, name: sanitizeFileName(file.name, "datei"), mime: verifiedMime(file.mime, importFileData(file)) });
+      // The first bytes decide the type: a file on disk is read in full
+      // only once, when it is written below (#673).
+      fileUrls.set(key, { url: `/api/files/${id()}`, name: sanitizeFileName(file.name, "datei"), mime: verifiedMime(file.mime, importFileHead(file)) });
     }
     let done = 0;
     for (const { page } of documents) {
