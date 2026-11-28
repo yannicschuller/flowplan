@@ -14,6 +14,13 @@
     {
       "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
+    },
+    {
+      "de": "Abschnitte im Eintrag: Bei vielen Eigenschaften legst du unter „Layout anpassen“ benannte Abschnitte an, ziehst Eigenschaften hinein oder wählst „In Abschnitt verschieben“. Jeder klappt Abschnitte für sich auf und zu; gelöscht, kommen ihre Eigenschaften wieder nach oben.",
+      "en": "Sections in records: with many properties, add named sections under “Adjust layout”, then drag properties in or pick “Move to section”. Everyone folds sections for themselves; deleting one moves its properties back to the top. Forms and views stay as they are.",
+      "issues": [
+        646
+      ]
     }
   ],
   "improvements": [

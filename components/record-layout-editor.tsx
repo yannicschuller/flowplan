@@ -25,10 +25,11 @@ export function RecordLayoutEditor({
   const [draft, setDraft] = useState(layout),
     [busy, setBusy] = useState(false);
   async function change(next: RecordLayout) {
-    // The order is changed on the properties themselves
-    // (components/record-property-order.tsx): the current one is kept.
-    const { order: _order, ...rest } = next;
-    next = layout.order ? { ...rest, order: layout.order } : rest;
+    // The order and the sections (#646) are changed on the properties
+    // themselves (components/record-property-order.tsx): the current ones
+    // are kept.
+    const { order: _order, sections: _sections, ...rest } = next;
+    next = { ...rest, ...(layout.order && { order: layout.order }), ...(layout.sections && { sections: layout.sections }) };
     setDraft(next);
     setBusy(true);
     await save(next);
@@ -41,6 +42,12 @@ export function RecordLayoutEditor({
       aria-label={t("Layout der Einträge", "Record layout")}
     >
       <p className="muted">{t("Gilt für alle Einträge dieser Datenbank.", "Applies to all records of this database.")}</p>
+      <p className="muted">
+        {t(
+          "Abschnitte fügst du unter den Eigenschaften hinzu, solange diese Einstellungen offen sind.",
+          "Add sections below the properties while these settings are open.",
+        )}
+      </p>
       <label>
         {t("Einträge öffnen als", "Open records as")}
         <Select
