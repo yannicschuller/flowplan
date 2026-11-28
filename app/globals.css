@@ -34596,16 +34596,6 @@ html.split-resizing * {
      hold the whole block gutter (#278). */
   padding-left: max(32px, calc(var(--block-gutter) - 26px));
 }
-.split-page-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 18px;
-  font-family: var(--font-display);
-  font-size: 32px;
-  font-weight: 400;
-  line-height: 1.15;
-}
 /* The fixed outline beside the text would cover the other pane. */
 .split-row.split-active .document-outline {
   display: none;
