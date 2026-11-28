@@ -57,7 +57,32 @@ export function attachSheetDrag(sheet: HTMLElement, options: () => SheetDragOpti
     const media = options().media;
     return !media || (typeof matchMedia === "function" && matchMedia(media).matches);
   };
+  // A transform makes the sheet the box that position: fixed inside it
+  // refers to, scrolled with its content: what is fixed to the screen in it
+  // (a record's docked formatting toolbar, #648) would jump. Before the
+  // sheet moves it says how far that box lies from the screen's edges
+  // (app/mobile-ux.css shifts such children back), so they stay where they
+  // were and go along with the sheet. Measured when the finger comes down,
+  // not amid the moves whose timing makes the release velocity.
+  let pinned: { x: number; top: number; bottom: number } | null = null;
+  const measurePin = () => {
+    const box = sheet.getBoundingClientRect();
+    const style = getComputedStyle(sheet);
+    const top = box.top + parseFloat(style.borderTopWidth) - sheet.scrollTop;
+    const bottom = box.bottom - parseFloat(style.borderBottomWidth) - sheet.scrollTop;
+    pinned = { x: -(box.left + parseFloat(style.borderLeftWidth)), top: -top, bottom: window.innerHeight - bottom };
+  };
+  const pin = () => {
+    if (sheet.hasAttribute("data-sheet-moved")) return;
+    if (!pinned) measurePin();
+    const { x, top, bottom } = pinned!;
+    sheet.style.setProperty("--sheet-pin-x", `${x}px`);
+    sheet.style.setProperty("--sheet-pin-top", `${top}px`);
+    sheet.style.setProperty("--sheet-pin-bottom", `${bottom}px`);
+    sheet.setAttribute("data-sheet-moved", "");
+  };
   const apply = (y: number, transition = "") => {
+    if (y) pin();
     sheet.style.transition = transition;
     sheet.style.transform = y ? `translate3d(0, ${y}px, 0)` : "";
     const backdrop = options().backdrop?.();
@@ -73,6 +98,9 @@ export function attachSheetDrag(sheet: HTMLElement, options: () => SheetDragOpti
     sheet.style.transition = "";
     sheet.style.transform = "";
     sheet.removeAttribute("data-sheet-dragging");
+    sheet.removeAttribute("data-sheet-moved");
+    pinned = null;
+    for (const name of ["--sheet-pin-x", "--sheet-pin-top", "--sheet-pin-bottom"]) sheet.style.removeProperty(name);
     const backdrop = options().backdrop?.();
     if (backdrop) {
       backdrop.style.transition = "";
@@ -133,6 +161,8 @@ export function attachSheetDrag(sheet: HTMLElement, options: () => SheetDragOpti
     if (state === "leaving" || !presented()) return false;
     fromHandle = !!target.closest(`.${SHEET_HANDLE}`);
     if (!fromHandle && target.closest(OWN_GESTURES)) return false;
+    // Where the resting sheet lies (a moved one keeps what it had).
+    if (!sheet.hasAttribute("data-sheet-moved")) measurePin();
     startX = x;
     startY = y;
     samples = [{ t: performance.now(), y }];

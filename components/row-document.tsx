@@ -38,9 +38,14 @@ export default function RowDocument({
   draftOf,
   readOnlyHint,
   creating = false,
+  inline = false,
   onError,
   onChanged,
 }: {
+  // Written inline in a feed, one of many: its formatting toolbar stays in
+  // place on a phone until one writes in it (the opened record's docks at
+  // the bottom edge, #648).
+  inline?: boolean;
   // A new record whose creation the server has not answered yet (#608):
   // nothing to load yet; the document waits (as a skeleton) and is mounted
   // afresh once the record is there.
@@ -259,6 +264,7 @@ export default function RowDocument({
           onStatus={setStatus}
           onError={onError}
           onHtml={onHtml}
+          toolbarInPlace={inline}
         />
         </ViewBoundary>
       ) : unavailable ? (

@@ -255,7 +255,9 @@ test("iOS: a record's content docks its toolbar with the hide button above the k
   await expect(editor).toBeVisible();
   const toolbar = dialog.getByRole("toolbar", { name: "Textformatierung" });
   const hide = dialog.getByRole("button", { name: "Tastatur ausblenden" });
-  // In place and without the button while nobody writes in the record.
+  // Docked at the bottom edge (#648), without the button while nobody
+  // writes in the record.
+  await expect.poll(async () => Math.round((await toolbar.boundingBox())!.y + (await toolbar.boundingBox())!.height)).toBe(844);
   await expect(hide).toHaveCount(0);
   await editor.scrollIntoViewIfNeeded();
   await editor.tap();
@@ -286,9 +288,10 @@ test("iOS: a record's content docks its toolbar with the hide button above the k
   await expect.poll(() => activeIs(page, ".ProseMirror")).toBe(false);
   await keyboard(page, 0);
   await expect(hide).toHaveCount(0);
-  // The dialog stays open, the toolbar goes back into place, the text stays.
+  // The dialog stays open, the toolbar goes back to the bottom edge, the
+  // text stays.
   await expect(dialog).toBeVisible();
-  expect(await toolbar.evaluate((el) => getComputedStyle(el).position)).toBe("static");
+  await expect.poll(async () => Math.round((await toolbar.boundingBox())!.y + (await toolbar.boundingBox())!.height)).toBe(844);
   await expect(editor).toHaveText("Im Eintrag");
 });
 
@@ -332,8 +335,10 @@ test("iOS: titles and other fields get a floating hide button above the keyboard
   await expect.poll(() => activeIs(page, ".row-title-input")).toBe(true);
   await keyboard(page, KEYBOARD);
   await expectFabAboveKeyboard(page, visibleBottom);
-  // The record's content toolbar keeps its place and its button away.
+  // The record's content toolbar, docked at the bottom edge otherwise
+  // (#648), steps aside with its button.
   await expect(dialog.getByRole("button", { name: "Tastatur ausblenden" })).toHaveCount(0);
+  await expect(dialog.getByRole("toolbar", { name: "Textformatierung" })).toBeHidden();
   if (shots) {
     await drawKeyboard(page, visibleBottom);
     await page.screenshot({ path: `${shots}/record-title-fab.png` });

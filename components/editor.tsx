@@ -349,9 +349,14 @@ export default function DocumentEditor({
   onSourceClose,
   draft,
   captionNumbers = false,
+  toolbarInPlace = false,
 }: {
   // The page numbers the captions of images, tables and code blocks.
   captionNumbers?: boolean;
+  // A record written inline in a feed, one of many: on a phone its toolbar
+  // stays in place until one writes in it (an opened record's docks at the
+  // bottom edge like a document's, app/globals.css, #648).
+  toolbarInPlace?: boolean;
   // A journal day that is only a draft (lib/journal-days.ts): nothing is
   // stored until the person changes something; then ensure() creates the
   // day under this page id and generation (false: it opens another page).
@@ -400,9 +405,11 @@ export default function DocumentEditor({
   const toolbarShown = showsFormattingToolbar(useFormattingToolbar(), touchPhone);
   // Its buttons as the person chose them (#292, lib/toolbar-layout.ts).
   const layout = useToolbarLayout();
-  // A record's toolbar docks (and offers the button) only while one writes
-  // in that record (app/globals.css, .row-document … :focus-within); a
-  // document's toolbar is docked anyway.
+  // With the keyboard open a record's toolbar docks above it (and offers the
+  // button) only while one writes in that record (app/globals.css,
+  // .row-document … :focus-within, .record-toolbar); a document's is docked
+  // anyway. Focus in the toolbar's own menus counts (React's focus events
+  // come through portals).
   const [focusInside, setFocusInside] = useState(false);
   // The text the page came with shows at once (also a kept copy, see
   // lib/swr-cache.ts); the device's stored changes and the server's newer
@@ -3131,7 +3138,7 @@ export default function DocumentEditor({
   return (
     <div
       ref={embedded ? undefined : outline.anchorRef}
-      className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}${!embedded && commentMargin ? " with-comment-margin" : ""}`}
+      className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}${!embedded && commentMargin ? " with-comment-margin" : ""}${rowId && focusInside ? " focus-inside" : ""}`}
       onFocus={rowId ? () => setFocusInside(true) : undefined}
       onBlur={
         rowId
@@ -3144,7 +3151,9 @@ export default function DocumentEditor({
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
         {editable && !embedded && !source && toolbarShown && (
           <div
-            className="editor-toolbar"
+            // An opened record's toolbar docks at the bottom edge on a
+            // phone like a document's (app/globals.css, #648).
+            className={`editor-toolbar${rowId && !toolbarInPlace ? " record-toolbar" : ""}`}
             role="toolbar"
             aria-label={t("Textformatierung", "Text formatting")}
             // Buttons keep the caret and selection in the text; fields and
