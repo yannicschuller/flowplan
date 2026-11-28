@@ -49,17 +49,17 @@ const EDGE = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 test("the backend line: version, channel, short build and the build date to the minute", () => {
   const base = { version: "0.12.1", channel: "beta" as const, commit: "28c0c38", builtAt: "2026-11-27T12:10:28.014Z" };
-  assert.equal(text.backendLine(base), "Backend: Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
+  assert.equal(text.backendLine(base), "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
   assert.equal(
     text.backendLine({ ...base, node: "v26.13.1", installMethod: "docker-compose", database: "sqlite", databaseVersion: null, storage: "local", mode: "single" }),
-    "Backend: Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z, Node.js v26.13.1, docker-compose, SQLite, local disk, single instance)",
+    "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z, Node.js v26.13.1, docker-compose, SQLite, local disk, single instance)",
   );
   assert.equal(
     text.backendLine({ ...base, channel: "release", node: "v26.13.1", installMethod: "helm", database: "postgres", databaseVersion: 17, storage: "s3", mode: "cluster" }),
-    "Backend: Flowplan 0.12.1 (release, build 28c0c38, built 2026-11-27T12:10Z, Node.js v26.13.1, helm, PostgreSQL 17, S3 storage, cluster)",
+    "Flowplan 0.12.1 (release, build 28c0c38, built 2026-11-27T12:10Z, Node.js v26.13.1, helm, PostgreSQL 17, S3 storage, cluster)",
   );
   // Nothing known (a development build).
-  assert.equal(text.backendLine({ version: "", channel: "", commit: "", builtAt: "" }), "Backend: Flowplan (version unknown)");
+  assert.equal(text.backendLine({ version: "", channel: "", commit: "", builtAt: "" }), "Flowplan (version unknown)");
   assert.equal(text.shortBuildDate("not a date"), "");
   assert.equal(text.databaseLabel("postgres", null), "PostgreSQL");
 });
@@ -85,10 +85,10 @@ test("the frontend: browser and system from the user agent, the app from its nam
 });
 
 test("the whole paragraph joins backend and frontend", () => {
-  const backend = { text: "Backend: Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z)" };
+  const backend = { text: "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z)" };
   assert.equal(
     text.diagnosticsText(backend, text.clientDiagnostics({ userAgent: IPHONE_APP })),
-    "Backend: Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z) · Frontend: iPhone, iOS 27.0.1, Flowplan app 1.1.7",
+    "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z) · Frontend: iPhone, iOS 27.0.1, Flowplan app 1.1.7",
   );
 });
 
@@ -96,7 +96,7 @@ test("a member gets version and build only – never Node, database, storage or 
   const member = await backendDiagnostics({ isAdmin: false }, { FLOWPLAN_INSTALL_METHOD: "coolify", FLOWPLAN_CHANNEL: "beta" }, probe({ databaseKind: () => "postgres", storage: () => "s3", cluster: () => true }));
   assert.equal(member.scope, "member");
   for (const key of ADMIN_ONLY) assert.equal(key in member, false, key);
-  assert.equal(member.text, "Backend: Flowplan 0.12.2 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
+  assert.equal(member.text, "Flowplan 0.12.2 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
   assert.doesNotMatch(member.text, /Node|coolify|PostgreSQL|S3|cluster/);
 });
 
@@ -105,7 +105,7 @@ test("an admin gets the instance details", async () => {
   assert.equal(admin.scope, "admin");
   assert.equal(admin.node, process.version);
   assert.deepEqual([admin.database, admin.databaseVersion, admin.storage, admin.mode, admin.installMethod, admin.installMethodSource], ["postgres", 17, "s3", "cluster", "kubernetes", "detected"]);
-  assert.equal(admin.text, `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z, Node.js ${process.version}, kubernetes, PostgreSQL 17, S3 storage, cluster)`);
+  assert.equal(admin.text, `Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z, Node.js ${process.version}, kubernetes, PostgreSQL 17, S3 storage, cluster)`);
   // The Kubernetes service address never goes in.
   assert.doesNotMatch(JSON.stringify(admin), /10\.0\.0\.1/);
   const sqlite = await backendDiagnostics({ isAdmin: true }, {}, probe({ exists: (p) => p === "/.dockerenv" }));
@@ -172,8 +172,8 @@ test("GET /api/diagnostics: the member view for members, the instance details fo
   const postgres = /^postgres/.test(process.env.DATABASE_URL || "");
   assert.equal(a.database, postgres ? "postgres" : "sqlite");
   assert.match(a.text, postgres
-    ? /^Backend: Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, PostgreSQL( \d+)?, local disk, single instance\)$/
-    : /^Backend: Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, SQLite, local disk, single instance\)$/);
+    ? /^Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, PostgreSQL( \d+)?, local disk, single instance\)$/
+    : /^Flowplan 0\.12\.2 \(beta, build 28c0c38, built 2026-11-27T12:10Z, Node\.js v[\d.]+, .+, SQLite, local disk, single instance\)$/);
   // Nothing about the instance's address.
   assert.doesNotMatch(JSON.stringify(a), /example\.test/);
   // Without a session: 401.
@@ -194,7 +194,7 @@ test("the MCP tool get_diagnostics: read tokens may use it and get the member vi
   assert.notEqual(answer.result.isError, true);
   const value = JSON.parse(answer.result.content[0].text);
   assert.equal(value.scope, "member", "API tokens never carry admin rights");
-  assert.equal(value.text, "Backend: Flowplan 0.12.2 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
+  assert.equal(value.text, "Flowplan 0.12.2 (beta, build 28c0c38, built 2026-11-27T12:10Z)");
   for (const key of ADMIN_ONLY) assert.equal(key in value, false, key);
   const listed = (await handleMcpMessage(client, { jsonrpc: "2.0", id: 2, method: "tools/list" })) as unknown as { result: { tools: { name: string; annotations?: { readOnlyHint?: boolean } }[] } };
   assert.equal(listed.result.tools.find((t) => t.name === "get_diagnostics")?.annotations?.readOnlyHint, true);

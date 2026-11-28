@@ -46,6 +46,13 @@
       "issues": [
         625
       ]
+    },
+    {
+      "de": "„Für Bug-Report kopieren“ beginnt jetzt mit „Flowplan <Version>“ statt „Backend:“. iOS hielt den Text sonst für eine Adresse und fügte ihn klein geschrieben und mit %20 statt Leerzeichen ein.",
+      "en": "“Copy for bug report” now starts with “Flowplan <version>” instead of “Backend:”. Otherwise iOS took the text for an address and pasted it in lower case with %20 for spaces.",
+      "issues": [
+        642
+      ]
     }
   ]
 }

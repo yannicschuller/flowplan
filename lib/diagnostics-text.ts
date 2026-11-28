@@ -1,6 +1,6 @@
 // Installation details for bug reports (#630): one line to paste into an
 // issue, e.g.
-//   "Backend: Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z,
+//   "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z,
 //    Node.js v26.13.1, docker-compose, SQLite, local disk, single instance)
 //    · Frontend: iPhone, iOS 27.0.1, Flowplan app 1.1.7"
 //
@@ -39,7 +39,7 @@ export type BackendDiagnostics = {
   // ("kubernetes", "docker", "podman", "no container").
   installMethod?: string;
   installMethodSource?: "setting" | "detected";
-  // The backend line: "Backend: Flowplan …".
+  // The backend line: "Flowplan …".
   text: string;
 };
 
@@ -80,7 +80,7 @@ export function databaseLabel(kind: BackendDiagnostics["database"], major?: numb
 }
 
 // "Flowplan 0.12.1 (beta, build 28c0c38, built 2026-11-27T12:10Z, …)",
-// without the "Backend: " in front.
+// the backend line (#642: no "Backend: " in front).
 export function backendSummary(d: Omit<BackendDiagnostics, "text" | "scope">) {
   const details = [
     d.channel,
@@ -95,7 +95,10 @@ export function backendSummary(d: Omit<BackendDiagnostics, "text" | "scope">) {
   return `Flowplan ${d.version || "(version unknown)"}${details.length ? ` (${details.join(", ")})` : ""}`;
 }
 
-export const backendLine = (d: Omit<BackendDiagnostics, "text" | "scope">) => `Backend: ${backendSummary(d)}`;
+// No "Backend: " label in front: iOS takes text that starts with "word:" for
+// a URL and pastes it lowercased and percent-encoded ("backend:%20Flowplan",
+// #642). "Flowplan <version>" says what it is anyway.
+export const backendLine = (d: Omit<BackendDiagnostics, "text" | "scope">) => backendSummary(d);
 
 // ---- The frontend, read in the browser ----
 

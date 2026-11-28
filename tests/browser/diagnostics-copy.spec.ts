@@ -29,7 +29,7 @@ test("a member copies version, build and their browser – no instance details",
   await signIn(page, []);
   await page.goto("/#settings/about");
   const box = page.getByTestId("diagnostics-text");
-  await expect(box).toHaveText(/^Backend: Flowplan .+ · Frontend: Chrome \d+, (Linux|macOS|Windows)$/);
+  await expect(box).toHaveText(/^Flowplan .+ · Frontend: Chrome \d+, (Linux|macOS|Windows)$/);
   const shown = (await box.textContent())!;
   expect(shown).not.toMatch(/Node\.js|SQLite|PostgreSQL|local disk|single instance/);
   expect(shown).not.toContain(new URL(origin).host);
@@ -46,7 +46,7 @@ test("an administrator gets the instance details on the About page and under Nam
   await signIn(page, ["flowplan-admins"]);
   await page.goto("/#settings/about");
   const box = page.getByTestId("diagnostics-text");
-  await expect(box).toHaveText(/^Backend: Flowplan .+\(.*Node\.js v[\d.]+, .+, SQLite, local disk, single instance\) · Frontend: Chrome \d+, /);
+  await expect(box).toHaveText(/^Flowplan .+\(.*Node\.js v[\d.]+, .+, SQLite, local disk, single instance\) · Frontend: Chrome \d+, /);
   await page.getByRole("button", { name: "Für Bug-Report kopieren" }).click();
   expect(await clipboard(page)).toBe(await box.textContent());
   await page.goto("/#settings/instance/general");

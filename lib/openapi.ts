@@ -2168,7 +2168,7 @@ const schemas: Record<string, Json> = {
       mode: { type: "string", enum: ["single", "cluster"], description: "Administrators only" },
       installMethod: { type: "string", description: "Administrators only: as set by the operator (e.g. `docker-compose`, `helm`), otherwise detected (`kubernetes`, `docker`, `podman`, `no container`)" },
       installMethodSource: { type: "string", enum: ["setting", "detected"], description: "Administrators only" },
-      text: { type: "string", description: "One line for a bug report, e.g. `Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser." },
+      text: { type: "string", description: "One line for a bug report, e.g. `Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z)`. The frontend part is added in the browser." },
     },
     required: ["scope", "version", "channel", "commit", "builtAt", "text"],
   },

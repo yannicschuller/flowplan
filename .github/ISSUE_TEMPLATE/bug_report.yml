@@ -46,7 +46,7 @@ body:
       description: |
         In Flowplan open **Settings → About Flowplan → Copy for bug report** and paste the line here. It holds the version, build, your browser or app and device – for admins also Node.js, database, storage and how it is installed – and nothing personal. Copy it on the device where the problem happens.
         Before Flowplan 0.12.2 there is no button: write the version from **Settings → About Flowplan** (or the image tag), the database (SQLite/PostgreSQL) and your browser, device and operating system.
-      placeholder: "Backend: Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z) · Frontend: Firefox 140, Windows"
+      placeholder: "Flowplan 0.12.2 (release, build 28c0c38, built 2026-11-27T12:10Z) · Frontend: Firefox 140, Windows"
       render: text
     validations:
       required: true

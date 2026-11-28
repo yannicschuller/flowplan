@@ -238,7 +238,7 @@ function issueFields(r: PublicErrorReport, frames: string[], message: string): G
     expected: "No server error.",
     // The template's "Installation details" (#630): what the error report
     // knows of the server – the version and commit, no instance details.
-    diagnostics: `Backend: Flowplan ${versionLine(r)}`,
+    diagnostics: `Flowplan ${versionLine(r)}`,
     logs: stackLines(frames).join("\n"),
   };
 }
