@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cleanRecordSections, recordSectionsSchema } from "./record-sections";
 
 // Layout of record pages, set per database: how records open, where the
 // properties sit and which of them are shown.
@@ -25,6 +26,9 @@ export const recordLayoutSchema = z.object({
   // column order. Missing: the database's order. Properties not listed
   // (added later) follow at the end, unknown ids are ignored.
   order: z.array(z.string().min(1).max(100)).max(500).optional(),
+  // Named sections grouping the properties (#646, lib/record-sections.ts):
+  // each with its properties in its order; those in none stay at the top.
+  sections: recordSectionsSchema.optional(),
   // A card above the properties: "contact" shows a profile card (photo or
   // initials, name, company, e-mail, phone, address) – contacts databases,
   // lib/contacts.ts.
@@ -46,8 +50,9 @@ export function parseRecordLayout(raw: unknown): RecordLayout {
   }
 }
 // A layout as the server stores it for these fields: the title stays
-// visible, unknown properties are dropped from the hidden ones and the
-// order (#305) keeps known properties, each once.
+// visible, unknown properties are dropped from the hidden ones, the
+// order (#305) keeps known properties, each once, and so do the sections
+// (#646), each property in one section at most.
 export function cleanRecordLayout(layout: RecordLayout, fields: readonly { id: string }[]): RecordLayout {
   const next: RecordLayout = {
     ...layout,
@@ -56,6 +61,9 @@ export function cleanRecordLayout(layout: RecordLayout, fields: readonly { id: s
   const order = cleanRecordOrder(layout.order, fields);
   if (order) next.order = order;
   else delete next.order;
+  const sections = cleanRecordSections(layout.sections, fields);
+  if (sections) next.sections = sections;
+  else delete next.sections;
   return next;
 }
 // The fields in the record page's order: the title first, then the listed

@@ -35,6 +35,13 @@
       "issues": [
         649
       ]
+    },
+    {
+      "de": "Abschnitte im Eintrag: Bei vielen Eigenschaften legst du unter „Layout anpassen“ benannte Abschnitte an, ziehst Eigenschaften hinein oder wählst „In Abschnitt verschieben“. Jeder klappt Abschnitte für sich auf und zu; gelöscht, kommen ihre Eigenschaften wieder nach oben.",
+      "en": "Sections in records: with many properties, add named sections under “Adjust layout”, then drag properties in or pick “Move to section”. Everyone folds sections for themselves; deleting one moves its properties back to the top. Forms and views stay as they are.",
+      "issues": [
+        646
+      ]
     }
   ],
   "improvements": [

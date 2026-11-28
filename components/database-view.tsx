@@ -6889,11 +6889,14 @@ function DatabaseViewBody({
                 >
                   <RecordPropertyList
                     key={selected.id}
+                    databaseId={page.id}
                     fields={recordFields}
                     allFields={fields}
                     order={recordLayout.order}
+                    sections={recordLayout.sections}
                     arrange={!!editable && allowFieldChanges}
-                    save={(order) => act({ action: "database.recordLayout", layout: { ...recordLayout, order } })}
+                    editSections={layoutOpen}
+                    save={(arrangement) => act({ action: "database.recordLayout", layout: { ...recordLayout, ...arrangement } })}
                     render={(f) => (
                     <Fragment key={`${selected.id}-${f.id}`}>
                       <PropertyRow>
