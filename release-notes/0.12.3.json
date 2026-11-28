@@ -53,6 +53,13 @@
       "issues": [
         642
       ]
+    },
+    {
+      "de": "Eine ausgeblendete Seitenleiste bleibt jetzt auch ausgeblendet, wenn du Flowplan offline neu startest, etwa in der iPad-App. Ihre gezogene Breite und die Breite und das Anheften von „KI fragen“ bleiben offline ebenfalls so, wie du sie eingestellt hast.",
+      "en": "A hidden sidebar now stays hidden when you restart Flowplan offline, for example in the iPad app. Its dragged width and the width and pinning of “Ask AI” also stay as you set them offline.",
+      "issues": [
+        641
+      ]
     }
   ]
 }
