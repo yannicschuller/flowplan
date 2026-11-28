@@ -496,7 +496,7 @@ async function renderPublishedPage({
                 {body.trim() && (
                   <ReadOnlyDocument
                     linkPages={linkPages}
-                    html={await withPublicEmbeds(await publishedHtml(body, token, pages), body, token, pages)}
+                    html={await withPublicEmbeds(await publishedHtml(body, token, pages), body, token, pages, { database: page.id, row: r.id })}
                   />
                 )}
               </article>
@@ -650,6 +650,7 @@ async function renderPublishedPage({
                     html,
                     token,
                     pages,
+                    record ? { database: page.id, row: record.id } : undefined,
                   ),
                 ),
               ),

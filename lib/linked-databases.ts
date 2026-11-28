@@ -18,6 +18,7 @@ import { ensureRowDocument, requireRow } from "./row-documents";
 import { requireUnlocked } from "./journal-extras";
 import type { Identity, Filter, View } from "./types";
 import { documentChanged } from "./document-live";
+import type { ThisRecord } from "./this-record";
 // The host is a page document or, with `rowId`, a record document.
 async function hostDocument(
   user: Identity,
@@ -50,7 +51,7 @@ async function open(
   write = false,
   rowId?: string,
 ) {
-  const { host, stored } = await hostDocument(user, hostId, rowId, write);
+  const { host, stored, rowId: hostRow } = await hostDocument(user, hostId, rowId, write);
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, stored.state || htmlState(stored.html));
@@ -81,7 +82,7 @@ async function open(
     await requireUnlocked(user, source);
     return {
       host,
-      rowId,
+      rowId: hostRow,
       source,
       doc,
       node,
@@ -108,6 +109,11 @@ export async function linkedDatabaseData(
       sourceVersion: source.database.version,
       hostRole: await pageRole(user, context.host),
       hostLocked: !!context.host.locked,
+      // "Relation = this record" (#649, lib/this-record.ts): the record
+      // whose content holds the view, read above with the reader's rights.
+      ...(context.rowId
+        ? { thisRecord: { database: context.host.id, row: context.rowId } satisfies ThisRecord }
+        : {}),
       database: {
         ...source.database,
         version: context.attrs.version,

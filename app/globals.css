@@ -11182,6 +11182,14 @@ tr.order-drop-after > td {
   gap: 12px;
   padding: 12px 0;
 }
+/* "Dieser Eintrag" without a record to stand for (#649). */
+.linked-database-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.linked-related-choice {
+  margin-top: 12px;
+}
 .linked-source-list {
   display: grid;
   gap: 8px;

@@ -294,6 +294,8 @@ import {
 } from "@/lib/date-reminder-options";
 import { recordPart } from "@/lib/record-context-client";
 import { DatabaseOptions, useDatabaseGroups } from "./database-picker";
+import { ThisRecordContext } from "./this-record-context";
+import { resolveThisRecord, thisRecordCells, type ThisRecord } from "@/lib/this-record";
 export type DatabaseData = {
   images?: PageImage[];
   relationPairs?: RelationPair[];
@@ -324,6 +326,9 @@ export type DatabaseData = {
   // Whether this person folds "Verwandte Seiten" below the records (null:
   // never chosen, folded).
   recordRelatedCollapsed?: boolean | null;
+  // A linked view in a record's content (#649): the record it sits in, for
+  // "Relation = this record" (lib/this-record.ts).
+  thisRecord?: ThisRecord;
 };
 // i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
@@ -418,7 +423,17 @@ const computedTypes = [
   "created_by",
   "updated_by",
 ];
-export default function DatabaseView({
+// Every view sets the record it sits in for its filter controls (#649); a
+// view nested in another starts without one.
+export default function DatabaseView(props: DatabaseViewProps) {
+  return (
+    <ThisRecordContext.Provider value={props.data.thisRecord ?? null}>
+      <DatabaseViewBody {...props} />
+    </ThisRecordContext.Provider>
+  );
+}
+type DatabaseViewProps = Parameters<typeof DatabaseViewBody>[0];
+function DatabaseViewBody({
   data,
   page,
   userId,
@@ -914,7 +929,7 @@ export default function DatabaseView({
       queryRows(
         data.rows,
         fields,
-        view,
+        resolveThisRecord(view, fields, data.thisRecord),
         query,
         related,
         data.relatedSchemas,
@@ -2280,6 +2295,10 @@ export default function DatabaseView({
     // (lib/row-queue.ts). Until the server has it, the parts it loads –
     // the document, comments and the like – wait; with a template, which
     // only the server fills in, the whole record does.
+    // In a linked view filtered by "Relation = this record" (#649) the new
+    // record is related to the record the view sits in – also when the
+    // property is hidden in the view.
+    cells = { ...cells, ...thisRecordCells(view, fields, data.thisRecord, cells, data.readOnlyFields) };
     const id = crypto.randomUUID();
     let refusal: unknown = null;
     const created = (rowChange({

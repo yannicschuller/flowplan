@@ -1,4 +1,6 @@
 "use client";
+import { useThisRecord } from "./this-record-context";
+import { resolveThisRecord } from "@/lib/this-record";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Columns,
@@ -246,18 +248,20 @@ function FilterChipBody({
   const filterNow = useFilterClock(
     hasRelativeFilters(draft) || hasClockFormulas(fields, relatedSchemas),
   );
+  // "Relation = this record" counts for the record the view sits in (#649).
+  const thisRecord = useThisRecord();
   const preview = useMemo(
     () =>
       queryRows(
         rows,
         fields,
-        { ...view, filters: [], filterGroup: draft },
+        resolveThisRecord({ ...view, filters: [], filterGroup: draft }, fields, thisRecord),
         "",
         related,
         relatedSchemas,
         new Date(filterNow),
       ).length,
-    [rows, fields, view, draft, related, relatedSchemas, filterNow],
+    [rows, fields, view, draft, related, relatedSchemas, filterNow, thisRecord],
   );
   const conditions = draft.rules.filter(
     (rule): rule is Filter & { kind: "condition" } => rule.kind === "condition",

@@ -16,6 +16,7 @@ import { shownPageIcon } from "@/lib/page-link-icons";
 import { ViewSkeleton } from "./skeleton";
 import { useEditorEditable } from "./editor-editable";
 import { linkedDatabaseAccess } from "@/lib/embed-access";
+import { unresolvedThisRecord } from "@/lib/this-record";
 const DatabaseView = dynamic(() => loadView(() => import("./database-view")), {
   ssr: false,
   loading: () => <ViewSkeleton />,
@@ -172,6 +173,17 @@ function LinkedDatabaseView({
         </div>
       )}
       {!data && !error && <ViewSkeleton />}
+      {data &&
+        data.database.views.some((v) =>
+          unresolvedThisRecord(v, data.database.fields, data.thisRecord),
+        ) && (
+          <p className="linked-database-note muted" role="note">
+            {t(
+              "Der Filter „Dieser Eintrag“ wirkt nur im Inhalt eines Eintrags der verknüpften Datenbank. Hier steht er für keinen Eintrag.",
+              "The “This record” filter only works in the content of a record of the related database. Here it stands for no record.",
+            )}
+          </p>
+        )}
       {data && access && (
         <div className="linked-database-body">
           <DatabaseView

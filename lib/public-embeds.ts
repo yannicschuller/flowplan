@@ -7,6 +7,7 @@ import { availableLinkedViews, parseLinkedAttributes } from "./linked-views";
 import { displayText } from "./field-format";
 import { publicFieldsOf } from "./shared-content";
 import type { Page } from "./types";
+import { resolveThisRecord, type ThisRecord } from "./this-record";
 
 export const MAX_EMBED_ROWS = 100;
 const BLOCK =
@@ -20,6 +21,8 @@ export function withPublicEmbeds(
   original: string,
   token: string,
   pages: Page[],
+  // A record's content: the record "Relation = this record" stands for (#649).
+  host?: ThisRecord,
 ) {
   const blocks = new Map<string, Record<string, string>>();
   cleanHtml(original, (tagName, attribs) => {
@@ -59,7 +62,7 @@ export function withPublicEmbeds(
       const shown = queryRows(
         all.map((r) => ({ ...r, cells: computedCells(r, d.fields) })),
         d.fields,
-        view,
+        resolveThisRecord(view, d.fields, host),
       );
       const link = (rowId: string) =>
         escaped(`/share/${token}/${source.id}?row=${rowId}`);

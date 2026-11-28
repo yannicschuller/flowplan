@@ -28,6 +28,13 @@
       "issues": [
         653
       ]
+    },
+    {
+      "de": "Verknüpfte Datenbank im Inhalt eines Eintrags: Der Filter „Relation = Dieser Eintrag“ zeigt nur die Einträge, die mit ihm verknüpft sind, etwa die Aufgaben eines Projekts. „Neu“ verknüpft den neuen Eintrag gleich mit. In einer Eintragsvorlage zeigt so jeder neue Eintrag seine eigenen.",
+      "en": "Linked database in a record’s content: the filter “Relation = This record” shows only the records related to it, such as a project’s tasks. “New” relates the new record right away. In a record template, every new record made from it shows its own.",
+      "issues": [
+        649
+      ]
     }
   ],
   "improvements": [
