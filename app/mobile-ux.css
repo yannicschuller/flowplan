@@ -452,6 +452,11 @@ label.hit-check {
   .toolbar-chip-icon {
     width: 38px;
   }
+  /* The database's search: 16 px like the other fields (iOS would zoom
+     into it below; the app sets 16 px anyway), centred in the chip (#650). */
+  .toolbar-chip-search input {
+    font-size: 16px;
+  }
   .toolbar-left {
     gap: 8px;
   }

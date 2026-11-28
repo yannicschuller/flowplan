@@ -32564,7 +32564,13 @@ td.ai-filled {
   width: 28px;
   padding: 0;
 }
+/* The open search is a <div>, not a <button>: without flex of its own its
+   icon, field and ✕ sat on a line at the top of the chip – the text above
+   the middle of the 38 px chip on phones (#650). The field fills the chip's
+   height, and WebKit and Blink centre its line in it. */
 .toolbar-chip-search {
+  display: inline-flex;
+  align-items: center;
   padding-right: 3px;
   cursor: text;
 }
@@ -32576,13 +32582,19 @@ td.ai-filled {
 }
 .toolbar-chip-search input {
   width: 150px;
-  height: 24px;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
   padding: 0;
   border: 0;
+  border-radius: 0;
   box-shadow: none;
   background: transparent;
   font-size: 12px;
+  line-height: normal;
   color: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
 }
 .toolbar-chip-search input:focus {
   outline: none;
