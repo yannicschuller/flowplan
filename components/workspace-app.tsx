@@ -5155,7 +5155,8 @@ export default function WorkspaceApp({
                     {space.name}
                   </span>
                 </button>
-                {/* The tools wrap under a long name instead of squeezing it. */}
+                {/* The tools wrap under a long name instead of squeezing it; Export
+                    is in the … menu (#674), one icon fewer to wrap. */}
                 <span className="nav-section-tools">
                     <Dropdown.Root>
                       <Dropdown.Trigger
@@ -5184,6 +5185,18 @@ export default function WorkspaceApp({
                             <ArrowsInSimple />
                             {t("Alle zuklappen", "Collapse all")}
                           </Dropdown.Item>
+                          {/* The space export lives here, not as a fourth icon in the
+                              header, so the tools fit next to the name (#674).
+                              Encrypted spaces cannot be exported (docs/e2ee-design.md). */}
+                          {!(space as { encrypted?: number }).encrypted && (
+                            <>
+                              <Dropdown.Separator className="dropdown-separator" />
+                              <Dropdown.Item className="dropdown-item" onSelect={() => setSpaceExport(space.id)}>
+                                <DownloadSimple />
+                                {t("Als Markdown exportieren …", "Export as Markdown…")}
+                              </Dropdown.Item>
+                            </>
+                          )}
                           {/* Each file a page of its own (#569). */}
                           {canCreate && (
                             <>
@@ -5249,16 +5262,7 @@ export default function WorkspaceApp({
                     >
                       <LockKey size={14} />
                     </button>
-                  ) : (
-                    <button
-                      className="icon-button"
-                      title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                      aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                      onClick={() => setSpaceExport(space.id)}
-                    >
-                      <DownloadSimple size={14} />
-                    </button>
-                  )}
+                  ) : null}
                   {canCreate && (
                     <button
                       className={`icon-button ${selecting ? "active" : ""}`}
