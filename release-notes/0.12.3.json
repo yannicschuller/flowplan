@@ -74,6 +74,13 @@
       "issues": [
         642
       ]
+    },
+    {
+      "de": "Auf dem Handy liegt die Formatierungsleiste im Inhalt eines Datenbank-Eintrags jetzt wie in Dokumenten am unteren Bildschirmrand und beim Schreiben über der Tastatur, statt zwischen „Inhalt“ und dem Text. Ziehst du das Fenster nach unten, geht sie mit.",
+      "en": "On phones, the formatting toolbar in a database record’s content now sits at the bottom of the screen like in documents, and above the keyboard while you type, instead of between “Content” and the text. It moves along when you drag the sheet down.",
+      "issues": [
+        648
+      ]
     }
   ]
 }

@@ -70,6 +70,16 @@
   .modal.modal-sheet[data-sheet-dragging] > .sheet-handle {
     cursor: grabbing;
   }
+  /* A record's formatting toolbar, docked at the screen's bottom edge or
+     above the keyboard (globals.css, #648), stays there while the sheet is
+     moved and goes along with it: shifted back by how far the moved sheet's
+     box lies from the screen (components/sheet-gesture.ts, pin). */
+  .modal.modal-sheet[data-sheet-moved] .editor-toolbar.record-toolbar {
+    translate: var(--sheet-pin-x, 0px) var(--sheet-pin-bottom, 0px);
+  }
+  html.keyboard-docked .modal.modal-sheet[data-sheet-moved] .editor-toolbar.record-toolbar {
+    translate: var(--sheet-pin-x, 0px) var(--sheet-pin-top, 0px);
+  }
 }
 /* The tools sheet of the whiteboard on phones has a handle as well. */
 .wb-sheet > .sheet-handle {

@@ -8142,8 +8142,14 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     height: 100dvh;
   }
   /* The formatting tools dock at the bottom as one scrolling row instead of
-     sticking over the first lines of text (records keep theirs in place). */
-  .page-layout .editor-toolbar {
+     sticking over the first lines of text – a document's and the content of
+     a record opened on its own: in its dialog (a bottom sheet, which covers
+     the tab bar) and on its page (#648: it sat between "Inhalt" and the
+     text). Records written inline in a feed keep theirs in place (one
+     toolbar per record, components/database-feed.tsx). A sheet that is
+     dragged takes the toolbar along (app/mobile-ux.css). */
+  .page-layout .editor-toolbar,
+  :is(.record-dialog, .record-page) .editor-toolbar.record-toolbar {
     position: fixed;
     top: auto;
     /* Right above the on-screen keyboard where it only covers the page
@@ -8167,15 +8173,18 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding: 4px 8px max(4px, calc(4px + var(--safe-bottom, 0px) - var(--keyboard-inset, 0px)));
     scrollbar-width: none;
   }
-  .page-layout .editor-toolbar::-webkit-scrollbar {
+  .page-layout .editor-toolbar::-webkit-scrollbar,
+  :is(.record-dialog, .record-page) .editor-toolbar.record-toolbar::-webkit-scrollbar {
     display: none;
   }
-  .page-layout .editor-toolbar button {
+  .page-layout .editor-toolbar button,
+  :is(.record-dialog, .record-page) .editor-toolbar.record-toolbar button {
     flex-shrink: 0;
   }
   /* The row's padding strip to the right of "Hide keyboard" is covered too,
      so no scrolled button peeks out behind it. */
-  .page-layout .editor-toolbar .editor-hide-keyboard {
+  .page-layout .editor-toolbar .editor-hide-keyboard,
+  :is(.record-dialog, .record-page) .editor-toolbar.record-toolbar .editor-hide-keyboard {
     box-shadow:
       -6px 0 6px -2px var(--bg),
       8px 0 0 var(--bg);
@@ -8186,6 +8195,14 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
      often 0 once iOS has moved the visible area). */
   .page-layout .editor-wrapper {
     padding-bottom: calc(56px + max(var(--keyboard-inset, 0px), var(--keyboard-cover, 0px)));
+  }
+  /* A record's dialog goes on below the text (comments, "Eintrag löschen"):
+     room at its end, so that scrolls above the docked toolbar (44 px
+     buttons, padding and border: 53 px). */
+  .modal.record-dialog:has(.record-toolbar)::after {
+    content: "";
+    display: block;
+    height: 56px;
   }
   .mobile-menu {
     display: flex;
@@ -33686,12 +33703,15 @@ tr:hover .row-open-mark,
     z-index: 2147483000;
     touch-action: none;
   }
-  /* A record's content (the record dialog, which lives outside the shell,
-     and records written inline in a feed) keeps its toolbar in place – until
-     one writes in it with the keyboard open: then the toolbar docks above
-     the keyboard like a document's, placed from the top for the same reason
-     (#120). The dialog stays fixed-children friendly (no transform, #75). */
-  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar {
+  /* While one writes in a record's content with the keyboard open, its
+     toolbar docks above the keyboard like a document's, placed from the top
+     for the same reason (#120): a record written inline in a feed (in place
+     otherwise) and the record's dialog, which lives outside the shell
+     (docked at the bottom edge otherwise, #648; also while a menu of the
+     toolbar has the focus). The dialog stays fixed-children friendly (no
+     transform while it rests, #75). */
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar,
+  html.keyboard-docked .record-dialog .editor-toolbar.record-toolbar {
     position: fixed;
     top: var(--keyboard-visible-end);
     bottom: auto;
@@ -33711,13 +33731,25 @@ tr:hover .row-open-mark,
     box-shadow: var(--keyboard-fill-shadow);
     clip-path: var(--keyboard-fill-clip);
   }
-  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar::-webkit-scrollbar {
+  /* While another field of an opened record has the keyboard – its title, a
+     property, a comment – the record's toolbar steps aside: the floating
+     "Hide keyboard" takes over (components/hide-keyboard-button.tsx) and
+     the toolbar covers nothing above the keyboard. .focus-inside also holds
+     while one of the toolbar's own menus has the focus (components/
+     editor.tsx). */
+  html.keyboard-docked :is(.record-dialog, .record-page) .editor-wrapper:not(.focus-inside) .editor-toolbar.record-toolbar {
     display: none;
   }
-  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar button {
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar::-webkit-scrollbar,
+  html.keyboard-docked .record-dialog .editor-toolbar.record-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar button,
+  html.keyboard-docked .record-dialog .editor-toolbar.record-toolbar button {
     flex-shrink: 0;
   }
-  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar .editor-hide-keyboard {
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar .editor-hide-keyboard,
+  html.keyboard-docked .record-dialog .editor-toolbar.record-toolbar .editor-hide-keyboard {
     box-shadow:
       -6px 0 6px -2px var(--bg),
       8px 0 0 var(--bg);

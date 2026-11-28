@@ -4672,6 +4672,7 @@ export default function DatabaseView({
                       fields={fields}
                       templates={editable ? data.rowTemplates : undefined}
                       draftOf={templateDraft?.rowId === r.id ? templateDraft.templateId : undefined}
+                      inline
                       onError={onError}
                       onChanged={onRefresh}
                     />
