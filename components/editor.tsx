@@ -241,6 +241,7 @@ import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
 import type { Page, User } from "@/lib/types";
+import { relatedRecordsView } from "@/lib/this-record";
 import {
   mathNodeViews,
   MathEditorDialog,
@@ -582,7 +583,10 @@ export default function DocumentEditor({
   >(null);
   const [linkedPicker, setLinkedPicker] = useState(false),
     [linking, setLinking] = useState(false),
-    [linkedSearch, setLinkedSearch] = useState("");
+    [linkedSearch, setLinkedSearch] = useState(""),
+    // In a record's content: only the records related to this record (#649).
+    [linkedRelated, setLinkedRelated] = useState(false),
+    [linkedProblem, setLinkedProblem] = useState("");
   // The linked view's sources, sorted by space, twins named apart (#520).
   const linkedSources = useDatabaseEntries(useMemo(() => pages.filter((p) => p.kind === "database" && !p.deleted_at), [pages]), { pages });
   const linkedShown = linkedSources.filter((d) => `${d.label} ${d.space}`.toLowerCase().includes(linkedSearch.trim().toLowerCase()));
@@ -2596,6 +2600,7 @@ export default function DocumentEditor({
       icon: TableIcon,
       run: () => {
         setLinkedSearch("");
+        setLinkedProblem("");
         setLinkedPicker(true);
       },
     },
@@ -4080,6 +4085,20 @@ export default function DocumentEditor({
           onChange={(event) => setLinkedSearch(event.target.value)}
           placeholder={t("Datenbank suchen …", "Search databases …")}
         />
+        {rowId && (
+          <label className="checkbox-label linked-related-choice">
+            <input
+              type="checkbox"
+              checked={linkedRelated}
+              onChange={(event) => {
+                setLinkedRelated(event.target.checked);
+                setLinkedProblem("");
+              }}
+            />
+            {t("Nur Einträge zeigen, die mit diesem Eintrag verknüpft sind", "Only show records related to this record")}
+          </label>
+        )}
+        {linkedProblem && <p role="alert">{linkedProblem}</p>}
         <div className="linked-source-list">
           {linkedShown.map((source) => (
               <button
@@ -4091,8 +4110,23 @@ export default function DocumentEditor({
                   setLinking(true);
                   try {
                     const data = await api<{
-                      database: { views: import("@/lib/types").View[] };
+                      database: { views: import("@/lib/types").View[]; fields: import("@/lib/types").Field[] };
                     }>(`/api/pages/${source.id}`);
+                    // "Relation = this record" on the source's first
+                    // relation to this record's database (#649).
+                    const view =
+                      rowId && linkedRelated
+                        ? relatedRecordsView(data.database.views[0], data.database.fields, pageId)
+                        : data.database.views[0];
+                    if (!view) {
+                      setLinkedProblem(
+                        t(
+                          `„${source.label}“ hat keine Relation zu dieser Datenbank. Lege dort zuerst eine Relation an.`,
+                          `“${source.label}” has no relation to this database. Add a relation there first.`,
+                        ),
+                      );
+                      return;
+                    }
                     editor
                       ?.chain()
                       .focus()
@@ -4111,7 +4145,7 @@ export default function DocumentEditor({
                           version: "1",
                           views: JSON.stringify([
                             {
-                              ...data.database.views[0],
+                              ...view,
                               id: crypto.randomUUID(),
                             },
                           ]),

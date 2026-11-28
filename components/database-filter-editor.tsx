@@ -1,4 +1,6 @@
 "use client";
+import { useThisRecord } from "./this-record-context";
+import { offersThisRecord, resolveThisRecord, THIS_RECORD, usesToken } from "@/lib/this-record";
 import { choiceChipClass, optionColor } from "@/lib/option-colors";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -108,12 +110,30 @@ export function FilterConditionFields({
     isEmpty = valuelessOperators.has(node.op),
     multi = multiValueOperators.has(node.op),
     operators = operatorsFor(field);
+  // "Dieser Eintrag" (#649): in a linked view in a record's content, a
+  // relation to the record's database can stand for the record the view
+  // sits in. Elsewhere a condition that has it keeps showing it.
+  const thisRecord = useThisRecord();
+  const selfChoice =
+    field?.type === "relation" && (offersThisRecord(field, thisRecord) || usesToken(node))
+      ? [
+          {
+            value: THIS_RECORD,
+            name: offersThisRecord(field, thisRecord)
+              ? t("Dieser Eintrag", "This record")
+              : t("Dieser Eintrag (nur im Inhalt eines Eintrags)", "This record (only in a record's content)"),
+          },
+        ]
+      : [];
   const choices =
     field?.type === "relation"
-      ? (related[field.relationPage || ""] || []).map((r) => ({
-          value: r.id,
-          name: cellText(r.cells.title) || t("Ohne Titel", "Untitled"),
-        }))
+      ? [
+          ...selfChoice,
+          ...(related[field.relationPage || ""] || []).map((r) => ({
+            value: r.id,
+            name: cellText(r.cells.title) || t("Ohne Titel", "Untitled"),
+          })),
+        ]
       : field && ["select", "multiselect"].includes(field.type)
         ? (field.options || []).map((value) => ({ value, name: value }))
         : field && ["person", "created_by", "updated_by"].includes(field.type)
@@ -401,18 +421,20 @@ export default function DatabaseFilterEditor({
     hasRelativeFilters(draft) || hasClockFormulas(fields, relatedSchemas),
   );
   const zones = useTimeZones();
+  // "Relation = this record" counts for the record the view sits in (#649).
+  const thisRecord = useThisRecord();
   const preview = useMemo(
     () =>
       queryRows(
         rows,
         fields,
-        { ...view, filters: [], filterGroup: draft },
+        resolveThisRecord({ ...view, filters: [], filterGroup: draft }, fields, thisRecord),
         "",
         related,
         relatedSchemas,
         new Date(filterNow),
       ).length,
-    [rows, fields, view, draft, related, relatedSchemas, filterNow],
+    [rows, fields, view, draft, related, relatedSchemas, filterNow, thisRecord],
   );
   function update(
     path: number[],

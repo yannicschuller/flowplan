@@ -14,6 +14,13 @@
     {
       "de": "Analysis für Funktionen wie f(x) = (x + 3)·eˣ: Das Textmenü berechnet f′ und f″, Extrem- und Wendepunkte, Monotonie, Stammfunktion, Integrale, Tangenten, Schnittpunkte, Grenzwerte und Asymptoten, exakt wo möglich. Der Graph zeigt auf Wunsch f′, f″, die Punkte und eine schraffierte Fläche.",
       "en": "Calculus for functions such as f(x) = (x + 3)·eˣ: the text menu works out f′ and f″, extreme and inflection points, monotonicity, antiderivative, integrals, tangents, intersections, limits and asymptotes, exactly where possible. The graph can show f′, f″, the points and a hatched area."
+    },
+    {
+      "de": "Verknüpfte Datenbank im Inhalt eines Eintrags: Der Filter „Relation = Dieser Eintrag“ zeigt nur die Einträge, die mit ihm verknüpft sind, etwa die Aufgaben eines Projekts. „Neu“ verknüpft den neuen Eintrag gleich mit. In einer Eintragsvorlage zeigt so jeder neue Eintrag seine eigenen.",
+      "en": "Linked database in a record’s content: the filter “Relation = This record” shows only the records related to it, such as a project’s tasks. “New” relates the new record right away. In a record template, every new record made from it shows its own.",
+      "issues": [
+        649
+      ]
     }
   ],
   "improvements": [
