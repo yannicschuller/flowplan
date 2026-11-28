@@ -49,6 +49,13 @@
       "issues": [
         667
       ]
+    },
+    {
+      "de": "Links auf Issues, Pull- und Merge-Requests von GitHub, GitLab und Codeberg zeigen in Dokumenten ihren Status: ein kleines Symbol am Link und beim Darüberfahren eine Karte mit Titel, Nummer, Autor, Textanfang und Labels. Private Repositories über eine Verbindung der Issue-Synchronisierung.",
+      "en": "Links to issues, pull and merge requests on GitHub, GitLab and Codeberg show their status in documents: a small icon at the link and, on hover, a card with title, number, author, the start of the text and labels. Private repositories through an issue sync connection.",
+      "issues": [
+        654
+      ]
     }
   ],
   "improvements": [

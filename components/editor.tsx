@@ -284,6 +284,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { ListTidy, TabStaysInText } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
+import { IssueLinkStates, issueStateLabel } from "./issue-links";
 import { chipTitle, pageChipContent } from "@/lib/page-chip";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { isCancelled, sendWithProgress } from "@/lib/upload-progress";
@@ -1040,6 +1041,8 @@ export default function DocumentEditor({
         PageLink,
         // The linked page's or record's own icon in front of the link (#96).
         PageLinkIcons,
+        // The status of linked issues and pull requests (#654).
+        IssueLinkStates.configure({ label: (state) => issueStateLabel(state, t) }),
         Columns,
         Column,
         // Backspace or Delete in an empty column removes it.

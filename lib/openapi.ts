@@ -2506,6 +2506,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/health/live/handler.ts": "Liveness probe for orchestrators (Kubernetes, load balancers); /api/health is the documented check",
   "app/api/health/ready/handler.ts": "Readiness probe for orchestrators (database, and in cluster mode Redis and object storage); /api/health is the documented check",
   "app/api/issue-sync/hook/[token]/handler.ts": "GitHub/GitLab/Forgejo issue webhooks, verified by their own token and signature",
+  "app/api/issue-sync/preview/handler.ts": "Hover cards of issue links in the browser app; signed-in browser sessions only, never API tokens (no proxy to the providers' APIs)",
   "app/api/admin/instance-backup/handler.ts": "Administration only; tokens never administer",
   "app/api/admin/instance-move/handler.ts": "Administration only; tokens never administer",
   "app/api/admin/sftp-backup/handler.ts": "Administration only; tokens never administer",

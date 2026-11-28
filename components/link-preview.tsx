@@ -2,7 +2,7 @@
 import { pdfPageLink } from "@/lib/pdf-clip";
 import { serverMessage } from "@/lib/server-message";
 import { useT } from "./i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { linkTargetInfo } from "./page-link-icons-store";
@@ -10,6 +10,8 @@ import { parsePageLocation, pageLocationHash, inAppPageHash } from "@/lib/page-l
 import { openModeOf, requestOpen, type OpenMode } from "@/lib/open-place";
 import type { ContactCardData } from "@/lib/contacts-io";
 import { ContactAvatar } from "./contacts";
+import type { IssuePreviewResult } from "@/lib/issue-preview";
+import { enableIssueLinks, isIssueLink, issuePreviewOf, IssueCardBody, loadIssuePreview } from "./issue-links-store";
 
 type Preview = {
   id: string;
@@ -25,7 +27,9 @@ type Card =
   | { kind: "page"; rect: DOMRect; preview: Preview | null; error?: string }
   // A link to a record of a contacts database (issue #64).
   | { kind: "contact"; rect: DOMRect; contact: ContactCardData }
-  | { kind: "person"; rect: DOMRect; name: string; email: string };
+  | { kind: "person"; rect: DOMRect; name: string; email: string }
+  // A link to an issue, pull request or merge request (#654).
+  | { kind: "issue"; rect: DOMRect; result: IssuePreviewResult | null };
 
 // Spoiler text – and a flashcard's gap (lib/cloze-mark.ts) – in read-only
 // content opens (and closes) with a click; while writing it stays readable.
@@ -105,6 +109,12 @@ export function LinkPreview({
           return;
         }
         const href = target.getAttribute("href") || "";
+        if (isIssueLink(target) && !href.includes("#page=")) {
+          setCard({ kind: "issue", rect, result: issuePreviewOf(href) ?? null });
+          const result = await loadIssuePreview(href);
+          if (current.current === target) setCard({ kind: "issue", rect, result: result ?? { url: href, error: "unavailable" } });
+          return;
+        }
         const location = parsePageLocation(href.slice(href.indexOf("#")));
         if (!location) return;
         if (location.rowId) {
@@ -161,10 +171,14 @@ export function LinkPreview({
         }
       }, 350);
     };
+    // Page links, mentions and links to issues (#654).
+    const previewTarget = (element: Element | null) => {
+      const target = element?.closest?.('a[href*="#page="], span[data-mention], a[href^="https://"]') ?? null;
+      if (target?.matches('a[href^="https://"]') && !target.matches('a[href*="#page="]') && !isIssueLink(target)) return null;
+      return target;
+    };
     const over = (event: Event) => {
-      const target = (event.target as Element | null)?.closest?.(
-        'a[href*="#page="], span[data-mention]',
-      );
+      const target = previewTarget(event.target as Element | null);
       if (!target || target.closest(".sidebar, .link-preview")) return;
       show(target);
     };
@@ -174,12 +188,7 @@ export function LinkPreview({
         return;
       // A contact card can be entered (its links are clickable).
       if (related?.closest?.(".link-preview.contact-preview")) return;
-      if (
-        (event.target as Element | null)?.closest?.(
-          'a[href*="#page="], span[data-mention]',
-        )
-      )
-        clear();
+      if (previewTarget(event.target as Element | null)) clear();
     };
     // Links and mentions inside editable text do not react to clicks by
     // themselves: page links open the page, other links a new tab, people
@@ -195,7 +204,7 @@ export function LinkPreview({
       if (pdfPageLink(target.getAttribute("href") || "")) return;
       // Opening a page removes the link before the pointer can leave it, so
       // no mouseout would ever close the card.
-      if (target.matches('a[href*="#page="]')) clear();
+      if (target.matches('a[href*="#page="]') || isIssueLink(target)) clear();
       if (target.matches("span[data-mention]")) {
         if (timer.current) clearTimeout(timer.current);
         current.current = null;
@@ -265,9 +274,12 @@ export function LinkPreview({
       if (timer.current) clearTimeout(timer.current);
     };
   }, [members]);
+  // Issue links in view: their status (#654).
+  useEffect(() => enableIssueLinks(), []);
   if (!card) return null;
-  const top = Math.min(card.rect.bottom + 6, window.innerHeight - (card.kind === "contact" ? 220 : 170)),
+  const top = Math.min(card.rect.bottom + 6, window.innerHeight - (card.kind === "contact" ? 220 : card.kind === "issue" ? 260 : 170)),
     left = Math.max(8, Math.min(card.rect.left, window.innerWidth - 328));
+  if (card.kind === "issue") return <IssueCard top={top} left={left} result={card.result} />;
   if (card.kind === "contact") {
     const c = card.contact;
     const close = () => {
@@ -328,6 +340,20 @@ export function LinkPreview({
       ) : (
         <small>{serverMessage(card.error) || t("Vorschau wird geladen …", "Loading preview …")}</small>
       )}
+    </div>
+  );
+}
+
+// The card of an issue link (#654): placed through custom properties.
+function IssueCard({ top, left, result }: { top: number; left: number; result: IssuePreviewResult | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    ref.current?.style.setProperty("--preview-top", `${top}px`);
+    ref.current?.style.setProperty("--preview-left", `${left}px`);
+  }, [top, left]);
+  return (
+    <div ref={ref} className="link-preview issue-preview" role="tooltip">
+      <IssueCardBody result={result} />
     </div>
   );
 }
