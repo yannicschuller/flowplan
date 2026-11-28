@@ -253,6 +253,13 @@
         662,
         663
       ]
+    },
+    {
+      "de": "Mehr als 100 ausgewählte Seiten verschieben, duplizieren oder in den Papierkorb legen klappt jetzt – bis zu 1000 auf einmal und deutlich schneller. Darüber sind die Aktionen gesperrt und sagen „Höchstens 1000 Seiten auf einmal.“ statt „Ungültige Eingabe.“, ebenso ab 501 Einträgen oder Dateien.",
+      "en": "Moving, duplicating or trashing more than 100 selected pages now works – up to 1000 at once, and much faster. Above that the actions are disabled and say “At most 1000 pages at a time.” instead of “Invalid input.”, as they do from 501 records or files.",
+      "issues": [
+        675
+      ]
     }
   ]
 }

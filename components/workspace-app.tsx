@@ -4,6 +4,7 @@ import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
+import { PAGES_BULK_MAX } from "@/lib/bulk-limits";
 import { findSection, parseSettingsHash, redirectedSettingsHash, settingsHash } from "@/lib/settings-sections";
 import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
 import { usePaneScroll } from "@/lib/pane-scroll";
@@ -3268,6 +3269,9 @@ export default function WorkspaceApp({
     lastSelected.current = null;
   }
   const pagesLabel = (n: number) => (n === 1 ? t("1 Seite", "1 page") : t(`${n} Seiten`, `${n} pages`));
+  // Bulk actions run all or nothing on the server, up to PAGES_BULK_MAX
+  // pages (#675): above it they are disabled instead of failing.
+  const tooManyPages = selectedPages.length > PAGES_BULK_MAX;
   // More actions for the selected pages (#275): in the selection bar's
   // "…" menu and in the context menu of a selected page. Locking is offered
   // like the single "Seite sperren" (members who may create pages); the
@@ -3283,25 +3287,25 @@ export default function WorkspaceApp({
     return (
       <>
         {canCreate && toLock > 0 && (
-          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("lock")}>
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy || tooManyPages} onSelect={() => void bulkPages("lock")}>
             <Lock />
             {count(toLock, t("Seiten sperren", "Lock pages"), t(`${pagesLabel(toLock)} sperren`, `Lock ${pagesLabel(toLock)}`))}
           </Dropdown.Item>
         )}
         {canCreate && toLock < n && (
-          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("unlock")}>
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy || tooManyPages} onSelect={() => void bulkPages("unlock")}>
             <LockOpen />
             {count(n - toLock, t("Seiten entsperren", "Unlock pages"), t(`${pagesLabel(n - toLock)} entsperren`, `Unlock ${pagesLabel(n - toLock)}`))}
           </Dropdown.Item>
         )}
         {toStar > 0 && (
-          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("favorite")}>
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy || tooManyPages} onSelect={() => void bulkPages("favorite")}>
             <Star />
             {count(toStar, t("Zu Favoriten", "Add to favourites"), t(`${pagesLabel(toStar)} zu Favoriten`, `Add ${pagesLabel(toStar)} to favourites`))}
           </Dropdown.Item>
         )}
         {toStar < n && (
-          <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("unfavorite")}>
+          <Dropdown.Item className="dropdown-item" disabled={bulkBusy || tooManyPages} onSelect={() => void bulkPages("unfavorite")}>
             <Star />
             {count(n - toStar, t("Aus Favoriten entfernen", "Remove from favourites"), t(`${pagesLabel(n - toStar)} aus Favoriten entfernen`, `Remove ${pagesLabel(n - toStar)} from favourites`))}
           </Dropdown.Item>
@@ -3335,10 +3339,19 @@ export default function WorkspaceApp({
     const leaving = pageIds.filter((id) => spaceOf(id) && spaceOf(id) !== target);
     if (!target || !leaving.length) return run();
     const found = new Map<string, ForeignMeta>();
-    for (const pageId of leaving) {
-      const check = await api<{ foreign: ForeignMeta[] }>("/api/command", { action: "page.moveCheck", workspaceId: boot.workspace.id, pageId, spaceId: target }).catch(
-        () => ({ foreign: [] as ForeignMeta[] }),
+    // A few checks at a time: a selection can have up to PAGES_BULK_MAX pages (#675).
+    const checks: { foreign: ForeignMeta[] }[] = [];
+    for (let i = 0; i < leaving.length; i += 8)
+      checks.push(
+        ...(await Promise.all(
+          leaving.slice(i, i + 8).map((pageId) =>
+            api<{ foreign: ForeignMeta[] }>("/api/command", { action: "page.moveCheck", workspaceId: boot.workspace.id, pageId, spaceId: target }).catch(
+              () => ({ foreign: [] as ForeignMeta[] }),
+            ),
+          ),
+        )),
       );
+    for (const check of checks) {
       for (const item of check.foreign) {
         const key = `${item.kind}:${item.id}`;
         const seen = found.get(key);
@@ -3353,6 +3366,10 @@ export default function WorkspaceApp({
     destination?: string,
     meta?: MetaPlan,
   ): Promise<unknown> {
+    if (selectedPages.length > PAGES_BULK_MAX) {
+      notifyError(t(`Höchstens ${PAGES_BULK_MAX} Seiten auf einmal.`, `At most ${PAGES_BULK_MAX} pages at a time.`));
+      return;
+    }
     if (operation === "move" && destination && meta === undefined) {
       const ids = selectedPages;
       return movingChecked(
@@ -5013,10 +5030,18 @@ export default function WorkspaceApp({
               <button className="text-button page-selection-done" onClick={clearSelection}>
                 {t("Fertig", "Done")}
               </button>
+              {tooManyPages && (
+                <p className="page-selection-limit" role="status">
+                  {t(
+                    `Höchstens ${PAGES_BULK_MAX} Seiten auf einmal. Wähle weniger Seiten aus, um sie zu verschieben, zu duplizieren oder in den Papierkorb zu legen.`,
+                    `At most ${PAGES_BULK_MAX} pages at a time. Select fewer pages to move, duplicate or trash them.`,
+                  )}
+                </p>
+              )}
               <div className="page-selection-actions">
                 <button
                   className="text-button"
-                  disabled={!selectedPages.length || bulkBusy}
+                  disabled={!selectedPages.length || bulkBusy || tooManyPages}
                   onClick={() => {
                     setBulkTarget("");
                     setBulkDialog("move");
@@ -5026,14 +5051,14 @@ export default function WorkspaceApp({
                 </button>
                 <button
                   className="text-button"
-                  disabled={!selectedPages.length || bulkBusy}
+                  disabled={!selectedPages.length || bulkBusy || tooManyPages}
                   onClick={() => void bulkPages("duplicate")}
                 >
                   {t("Duplizieren", "Duplicate")}
                 </button>
                 <button
                   className="text-button danger"
-                  disabled={!selectedPages.length || bulkBusy}
+                  disabled={!selectedPages.length || bulkBusy || tooManyPages}
                   onClick={() => setBulkDialog("delete")}
                 >
                   {t("Papierkorb", "Trash")}
@@ -7746,7 +7771,7 @@ export default function WorkspaceApp({
                     <>
                       <Dropdown.Item
                         className="dropdown-item"
-                        disabled={bulkBusy}
+                        disabled={bulkBusy || tooManyPages}
                         onSelect={() => {
                           setBulkTarget("");
                           setBulkDialog("move");
@@ -7755,13 +7780,13 @@ export default function WorkspaceApp({
                         <ArrowRight />
                         {t("Verschieben", "Move")}
                       </Dropdown.Item>
-                      <Dropdown.Item className="dropdown-item" disabled={bulkBusy} onSelect={() => void bulkPages("duplicate")}>
+                      <Dropdown.Item className="dropdown-item" disabled={bulkBusy || tooManyPages} onSelect={() => void bulkPages("duplicate")}>
                         <Copy />
                         {t("Duplizieren", "Duplicate")}
                       </Dropdown.Item>
                       {selectionMenuItems()}
                       <Dropdown.Separator className="dropdown-separator" />
-                      <Dropdown.Item className="dropdown-item danger" disabled={bulkBusy} onSelect={() => setBulkDialog("delete")}>
+                      <Dropdown.Item className="dropdown-item danger" disabled={bulkBusy || tooManyPages} onSelect={() => setBulkDialog("delete")}>
                         <Trash />
                         {t("In den Papierkorb", "Move to trash")}
                       </Dropdown.Item>

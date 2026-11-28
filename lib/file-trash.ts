@@ -23,9 +23,10 @@ import { hiddenFileIds, hiddenRowFileIds } from "./row-files";
 import { mayDeleteFiles, mediaEntries } from "./media-library";
 import { usedFileIds } from "./file-usage";
 import type { Identity, Page } from "./types";
+import { FILES_BULK_MAX } from "./bulk-limits";
 
 const uuid = z.string().uuid();
-export const MAX_FILES_PER_DELETE = 500;
+export const MAX_FILES_PER_DELETE = FILES_BULK_MAX;
 type FileRow = { id: string; page_id: string; name: string; mime: string; size: number; deleted_at: string | null };
 
 // The file with its page, if this person may see it. Hidden files (other
@@ -70,6 +71,9 @@ async function requireUnused(found: { file: FileRow; page: Page }[]) {
 // file.delete: files into the trash, all or none. With `unusedOnly` (the
 // cover dialog's "Entfernen", #396) only while nothing refers to them.
 export async function trashFiles(user: Identity, input: Record<string, unknown>) {
+  // Up to MAX_FILES_PER_DELETE files in one go (#675), with a message that says so.
+  if (Array.isArray(input.fileIds) && input.fileIds.length > MAX_FILES_PER_DELETE)
+    throw new HttpError(400, "Höchstens 500 Dateien auf einmal.");
   const ids = [...new Set(z.array(uuid).min(1).max(MAX_FILES_PER_DELETE).parse(input.fileIds))];
   const unusedOnly = z.boolean().optional().parse(input.unusedOnly) === true;
   return await transaction(async () => {

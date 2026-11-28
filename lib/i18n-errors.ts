@@ -169,6 +169,10 @@ const exact: Record<string, string> = {
   "Gäste dürfen keine Vorlagen veröffentlichen.": "Guests may not publish templates.",
   "Gäste dürfen nichts im Marketplace veröffentlichen.": "Guests may not publish anything to the marketplace.",
   "Höchstens 4 Vorschaubilder.": "At most 4 preview pictures.",
+  // Bulk actions on a selection (lib/bulk-limits.ts, #675).
+  "Höchstens 1000 Seiten auf einmal.": "At most 1000 pages at a time.",
+  "Höchstens 500 Einträge auf einmal.": "At most 500 records at a time.",
+  "Höchstens 500 Dateien auf einmal.": "At most 500 files at a time.",
   "Höchstens 50 Linkregeln.": "At most 50 link rules.",
   "Keine Marketplace-Vorlage (template.json fehlt).": "Not a marketplace template (template.json is missing).",
   "Keine Marketplace-Vorlage (flowplan-marketplace-1).": "Not a marketplace template (flowplan-marketplace-1).",

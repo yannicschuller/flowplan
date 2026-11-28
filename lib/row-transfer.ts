@@ -23,6 +23,7 @@ import { requireUnlocked } from "./journal-extras";
 import { replaceRowDocument } from "./row-documents";
 import { hiddenFileIds } from "./row-files";
 import { maintainRowOrders } from "./row-order-server";
+import { ROWS_BULK_MAX } from "./bulk-limits";
 import { rowCreated } from "./automations";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page, Row } from "./types";
@@ -31,7 +32,7 @@ import { colorOptions, hasOwnOptions, optionColor } from "./option-colors";
 import { localUpload, publishUpload } from "./storage";
 
 const input = z.object({
-  rowIds: z.array(z.uuid()).min(1).max(500),
+  rowIds: z.array(z.uuid()).min(1).max(ROWS_BULK_MAX),
   targetPageId: z.uuid(),
   mode: z.enum(["copy", "move"]),
   // Create properties the target does not have yet (same name and type).
@@ -135,6 +136,9 @@ async function copyFile(fileId: string, source: Page, hidden: Set<string>, targe
 }
 
 export async function transferRows(user: Identity, sourcePageId: string, raw: unknown) {
+  // Up to ROWS_BULK_MAX records in one go (#675), with a message that says so.
+  const rowIds = (raw as { rowIds?: unknown } | null)?.rowIds;
+  if (Array.isArray(rowIds) && rowIds.length > ROWS_BULK_MAX) throw new HttpError(400, "Höchstens 500 Einträge auf einmal.");
   const b = input.parse(raw);
   const source = await requirePage(user, sourcePageId, b.mode === "move");
   const target = await requirePage(user, b.targetPageId, true);

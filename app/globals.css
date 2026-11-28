@@ -965,6 +965,13 @@ kbd,
   font-weight: 600;
   margin-right: auto;
 }
+/* More pages selected than a bulk action takes (#675). */
+.page-selection-limit {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
 .page-selection-actions {
   flex-basis: 100%;
   display: flex;
@@ -9635,6 +9642,13 @@ body:has(.public-page:not(.public-wide) .public-embed) {
 .bulk-toolbar strong {
   margin-right: auto;
   font-size: 13px;
+}
+/* More records selected than a bulk action takes (#675). */
+.bulk-toolbar-limit {
+  flex-basis: 100%;
+  order: 1;
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
 .property-order {
   display: flex;

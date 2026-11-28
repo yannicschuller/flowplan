@@ -1,6 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/server-message";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { FILES_BULK_MAX } from "@/lib/bulk-limits";
 import { useT } from "./i18n";
 import { PdfThumbnail, openPdfPanel } from "./pdf-viewer";
 import { isDrawingFormat, isModelName, modelFormatOf } from "@/lib/model-formats";
@@ -250,9 +251,15 @@ export function MediaLibrary({
               {t("Alle auswählen", "Select all")}
             </button>
           )}
-          <button className="text-button danger" disabled={busy} onClick={() => void trash([...selected])}>
+          <button className="text-button danger" disabled={busy || selected.size > FILES_BULK_MAX} onClick={() => void trash([...selected])}>
             {t("In den Papierkorb", "Move to trash")}
           </button>
+          {/* All or nothing on the server, up to FILES_BULK_MAX files (#675). */}
+          {selected.size > FILES_BULK_MAX && (
+            <span className="muted" role="status">
+              {t(`Höchstens ${FILES_BULK_MAX} Dateien auf einmal.`, `At most ${FILES_BULK_MAX} files at a time.`)}
+            </span>
+          )}
           <button className="text-button" onClick={() => setSelected(new Set())}>
             {t("Auswahl aufheben", "Clear selection")}
           </button>

@@ -1,4 +1,5 @@
 import { numberCell } from "./field-format";
+import { ROWS_BULK_MAX } from "./bulk-limits";
 import {
   fileIdOf,
   fileRefSchema,
@@ -334,6 +335,9 @@ export async function bulkRows(
   const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Datenbank ist gesperrt.");
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+  // Up to ROWS_BULK_MAX records in one go (#675), with a message that says so.
+  if (Array.isArray(input.rows) && input.rows.length > ROWS_BULK_MAX)
+    throw new HttpError(400, "Höchstens 500 Einträge auf einmal.");
   const operation = z
       .enum(["update", "duplicate", "delete"])
       .parse(input.operation),
@@ -342,7 +346,7 @@ export async function bulkRows(
         z.object({ id: z.string().uuid(), version: z.number().int().min(1) }),
       )
       .min(1)
-      .max(500)
+      .max(ROWS_BULK_MAX)
       .parse(input.rows);
   if (new Set(selected.map((r) => r.id)).size !== selected.length)
     throw new HttpError(400, "Doppelte Einträge in der Auswahl.");

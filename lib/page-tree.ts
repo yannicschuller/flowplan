@@ -9,6 +9,7 @@ import { remapViewReferences } from "./view-references";
 import { remapLinkedAttributes } from "./linked-view-references";
 import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { all, one, run, id, onTransactionRollback } from "./db";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -42,18 +43,54 @@ export async function duplicatePageTree(user: Identity, root: Page) {
   );
   const copy = copied.pageIds.get(root.id)!;
   // The copy goes right after its source; renumbered as page.move does, so
-  // several copies of one page do not tie.
-  const siblings = (await all<{ id: string }>(
-    "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
-    root.space_id,
-    root.parent_id,
-    copy,
-  )).map((x) => x.id);
-  siblings.splice(siblings.indexOf(root.id) + 1, 0, copy);
-  await forEachAsync(siblings, async (sibling, i) =>
-    await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
-  );
+  // several copies of one page do not tie. Inside pages.bulk once for all
+  // copies at the end (withDeferredCopyPlacement).
+  const pending = deferredPlacement.getStore();
+  if (pending) pending.push({ source: root, copy });
+  else await placeCopies([{ source: root, copy }]);
   return { id: copy, pages: tree.length };
+}
+type CopyPlacement = { source: Page; copy: string };
+const deferredPlacement = new AsyncLocalStorage<CopyPlacement[]>();
+// Duplicating a selection (pages.bulk, #675): the copies made inside `f`
+// are put after their sources in one renumbering per list at the end,
+// instead of renumbering the whole list for every copy (quadratic for
+// thousands of pages).
+export async function withDeferredCopyPlacement<T>(f: () => Promise<T>): Promise<T> {
+  const pending: CopyPlacement[] = [];
+  const result = await deferredPlacement.run(pending, f);
+  await placeCopies(pending);
+  return result;
+}
+async function placeCopies(placements: CopyPlacement[]) {
+  const lists = new Map<string, CopyPlacement[]>();
+  for (const placement of placements) {
+    const key = `${placement.source.space_id}\0${placement.source.parent_id ?? ""}`;
+    lists.set(key, [...(lists.get(key) ?? []), placement]);
+  }
+  for (const group of lists.values()) {
+    const { space_id, parent_id } = group[0].source;
+    const copies = new Map(group.map((x) => [x.source.id, x.copy]));
+    const isCopy = new Set(copies.values());
+    const rows = await all<{ id: string; position: number }>(
+      "SELECT id,position FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL ORDER BY position,id",
+      space_id,
+      parent_id,
+    );
+    const positionOf = new Map(rows.map((x) => [x.id, x.position]));
+    const siblings: string[] = [];
+    for (const row of rows) {
+      if (isCopy.has(row.id)) continue;
+      siblings.push(row.id);
+      const copy = copies.get(row.id);
+      if (copy) siblings.push(copy), copies.delete(row.id);
+    }
+    siblings.push(...copies.values());
+    // Only the positions that change are written.
+    await forEachAsync(siblings, async (sibling, i) => {
+      if (positionOf.get(sibling) !== i) await run("UPDATE pages SET position=? WHERE id=?", i, sibling);
+    });
+  }
 }
 // All roots share one reference map, so links and relations between roots also copy.
 // The caller owns the destination and SQL transaction; every source is read-checked.

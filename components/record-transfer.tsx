@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
 import { useDatabaseEntries } from "./database-picker";
+import { ROWS_BULK_MAX } from "@/lib/bulk-limits";
 
 type Target = { id: string; title: string; icon: string };
 const NONE: Target[] = [];
@@ -100,13 +101,15 @@ export function TransferDialog({
   const needle = query.trim().toLowerCase();
   const shown = entries.filter((x) => `${x.label} ${x.space}`.toLowerCase().includes(needle));
   const n = rowIds.length;
+  // All or nothing on the server, up to ROWS_BULK_MAX records (#675).
+  const tooMany = n > ROWS_BULK_MAX;
   return (
     <Modal open onClose={onClose} title={n > 1 ? (mode === "move" ? t(`${n} Einträge verschieben`, `Move ${n} records`) : t(`${n} Einträge kopieren`, `Copy ${n} records`)) : mode === "move" ? t("Eintrag verschieben", "Move record") : t("Eintrag kopieren", "Copy record")}>
       <form
         className="transfer-dialog"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!target) return;
+          if (!target || tooMany) return;
           setBusy(true);
           try {
             const result = (await act({ action: "rows.transfer", rowIds, targetPageId: target, mode, addMissing })) as { count: number; created: string[] } | null;
@@ -167,11 +170,16 @@ export function TransferDialog({
         <p className="muted small">
           {t("Eigenschaften werden nach Namen zugeordnet; fehlende Auswahl-Optionen kommen dazu.", "Properties are matched by name; missing select options are added.")}
         </p>
+        {tooMany && (
+          <p className="muted small" role="status">
+            {t(`Höchstens ${ROWS_BULK_MAX} Einträge auf einmal. Wähle weniger Einträge aus.`, `At most ${ROWS_BULK_MAX} records at a time. Select fewer records.`)}
+          </p>
+        )}
         <div className="modal-actions">
           <button type="button" className="button" onClick={onClose}>
             {t("Abbrechen", "Cancel")}
           </button>
-          <button className="button primary" disabled={busy || !target}>
+          <button className="button primary" disabled={busy || !target || tooMany}>
             {busy ? t("Wird übertragen …", "Transferring …") : mode === "move" ? t("Verschieben", "Move") : t("Kopieren", "Copy")}
           </button>
         </div>
