@@ -46,6 +46,13 @@
       "issues": [
         625
       ]
+    },
+    {
+      "de": "Auf Handy und Tablet sehen Bilder in einem Eintrag oder einer Seite nicht mehr alle ausgewählt aus: Die blauen Griffe zum Ändern der Größe erscheinen nur noch am Bild, das du antippst.",
+      "en": "On phones and tablets, the images in a record or page no longer all look selected: the blue handles for resizing now appear only on the image you tap.",
+      "issues": [
+        642
+      ]
     }
   ]
 }
