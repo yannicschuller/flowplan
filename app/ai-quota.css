@@ -19,7 +19,7 @@
   justify-content: space-between;
   gap: 4px 12px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .ai-quota-bar-text strong {
   color: var(--text);
@@ -62,7 +62,7 @@
 .ai-quota-bar small,
 .ai-quota-unit,
 .ai-quota-free {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .ai-quota-note {
   display: flex;
@@ -73,7 +73,7 @@
   border-radius: 8px;
   background: var(--hover);
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .ai-quota-note.full {
   color: var(--danger, #b42318);
@@ -96,7 +96,7 @@
   margin: 0;
   padding: 14px 22px;
   border-top: 1px solid var(--border);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -128,7 +128,7 @@
 .ai-quota-empty {
   margin: 0;
   padding: 2px 22px 16px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .vz-limit {
   stroke: var(--signal);
@@ -149,7 +149,7 @@
   min-width: 150px;
   max-width: 220px;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 /* "Bis … – frei wählbar" with its default below. */
 .ai-quota-model-cell {
@@ -160,7 +160,7 @@
 .ai-quota-model-note {
   margin: 0;
   padding: 12px 22px 4px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 /* "KI" in a person's details (Administration → Benutzer) and in a group's
    dialog (components/settings/admin/ai-rule.tsx). */
@@ -180,7 +180,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   font-weight: 600;
 }
 .ai-rule-head svg {
@@ -188,7 +188,7 @@
 }
 .ai-rule-note {
   margin: 4px 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .ai-rule-error {
   color: var(--danger, #b42318);
@@ -208,12 +208,12 @@
   min-width: 0;
 }
 .ai-rule-text label {
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   font-weight: 550;
 }
 .ai-rule-text small {
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 .ai-rule-control {
@@ -227,7 +227,7 @@
   width: 210px;
   max-width: 100%;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .ai-rule-limits {
   display: grid;
@@ -240,7 +240,7 @@
   gap: 3px;
   min-width: 0;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .ai-rule-limits .ai-quota-limit {
   max-width: none;
@@ -253,7 +253,7 @@
 .ai-rule-usage-head {
   margin: 0 0 8px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   font-weight: 500;
 }
 .ai-rule-usage .ai-quota-bars {
@@ -328,7 +328,7 @@
 .limit-source {
   display: block;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 /* "Danach": the model and the continuation's own limit (AfterLimitField). */
 .ai-quota-after-cell {
@@ -341,7 +341,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .ai-quota-after-limit .ai-quota-limit {
   max-width: 120px;

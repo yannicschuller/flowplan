@@ -68,11 +68,11 @@
   justify-content: space-between;
   gap: 2px 10px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .settings-tile-bar-text strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -103,18 +103,18 @@
   justify-content: space-between;
   gap: 4px 12px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .usage-bar-text strong {
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .usage-warn {
   margin: 8px 0 0;
   color: var(--danger, #b42318);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .usage-workspaces {
   display: grid;
@@ -122,7 +122,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .usage-workspaces li {
   display: flex;
@@ -150,7 +150,7 @@
 .usage-models code {
   max-width: 100%;
   overflow-wrap: anywhere;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .usage-more {
   display: flex;
@@ -172,7 +172,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 .usage-moved svg {

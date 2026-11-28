@@ -144,7 +144,7 @@
   border-color: var(--blue);
 }
 .look-custom code {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 /* "Logo-Farbe" (#591): the mark as it will look, then "Folgt dem Akzent"
    and the colours. */
@@ -167,7 +167,7 @@
   border-radius: 8px;
   background: var(--surface);
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.5;
 }
 .look-adjusted > svg {
@@ -175,7 +175,7 @@
   color: var(--blue);
 }
 .look-adjusted code {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .look-adjusted-value {
   display: inline-flex;
@@ -206,7 +206,7 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   font-weight: 500;
 }
 .look-background.active {

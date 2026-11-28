@@ -595,7 +595,7 @@ label.hit-check {
     padding-inline: 12px 14px;
     border-radius: 8px;
     color: var(--secondary);
-    font-size: 13px;
+    font-size: var(--text-md);
     font-weight: 600;
   }
   .sidebar-more:hover,
@@ -615,14 +615,15 @@ label.hit-check {
    its own above the tab bar (components/workspace-app.tsx renders no
    .sidebar-bottom there; "Erste Schritte" follows "Mehr"). Every entry –
    Startseite, Posteingang, Meine Aufgaben, Favoriten, Sammlungen, the
-   spaces and their pages, "Bereich hinzufügen" and "Mehr" – is 15 px; the
-   filter field keeps 16 px (iOS would zoom into a smaller one), the small
-   labels ("Geteilt") stay labels. The rows keep their 44 px; only the room
+   spaces and their pages, "Bereich hinzufügen" and "Mehr" – is 16 px, as
+   the rows of the sheets and the filter field (#639, 15 px before; iOS
+   would zoom into a field below 16 px); the small labels ("Geteilt") stay
+   labels, at the type scale's 14 px. The rows keep their 44 px; only the room
    between the groups is smaller. ===== */
 @media (pointer: coarse) and (max-width: 767.98px) {
   .sidebar :is(.main-nav > button, .page-nav-title, .favorite-nav, .collection-nav-empty, .add-space, .sidebar-more),
   .sidebar .nav-section-title > .space-toggle {
-    font-size: 15px;
+    font-size: 16px;
   }
   /* Startseite, Posteingang, Meine Aufgaben: one 44 px row after the
      other, the filter field close below. */
@@ -797,6 +798,7 @@ label.hit-check {
   }
   .comments-count {
     display: inline;
+    /* A count beside the symbol: keeps its size (#639). */
     font-size: 11.5px;
     font-variant-numeric: tabular-nums;
     color: var(--secondary);
@@ -817,7 +819,7 @@ label.hit-check {
     min-height: 58px;
     padding: 8px 4px;
     border-radius: 7px;
-    font-size: 11.5px;
+    font-size: var(--text-xs-plus);
     line-height: 1.2;
     text-align: center;
     color: var(--secondary);
@@ -885,7 +887,7 @@ label.hit-check {
 }
 .page-menu-sheet-list .page-menu-label {
   padding: 8px 12px 4px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 /* ===== Comments on phones (≤ 767 px, the phone layout of app/globals.css):
@@ -942,7 +944,7 @@ label.hit-check {
   display: inline-flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .my-tasks-sheet .my-tasks-filter-checks .my-tasks-done {
   min-height: 44px;

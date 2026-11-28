@@ -29,7 +29,7 @@
 .emergency-note,
 .emergency-empty {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .emergency-actions {
   display: flex;
@@ -61,7 +61,7 @@
 }
 .emergency-tree h3 {
   margin: 0 0 6px;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 .emergency-tree h3 small {
   color: var(--muted);
@@ -106,7 +106,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 @media (max-width: 700px) {
   .emergency-viewer {

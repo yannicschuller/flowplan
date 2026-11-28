@@ -11,7 +11,7 @@
 .move-form label,
 .move-step-up label {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .move-form input + label {
@@ -57,7 +57,7 @@
 .move-fresh small code,
 .move-facts code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 .move-facts {
@@ -65,7 +65,7 @@
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 4px 12px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .move-facts dt {
   color: var(--muted);
@@ -76,7 +76,7 @@
 .move-progress {
   display: grid;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .move-progress-head {
   display: flex;
@@ -94,7 +94,7 @@
 }
 .move-summary {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .move-checks {
@@ -111,7 +111,7 @@
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .move-check .status-badge {
   flex: none;
@@ -155,7 +155,7 @@
   background: #fbf1dc;
   color: #4d3f17;
   box-shadow: var(--shadow);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .move-banner a {
   color: inherit;

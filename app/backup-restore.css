@@ -20,13 +20,13 @@
 }
 .sftp-key {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   resize: vertical;
 }
 .sftp-form code,
 .sftp-hostkey code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 .sftp-hostkey {
@@ -44,7 +44,7 @@
 }
 .sftp-hostkey p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 .sftp-hostkey.changed {
@@ -94,7 +94,7 @@
   background: transparent;
   color: var(--secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -107,7 +107,7 @@
   display: grid;
   gap: 5px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 550;
   color: var(--secondary);
 }
@@ -120,11 +120,11 @@
   background: var(--bg);
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--text-lg);
 }
 .setup-restore-form textarea {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .setup-restore-key.asked input {
   border-color: var(--signal);
@@ -143,7 +143,7 @@
 .setup-restore-form details {
   display: grid;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 .setup-restore-form details label {
@@ -164,11 +164,11 @@
 }
 .login-card .setup-restore-hostkey small {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .setup-restore-hostkey code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 .login-form .setup-restore-confirm {
@@ -181,7 +181,7 @@
 }
 .login-card .setup-restore > small {
   margin-top: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
 }
 @media (max-width: 480px) {

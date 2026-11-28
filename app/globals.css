@@ -34,6 +34,19 @@
   --mark-fg: var(--text);
   --shadow: 0 12px 40px #1d1a1414;
   --radius: 10px;
+  /* The type scale of the interface (#639): the desktop sizes, which every
+     window with a mouse and every tablet keeps. A phone in the hand moves
+     it up (below), so captions start at 14 px and each step keeps its
+     place in the hierarchy. */
+  --text-2xs: 10.5px;
+  --text-xs: 11px;
+  --text-xs-plus: 11.5px;
+  --text-sm: 12px;
+  --text-sm-plus: 12.5px;
+  --text-md: 13px;
+  --text-md-plus: 13.5px;
+  --text-base: 14px;
+  --text-lg: 15px;
   --font-ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     "Noto Sans SC", sans-serif;
@@ -51,6 +64,24 @@
      screen, e.g. a long link in a dialog. Sizes stay as written. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+/* Phones in the hand (#639): nothing to read below 14 px. Captions,
+   labels, times and hints (11–12.5 px on a desktop) become 14 px, list and
+   secondary text (13–14 px) 15 px, primary rows (15 px) 16 px – the size of
+   the sheets' rows and of the fields. Count badges, thumbnails and the tab
+   bar's captions keep their own sizes (marked where they are set). */
+@media (pointer: coarse) and (max-width: 767.98px) {
+  :root {
+    --text-2xs: 14px;
+    --text-xs: 14px;
+    --text-xs-plus: 14px;
+    --text-sm: 14px;
+    --text-sm-plus: 14px;
+    --text-md: 15px;
+    --text-md-plus: 15px;
+    --text-base: 15px;
+    --text-lg: 16px;
+  }
 }
 * {
   box-sizing: border-box;
@@ -249,7 +280,7 @@ h3 {
   font-size: 15px;
 }
 small {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 svg {
@@ -330,7 +361,7 @@ kbd,
 }
 .button.compact {
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .button.wide {
   width: 100%;
@@ -341,7 +372,7 @@ kbd,
 }
 .text-button {
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 5px 0;
   justify-content: flex-start;
 }
@@ -412,7 +443,7 @@ kbd,
 }
 .workspace-switch > span:nth-child(2) {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -420,7 +451,7 @@ kbd,
 }
 .workspace-switch small {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 400;
   color: var(--muted);
   margin-top: 1px;
@@ -455,7 +486,7 @@ kbd,
   padding: 6px 10px;
   color: var(--secondary);
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
   margin: 1px 0;
 }
 .main-nav .keycap {
@@ -576,7 +607,7 @@ kbd,
   height: 100%;
   background: none;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   color: var(--text);
   outline: none;
   box-shadow: none;
@@ -617,7 +648,7 @@ kbd,
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
   line-height: 18px;
   color: var(--muted);
 }
@@ -678,7 +709,7 @@ kbd,
     padding: 9px;
   }
   .tree-branch-path ol {
-    font-size: 12.5px;
+    font-size: var(--text-sm-plus);
     line-height: 22px;
   }
 }
@@ -696,7 +727,7 @@ kbd,
   align-items: center;
   justify-content: space-between;
   padding: 0 21px 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   height: auto;
   min-height: 30px;
@@ -759,7 +790,7 @@ kbd,
    their titles (13 px) and a little bolder, not the 11 px of the quieter
    section labels (Favourites, Collections). */
 .nav-section-title > .space-toggle {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--secondary);
 }
@@ -847,7 +878,7 @@ kbd,
   gap: 9px;
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .page-nav-title:hover {
   background: none;
@@ -928,7 +959,7 @@ kbd,
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--surface);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .page-selection-bar > span {
   font-weight: 600;
@@ -948,7 +979,7 @@ kbd,
   justify-content: flex-start;
   padding: 7px 10px;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 .favorite-nav span:not(.page-emoji) {
@@ -968,11 +999,11 @@ kbd,
   justify-content: flex-start;
   margin: 0 18px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .sidebar-empty {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding-left: 25px;
 }
 .sidebar-bottom {
@@ -1046,6 +1077,7 @@ kbd,
   display: block;
 }
 .notification-count {
+  /* A count badge: keeps its size on phones (#639). */
   font-size: 10px;
   border-radius: 4px;
   background: var(--blue-light);
@@ -1092,7 +1124,7 @@ kbd,
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow: hidden;
   white-space: nowrap;
   min-width: 0;
@@ -1123,7 +1155,7 @@ kbd,
   border: 1px dashed var(--border);
   border-radius: 10px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 .topbar-note.journal-draft-note {
@@ -1135,7 +1167,7 @@ kbd,
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 .subtle-dot {
@@ -1403,7 +1435,7 @@ kbd,
   border-radius: 4px;
   border-bottom: 1px solid var(--border);
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .page-row-icon {
   display: flex;
@@ -1423,7 +1455,7 @@ kbd,
 }
 .home-page-row > span:nth-last-child(2) {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .home-page-row > svg {
   color: #b1b8c4;
@@ -1435,7 +1467,7 @@ kbd,
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #a3a9b2;
 }
 .home-footnote > .kbd-hint {
@@ -4534,7 +4566,7 @@ tr:hover .row-open,
   overflow-wrap: break-word;
 }
 .form-heading p {
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--muted);
 }
 .form-sharing {
@@ -4627,12 +4659,12 @@ tr:hover .row-open,
   margin: 0;
 }
 .empty-state p {
-  font-size: 13px;
+  font-size: var(--text-md);
   margin: 0;
 }
 .empty-state.small {
   padding: 30px 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .utility-content {
   padding: 48px 55px 80px;
@@ -4660,7 +4692,7 @@ tr:hover .row-open,
   gap: 12px;
   padding: 14px 2px;
   border-bottom: 1px solid var(--border);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .utility-row > strong {
   flex: 1;
@@ -4697,7 +4729,7 @@ tr:hover .row-open,
   gap: 7px;
 }
 .settings-section p {
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 .settings-section form > label input {
@@ -4933,7 +4965,7 @@ tr:hover .row-open,
   padding-top: 20px;
 }
 .modal p.muted {
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .dropdown {
   background: var(--bg);
@@ -4955,7 +4987,7 @@ tr:hover .row-open,
   gap: 9px;
   padding: 8px 10px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   outline: none;
   cursor: pointer;
   color: var(--secondary);
@@ -4978,7 +5010,7 @@ tr:hover .row-open,
 .page-menu-label {
   padding: 6px 10px 3px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -5015,7 +5047,7 @@ tr:hover .row-open,
 .workspace-menu-person-name {
   min-width: 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .workspace-menu-person-name,
@@ -5028,7 +5060,7 @@ tr:hover .row-open,
   display: block;
   margin-top: 1px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 400;
 }
 .workspace-menu-sign-out {
@@ -6364,7 +6396,7 @@ mark[data-color],
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--secondary);
 }
 .search-filters .chip.active {
@@ -6374,7 +6406,7 @@ mark[data-color],
 }
 .search-filters :is(select, .fp-select) {
   width: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .search-results mark {
   background: color-mix(in srgb, #f5c542 45%, transparent);
@@ -6565,7 +6597,7 @@ mark[data-color],
   padding: 12px 15px;
   background: var(--text);
   color: var(--bg);
-  font-size: 13px;
+  font-size: var(--text-md);
   border-radius: 8px;
   box-shadow: var(--shadow);
   max-width: calc(100% - 32px);
@@ -6589,13 +6621,13 @@ mark[data-color],
   background: var(--blue-light);
   padding: 14px 16px;
   border-radius: 7px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 .checkbox-label {
   flex-direction: row;
   align-items: center;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 400;
   gap: 9px;
 }
@@ -6616,7 +6648,7 @@ mark[data-color],
 }
 .checkbox-label > span > small {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 
 /* Settings pages: groups of rows (components/settings-ui.tsx). */
@@ -6626,7 +6658,7 @@ mark[data-color],
   gap: 16px 28px;
 }
 .setting-value {
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   font-variant-numeric: tabular-nums;
 }
 .setting-control .segmented label {
@@ -6665,7 +6697,7 @@ mark[data-color],
   max-width: 62ch;
   margin: 0;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
@@ -6673,7 +6705,7 @@ mark[data-color],
   max-width: 62ch;
   margin: 4px 0 0;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 .setting-rows {
@@ -6700,13 +6732,13 @@ mark[data-color],
   display: block;
   margin: 0;
   color: var(--text);
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   font-weight: 500;
 }
 .setting-text > small {
   max-width: 60ch;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.5;
 }
 .setting-control {
@@ -8072,7 +8104,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     gap: 5px;
   }
   .breadcrumb {
-    font-size: 12px;
+    font-size: var(--text-sm);
     gap: 6px;
   }
   .breadcrumb-workspace,
@@ -8106,7 +8138,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 28px;
   }
   .home-greeting p {
-    font-size: 13px;
+    font-size: var(--text-md);
     max-width: 290px;
   }
   .eyebrow {
@@ -8116,7 +8148,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     gap: 13px;
   }
   .recent-card-title {
-    font-size: 12px;
+    font-size: var(--text-sm);
     padding-left: 11px;
     padding-right: 9px;
   }
@@ -8137,17 +8169,17 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding: 16px;
   }
   .quick-actions small {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .quick-actions strong {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .quick-icon {
     width: 43px;
     height: 43px;
   }
   .home-page-row {
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .home-page-row > span:nth-last-child(2) {
     display: none;
@@ -8201,7 +8233,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .add-cover {
     opacity: 1;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .page-cover {
     height: 130px;
@@ -8228,7 +8260,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .database-tabs > button {
     padding: 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .database-toolbar {
     align-items: flex-start;
@@ -8241,7 +8273,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     gap: 8px;
   }
   .toolbar-left > button {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .toolbar-right {
     width: 100%;
@@ -8254,7 +8286,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     height: 47px;
   }
   .data-table th button {
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .data-table td:first-child {
     min-width: 200px;
@@ -8269,25 +8301,25 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     width: 52px;
   }
   .record-card > strong {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .tag {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .card-properties .tag,
   .card-properties .person-cell {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .calendar-controls {
     gap: 3px;
     flex-wrap: wrap;
   }
   .calendar-controls h3 {
-    font-size: 15px;
+    font-size: var(--text-lg);
     min-width: 140px;
   }
   .calendar-controls .button {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .form-preview {
     padding: 20px 15px;
@@ -8304,16 +8336,16 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .utility-row {
     flex-wrap: wrap;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .utility-row > .button {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .utility-row > span {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .admin-page .callout {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .modal {
     --modal-pad: 20px;
@@ -8334,11 +8366,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .row-property {
     grid-template-columns: 110px 1fr;
     gap: 10px;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .row-property input,
   .row-property :is(select, .fp-select) {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .row-property .date-input {
     --date-placeholder-size: 14px;
@@ -8349,7 +8381,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .toast {
     bottom: 16px;
     width: max-content;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .login {
     padding: 23px;
@@ -8371,7 +8403,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     opacity: 0.7;
   }
   .main-nav > button {
-    font-size: 14px;
+    font-size: var(--text-base);
     padding: 8px 10px;
   }
   .page-nav {
@@ -8387,7 +8419,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 16px; /* no zoom on iOS */
   }
   .page-nav-title {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
 }
 /* The content of the main area as on phones whenever it is that narrow
@@ -8424,7 +8456,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 28px;
   }
   .home-greeting p {
-    font-size: 13px;
+    font-size: var(--text-md);
     max-width: 290px;
   }
   .eyebrow {
@@ -8434,7 +8466,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     gap: 13px;
   }
   .recent-card-title {
-    font-size: 12px;
+    font-size: var(--text-sm);
     padding-left: 11px;
     padding-right: 9px;
   }
@@ -8455,17 +8487,17 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding: 16px;
   }
   .quick-actions small {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .quick-actions strong {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .quick-icon {
     width: 43px;
     height: 43px;
   }
   .home-page-row {
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .home-page-row > span:nth-last-child(2) {
     display: none;
@@ -8506,7 +8538,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .add-cover {
     opacity: 1;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .page-cover {
     height: 130px;
@@ -8517,7 +8549,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .database-tabs > button {
     padding: 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .database-toolbar {
     align-items: flex-start;
@@ -8530,7 +8562,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     gap: 8px;
   }
   .toolbar-left > button {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .toolbar-right {
     width: 100%;
@@ -8546,18 +8578,18 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     width: 52px;
   }
   .record-card > strong {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .calendar-controls {
     gap: 3px;
     flex-wrap: wrap;
   }
   .calendar-controls h3 {
-    font-size: 15px;
+    font-size: var(--text-lg);
     min-width: 140px;
   }
   .calendar-controls .button {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .form-preview {
     padding: 20px 15px;
@@ -8574,16 +8606,16 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .utility-row {
     flex-wrap: wrap;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .utility-row > .button {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .utility-row > span {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .admin-page .callout {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -9617,7 +9649,7 @@ body:has(.public-page:not(.public-wide) .public-embed) {
   white-space: pre-wrap;
 }
 .field-error {
-  font-size: 12px;
+  font-size: var(--text-sm);
   margin: 7px 0;
 }
 .form-field-design {
@@ -9646,7 +9678,7 @@ body:has(.public-page:not(.public-wide) .public-embed) {
   width: auto;
 }
 .form-field-design label {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .schema-settings {
@@ -13834,7 +13866,7 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
   box-shadow:
     0 10px 30px #14244426,
     0 2px 6px #1424440f;
-  font-size: 13px;
+  font-size: var(--text-md);
   transform-origin: top center;
   animation: menu-in var(--motion-fast) var(--ease-standard) both;
 }
@@ -13875,7 +13907,7 @@ body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row
 }
 .fp-select-group {
   padding: 8px 10px 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -16232,7 +16264,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .settings-tile-group h2 {
   margin: 26px 2px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -16310,7 +16342,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .settings-tile-text small {
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -16334,7 +16366,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .settings-results-count {
   margin: 14px 2px 10px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 /* No dot in front (#580): colour and text say the state, and circles
    already mark a setting's level in the settings. */
@@ -16345,7 +16377,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   min-height: 22px;
   padding: 1px 9px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 550;
   white-space: nowrap;
   background: #eff0f3;
@@ -16401,7 +16433,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   gap: 6px;
   margin-bottom: 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .settings-breadcrumb a {
   color: var(--secondary);
@@ -16510,7 +16542,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .settings-empty p {
   margin: 2px 0 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .settings-empty > :last-child:not(div, span) {
   margin-left: auto;
@@ -16871,7 +16903,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   padding: 0;
   list-style: none;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .vz-legend li,
 .vz-legend button {
@@ -16910,7 +16942,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border-radius: 6px;
   background: none;
   color: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   text-align: left;
 }
 .vz-legend.vertical button:hover,
@@ -17012,7 +17044,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   align-items: center;
   gap: 6px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   white-space: nowrap;
 }
 .live-badge::before {
@@ -17053,7 +17085,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   font-weight: 620;
 }
 .live-strip-head small {
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .live-strip-icon {
   display: grid;
@@ -17093,7 +17125,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   margin: 2px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .live-strip-items a {
   color: var(--secondary);
@@ -17399,7 +17431,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   max-width: 100%;
   overflow: hidden;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -19435,7 +19467,7 @@ label.task-due {
 }
 .my-tasks-targets-note {
   margin: 4px 10px 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .my-tasks-add:focus-within {
   border-color: var(--blue);
@@ -19455,7 +19487,7 @@ label.task-due {
   grid-column: 2;
   display: none;
   padding-bottom: 9px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 .my-tasks-add[data-typing] .my-tasks-add-hint {
@@ -19463,7 +19495,7 @@ label.task-due {
 }
 .my-tasks-notice {
   margin: -4px 0 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 /* "Filter (n)" (#612): its panel on larger screens (the sheet on phones
@@ -19486,7 +19518,7 @@ label.task-due {
   min-width: 0;
 }
 .my-tasks-filter-heading {
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -19499,7 +19531,7 @@ label.task-due {
   max-width: 100%;
 }
 .my-tasks-range-hint {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 .my-tasks-filter-checks {
@@ -19546,11 +19578,11 @@ label.task-due {
   color: var(--text);
 }
 .my-tasks-reset {
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .my-tasks-filter label {
   padding: 4px 11px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .my-tasks-filter label:has(input:focus-visible) {
   outline: 2px solid var(--blue);
@@ -19558,7 +19590,7 @@ label.task-due {
 }
 .my-tasks-page-link {
   margin-left: auto;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 /* A list of choices in a chip's panel (the date range of "Meine Aufgaben",
    "Gruppieren" of a database): full-width rows, the radio at the left, the
@@ -19577,7 +19609,7 @@ label.task-due {
   margin: 0;
   padding: 8px 10px;
   border-radius: 7px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 500;
   line-height: 1.35;
   color: var(--text);
@@ -19608,7 +19640,7 @@ label.task-due {
   display: block;
   margin-top: 1px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
   font-weight: 400;
 }
 .chip-options > label[data-active="true"] small {
@@ -19618,7 +19650,7 @@ label.task-due {
   margin: 0;
   padding: 4px 10px 2px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
   font-weight: 600;
 }
 /* "Gruppieren": the properties as choices, the options of a grouping
@@ -19646,7 +19678,7 @@ label.task-due {
   border-radius: 999px;
   background: color-mix(in srgb, var(--blue) 14%, transparent);
   color: var(--blue);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
   vertical-align: 1px;
 }
@@ -19671,7 +19703,7 @@ label.task-due {
     flex: 1 1 auto;
     min-width: 0;
     padding: 5px 6px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.25;
     text-align: center;
     text-wrap: balance;
@@ -19681,7 +19713,7 @@ label.task-due {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -19726,7 +19758,7 @@ label.task-due {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--secondary);
 }
 .my-task-status .task-status-icon {
@@ -19742,7 +19774,7 @@ label.task-due {
   align-items: center;
   gap: 5px;
   max-width: 220px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   color: var(--secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -23055,7 +23087,7 @@ h3 .block-reactions {
   min-width: 170px;
 }
 .language-menu .dropdown-item {
-  font-size: 13px;
+  font-size: var(--text-md);
   min-height: 36px;
   color: var(--text);
 }
@@ -23236,7 +23268,7 @@ h3 .block-reactions {
 /* Settings → profile: name, password, passkeys (components/account-security.tsx). */
 .account-status {
   color: var(--blue);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .passkey-list {
   display: grid;
@@ -25982,7 +26014,7 @@ h3 .block-reactions {
   border-radius: 8px;
   background: var(--blue-light);
   color: var(--accent-strong);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .record-git ul {
   display: grid;
@@ -26076,7 +26108,7 @@ h3 .block-reactions {
   padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .chip-button:is([aria-selected="true"], [aria-pressed="true"]) {
   border-color: var(--blue);
@@ -26141,7 +26173,7 @@ h3 .block-reactions {
 .my-tasks-group li.my-record {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 4px 10px;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }
 .my-tasks-group li.my-record > input[type="checkbox"] {
   align-self: start;
@@ -27419,7 +27451,7 @@ h3 .block-reactions {
   margin: 0;
   padding: 6px 14px;
   border-radius: 7px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--secondary);
   cursor: pointer;
@@ -27873,7 +27905,7 @@ h3 .block-reactions {
   padding: 12px 22px;
   border-top: 1px solid var(--border);
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -27967,7 +27999,7 @@ h3 .block-reactions {
 }
 .account-identity-text small {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   overflow-wrap: anywhere;
 }
 /* Upload and remove one's own profile picture (#559), under the address. */
@@ -27991,7 +28023,7 @@ h3 .block-reactions {
   gap: 5px;
   margin: 0;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .account-form .error {
   margin: 0;
@@ -28040,7 +28072,7 @@ h3 .block-reactions {
   overflow-wrap: anywhere;
 }
 .my-sessions small {
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 /* The danger zone's buttons: red text that keeps 4.5:1 on the card. */
 .settings-body .danger-zone .button.danger,
@@ -28074,7 +28106,7 @@ h3 .block-reactions {
 .notif-head {
   padding-block: 9px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 550;
 }
 .notif-head > span:not(:first-child) {
@@ -28387,7 +28419,7 @@ h3 .block-reactions {
     overflow: visible;
     clip-path: none;
     color: var(--secondary);
-    font-size: 12.5px;
+    font-size: var(--text-sm-plus);
     white-space: normal;
   }
   .api-token-form label,
@@ -28456,7 +28488,7 @@ h3 .block-reactions {
     overflow: visible;
     clip-path: none;
     color: var(--secondary);
-    font-size: 12.5px;
+    font-size: var(--text-sm-plus);
     white-space: normal;
   }
   .api-token-form label,
@@ -32390,7 +32422,7 @@ td.ai-filled {
   border-radius: 10px;
   background: var(--bg);
   box-shadow: var(--shadow);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
   transform-origin: top left;
   animation: menu-in var(--motion-fast) var(--ease-standard) both;
@@ -32412,14 +32444,14 @@ td.ai-filled {
 .chip-panel > label {
   margin: 0;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .chip-panel > .checkbox-label {
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .chip-panel > p {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 /* Text fields and selects fill the panel; checkboxes and radios keep
    their own size (a radio at 100 % stretched into a bar, design review). */
@@ -32450,7 +32482,7 @@ td.ai-filled {
 }
 .chip-condition .relative-filter-options label {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .chip-panel-actions {
   display: flex;
@@ -32460,7 +32492,7 @@ td.ai-filled {
 }
 .chip-panel-actions .text-button {
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .chip-panel-actions .text-button:hover {
   background: none;
@@ -32468,11 +32500,11 @@ td.ai-filled {
 }
 .chip-panel-status {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .chip-panel-alert {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--red);
 }
 .chip-property-list {
@@ -32484,7 +32516,7 @@ td.ai-filled {
 }
 .chip-property-list .checkbox-label {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 /* The tabs beyond the fifth fold into a menu. */
 .database-tabs > .view-tab-more {
@@ -32500,7 +32532,7 @@ td.ai-filled {
 }
 .modal .settings-heading {
   margin: 8px 0 4px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 /* Pinned first column: the selection cell and the title stay while the
    table scrolls sideways; a shadow marks the edge once it has scrolled. */
@@ -33352,7 +33384,7 @@ tr:hover .row-open-mark,
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -33404,6 +33436,8 @@ tr:hover .row-open-mark,
     border-radius: 0;
     background: transparent;
     color: var(--muted);
+    /* Five captions side by side in 78 px each: at 14 px "Posteingang"
+       and "Navigation" would be cut off, so they keep 11 px (#639). */
     font-size: 11px;
     font-weight: 500;
     line-height: 1.1;
@@ -33448,6 +33482,7 @@ tr:hover .row-open-mark,
     /* Darker than --signal: white text at 10 px needs ≥ 4.5:1. */
     background: #c23a17;
     color: #fff;
+    /* A count badge: keeps its size on phones (#639). */
     font-size: 10px;
     font-weight: 700;
     line-height: 1;
@@ -35108,7 +35143,7 @@ html.split-resizing * {
 .status-badge.error {
   padding: 1px 9px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .save-state.error {
   padding: 0;
@@ -35554,7 +35589,7 @@ html.split-resizing * {
   display: grid;
   gap: 3px;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }
 .ws-item-text > strong {
   display: flex;
@@ -35565,12 +35600,12 @@ html.split-resizing * {
 }
 .ws-item-text > small {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.45;
 }
 .ws-item-text > code,
 .setting-group > header code {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--secondary);
   overflow-wrap: anywhere;
 }
@@ -35926,7 +35961,7 @@ label.ws-check {
   min-height: 40px;
   margin: 0;
   font-weight: 400;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   cursor: pointer;
 }
 label.ws-check > span {
@@ -35936,7 +35971,7 @@ label.ws-check > span {
 }
 label.ws-check small {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .ws-checks {
   display: grid;
@@ -38077,7 +38112,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 }
 .home-widget.card .home-widget-head h2 {
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }
 .home-widget.card .home-widget-head h2 svg {
   color: var(--secondary);
@@ -38098,13 +38133,13 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 }
 .home-more {
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 2px 4px;
   flex-shrink: 0;
 }
 .home-empty {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
   margin: 2px 0 8px;
   display: flex;
   align-items: flex-start;
@@ -38122,7 +38157,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   padding: 10px 12px;
 }
 .home-foot {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--muted);
   margin: 8px 0 0;
 }
@@ -38149,7 +38184,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   padding: 6px 6px;
   border-radius: 6px;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-md);
   min-width: 0;
 }
 .home-list li > a:hover {
@@ -38204,10 +38239,10 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .home-task-text small {
-  font-size: 11px;
+  font-size: var(--text-xs);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -38232,7 +38267,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   margin-top: 10px;
 }
 .home-agenda-day h3 {
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--muted);
@@ -38242,12 +38277,12 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .home-list li > button > span.home-agenda-time {
   flex: 0 0 auto;
   min-width: 52px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--secondary);
   font-variant-numeric: tabular-nums;
 }
 .home-excerpt {
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
   line-height: 1.55;
   margin: 0 0 10px;
@@ -38260,7 +38295,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
   margin-bottom: 10px;
 }
@@ -38288,7 +38323,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .home-quick-write textarea {
   flex: 1 1 200px;
   min-height: 58px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .home-capture input {
   flex: 1 1 180px;
@@ -38300,7 +38335,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .home-notes {
   width: 100%;
   min-height: 130px;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   line-height: 1.55;
   background: color-mix(in srgb, #f6e7a6 22%, var(--bg));
   border-color: color-mix(in srgb, #d9b84d 30%, var(--border));
@@ -38603,7 +38638,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   font-size: 14px;
 }
 .home-edit-title small {
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
 }
 .home-edit-actions {
   display: flex;
@@ -38659,7 +38694,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--secondary);
   overflow: hidden;
@@ -38695,7 +38730,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   margin-top: 18px;
 }
 .home-gallery h3 {
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.7px;
   color: var(--muted);
@@ -38893,7 +38928,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .push-test-diagnostics {
   margin: 0;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.5;
 }
 .push-test-summary {
@@ -38908,7 +38943,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .push-test-error {
   margin: 0;
   color: var(--danger, #a43c3f);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .push-test-results {
   display: grid;
@@ -38937,12 +38972,12 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   display: grid;
   gap: 2px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 .push-test-channel {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .push-test-status {
   color: var(--text);
@@ -38953,7 +38988,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   align-items: baseline;
   margin: 0;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.45;
 }
 .push-test-note > svg {
@@ -38961,7 +38996,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   transform: translateY(2px);
 }
 .push-test-diagnostics code {
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 [data-theme="dark"] .push-test-results > li.ok > svg {
@@ -40540,7 +40575,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   display: grid;
   gap: 5px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .messenger-form label > small {
   color: var(--muted);
@@ -40572,7 +40607,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
 .messenger-note {
   margin: 0;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .messenger-note[data-tone="error"] {
   color: #a43c3f;
@@ -40595,7 +40630,7 @@ html[data-route-pending] .mobile-tab[aria-current="page"] > span:last-child {
   width: 100%;
   min-height: 90px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 /* Export / import of the limits (Administration → Grenzen & Aufbewahrung,
    components/settings/admin/limits-file.tsx). */
@@ -42700,7 +42735,7 @@ sup.meeting-cite:hover,
 }
 .breadcrumb-more-button {
   padding: 2px 7px;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1;
   color: var(--secondary);
 }
@@ -42895,7 +42930,7 @@ a.favorite-nav.selected {
 }
 .settings-level-label {
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .settings-level-switch label {
@@ -42904,7 +42939,7 @@ a.favorite-nav.selected {
 .settings-level-hint {
   flex-basis: 100%;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .settings-level-switch label:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring, var(--blue));
@@ -42935,7 +42970,7 @@ a.favorite-nav.selected {
 .level-more {
   margin: 4px 2px 22px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .level-more .text-button {
   display: inline;
@@ -43086,7 +43121,7 @@ a.favorite-nav.selected {
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .field-required-notice svg,
 .required-missing svg {
@@ -43161,7 +43196,7 @@ td > span > .required-missing:only-child {
    a space's settings while the workspace overrides its choice. */
 .setting-rows > .setting-note.ws-library-places {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   font-weight: 500;
 }
 .ws-library-confirm {
@@ -43206,7 +43241,7 @@ td > span > .required-missing:only-child {
 .my-tasks-modes-row .my-tasks-more .toolbar-chip {
   height: 36px;
   padding: 0 14px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .my-tasks-workspaces {
   display: flex;
@@ -43247,7 +43282,7 @@ td > span > .required-missing:only-child {
   border-radius: 999px;
   background: var(--hover);
   color: var(--secondary);
-  font-size: 11.5px;
+  font-size: var(--text-xs-plus);
   font-weight: 500;
   line-height: 18px;
   vertical-align: 1px;
@@ -43300,7 +43335,7 @@ td > span > .required-missing:only-child {
   align-items: baseline;
   gap: 8px;
   margin: 2px 4px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -43332,7 +43367,7 @@ td > span > .required-missing:only-child {
 }
 .my-tasks-column-empty {
   margin: 4px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   color: var(--muted);
 }
 .my-task-card {
@@ -43368,7 +43403,7 @@ td > span > .required-missing:only-child {
   background: none;
   color: var(--text);
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   line-height: 1.4;
   text-align: left;
   overflow-wrap: anywhere;
@@ -43398,7 +43433,7 @@ td > span > .required-missing:only-child {
   gap: 5px 8px;
   margin-top: 6px;
   padding-left: 24px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--secondary);
 }
 .my-task-card-source {

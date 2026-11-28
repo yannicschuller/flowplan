@@ -89,7 +89,7 @@
   width: fit-content;
   margin: 0 0 18px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-decoration: none;
 }
 .library-back:hover {
@@ -155,7 +155,7 @@
   outline: none;
   background: transparent;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-base);
   box-shadow: none;
 }
 
@@ -218,7 +218,7 @@
 }
 .library-book-title {
   margin: 10px 14px 4px;
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -230,14 +230,14 @@
   margin: auto 14px 14px;
   padding-top: 6px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 
 /* A book's table of contents. */
 .library-contents-heading {
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -278,7 +278,7 @@
   flex: none;
   min-width: 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -295,7 +295,7 @@
 .library-chapter-link {
   flex: 1;
   padding: 6px 4px;
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 .library-chapter-link > span,
@@ -317,7 +317,7 @@
 .library-count {
   flex: none;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   white-space: nowrap;
 }
 .library-add {
@@ -338,7 +338,7 @@
   align-items: center;
   gap: 8px;
   padding: 5px 0;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 .library-pages a {
   color: var(--secondary);
@@ -368,12 +368,12 @@
 }
 .library-result-page {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .library-result-snippet {
   margin: 4px 0 0 24px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   overflow-wrap: anywhere;
 }
 .library-result-snippet mark {
@@ -389,7 +389,7 @@
   gap: 10px;
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .book-nav-path {
   display: flex;
@@ -492,7 +492,7 @@ span.book-nav-step {
   align-items: center;
   gap: 4px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .book-next-title {
   max-width: 100%;
@@ -512,7 +512,7 @@ span.book-nav-step {
   }
   .library-book-title {
     margin: 8px 10px 2px;
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .library-book-icon {
     margin-left: 10px;
@@ -563,7 +563,7 @@ span.book-nav-step {
   gap: 6px;
   width: fit-content;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .library-who:hover {
   color: var(--text);
@@ -574,13 +574,13 @@ span.book-nav-step {
 .library-who-note {
   margin: 4px 8px 8px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   line-height: 1.45;
 }
 .library-group-title {
   margin: 0 0 4px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -588,7 +588,7 @@ span.book-nav-step {
 .library-group-hint {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .library-groups {
   display: grid;
@@ -669,7 +669,7 @@ span.book-nav-step {
   gap: 8px;
   min-height: 150px;
   color: var(--secondary);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 /* "Weiterlesen": the books read last. */
@@ -730,13 +730,13 @@ span.book-nav-step {
 .library-reading-page {
   overflow: hidden;
   color: var(--secondary);
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .library-reading-meta {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .library-reading-go {
   flex: none;
@@ -748,7 +748,7 @@ span.book-nav-step {
 }
 .library-result-heading {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .library-result-heading button {
   display: inline-flex;
@@ -855,7 +855,7 @@ span.book-nav-step {
   align-items: center;
   gap: 6px;
   color: var(--secondary);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-decoration: none;
 }
 .library-intro-edit {
@@ -891,14 +891,14 @@ span.book-nav-step {
   gap: 6px;
   margin: -10px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .library-create-field {
   display: grid;
   gap: 6px;
 }
 .library-create-field input {
-  font-size: 15px;
+  font-size: var(--text-lg);
   padding: 10px 12px;
 }
 .library-create-form .modal-actions {

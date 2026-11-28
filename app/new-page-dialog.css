@@ -23,7 +23,7 @@
   margin-bottom: 16px;
 }
 .np-name input {
-  font-size: 15px;
+  font-size: var(--text-lg);
   padding: 10px 12px;
 }
 .np-form .duplicate-hint {
@@ -93,7 +93,7 @@
 .np-desc {
   margin: 10px 2px 0;
   min-height: 19px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--muted);
   overflow: hidden;
   white-space: nowrap;
@@ -134,7 +134,7 @@
 }
 .np-row-label {
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--secondary);
 }
 /* Segmented choices ("Wie anlegen?") share the row, each at least as wide
@@ -150,7 +150,7 @@
   gap: 5px;
   min-width: max-content;
   padding: 6px 10px;
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   white-space: nowrap;
 }
 .np-segmented label svg {
@@ -163,7 +163,7 @@
 }
 .np-kind-hint {
   grid-column: 2;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 400;
   color: var(--muted);
 }
@@ -184,11 +184,11 @@
 /* As tall and in the same type as the space's select below it. */
 .np-kind .np-kind-select.fp-select {
   padding: 7px 10px;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }
 .np-pdf {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 /* The space: a folder in front of the value. */
@@ -210,7 +210,7 @@
   width: 100%;
   padding: 7px 10px;
   padding-inline-start: 34px;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }
 
 /* The buttons stick to the bottom edge of the dialog. */
@@ -262,7 +262,7 @@
   }
   .np-segmented label {
     padding: 7px 8px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .np-segmented label svg {
     display: none;
@@ -328,11 +328,11 @@
   gap: 4px 10px;
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
 }
 .np-upload .text-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13.5px;
+  font-size: var(--text-md-plus);
 }

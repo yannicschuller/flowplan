@@ -19,7 +19,7 @@
 }
 .deadman-field > span {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .deadman-field textarea {
   width: 100%;
@@ -30,7 +30,7 @@
 .deadman-field small,
 .deadman-note {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-sm-plus);
   margin: 0;
 }
 .deadman-inline {

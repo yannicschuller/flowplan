@@ -40,8 +40,8 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   await expect(more(page)).toHaveAttribute("aria-haspopup", "dialog");
   await expect(more(page)).toHaveAttribute("aria-expanded", "false");
   // An entry of the list right below "Bereich hinzufügen", as large as the
-  // others and on the axes of Startseite (#629) – no bar of its own above
-  // the tab bar; still a 44 px target.
+  // others (16 px, #639) and on the axes of Startseite (#629) – no bar of
+  // its own above the tab bar; still a 44 px target.
   await expect(sidebar(page).locator(".sidebar-bottom")).toHaveCount(0);
   await expect(sidebar(page).locator(".sidebar-scroll > .add-space + .sidebar-more")).toHaveCount(1);
   // (Measured in one frame: the drawer may still be sliding in.)
@@ -56,7 +56,7 @@ test("on phones the less used places open from Mehr as a labelled list", async (
   expect(Math.abs(button.y - (add.y + add.height))).toBeLessThan(1);
   expect(Math.abs(button.x - home.x)).toBeLessThan(1);
   expect(Math.abs(button.width - home.width)).toBeLessThan(1);
-  for (const entry of [button, add, home]) expect(entry.fontSize).toBe("15px");
+  for (const entry of [button, add, home]) expect(entry.fontSize).toBe("16px");
 
   await more(page).tap();
   await expect(sheet(page)).toBeVisible();
